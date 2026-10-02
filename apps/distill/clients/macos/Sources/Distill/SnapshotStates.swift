@@ -303,10 +303,10 @@ extension StatesSnapshot {
         let f = Flow.intake
         var e = engine { $0.activeVaultPath = $0.vaults.first?.path }
         e.queued = []
-        main("queue-empty", f, "Queue", "Empty · all caught up", "Nothing in the queue; next batch countdown.", e, section: .queue) { QueueView() }
+        main("queue-empty", f, "Queue", "Empty · all caught up", "Nothing in the queue; the header shows the next batch time.", e, section: .queue) { QueueView() }
 
         e = engine()
-        main("queue-ready", f, "Queue", "Files waiting (Ready / Settling…)", "Three settled files and one still settling; Process now enabled.", e, section: .queue) { QueueView() }
+        main("queue-ready", f, "Queue", "Files waiting (Ready / Ready at)", "Three ready files and one waiting until its ready time; Process now enabled.", e, section: .queue) { QueueView() }
 
         e = engine()
         main("queue-drop-target", f, "Queue", "Drop target highlighted", "A file is dragged over the drop panel: “Let go to add it”.", e, section: .queue) { QueueView(targeted: true) }
