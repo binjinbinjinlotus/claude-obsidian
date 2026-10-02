@@ -12,6 +12,7 @@ struct SettingsSectionNav: View {
     let matches: [SettingsSection: Int]?
     let select: (SettingsSection) -> Void
     @FocusState private var focused: Bool
+    @Environment(\.snapshotMode) private var snapshot
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -33,11 +34,18 @@ struct SettingsSectionNav: View {
     private var searchField: some View {
         HStack(spacing: 7) {
             Image(systemName: "magnifyingglass").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.faint)
-            TextField("", text: $query, prompt: Text("Search settings").foregroundStyle(Theme.faint))
-                .textFieldStyle(.plain).font(Theme.body(12))
-                .focused($focused)
-                .onExitCommand { query = "" }
-                .accessibilityLabel("Search settings")
+            if snapshot {
+                // ImageRenderer can't draw a text field.
+                Text(query.isEmpty ? "Search settings" : query).font(Theme.body(12))
+                    .foregroundStyle(query.isEmpty ? Theme.faint : Theme.ink)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                TextField("", text: $query, prompt: Text("Search settings").foregroundStyle(Theme.faint))
+                    .textFieldStyle(.plain).font(Theme.body(12))
+                    .focused($focused)
+                    .onExitCommand { query = "" }
+                    .accessibilityLabel("Search settings")
+            }
             if !query.isEmpty {
                 Button { query = "" } label: {
                     Image(systemName: "xmark").font(.system(size: 7, weight: .heavy)).foregroundStyle(.white)

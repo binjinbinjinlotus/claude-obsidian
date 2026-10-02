@@ -390,6 +390,8 @@ struct ActionPromptEditor: View {
     private var text: Binding<String> {
         Binding(get: { SettingsEdits.prompt(type, improve: improve, engine.settings) },
                 set: { v in
+                    // An editor echoing the same text back is not an edit (and keeps Undo reset).
+                    guard v != SettingsEdits.prompt(type, improve: improve, engine.settings) else { return }
                     SettingsEdits.setPrompt(type, improve: improve, text: v, in: &engine.settings)
                     ui.promptUndo[undoKey] = nil
                 })
