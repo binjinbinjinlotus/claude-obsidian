@@ -38,8 +38,9 @@ export function setupProblems(s: Settings, runners: RunnerRegistry): SetupProble
   } else {
     out.push(problem.noVault());
   }
-  // Every runner that some task is set to use must be ready.
-  const used = [...new Set(AI_TASKS.map((t) => selectionFor(s, t).runnerID))].sort();
+  // Every runner that some task is set to use must be ready. Action tasks don't
+  // block batching: finding actions reports its own failure after the apply.
+  const used = [...new Set(AI_TASKS.filter((t) => !t.startsWith('action')).map((t) => selectionFor(s, t).runnerID))].sort();
   for (const id of used) {
     const runner = runners.get(id);
     if (!runner) {

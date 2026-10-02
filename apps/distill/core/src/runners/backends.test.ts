@@ -497,11 +497,11 @@ describe('runner admin', () => {
     const list = await admin.listRunners();
     assert.deepEqual(list.map((r) => r.id), ['claude-code', 'codex', 'openai', 'openrouter', 'ai-sdk']);
     const by = Object.fromEntries(list.map((r) => [r.id, r]));
-    assert.deepEqual(by['claude-code']!.tasks, ['ingest', 'ask', 'labelSuggest', 'imageText']);
-    assert.deepEqual(by['codex']!.tasks, ['ingest', 'labelSuggest']);
-    assert.deepEqual(by['openai']!.tasks, ['labelSuggest', 'imageText']);
-    assert.deepEqual(by['openrouter']!.tasks, ['labelSuggest', 'imageText']);
-    assert.deepEqual(by['ai-sdk']!.tasks, ['labelSuggest']);
+    assert.deepEqual(by['claude-code']!.tasks, ['ingest', 'ask', 'labelSuggest', 'imageText', 'actionFind', 'actionDraft', 'actionImprove']);
+    assert.deepEqual(by['codex']!.tasks, ['ingest', 'labelSuggest', 'actionFind', 'actionDraft', 'actionImprove']);
+    assert.deepEqual(by['openai']!.tasks, ['labelSuggest', 'imageText', 'actionFind', 'actionDraft', 'actionImprove']);
+    assert.deepEqual(by['openrouter']!.tasks, ['labelSuggest', 'imageText', 'actionFind', 'actionDraft', 'actionImprove']);
+    assert.deepEqual(by['ai-sdk']!.tasks, ['labelSuggest', 'actionFind', 'actionDraft', 'actionImprove']);
     assert.deepEqual(list.map((r) => r.kind), ['agent', 'agent', 'modelAPI', 'modelAPI', 'modelAPI']);
     assert.deepEqual(list.filter((r) => r.enabled).map((r) => r.id), ['claude-code', 'openrouter']);
     assert.deepEqual(by['claude-code']!.secrets, []);
