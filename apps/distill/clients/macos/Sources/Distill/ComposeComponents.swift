@@ -116,36 +116,7 @@ struct BareTextField: View {
     }
 }
 
-/// Multi-line note text; static text in snapshots.
-struct BareTextEditor: View {
-    let placeholder: String
-    @Binding var text: String
-    var font: Font = Theme.body(15)
-    var minHeight: CGFloat = 48
-    var maxHeight: CGFloat = 120
-    @Environment(\.snapshotMode) private var snapshot
-
-    var body: some View {
-        if snapshot {
-            Text(text.isEmpty ? placeholder : text).font(font).lineSpacing(5)
-                .foregroundStyle(text.isEmpty ? Theme.faint : Color(hex: 0x2A2925))
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
-                .fixedSize(horizontal: false, vertical: true)
-        } else {
-            ZStack(alignment: .topLeading) {
-                if text.isEmpty {
-                    Text(placeholder).font(font).foregroundStyle(Theme.faint).padding(.leading, 5).allowsHitTesting(false)
-                }
-                TextEditor(text: $text)
-                    .font(font).lineSpacing(5)
-                    .scrollContentBackground(.hidden)
-                    .foregroundStyle(Color(hex: 0x2A2925))
-            }
-            .frame(minHeight: minHeight, maxHeight: maxHeight)
-        }
-    }
-}
+// BareTextEditor (Markdown note text) lives in MarkdownEditor.swift.
 
 /// A label chip. Suggested chips are dashed (green = existing, peach = new);
 /// confirmed ones are solid.

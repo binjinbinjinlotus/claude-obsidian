@@ -43,6 +43,7 @@ enum Snapshot {
         NotesSnapshot.run(engine: engine, outDir: outDir) // Snapshot+Notes.swift (replaces settings.png with the full window)
         renderV3(engine: engine, size: size, outDir: outDir)
         WindowsSnapshot.run(engine: engine, outDir: outDir) // Snapshot+Windows.swift: quick windows, compose sizing, queue rows
+        MarkdownSnapshot.run(engine: engine, outDir: outDir) // Snapshot+Markdown.swift
         exit(0)
     }
 

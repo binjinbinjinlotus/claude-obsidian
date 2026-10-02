@@ -150,6 +150,16 @@ final class CoreClientTests: XCTestCase {
         XCTAssertEqual(try bodyJSON(), .object(["model": .string("opus"), "nodePath": .null]))
     }
 
+    func testSearchPages() async throws {
+        respond(#"{"pages":[{"path":"wiki/sources/sencha.md","title":"Sencha basics"},{"bad":1}]}"#)
+        let pages = try await client.searchPages("tea & c++", vaultPath: "/My Vault", limit: 5)
+        XCTAssertEqual(pages, [PageRef(path: "wiki/sources/sencha.md", title: "Sencha basics")])
+        XCTAssertEqual(last.path, "/v1/pages")
+        XCTAssertEqual(last.query, "q=tea%20%26%20c%2B%2B&vault=/My%20Vault&limit=5")
+        XCTAssertEqual(pages[0].wikilink, "[[sencha|Sencha basics]]")
+        XCTAssertEqual(PageRef(path: "wiki/Kyoto tea shops.md", title: "Kyoto tea shops").wikilink, "[[Kyoto tea shops]]")
+    }
+
     func testV2Routes() async throws {
         respond(#"{"labels":[{"name":"tea","count":3,"unconfirmed":1}]}"#)
         let labels = try await client.labels(vaultPath: "/My Vault")

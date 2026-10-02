@@ -35,6 +35,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Tooling](docs/specs/tooling.md) | built |
 | [Ask](docs/specs/ask.md) | built |
 | [Write a note](docs/specs/notes-composer.md) | built |
+| [Markdown editing](docs/specs/markdown-editing.md) | built |
 | [Labels and sources](docs/specs/labels-and-sources.md) | built |
 | [Quick actions and shortcuts](docs/specs/quick-actions.md) | built |
 | [App icon](docs/specs/app-icon.md) | built |

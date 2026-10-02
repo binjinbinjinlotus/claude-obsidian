@@ -333,6 +333,21 @@ describe('HTTP API', () => {
       assert.deepEqual(Object.keys(review.body).sort(), ['toReview', 'unlabeled']);
       assert.deepEqual(lastCall(), { method: 'labelReview', args: ['/tmp/v2'] });
     });
+    it('GET /v1/pages passes q, ?vault= and limit to searchPages', async () => {
+      const res = await request(port, 'GET', '/v1/pages?q=sen');
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body, { pages: [{ path: 'wiki/sources/sencha.md', title: 'Sencha basics' }] });
+      assert.deepEqual(lastCall(), { method: 'searchPages', args: ['sen', {}] });
+      await request(port, 'GET', '/v1/pages?q=Kyoto%20tea&vault=%2Ftmp%2Fv&limit=5');
+      assert.deepEqual(lastCall(), { method: 'searchPages', args: ['Kyoto tea', { vaultPath: '/tmp/v', limit: 5 }] });
+      await request(port, 'GET', '/v1/pages');
+      assert.deepEqual(lastCall(), { method: 'searchPages', args: ['', {}] });
+      for (const bad of ['abc', '0', '-2', '1.5']) {
+        const r = await request(port, 'GET', `/v1/pages?q=x&limit=${bad}`);
+        assert.equal(r.status, 400, bad);
+        assert.equal(r.body.error.code, 'invalid_request');
+      }
+    });
     it('POST /v1/labels/suggest and /v1/labels/confirm return {job}', async () => {
       const sel = { runnerID: 'claude-code', model: 'haiku' };
       const sug = await request(port, 'POST', '/v1/labels/suggest', { body: { paths: ['wiki/a.md'], vaultPath: '/tmp/v', selection: sel } });

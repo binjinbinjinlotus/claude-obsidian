@@ -194,7 +194,7 @@ struct QuickNoteBody: View {
     private var composerFooter: some View {
         let draft = notes.draft(owner)
         return HStack(spacing: 10) {
-            MarkdownBarToggle()
+            QuickMarkdownBarToggle()
             Text("⌘V adds an image · ⌘↩ saves").font(Theme.body(11)).foregroundStyle(Theme.faint).lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button { engine.addNote(owner) } label: {
@@ -268,7 +268,7 @@ struct QuickNoteBody: View {
 
     @ViewBuilder private func labelFooter(_ step: LabelStep) -> some View {
         HStack(spacing: 10) {
-            MarkdownBarToggle()
+            QuickMarkdownBarToggle()
             if step.phase == .suggesting {
                 AddLabelField(placeholder: "Type a label while you wait", width: 200, height: 28) { raw in
                     var ok = false

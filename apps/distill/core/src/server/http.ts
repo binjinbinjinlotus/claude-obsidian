@@ -401,6 +401,20 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
       handler: async ({ params, body }) => core.labelNote(params[0]!, labelList(asObject(await body(), false), 'labels', true)!),
     },
     { method: 'GET', pattern: /^\/v1\/labels$/, handler: async ({ query }) => ({ labels: await core.listLabels(vaultParam(query)) }) },
+    {
+      method: 'GET',
+      pattern: /^\/v1\/pages$/,
+      handler: async ({ query }) => {
+        const raw = query.get('limit');
+        let limit: number | undefined;
+        if (raw !== null && raw.trim() !== '') {
+          limit = Number(raw);
+          if (!Number.isInteger(limit) || limit < 1) throw new HttpError(400, 'invalid_request', 'limit must be a positive integer');
+        }
+        const vaultPath = vaultParam(query);
+        return { pages: await core.searchPages(query.get('q') ?? '', { ...(vaultPath ? { vaultPath } : {}), ...(limit ? { limit } : {}) }) };
+      },
+    },
     { method: 'GET', pattern: /^\/v1\/labels\/review$/, handler: async ({ query }) => core.labelReview(vaultParam(query)) },
     {
       method: 'POST',

@@ -190,7 +190,7 @@ struct QuickAskCard: View {
 
     private var footer: some View {
         HStack(spacing: 10) {
-            MarkdownBarToggle()
+            QuickMarkdownBarToggle()
             footerNote.font(Theme.body(11)).foregroundStyle(Theme.faint).lineLimit(1)
             Spacer(minLength: 8)
             if thread.isRunning {

@@ -793,8 +793,6 @@ struct JobDetailView: View {
             if canReply(job) {
                 Text("Reply to Claude").font(Theme.body(12, .semibold)).foregroundStyle(Theme.muted)
                 ReplyEditor(text: $reply)
-                    .frame(height: 76)
-                    .background(RoundedRectangle(cornerRadius: 14).fill(Theme.panel))
             }
             Text("Model \(ModelChoice.shortName(job.model)) · $\(job.totalCostUSD, specifier: "%.2f")")
                 .font(Theme.body(11)).foregroundStyle(Theme.faint)
@@ -1004,20 +1002,4 @@ enum VaultPicker {
     }
 }
 
-struct ReplyEditor: View {
-    @Environment(\.snapshotMode) private var snapshot
-    @Binding var text: String
-
-    var body: some View {
-        if snapshot {
-            Text("e.g. Add this to the Green tea page instead")
-                .font(Theme.body(13)).foregroundStyle(Theme.faint)
-                .padding(12).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        } else {
-            TextEditor(text: $text)
-                .font(Theme.body(13))
-                .scrollContentBackground(.hidden)
-                .padding(8)
-        }
-    }
-}
+// ReplyEditor (Markdown reply box) lives in MarkdownEditor.swift.

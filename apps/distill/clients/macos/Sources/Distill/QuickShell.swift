@@ -168,21 +168,9 @@ private struct SnapshotResizeCorner: View {
     }
 }
 
-/// "Aa": shows or hides the Markdown bar in the quick windows' text (the editor reads the same key).
-struct MarkdownBarToggle: View {
+/// "Aa" in the quick windows' footers: the shared toggle bound to the quick key (the editors read the same key).
+struct QuickMarkdownBarToggle: View {
     @AppStorage("distill.markdownBar.quick") private var on = false
 
-    var body: some View {
-        Button { on.toggle() } label: {
-            Text("Aa").font(Theme.body(11, .bold))
-                .frame(width: 30, height: 26)
-                .foregroundStyle(on ? Theme.primary : Theme.ink)
-                .background(Capsule().fill(on ? Theme.primaryTint : Theme.panel))
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .help(on ? "Hide the formatting bar" : "Show the formatting bar")
-        .accessibilityLabel("Formatting bar")
-        .accessibilityValue(on ? "Shown" : "Hidden")
-    }
+    var body: some View { MarkdownBarToggle(isOn: $on, height: 26) }
 }
