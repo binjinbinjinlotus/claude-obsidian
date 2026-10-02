@@ -174,6 +174,8 @@ fields}`; improve: `{body}`); a JSON object in the text is the fallback.
 - Duplicates: a live item (pending … created) with the same source note (or
   Ask chat) and normalized quote, or the same normalized title and type, is
   not added again; for Ask, dismissed items of the same chat count too.
+  Within one run only the title rule applies, since one sentence can hold
+  two actions ("I'll book the room and tell Mei": a to-do and a message).
 - Confirm on → `pending`. Confirm off → `open` (to-do), or `open` and a
   background draft → `ready` (types with `draftWhen: onFind`). Undo for those:
   `dismissActions` on items untouched since found (only found / drafted

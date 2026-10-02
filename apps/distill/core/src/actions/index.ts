@@ -529,12 +529,16 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
   ): { added: ActionItem[]; existing: ActionItem[] } {
     const added: ActionItem[] = [];
     const existing: ActionItem[] = [];
+    const before = [...items];
     for (const f of found) {
       let type = o.allowed.includes(f.type) ? f.type : TODO_TYPE;
       if (type === TODO_TYPE && !o.todos) continue;
       const source = o.source(f);
       const candidate = { type, title: f.title, source };
-      const dup = items.find(
+      // Earlier items: same quote or same title. Items from this same run share
+      // quotes ("book the room and tell Mei" is a to-do and a message), so only
+      // the title rule applies among them.
+      const dup = before.find(
         (i) =>
           (LIVE_STATUSES.includes(i.status) ||
             (i.status === 'dismissed' && o.conversationID && i.source.kind === 'ask' && i.source.conversationID === o.conversationID)) &&
@@ -544,7 +548,7 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         if (!existing.includes(dup)) existing.push(dup);
         continue;
       }
-      if (added.some((a) => isDuplicate(a, candidate))) continue;
+      if (added.some((a) => a.type === type && normalizeText(a.title) === normalizeText(f.title))) continue;
       const eff = effective(type);
       if (!eff) type = TODO_TYPE;
       const fields = withDefaults(type, f.fields);

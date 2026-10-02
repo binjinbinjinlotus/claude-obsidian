@@ -22,7 +22,8 @@ For each action:
 
 Rules:
 - Only concrete actions that are still open: commitments ("I'll…"), requests ("can you…", "needs a ticket"), follow-ups the documents ask for. Not facts, ideas, opinions or things already done.
-- One item per action. Don't split an action into steps, and don't merge different actions.
+- One item per action. Don't split an action into steps, and don't merge different actions: "I'll book the room and tell Mei" is two actions (a to-do and a message to Mei).
+- Titles name the work itself: "Cap payment client retries at 3", not "Create a ticket for the retry cap".
 - Prefer a specific type (Slack message, Jira ticket, Confluence page) only when the documents point to it: a message to someone, work to track in a named project, a write-up that belongs in Confluence. Otherwise use "todo".
 - Never invent people, dates, projects or details that aren't in the documents.
 - Return an empty list when there are no actions.`;

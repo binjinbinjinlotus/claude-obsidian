@@ -480,6 +480,25 @@ describe('finding actions in an applied batch', () => {
     assert.equal(h.summaries.get('job-1')!.error, 'rate limited');
   });
 
+  test('one sentence can hold two actions in one run; a later run does not add them again', async () => {
+    const h = harness();
+    writeTea(h);
+    const quote = 'I’ll book the tasting room for Saturday afternoon and tell Mei so she can bring the new tin.';
+    h.runner.find = () => ({
+      structured: {
+        items: [
+          { type: 'todo', title: 'Book the tasting room', fields: [], why: 'w', quote, notePath: 'wiki/sources/tea.md' },
+          { type: 'slack', title: 'Tell Mei the room is booked', fields: [{ key: 'to', value: 'Mei' }], why: 'w', quote, notePath: 'wiki/sources/tea.md' },
+          { type: 'todo', title: 'Book the tasting room.', fields: [], why: 'w', quote: 'other', notePath: 'wiki/sources/tea.md' },
+        ],
+      },
+    });
+    await h.service.findInJob(job(h, 'job-1', [], ['wiki/sources/tea.md']));
+    assert.deepEqual((await h.service.listActions()).map((i) => i.type).sort(), ['slack', 'todo']);
+    await h.service.findInJob(job(h, 'job-2', [], ['wiki/sources/tea.md']));
+    assert.equal((await h.service.listActions()).length, 2);
+  });
+
   test('dedupe rule', () => {
     const note = (quote: string, notePath = 'a.md') => ({ kind: 'note' as const, notePath, quote });
     assert.ok(isDuplicate({ type: 'todo', title: 'A', source: note('Book it!') }, { type: 'slack', title: 'B', source: note('book it') }));
