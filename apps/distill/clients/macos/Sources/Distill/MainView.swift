@@ -200,8 +200,9 @@ struct QueueView: View {
         Scrolling {
             VStack(alignment: .leading, spacing: 26) {
                 header
+                if let batch = engine.runningBatch { BatchBanner(job: batch) }
                 dropPanel
-                fileList
+                if engine.isStarting { StartingPlaceholder() } else { fileList }
             }
             .padding(.horizontal, 44).padding(.top, 44).padding(.bottom, 30)
         }
@@ -210,17 +211,30 @@ struct QueueView: View {
     private var header: some View {
         HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(title).font(Theme.display(32))
-                scheduleLine.font(Theme.body(15)).foregroundStyle(Theme.muted)
+                if engine.isStarting {
+                    Shimmer(width: 320, height: 30, radius: 10).padding(.vertical, 4)
+                    Shimmer(width: 220, height: 12)
+                } else {
+                    Text(title).font(Theme.display(32))
+                    scheduleLine.font(Theme.body(15)).foregroundStyle(Theme.muted)
+                }
             }
             Spacer()
-            PrimaryButton(title: "Process now", systemImage: "play.fill") { engine.processQueue(force: true) }
-                .disabled(engine.queued.isEmpty)
-                .opacity(engine.queued.isEmpty ? 0.5 : 1)
+            if engine.isProcessing {
+                ProcessingButton()
+            } else {
+                PrimaryButton(title: "Process now", systemImage: "play.fill") { engine.processNowTracked() }
+                    .disabled(engine.queued.isEmpty || engine.isStarting)
+                    .opacity(engine.queued.isEmpty || engine.isStarting ? 0.5 : 1)
+            }
         }
     }
 
     private var title: String {
+        if let batch = engine.runningBatch {
+            let waiting = engine.queued.count
+            return "\(batch.files.count) in this batch" + (waiting > 0 ? " · \(waiting) waiting" : "")
+        }
         switch engine.queued.count {
         case 0: return "All caught up"
         case 1: return "1 source in the queue"
@@ -230,7 +244,9 @@ struct QueueView: View {
 
     @ViewBuilder private var scheduleLine: some View {
         let every = "every \(BatchInterval(totalMinutes: engine.settings.batchIntervalMinutes).description)"
-        if let holder = engine.jobs.first(where: { $0.vaultPath == engine.activeVault?.path && $0.state.holdsVault }) {
+        if engine.runningBatch != nil {
+            Text("New drops wait for the next batch")
+        } else if let holder = engine.jobs.first(where: { $0.vaultPath == engine.activeVault?.path && $0.state.holdsVault }) {
             Text(holder.state == .running
                  ? "Next batch starts after Claude finishes \(holder.displayTitle)"
                  : "Next batch waits until you review \(holder.displayTitle)")
@@ -267,6 +283,22 @@ struct QueueView: View {
 
     private var fileList: some View {
         VStack(spacing: 4) {
+            if let batch = engine.runningBatch {
+                ForEach(batch.files, id: \.self) { file in
+                    let name = (file as NSString).lastPathComponent
+                    let style = FileStyle.tile(for: name)
+                    HStack(spacing: 14) {
+                        Tile(text: style.0, fill: style.1, ink: style.2)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(name).font(Theme.body(14, .semibold)).lineLimit(1)
+                            Text((file as NSString).deletingLastPathComponent).font(Theme.body(12)).foregroundStyle(Theme.muted)
+                        }
+                        Spacer()
+                        Text("In batch").font(Theme.body(12)).foregroundStyle(Theme.muted)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                }
+            }
             ForEach(engine.queued, id: \.url) { entry in
                 let style = FileStyle.tile(for: entry.url.lastPathComponent)
                 HStack(spacing: 14) {
@@ -277,19 +309,20 @@ struct QueueView: View {
                             .font(Theme.body(12)).foregroundStyle(Theme.muted)
                     }
                     Spacer()
-                    Text(entry.settled ? "Ready" : "Still copying…").font(Theme.body(12)).foregroundStyle(Theme.muted)
+                    Text(engine.runningBatch != nil ? "Next batch" : (entry.settled ? "Ready" : "Still copying…"))
+                        .font(Theme.body(12)).foregroundStyle(Theme.muted)
                     Button { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) } label: {
                         Image(systemName: "magnifyingglass").foregroundStyle(Theme.faint)
                     }
                     .buttonStyle(.plain).help("Show in Finder")
-                    Button { engine.trash(entry) } label: {
+                    Button { engine.removeFromQueue(entry) } label: {
                         Image(systemName: "xmark").foregroundStyle(Theme.faint)
                     }
                     .buttonStyle(.plain).help("Remove from queue (moves to Trash)")
                 }
                 .padding(.horizontal, 14).padding(.vertical, 10)
             }
-            if engine.queued.isEmpty {
+            if engine.queued.isEmpty && engine.runningBatch == nil {
                 Text("Nothing waiting. New files will show up here.")
                     .font(Theme.body(13)).foregroundStyle(Theme.faint)
                     .frame(maxWidth: .infinity).padding(.vertical, 20)
@@ -554,9 +587,12 @@ struct JobDetailView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Pill(text: style.label, fill: style.fill, ink: style.ink)
-                if job.state == .running { ProgressView().controlSize(.small) }
+                if job.state == .running { Spinner(size: 14) }
             }
             Text(job.displayTitle).font(Theme.display(30)).lineLimit(2)
+            if engine.isApplying(job.id) {
+                ApplyingLine(vault: URL(fileURLWithPath: job.vaultPath).lastPathComponent, start: engine.applyingSince(job.id) ?? Date())
+            }
             if let summary = job.approval?.summary ?? job.turns.last(where: { $0.author == .worker })?.text {
                 Markdown(summary).font(Theme.body(15)).foregroundStyle(Color(hex: 0x48463F))
             }
@@ -701,12 +737,17 @@ struct JobDetailView: View {
         HStack(spacing: 10) {
             switch job.state {
             case .awaitingApproval:
+                let applying = engine.isApplying(job.id)
                 SoftButton(title: "Reject", tint: Theme.peachInk, fill: .clear) { engine.reject(job.id) }
+                    .disabled(applying).opacity(applying ? 0.35 : 1)
                 Spacer()
                 SoftButton(title: "Send reply") { send(job) }
-                    .disabled(reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                if job.approval?.canApplyPlan == true {
-                    PrimaryButton(title: "Approve & apply", systemImage: "checkmark") { engine.approve(job.id) }
+                    .disabled(applying || reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .opacity(applying ? 0.35 : 1)
+                if applying {
+                    ApplyingButton(count: changeList(job).count)
+                } else if job.approval?.canApplyPlan == true {
+                    PrimaryButton(title: "Approve & apply", systemImage: "checkmark") { engine.approveTracked(job.id) }
                         .keyboardShortcut(.return, modifiers: .command)
                 }
             case .running:

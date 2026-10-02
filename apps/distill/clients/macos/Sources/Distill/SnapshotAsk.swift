@@ -78,6 +78,94 @@ extension Snapshot {
         render(AskSnapshotScreen().environmentObject(engine), size: size, to: outDir.appendingPathComponent("ask-loading.png"))
         ask.main.pending?.status = .stopped
         render(AskSnapshotScreen().environmentObject(engine), size: size, to: outDir.appendingPathComponent("ask-stopped.png"))
+
+        // Hover menu beside the flask.
+        render(DeskSnapshot {
+            HStack(alignment: .bottom, spacing: -12) {
+                HoverMenuView(alignTrailing: true, bottomAligned: true) { _ in }.frame(width: 236, height: 228)
+                FloatingFace(dropState: DropState()).environmentObject(engine)
+            }
+            .padding(30).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        }, size: CGSize(width: 480, height: 320), to: outDir.appendingPathComponent("menu.png"))
+
+        // Quick ask: answered (all notes), limited by labels, and answering.
+        let quickSize = CGSize(width: 460, height: 420)
+        let views: [(String, (AskThread) -> Void)] = [
+            ("quickask.png", { t in
+                t.reset(filter: AskFilter())
+                t.selection = ModelSelection(runnerID: "claude-code", model: "sonnet", effort: "medium")
+                let r = AskResponse(conversationID: "q1", answer: "70–80 °C. Boiling water pulls out bitter catechins [1].",
+                                    citations: [AskCitation(n: 1, path: "wiki/sources/Brewing Green Tea.md", title: "Brewing Green Tea")])
+                t.entries = [AskEntry(question: "Best water temp for sencha?", askedAt: Date(), request: AskRequest(question: "Best water temp for sencha?"), response: r)]
+            }),
+            ("quickask-limited.png", { t in
+                t.reset(filter: AskFilter())
+                t.filter.addLabel("project-x"); t.filter.addLabel("incidents"); t.filter.addSource("slack")
+                t.selection = ModelSelection(runnerID: "claude-code", model: "haiku", effort: "low")
+                let r = AskResponse(conversationID: "q2", answer: "Cap retries at 3 with jittered backoff; stop on 503 [1].",
+                                    citations: [AskCitation(n: 1, path: "wiki/notes/Retry policy.md", title: "Retry policy")],
+                                    notices: ["Limited to 6 pages (2 unconfirmed)."])
+                t.entries = [AskEntry(question: "What did we decide about retries?", askedAt: Date(), request: AskRequest(question: "What did we decide about retries?"), response: r)]
+            }),
+            ("quickask-loading.png", { t in
+                AskFixtures.loading(t, question: "Best water temp for sencha?", model: "haiku", effort: "low", seconds: 6)
+                t.filter = AskFilter()
+            }),
+        ]
+        for (name, setup) in views {
+            setup(ask.quick)
+            render(DeskSnapshot {
+                ZStack(alignment: .bottomTrailing) {
+                    QuickAskCard(thread: ask.quick, close: {}, continueInDistill: {})
+                        .padding(.trailing, 40).padding(.bottom, 66)
+                    FloatingFace(dropState: DropState()).environmentObject(engine).scaleEffect(0.7)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            }
+            .environmentObject(engine).environmentObject(ask), size: quickSize, to: outDir.appendingPathComponent(name))
+        }
+        renderLoadingScreens(engine: engine, size: size, outDir: outDir)
+    }
+}
+
+extension Snapshot {
+    /// queue-loading.png (batch running, from a progress event), review-loading.png (applying), starting.png.
+    static func renderLoadingScreens(engine: AppModel, size: CGSize, outDir: URL) {
+        guard let vault = engine.activeVault?.path else { return }
+        let started = Date().addingTimeInterval(-112)
+        let batch = Job(id: "job-snapshot-batch", vaultPath: vault,
+                        files: ["inbox/Gyokuro at 60 °C.md", "inbox/Screenshot 15.32.12.png", "inbox/gongfu-brewing-guide.pdf"],
+                        model: "sonnet", state: .running, createdAt: started, updatedAt: started)
+        let savedJobs = engine.jobs
+        engine.jobs = [batch] + savedJobs.filter { $0.state != .running }
+        engine.progress[batch.id] = CoreProgress(key: batch.id, kind: "batch", message: "Reading 3 sources",
+                                                 steps: ["Moved to inbox", "Read sources", "Drafting page changes", "Ready for review"],
+                                                 stepIndex: 2, startedAt: started, runnerID: "claude-code", model: "sonnet")
+        render(QueueSnapshotScreen().environmentObject(engine), size: CGSize(width: size.width, height: 800),
+               to: outDir.appendingPathComponent("queue-loading.png"))
+        engine.jobs = savedJobs
+        engine.progress = [:]
+
+        if let job = engine.pendingApprovals.first {
+            engine.pendingActions["approve:\(job.id)"] = Date().addingTimeInterval(-3)
+            render(HStack(spacing: 0) {
+                Sidebar(section: .constant(.review), selectedJob: .constant(job.id), openSettings: {})
+                JobDetailView(jobID: job.id).frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.window)
+            }.foregroundStyle(Theme.ink).environmentObject(engine), size: size, to: outDir.appendingPathComponent("review-loading.png"))
+            engine.pendingActions = [:]
+        }
+    }
+}
+
+/// Main window on the Queue screen, for snapshots.
+struct QueueSnapshotScreen: View {
+    @EnvironmentObject var engine: AppModel
+    var body: some View {
+        HStack(spacing: 0) {
+            Sidebar(section: .constant(.queue), selectedJob: .constant(nil), openSettings: {})
+            QueueView().frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.window)
+        }
+        .foregroundStyle(Theme.ink)
     }
 }
 

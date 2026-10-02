@@ -13,13 +13,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var mainWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var floatingIcon: FloatingIconController?
+    private var quickAsk: QuickAskController?
     private var pasteMonitor: Any?
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = buildMenu()
         engine.connect()
-        floatingIcon = FloatingIconController(engine: engine, onOpen: { [weak self] in self?.showMainWindow() })
+        floatingIcon = FloatingIconController(engine: engine, onOpen: { [weak self] in self?.flaskClicked() },
+                                              onMenu: { [weak self] action in self?.hoverMenu(action) })
+        quickAsk = QuickAskController(engine: engine, onContinue: { [weak self] in
+            self?.quickAsk?.hide()
+            self?.showMainWindow()
+        })
+        // Global shortcuts and other windows ask for the quick windows by notification.
+        NotificationCenter.default.addObserver(forName: Self.openQuickAsk, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.showQuickAsk() }
+        }
         if UserDefaults.standard.object(forKey: "showFloatingIcon") as? Bool ?? true {
             floatingIcon?.show()
         }
@@ -47,6 +57,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return true
     }
 
+    // MARK: Quick actions
+
+    static let openQuickAsk = Notification.Name("distill.openQuickAsk")
+    static let openQuickNote = Notification.Name("distill.openQuickNote")
+
+    /// Click on the flask: reopens a quick answer still on its way (green ring), else the app.
+    private func flaskClicked() {
+        if engine.ask.quickInBackground { showQuickAsk() } else { showMainWindow() }
+    }
+
+    private func hoverMenu(_ action: HoverMenuController.Action) {
+        switch action {
+        case .ask: showQuickAsk()
+        case .addNote: NotificationCenter.default.post(name: Self.openQuickNote, object: nil)
+        case .paste: pasteIntoQueue()
+        case .open: showMainWindow()
+        }
+    }
+
+    @objc func showQuickAsk() {
+        let anchor = floatingIcon?.isVisible == true ? floatingIcon?.frame : nil
+        quickAsk?.show(near: anchor)
+    }
+
     // MARK: Windows
 
     @objc func showMainWindow() {
@@ -59,6 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             Self.styleChrome(window)
             window.isReleasedWhenClosed = false
             window.setFrameAutosaveName("DistillMain")
+            window.delegate = self
             window.contentViewController = NSHostingController(
                 rootView: MainView(openSettings: { [weak self] in self?.showSettings() })
                     .environmentObject(engine))
@@ -72,6 +107,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         mainWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        // Closing the main window closes the Ask screen (Keep history off deletes its chat).
+        if (notification.object as? NSWindow) === mainWindow { engine.ask.leave(engine.ask.main) }
     }
 
     /// Light, title-less chrome so the traffic lights sit on the design's own surface.
@@ -166,6 +206,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let window = NSMenu(title: "Window")
         window.addItem(item("Show Worker", #selector(showMainWindow), "0"))
         window.addItem(item("Toggle Floating Icon", #selector(toggleFloatingIcon), "i"))
+        window.addItem(item("Quick Ask", #selector(showQuickAsk), ""))
         window.addItem(.separator())
         window.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         window.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")

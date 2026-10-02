@@ -14,8 +14,11 @@ final class FloatingIconController {
     private static let size: CGFloat = 88 // 64pt face plus room for badge and shadow
 
     var isVisible: Bool { panel.isVisible }
+    var frame: NSRect { panel.frame }
+    /// The hover menu (Ask, Add note, Paste clipboard, Open Distill).
+    private(set) var hoverMenu: HoverMenuController?
 
-    init(engine: AppModel, onOpen: @escaping () -> Void) {
+    init(engine: AppModel, onOpen: @escaping () -> Void, onMenu: ((HoverMenuController.Action) -> Void)? = nil) {
         let size = Self.size
         panel = NSPanel(
             contentRect: NSRect(origin: Self.savedOrigin() ?? Self.defaultOrigin(size: size),
@@ -40,6 +43,12 @@ final class FloatingIconController {
             panel?.orderOut(nil)
             UserDefaults.standard.set(false, forKey: "showFloatingIcon")
         }
+        if let onMenu {
+            let menu = HoverMenuController(anchor: { [weak panel] in panel?.isVisible == true ? panel?.frame : nil }, perform: onMenu)
+            hoverMenu = menu
+            iconView.onHover = { inside in inside ? menu.hoverBegan() : menu.hoverEnded() }
+            iconView.onPress = { menu.cancel() }
+        }
         let face = NSHostingView(rootView: FloatingFace(dropState: iconView.dropState).environmentObject(engine))
         face.frame = iconView.bounds
         face.autoresizingMask = [.width, .height]
@@ -48,7 +57,7 @@ final class FloatingIconController {
     }
 
     func show() { panel.orderFrontRegardless() }
-    func hide() { panel.orderOut(nil) }
+    func hide() { hoverMenu?.cancel(); panel.orderOut(nil) }
 
     private static func savedOrigin() -> NSPoint? {
         guard let s = UserDefaults.standard.string(forKey: originKey) else { return nil }
@@ -90,6 +99,8 @@ struct FloatingFace: View {
                 .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
                 .padding(12)
 
+            QuickAskRing(ask: engine.ask)
+
             if pending > 0 {
                 badge("\(pending)", fill: Theme.peachInk, ink: .white)
             } else if queued > 0 && !working {
@@ -113,8 +124,27 @@ struct FloatingFace: View {
     }
 }
 
+/// Green ring while a quick ask answer is on its way (or waiting to be seen) with its window closed.
+struct QuickAskRing: View {
+    @ObservedObject var ask: AskModel
+
+    var body: some View {
+        Circle().strokeBorder(Theme.lime, lineWidth: 3)
+            .frame(width: 64, height: 64)
+            .padding(12)
+            .opacity(ask.quickInBackground ? 1 : 0)
+            .animation(.easeOut(duration: 0.2), value: ask.quickInBackground)
+            .allowsHitTesting(false)
+    }
+}
+
 final class FloatingIconView: DropTargetView {
     var onClick: (() -> Void)?
+    /// Pointer entered (true) or left (false) the flask face.
+    var onHover: ((Bool) -> Void)?
+    /// Mouse down on the flask (click or drag start).
+    var onPress: (() -> Void)?
+    private var trackingArea: NSTrackingArea?
     var onMoved: ((NSPoint) -> Void)?
     var onHide: (() -> Void)?
     let dropState = DropState()
@@ -131,6 +161,18 @@ final class FloatingIconView: DropTargetView {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea { removeTrackingArea(trackingArea) }
+        let area = NSTrackingArea(rect: bounds.insetBy(dx: 12, dy: 12),
+                                  options: [.mouseEnteredAndExited, .activeAlways], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { onHover?(true) }
+    override func mouseExited(with event: NSEvent) { onHover?(false) }
+
     /// Clicks and drags land here, not on the SwiftUI face.
     override func hitTest(_ point: NSPoint) -> NSView? {
         let local = convert(point, from: superview)
@@ -140,6 +182,7 @@ final class FloatingIconView: DropTargetView {
     // MARK: Click vs drag
 
     override func mouseDown(with event: NSEvent) {
+        onPress?()
         dragStartMouse = NSEvent.mouseLocation
         dragStartOrigin = window?.frame.origin
         dragged = false
@@ -165,6 +208,7 @@ final class FloatingIconView: DropTargetView {
     }
 
     override func rightMouseDown(with event: NSEvent) {
+        onPress?()
         let menu = NSMenu()
         if let vault = MainActor.assumeIsolated({ engine?.activeVault }) {
             menu.addItem(.init(title: "Vault: \(vault.name)", action: nil, keyEquivalent: ""))

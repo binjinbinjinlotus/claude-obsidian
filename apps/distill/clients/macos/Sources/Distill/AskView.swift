@@ -156,9 +156,9 @@ struct AskThreadView: View {
                 }
             }
             .padding(.leading, 18).padding(.trailing, 8).padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 24).fill(thread.isRunning ? Color(hex: 0xFBFAF8) : Color.white))
+            .background(RoundedRectangle(cornerRadius: 24).fill(thread.isRunning ? Color(hex: 0xFBFAF8) : Color.white)
+                .shadow(color: .black.opacity(0.06), radius: 9, y: 6))
             .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Theme.border, lineWidth: 1.5))
-            .shadow(color: .black.opacity(0.06), radius: 9, y: 6)
         }
         .padding(.horizontal, 44).padding(.bottom, 26).padding(.top, 4)
     }

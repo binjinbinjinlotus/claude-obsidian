@@ -40,7 +40,7 @@ extension AppModel {
 
     /// The batch button: "Processing…" while the request is in flight or a batch is running on the active vault.
     var isProcessing: Bool {
-        if pendingActions.contains("process") { return true }
+        if pendingActions["process"] != nil { return true }
         guard let vault = activeVault?.path else { return false }
         return jobs.contains { $0.vaultPath == vault && $0.state == .running && $0.kind == "ingest" }
     }
@@ -51,20 +51,22 @@ extension AppModel {
         return jobs.first { $0.vaultPath == vault && $0.state == .running && $0.kind == "ingest" }
     }
 
-    func isApplying(_ jobID: String) -> Bool { pendingActions.contains("approve:\(jobID)") }
+    func isApplying(_ jobID: String) -> Bool { pendingActions["approve:\(jobID)"] != nil }
+    /// When Approve was pressed (for the elapsed timer).
+    func applyingSince(_ jobID: String) -> Date? { progress[jobID].flatMap { $0.kind == "apply" ? $0.startedAt : nil } ?? pendingActions["approve:\(jobID)"] }
 
     /// Called for every job event: a decision the user waited on has landed.
     func settlePendingActions(for job: Job) {
-        if pendingActions.contains("approve:\(job.id)"), job.state != .awaitingApproval {
-            pendingActions.remove("approve:\(job.id)")
+        if pendingActions["approve:\(job.id)"] != nil, job.state != .awaitingApproval {
+            pendingActions["approve:\(job.id)"] = nil
         }
-        if job.state == .running { pendingActions.remove("process") }
+        if job.state == .running { pendingActions["process"] = nil }
     }
 
     /// Process now, showing "Processing…" until the batch starts (or nothing was ready).
     func processNowTracked() {
         guard let client else { lastError = "The Distill core is not connected."; return }
-        pendingActions.insert("process")
+        pendingActions["process"] = Date()
         Task {
             do {
                 let job = try await client.processQueue(force: true)
@@ -72,7 +74,7 @@ extension AppModel {
             } catch {
                 report(error)
             }
-            pendingActions.remove("process")
+            pendingActions["process"] = nil
         }
     }
 
@@ -80,15 +82,15 @@ extension AppModel {
     func approveTracked(_ id: String) {
         guard let client else { lastError = "The Distill core is not connected."; return }
         let key = "approve:\(id)"
-        pendingActions.insert(key)
+        pendingActions[key] = Date()
         Task {
             do {
                 let job = try await client.approve(id)
                 upsert(job)
-                if let job, job.state != .awaitingApproval { pendingActions.remove(key) }
-                else if job == nil { pendingActions.remove(key) }
+                if let job, job.state != .awaitingApproval { pendingActions[key] = nil }
+                else if job == nil { pendingActions[key] = nil }
             } catch {
-                pendingActions.remove(key)
+                pendingActions[key] = nil
                 report(error)
             }
         }

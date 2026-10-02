@@ -29,8 +29,9 @@ final class AppModel: ObservableObject {
     @Published var lastError: String?
     /// Live progress by key (job id, `ask:<conversationID>`, `note:<requestID>`); see AppModel+Ask.swift.
     @Published var progress: [String: CoreProgress] = [:]
-    /// Buttons waiting on the core ("process", "approve:<job id>"); cleared by the job event or an error.
-    @Published var pendingActions: Set<String> = []
+    /// Buttons waiting on the core ("process", "approve:<job id>") and when they were pressed;
+    /// cleared by the job event or an error.
+    @Published var pendingActions: [String: Date] = [:]
     /// Ask chats, the Ask screen and the quick ask window (AskModel.swift).
     lazy var ask = AskModel(engine: self)
 
