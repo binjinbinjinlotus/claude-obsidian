@@ -1,8 +1,8 @@
 import SwiftUI
-import WorkerCore
+import DistillKit
 
 struct SettingsView: View {
-    @EnvironmentObject var engine: WorkerEngine
+    @EnvironmentObject var engine: AppModel
     @State private var showAdvanced = false
     @State private var extraTools = ""
     @State private var editingVault: VaultProfile?
@@ -44,7 +44,7 @@ struct SettingsView: View {
                             HStack {
                                 Tile(text: String(vault.name.prefix(1)).uppercased(), fill: chip.0, ink: chip.1, size: 34, display: true)
                                 Spacer()
-                                if !SetupValidator.isVault(vault.path) {
+                                if !VaultProfile.isVault(vault.path) {
                                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.peachInk)
                                         .help("Missing .claude-obsidian.json")
                                         .padding(.trailing, 30) // clear of the edit button
@@ -209,6 +209,7 @@ struct SettingsView: View {
                 LabeledField(title: "Custom model ID") { TextField("", text: $engine.settings.model).textFieldStyle(.roundedBorder) }
                 PathField(title: "claude CLI", path: $engine.settings.claudePath, directory: false)
                 PathField(title: "python3", path: $engine.settings.pythonPath, directory: false)
+                PathField(title: "node (empty = find it: nvm, Homebrew, /usr/local, /usr/bin)", path: nodePath, directory: false)
                 PathField(title: "Product root", path: $engine.settings.productRoot, directory: true)
                 LabeledField(title: "Extra allowed tools (one rule per line)") {
                     TextEditor(text: $extraTools)
@@ -231,9 +232,23 @@ struct SettingsView: View {
         .tint(Theme.primary)
     }
 
+    private var nodePath: Binding<String> {
+        Binding(get: { engine.settings.nodePath ?? "" },
+                set: { engine.settings.nodePath = $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 })
+    }
+
     @ViewBuilder private var status: some View {
         let problems = engine.problems
-        if !problems.isEmpty {
+        if case .unreachable(let problem) = engine.connection {
+            VStack(alignment: .leading, spacing: 8) {
+                Label(problem, systemImage: "bolt.horizontal.circle.fill")
+                    .font(Theme.body(13)).foregroundStyle(Theme.peachInk).textSelection(.enabled)
+                SoftButton(title: "Retry") { engine.connect() }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0xFFF4EE)))
+        } else if !problems.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(problems, id: \.description) { problem in
                     Label(problem.description, systemImage: "exclamationmark.triangle.fill")
@@ -316,7 +331,7 @@ struct PathField: View {
 }
 
 struct VaultEditor: View {
-    @EnvironmentObject var engine: WorkerEngine
+    @EnvironmentObject var engine: AppModel
     @State var vault: VaultProfile
     var done: () -> Void
 

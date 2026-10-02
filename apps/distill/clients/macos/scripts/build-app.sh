@@ -8,6 +8,23 @@ APP_DIR="${0:A:h:h}"
 PRODUCT_ROOT="${APP_DIR:h:h:h:h}"
 BUILD="$APP_DIR/build"
 BUNDLE="$BUILD/Distill.app"
+WORKSPACE="$PRODUCT_ROOT/apps/distill"
+
+# The app runs the Node core from this checkout (apps/distill/cli/dist/main.js),
+# so build the TS workspace first. Skipped when everything is up to date.
+if ! command -v npm >/dev/null 2>&1; then
+  for d in "$HOME"/.nvm/versions/node/*/bin(Nn) /opt/homebrew/bin /usr/local/bin; do
+    [[ -x "$d/npm" ]] && PATH="$d:$PATH"
+  done
+fi
+command -v npm >/dev/null 2>&1 || { echo "npm not found: install Node.js 20+ to build the Distill core." >&2; exit 1; }
+if [[ ! -f "$WORKSPACE/node_modules/.package-lock.json" || "$WORKSPACE/package-lock.json" -nt "$WORKSPACE/node_modules/.package-lock.json" ]]; then
+  (cd "$WORKSPACE" && npm ci)
+fi
+ENTRY="$WORKSPACE/cli/dist/main.js"
+if [[ ! -f "$ENTRY" || -n "$(find "$WORKSPACE/core/src" "$WORKSPACE/cli/src" "$WORKSPACE/core/package.json" "$WORKSPACE/cli/package.json" -newer "$ENTRY" -print -quit)" ]]; then
+  (cd "$WORKSPACE" && npm run build --workspaces)
+fi
 
 swift build --package-path "$APP_DIR" -c release
 BIN="$(swift build --package-path "$APP_DIR" -c release --show-bin-path)/Distill"

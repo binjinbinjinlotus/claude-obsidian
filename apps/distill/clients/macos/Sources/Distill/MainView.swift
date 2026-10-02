@@ -1,13 +1,13 @@
 import AppKit
 import SwiftUI
-import WorkerCore
+import DistillKit
 
 enum Section: Hashable {
     case queue, review, history
 }
 
 struct MainView: View {
-    @EnvironmentObject var engine: WorkerEngine
+    @EnvironmentObject var engine: AppModel
     var openSettings: () -> Void
     @State private var section: Section = .queue
     @State private var selectedJob: String?
@@ -39,7 +39,7 @@ struct MainView: View {
 // MARK: Sidebar
 
 struct Sidebar: View {
-    @EnvironmentObject var engine: WorkerEngine
+    @EnvironmentObject var engine: AppModel
     @Binding var section: Section
     @Binding var selectedJob: String?
     var openSettings: () -> Void
@@ -100,7 +100,7 @@ struct Sidebar: View {
 }
 
 struct VaultSwitcher: View {
-    @EnvironmentObject var engine: WorkerEngine
+    @EnvironmentObject var engine: AppModel
     var openSettings: () -> Void
 
     var body: some View {
@@ -152,17 +152,10 @@ enum VaultChip {
     }
 }
 
-extension ModelChoice {
-    static func shortName(_ id: String) -> String {
-        for name in ["Opus", "Sonnet", "Haiku", "Fable"] where id.lowercased().contains(name.lowercased()) { return name }
-        return id
-    }
-}
-
 // MARK: Queue
 
 struct QueueView: View {
-    @EnvironmentObject var engine: WorkerEngine
+    @EnvironmentObject var engine: AppModel
     @Environment(\.snapshotMode) private var snapshot
     @State private var targeted = false
 
@@ -247,12 +240,12 @@ struct QueueView: View {
                             .font(Theme.body(12)).foregroundStyle(Theme.muted)
                     }
                     Spacer()
-                    Text(isSettled(entry) ? "Ready" : "Still copying…").font(Theme.body(12)).foregroundStyle(Theme.muted)
+                    Text(entry.settled ? "Ready" : "Still copying…").font(Theme.body(12)).foregroundStyle(Theme.muted)
                     Button { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) } label: {
                         Image(systemName: "magnifyingglass").foregroundStyle(Theme.faint)
                     }
                     .buttonStyle(.plain).help("Show in Finder")
-                    Button { try? FileManager.default.trashItem(at: entry.url, resultingItemURL: nil); engine.refreshQueue() } label: {
+                    Button { engine.trash(entry) } label: {
                         Image(systemName: "xmark").foregroundStyle(Theme.faint)
                     }
                     .buttonStyle(.plain).help("Remove from queue (moves to Trash)")
@@ -267,10 +260,6 @@ struct QueueView: View {
         }
     }
 
-    private func isSettled(_ entry: QueueScanner.Entry) -> Bool {
-        Date().timeIntervalSince(entry.modified) >= TimeInterval(engine.settings.settleSeconds)
-    }
-
     private func chooseFiles() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
@@ -282,7 +271,7 @@ struct QueueView: View {
 // MARK: Review & history
 
 struct ReviewSection: View {
-    @EnvironmentObject var engine: WorkerEngine
+    @EnvironmentObject var engine: AppModel
     @Binding var selectedJob: String?
 
     var body: some View {
@@ -300,7 +289,7 @@ struct ReviewSection: View {
 }
 
 struct HistorySection: View {
-    @EnvironmentObject var engine: WorkerEngine
+    @EnvironmentObject var engine: AppModel
     @Binding var selectedJob: String?
 
     var body: some View {
@@ -308,14 +297,8 @@ struct HistorySection: View {
         HStack(spacing: 0) {
             Scrolling {
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("History").font(Theme.display(24))
-                        Spacer()
-                        if jobs.contains(where: { $0.state.isFinished }) {
-                            Button("Clear") { engine.removeFinished() }.buttonStyle(.plain).foregroundStyle(Theme.primary)
-                        }
-                    }
-                    .padding(.bottom, 10)
+                    Text("History").font(Theme.display(24))
+                        .padding(.bottom, 10)
                     ForEach(jobs) { job in
                         Button { selectedJob = job.id } label: {
                             JobRow(job: job, selected: job.id == selectedJob)
@@ -404,7 +387,7 @@ struct StateStyle {
 extension Job {
     /// "Tea brewing session"-style title from the first input file.
     var displayTitle: String {
-        guard let first = files.first else { return JobKinds.kind(kind)?.displayName ?? kind }
+        guard let first = files.first else { return kind.prefix(1).uppercased() + kind.dropFirst() }
         let base = ((first as NSString).lastPathComponent as NSString).deletingPathExtension
             .replacingOccurrences(of: "-", with: " ").replacingOccurrences(of: "_", with: " ")
         let pretty = base.prefix(1).uppercased() + base.dropFirst()
@@ -430,7 +413,7 @@ struct EmptyState: View {
 // MARK: Job detail
 
 struct JobDetailView: View {
-    @EnvironmentObject var engine: WorkerEngine
+    @EnvironmentObject var engine: AppModel
     let jobID: String
     @State private var reply = ""
     @State private var allowed: Set<String> = []
@@ -573,11 +556,11 @@ struct JobDetailView: View {
                 Text("Conversation").font(Theme.body(14, .bold))
                 Spacer()
                 Button {
-                    do { NSWorkspace.shared.open(try engine.terminalScript(for: job.id)) } catch { engine.lastError = "\(error)" }
+                    do { NSWorkspace.shared.open(try engine.terminalScript(for: job)) } catch { engine.lastError = "\(error)" }
                 } label: { Image(systemName: "terminal") }
                 .buttonStyle(.plain).foregroundStyle(Theme.muted)
                 .help("Open this session in Terminal")
-                .disabled(job.state == .running)
+                .disabled(job.state == .running || job.selection.runnerID != "claude-code")
             }
             Scrolling {
                 VStack(alignment: .leading, spacing: 10) {
@@ -723,10 +706,33 @@ struct Callout: View {
 }
 
 struct ErrorBanner: View {
-    @EnvironmentObject var engine: WorkerEngine
+    @EnvironmentObject var engine: AppModel
 
     var body: some View {
-        if let error = engine.lastError {
+        if case .unreachable(let problem) = engine.connection {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "bolt.horizontal.circle.fill").foregroundStyle(Theme.peachInk)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Distill's core isn't running").font(Theme.body(13, .bold))
+                    Text(problem).font(Theme.body(12)).lineLimit(6).textSelection(.enabled)
+                }
+                Spacer()
+                PrimaryButton(title: "Retry", systemImage: "arrow.clockwise") { engine.connect() }
+            }
+            .padding(14)
+            .card(14)
+            .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
+            .padding(20)
+            .frame(maxWidth: 720)
+        } else if engine.connection == .connecting {
+            HStack(spacing: 10) {
+                ProgressView().controlSize(.small)
+                Text("Connecting to Distill's core…").font(Theme.body(13)).foregroundStyle(Theme.muted)
+            }
+            .padding(12)
+            .card(14)
+            .padding(20)
+        } else if let error = engine.lastError {
             HStack(spacing: 10) {
                 Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Theme.peachInk)
                 Text(error).font(Theme.body(13)).lineLimit(3).textSelection(.enabled)
@@ -768,10 +774,10 @@ enum VaultPicker {
         return panel.runModal() == .OK ? panel.url : nil
     }
 
-    static func addVault(engine: WorkerEngine) {
+    static func addVault(engine: AppModel) {
         guard let url = chooseDirectory(title: "Choose a claude-obsidian vault root") else { return }
         let path = url.standardizedFileURL.path
-        guard SetupValidator.isVault(path) else {
+        guard VaultProfile.isVault(path) else {
             engine.lastError = "\(path) is not a claude-obsidian vault (no .claude-obsidian.json). Run `python3 scripts/claude-obsidian.py init \(path)` or `adopt` first."
             return
         }
