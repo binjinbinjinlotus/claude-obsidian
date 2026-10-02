@@ -464,7 +464,11 @@ describe('engine state machine', () => {
     const image = path.join(h.queue, 'Cli note image 1.png');
     fs.chmodSync(image, 0o000);
     try {
-      if (process.getuid?.() !== 0) assert.match(h.engine.listQueue()[0]!.problem ?? '', /^Cli note image 1\.png: Distill can't read/);
+      if (process.getuid?.() !== 0) {
+        assert.match(h.engine.listQueue()[0]!.problem ?? '', /^Cli note image 1\.png: Distill can't read/);
+        assert.equal(await h.engine.processQueue({ force: true }), null, 'the whole note is held back');
+        assert.ok(fs.existsSync(path.join(h.queue, 'Cli note.md')) && fs.existsSync(path.join(h.queue, 'Cli note.distill.json')));
+      }
     } finally {
       fs.chmodSync(image, 0o644);
     }

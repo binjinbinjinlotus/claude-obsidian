@@ -206,7 +206,16 @@ export function queueProblem(e: ScanEntry): string | undefined {
  */
 export function readyFiles(entries: ScanEntry[], settleSeconds: number, now: Date): ScanEntry[] {
   const notes = noteSetPaths(entries);
-  return entries.filter((e) => (notes.has(e.path) || isSettled(e, settleSeconds, now)) && !queueProblem(e));
+  // A note set goes all or nothing: a problem on any of its files holds the whole note back.
+  const byPath = new Map(entries.map((e) => [e.path, e]));
+  const held = new Set<string>();
+  for (const s of noteSets(entries)) {
+    const files = [s.note, s.manifest, ...s.images];
+    if (files.some((p) => { const e = byPath.get(p); return e !== undefined && queueProblem(e) !== undefined; })) {
+      for (const p of files) held.add(p);
+    }
+  }
+  return entries.filter((e) => (notes.has(e.path) || isSettled(e, settleSeconds, now)) && !held.has(e.path) && !queueProblem(e));
 }
 
 export function toQueueEntry(

@@ -39,7 +39,8 @@ schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
   taxonomy label, "in-person" → "In person"; free text as given),
   `labelsConfirmed` (manifest `labels` present, even empty) and `imageCount`.
   Members are not listed on their own. A member's problem is carried up to
-  the note row ("<file>: <reason>"). An orphan manifest or image (its `.md`
+  the note row ("<file>: <reason>") and holds the whole note out of batches
+  (`readyFiles` takes a note set all or nothing). An orphan manifest or image (its `.md`
   gone) is an ordinary row again.
 - `status().queueCount` counts these rows, not files.
   The core re-emits the queue only when an entry changes (for example
