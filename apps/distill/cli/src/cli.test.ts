@@ -59,6 +59,12 @@ describe('distill CLI', () => {
   }
 
   const lastCall = (m: string) => core.calls.filter((c) => c.method === m).at(-1);
+  /** The last ask request without the conversationID the CLI picks for a new chat (checked to be a UUID). */
+  const newChatAsk = () => {
+    const { conversationID, ...rest } = lastCall('ask')?.args[0] as { conversationID?: string };
+    assert.match(conversationID ?? '', /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    return rest;
+  };
 
   before(async () => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'distill-cli-'));
@@ -124,7 +130,7 @@ describe('distill CLI', () => {
       assert.equal(r.code, 0, r.stderr);
       const res = JSON.parse(r.stdout);
       assert.deepEqual(Object.keys(res).sort(), ['answer', 'citations', 'conversationID', 'costUSD', 'gaps', 'selection']);
-      assert.deepEqual(lastCall('ask')?.args[0], { question: 'How hot for sencha?', labels: ['tea', 'green'], sources: ['slack'] });
+      assert.deepEqual(newChatAsk(), { question: 'How hot for sencha?', labels: ['tea', 'green'], sources: ['slack'] });
     });
     it('merges --model/--effort with the settings default and passes --conversation', async () => {
       const r = await cli(['ask', 'more?', '--model', 'opus', '--effort', 'high', '--conversation', 'conv-7', '--json']);
@@ -150,7 +156,67 @@ describe('distill CLI', () => {
       assert.match(r.stdout, /Brew sencha/);
       assert.match(r.stdout, /\[1\] Sencha \(wiki\/tea\/sencha\.md\)/);
       assert.match(r.stdout, /No notes on cold brewing/);
-      assert.match(r.stdout, /--conversation conv-1/);
+      const id = (lastCall('ask')?.args[0] as { conversationID: string }).conversationID;
+      assert.ok(r.stdout.includes(`--conversation ${id}`));
+    });
+    it('in a terminal: live status line on stderr from progress events; stdout stays the answer', async () => {
+      const original = core.ask;
+      core.ask = async (req) => {
+        const key = `ask:${req.conversationID}`;
+        const startedAt = new Date(Date.now() - 5000).toISOString();
+        core.emit({ type: 'progress', progress: { key: 'ask:other', kind: 'ask', message: 'Someone else', startedAt } });
+        core.emit({ type: 'progress', progress: { key, kind: 'ask', message: 'Reading your notes', startedAt, runnerID: 'claude-code', model: 'haiku' } });
+        await new Promise((r) => setTimeout(r, 50));
+        core.emit({ type: 'progress', progress: { key, kind: 'ask', message: 'Reading your notes', startedAt, finished: true } });
+        return original(req);
+      };
+      try {
+        const r = await cli(['ask', 'q'], { isTTY: true });
+        assert.equal(r.code, 0, r.stderr);
+        assert.match(r.stderr, /Reading your notes… · claude-code · haiku · 0:0[5-9] · Ctrl-C to stop/);
+        assert.ok(!r.stderr.includes('Someone else'));
+        assert.ok(r.stderr.endsWith('\r\x1b[2K'), 'the line is cleared');
+        assert.ok(!r.stdout.includes('Reading your notes'));
+        const j = await cli(['ask', 'q', '--json'], { isTTY: true });
+        assert.equal(j.stderr, '', '--json keeps stderr quiet');
+        JSON.parse(j.stdout);
+      } finally {
+        core.ask = original;
+      }
+      for (let i = 0; i < 50 && core.listenerCount() > 0; i++) await new Promise((r) => setTimeout(r, 10));
+      assert.equal(core.listenerCount(), 0, 'the event stream is closed');
+    });
+    it('Ctrl-C cancels the turn: POST cancel, exit 130, nothing on stdout', async () => {
+      const original = core.ask;
+      let handler: (() => void) | undefined;
+      let removed = false;
+      let asked: string | undefined;
+      core.ask = async (req) => {
+        asked = req.conversationID;
+        handler?.();
+        for (let i = 0; i < 100 && !core.calls.some((c) => c.method === 'cancelAsk' && c.args[0] === req.conversationID); i++) {
+          await new Promise((r) => setTimeout(r, 5));
+        }
+        const { CoreError } = await import('@distill/core/contracts');
+        throw new CoreError('invalid_state', 'Stopped');
+      };
+      try {
+        const onInterrupt = (h: () => void) => {
+          handler = h;
+          return () => (removed = true);
+        };
+        const r = await cli(['ask', 'slow', '--json'], { onInterrupt });
+        assert.equal(r.code, 130);
+        assert.deepEqual(JSON.parse(r.stdout), { error: { code: 'stopped', message: 'Stopped. Your question was not saved.' } });
+        assert.ok(asked);
+        assert.deepEqual(lastCall('cancelAsk')?.args, [asked]);
+        assert.ok(removed, 'the handler is removed');
+        const human = await cli(['ask', 'slow'], { onInterrupt });
+        assert.equal(human.code, 130);
+        assert.match(human.stderr, /Stopping…\n[\s\S]*Stopped\. Your question was not saved\./);
+      } finally {
+        core.ask = original;
+      }
     });
     it('server errors exit 1 with the error shape', async () => {
       core.failNext('ask', Object.assign(new Error('no vault selected'), { code: 'no_vault' }));
@@ -275,11 +341,11 @@ describe('distill CLI', () => {
   describe('ask filters', () => {
     it('--match and --unconfirmed map to labelMatch/includeUnconfirmed; omitted = server defaults', async () => {
       await cli(['ask', 'q', '--label', 'tea', '--label', 'green', '--match', 'all', '--unconfirmed', 'exclude', '--json']);
-      assert.deepEqual(lastCall('ask')?.args[0], { question: 'q', labels: ['tea', 'green'], labelMatch: 'all', includeUnconfirmed: false });
+      assert.deepEqual(newChatAsk(), { question: 'q', labels: ['tea', 'green'], labelMatch: 'all', includeUnconfirmed: false });
       await cli(['ask', 'q', '--unconfirmed', 'include', '--json']);
-      assert.deepEqual(lastCall('ask')?.args[0], { question: 'q', includeUnconfirmed: true });
+      assert.deepEqual(newChatAsk(), { question: 'q', includeUnconfirmed: true });
       await cli(['ask', 'q', '--json']);
-      assert.deepEqual(lastCall('ask')?.args[0], { question: 'q' });
+      assert.deepEqual(newChatAsk(), { question: 'q' });
       assert.equal((await cli(['ask', 'q', '--match', 'some'])).code, 2);
       assert.equal((await cli(['ask', 'q', '--unconfirmed', 'yes'])).code, 2);
     });

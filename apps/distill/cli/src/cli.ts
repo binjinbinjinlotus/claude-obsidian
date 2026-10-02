@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -11,11 +12,12 @@ import type {
   AskResponse,
   ModelSelection,
   NoteImage,
+  Progress,
   Settings,
   StatusResponse,
 } from '@distill/core/contracts';
 import { ServerAlreadyRunningError, runServer, statePaths, type ServerLock } from '@distill/core/server';
-import { CliError, connect, usageError, type ServerSpawner } from './client.js';
+import { CliError, connect, usageError, type EventStream, type ServerSpawner } from './client.js';
 import { defaultPluginDir, installPlugin, type PluginInstallResult } from './plugin-install.js';
 
 export interface CliIO {
@@ -28,6 +30,22 @@ export interface CliIO {
   spawner?: ServerSpawner;
   /** Override how `plugin install --target claude` runs commands (tests). */
   runCommand?: (argv: string[]) => number | null;
+  /** stdout is a terminal: `ask` shows a live status line on stderr (never with --json). */
+  isTTY?: boolean;
+  /** Install a Ctrl-C handler; returns its remover. Default: SIGINT (a second Ctrl-C exits at once). */
+  onInterrupt?: (handler: () => void) => () => void;
+}
+
+/** SIGINT: the first press calls the handler, a second one exits with 130. */
+function onSigint(handler: () => void): () => void {
+  let pressed = 0;
+  const listener = () => {
+    pressed += 1;
+    if (pressed > 1) process.exit(130);
+    handler();
+  };
+  process.on('SIGINT', listener);
+  return () => process.off('SIGINT', listener);
 }
 
 export function defaultIO(): CliIO {
@@ -41,6 +59,8 @@ export function defaultIO(): CliIO {
       for await (const c of process.stdin) chunks.push(c as Buffer);
       return Buffer.concat(chunks).toString('utf8');
     },
+    isTTY: process.stdout.isTTY === true,
+    onInterrupt: onSigint,
   };
 }
 
@@ -81,6 +101,10 @@ Commands:
                 confirmed yet count. Both default to the user's Ask settings.
                 Notices (e.g. a new session because the filter changed) are printed
                 above the answer, or returned as "notices" with --json.
+                In a terminal a live status line on stderr says what it is doing
+                ("Reading your notes…", runner · model, elapsed time); never with --json.
+                Ctrl-C stops the answer (the question is not saved; exit code 130);
+                a second Ctrl-C quits at once. A new chat's ID is chosen by the CLI.
   note add      Queue a written note (text, images, source) for Distill to ingest.
                 Text comes from --text, --file PATH, or "-" (stdin). --image may repeat;
                 ":keep" (default) stores the image in the vault, ":extract" reads its
@@ -139,9 +163,9 @@ or $DISTILL_STATE_DIR.
   plugin install
             {"target", "dryRun", "pluginDir", "actions": [{"action","skill","source","destination","command"}],
              "notes": [..]}
-  errors    {"error": {"code", "message"}}  (also with exit code 1 or 2)
+  errors    {"error": {"code", "message"}}  (also with exit code 1 or 2; "stopped" with 130)
 
-Exit codes: 0 success, 1 error, 2 usage error.
+Exit codes: 0 success, 1 error, 2 usage error, 130 stopped with Ctrl-C.
 `;
 
 type Values = Record<string, string | boolean | (string | boolean)[] | undefined>;
@@ -294,7 +318,31 @@ async function ask(args: string[], io: CliIO, api: ApiFactory): Promise<number> 
     };
   }
 
-  const res = await client.request<AskResponse>('POST', '/v1/ask', req);
+  // A new chat gets its id up front, so Ctrl-C can stop the turn (POST /v1/conversations/:id/cancel).
+  req.conversationID ??= randomUUID();
+  const conversationID = req.conversationID;
+  const status = io.isTTY && !out.json ? new StatusLine(io, `ask:${conversationID}`) : undefined;
+  let events: EventStream | undefined;
+  if (status) events = await client.events((e) => (e.type === 'progress' ? status.update(e.progress) : undefined)).catch(() => undefined);
+  let stopping = false;
+  const removeInterrupt = (io.onInterrupt ?? (() => () => undefined))(() => {
+    if (stopping) return;
+    stopping = true;
+    status?.stopping();
+    if (!status) io.stderr('Stopping…\n');
+    void client.request('POST', `/v1/conversations/${encodeURIComponent(conversationID)}/cancel`).catch(() => undefined);
+  });
+  let res: AskResponse;
+  try {
+    res = await client.request<AskResponse>('POST', '/v1/ask', req);
+  } catch (err) {
+    if (stopping && err instanceof CliError && err.code === 'invalid_state') throw new CliError('Stopped. Your question was not saved.', 'stopped', 130);
+    throw err;
+  } finally {
+    removeInterrupt();
+    events?.close();
+    status?.clear();
+  }
   out.result(res, () => {
     const lines = (res.notices ?? []).map((n) => `Note: ${n}`);
     if (lines.length) lines.push('');
@@ -304,6 +352,59 @@ async function ask(args: string[], io: CliIO, api: ApiFactory): Promise<number> 
     return lines.join('\n') + '\n';
   });
   return 0;
+}
+
+/** One self-rewriting stderr line for an Ask turn: what it is doing, which model, elapsed time after 3 s. */
+class StatusLine {
+  private progress: Progress | undefined;
+  private timer: NodeJS.Timeout | undefined;
+  private frame = 0;
+  private note: string | undefined;
+  private shown = false;
+
+  constructor(
+    private io: CliIO,
+    private key: string,
+  ) {
+    this.timer = setInterval(() => this.render(), 1000);
+    this.timer.unref();
+    this.render();
+  }
+
+  update(p: Progress): void {
+    if (p.key !== this.key) return;
+    this.progress = p.finished ? undefined : p;
+    if (p.finished) this.clear();
+    else this.render();
+  }
+
+  stopping(): void {
+    this.note = 'Stopping…';
+    this.render();
+  }
+
+  clear(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = undefined;
+    if (this.shown) this.io.stderr('\r\x1b[2K');
+    this.shown = false;
+  }
+
+  private render(): void {
+    if (!this.timer) return;
+    const p = this.progress;
+    const spinner = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'[this.frame++ % 10];
+    const parts = [this.note ?? `${p?.message ?? 'Asking'}…`];
+    if (p?.model) parts.push(p.runnerID ? `${p.runnerID} · ${p.model}` : p.model);
+    if (p) {
+      const secs = Math.max(0, Math.floor((Date.now() - Date.parse(p.startedAt)) / 1000));
+      if (secs >= 3) parts.push(`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`);
+      if (secs >= 60 && !this.note) parts[0] = `Still working: ${parts[0]}`;
+    }
+    parts.push('Ctrl-C to stop');
+    this.io.stderr(`\r\x1b[2K${spinner} ${parts.join(' · ')}`);
+    this.shown = true;
+  }
 }
 
 function formatAnswer(res: AskResponse): string[] {

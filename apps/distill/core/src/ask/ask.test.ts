@@ -214,11 +214,18 @@ test('follow-up on another runner starts a new session and says so', async () =>
   assert.equal(res.conversationID, first.conversationID);
 });
 
-test('unknown or invalid conversation ids are rejected', async () => {
+test('a client-chosen id starts a new chat; invalid ids are rejected', async () => {
   const fx = fixture();
-  const svc = service(fx, new FakeRunner('claude-code'));
-  await assert.rejects(svc.ask({ question: 'q', conversationID: 'nope' }), /unknown conversation/);
+  const runner = new FakeRunner('claude-code');
+  const svc = service(fx, runner);
+  const res = await svc.ask({ question: 'q', conversationID: 'client-chat-1' });
+  assert.equal(res.conversationID, 'client-chat-1');
+  assert.ok('start' in runner.requests[0]!.session, 'a new session');
+  assert.equal((await svc.getConversation('client-chat-1'))?.turnCount, 1);
+  await svc.ask({ question: 'again', conversationID: 'client-chat-1' });
+  assert.ok('resume' in runner.requests[1]!.session, 'the same id continues the chat');
   await assert.rejects(svc.ask({ question: 'q', conversationID: '../escape' }), /invalid conversation id/);
+  await assert.rejects(svc.ask({ question: 'q', conversationID: '' }), /invalid conversation id/);
 });
 
 test('unsupported, disabled and unknown runners give clear errors', async () => {
@@ -621,7 +628,6 @@ test('history: zero-match turns are kept; pin does not touch updatedAt; delete',
   await assert.rejects(svc.deleteConversation(res.conversationID), hasCode('not_found'));
   await assert.rejects(svc.setConversationPinned(res.conversationID, true), hasCode('not_found'));
   await assert.rejects(svc.deleteConversation('../x'), hasCode('invalid_request'));
-  await assert.rejects(svc.ask({ question: 'q', conversationID: res.conversationID }), hasCode('not_found'));
   await assert.rejects(svc.ask({ question: '  ' }), hasCode('invalid_request'));
 });
 
@@ -765,4 +771,103 @@ test('retention: a sweep skips a chat with a turn in flight instead of waiting f
   release();
   await followUp;
   assert.equal((await svc.getConversation(x.conversationID))?.turnCount, 2);
+});
+
+// ───────────── v3: progress and Stop ─────────────
+
+test('progress: "Reading your notes" with runner/model, then finished; errors finish with the error', async () => {
+  const fx = fixture();
+  const events: CoreEvent[] = [];
+  const runner = new FakeRunner('claude-code');
+  runner.reply = () => ({ structured: structured([{ n: 1, path: 'wiki/sources/Standup.md' }]) });
+  const svc = svcWith(fx, runner, { events });
+  const res = await svc.ask({ question: 'q', conversationID: 'p-1', selection: { runnerID: 'claude-code', model: 'haiku' } });
+  const progress = events.flatMap((e) => (e.type === 'progress' ? [e.progress] : []));
+  assert.deepEqual(
+    progress.map((p) => [p.key, p.kind, p.message, p.runnerID, p.model, !!p.finished, p.error ?? null]),
+    [
+      ['ask:p-1', 'ask', 'Reading your notes', 'claude-code', 'haiku', false, null],
+      ['ask:p-1', 'ask', 'Reading your notes', 'claude-code', 'haiku', true, null],
+    ],
+  );
+  assert.equal(progress[0]!.startedAt, progress[1]!.startedAt);
+  assert.equal(res.conversationID, 'p-1');
+
+  events.length = 0;
+  runner.reply = () => ({ isError: true, resultText: 'overloaded' });
+  await assert.rejects(svc.ask({ question: 'q2', conversationID: 'p-1' }), /overloaded/);
+  const failed = events.flatMap((e) => (e.type === 'progress' ? [e.progress] : []));
+  assert.equal(failed.length, 2);
+  assert.equal(failed[1]!.finished, true);
+  assert.equal(failed[1]!.error, 'overloaded');
+
+  events.length = 0;
+  await svc.ask({ question: 'nothing', labels: ['no-such-label'] });
+  assert.equal(events.filter((e) => e.type === 'progress').length, 0, 'a zero-match answer runs no runner');
+});
+
+class HangingRunner extends FakeRunner {
+  started!: Promise<void>;
+  private markStarted!: () => void;
+  constructor() {
+    super('claude-code');
+    this.started = new Promise((r) => (this.markStarted = r));
+  }
+  override async run(request: RunRequest): Promise<RunResult> {
+    this.requests.push(request);
+    this.markStarted();
+    return new Promise((_, reject) => {
+      const fail = () => reject(Object.assign(new Error('cancelled'), { name: 'AbortError' }));
+      if (request.signal?.aborted) fail();
+      request.signal?.addEventListener('abort', fail, { once: true });
+    });
+  }
+}
+
+test('cancelAsk stops the in-flight turn: invalid_state "Stopped", nothing stored, finished progress', async () => {
+  const fx = fixture();
+  const events: CoreEvent[] = [];
+  const runner = new HangingRunner();
+  const svc = svcWith(fx, runner, { events });
+  await svc.cancelAsk('idle-chat'); // no-op when idle
+  const pending = svc.ask({ question: 'slow one', conversationID: 'stop-me' });
+  await runner.started;
+  assert.ok(runner.requests[0]!.signal, 'the run gets an AbortSignal');
+  await svc.cancelAsk('stop-me');
+  await assert.rejects(pending, (e: unknown) => (e as { code?: string }).code === 'invalid_state' && (e as Error).message === 'Stopped');
+  assert.equal(await svc.getConversation('stop-me'), undefined, 'the question is not stored');
+  assert.deepEqual(await svc.listConversations(), []);
+  assert.ok(!events.some((e) => e.type === 'conversation'));
+  const last = events.filter((e) => e.type === 'progress').at(-1);
+  assert.ok(last?.type === 'progress');
+  assert.deepEqual([last.progress.key, last.progress.finished, last.progress.error, last.progress.message], ['ask:stop-me', true, 'Stopped', 'Stopped']);
+});
+
+test('cancelAsk on a follow-up keeps the earlier turns untouched', async () => {
+  const fx = fixture();
+  const runner = new FakeRunner('claude-code');
+  const svc = svcWith(fx, runner);
+  const first = await svc.ask({ question: 'first' });
+  const before = await svc.getConversation(first.conversationID);
+  let release!: () => void;
+  const started = new Promise<void>((r) => (release = r));
+  runner.run = async (request: RunRequest) => {
+    release();
+    return new Promise<RunResult>((_, reject) => request.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
+  };
+  const pending = svc.ask({ question: 'second', conversationID: first.conversationID });
+  await started;
+  await svc.cancelAsk(first.conversationID);
+  await assert.rejects(pending, /Stopped/);
+  assert.deepEqual(await svc.getConversation(first.conversationID), before);
+});
+
+test('a Stop sent before the turn starts still stops it', async () => {
+  const fx = fixture();
+  const runner = new FakeRunner('claude-code');
+  const svc = svcWith(fx, runner);
+  const pending = svc.ask({ question: 'q', conversationID: 'early' });
+  await svc.cancelAsk('early');
+  await assert.rejects(pending, /Stopped/);
+  assert.equal(runner.requests.length, 0);
 });

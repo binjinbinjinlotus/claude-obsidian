@@ -1,7 +1,7 @@
 ---
 title: Job kinds
 status: built
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 
 # Job kinds
@@ -32,7 +32,9 @@ reject, cost tracking, Open Session in Terminal, and recovery.
 - **Labels** (`labels`, task `labelSuggest`, TS core only): created by
   `confirmLabels` / `suggestLabelsForPages`. No agent turn: the core writes the
   bundle, inspects it and, on approval, applies it itself. `sessionID` is an
-  unused UUID; `model` is `none` for confirm jobs.
+  unused UUID; `model` is `none` for confirm jobs. `suggestLabelsForPages`
+  returns its job while still `running` and suggests page by page in the
+  background (`labelPages` progress); it has no resume command.
 
 In the TS core (`core/src/engine/job-kinds.ts`) a kind may set
 `appliesInCore: true`: approval runs the exact apply in the core instead of
