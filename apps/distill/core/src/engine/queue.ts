@@ -136,7 +136,8 @@ export function uniqueDestination(name: string, dir: string): string {
   return candidate;
 }
 
-function moveFile(from: string, to: string): void {
+/** Rename, or copy then unlink across volumes. */
+export function moveFile(from: string, to: string): void {
   try {
     fs.renameSync(from, to);
   } catch (err) {

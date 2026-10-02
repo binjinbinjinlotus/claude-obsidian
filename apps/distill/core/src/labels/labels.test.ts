@@ -322,6 +322,7 @@ describe('addNote and labelNote', () => {
         { name: 'tea', existing: false },
         { name: 'brewing', existing: false },
       ],
+      costUSD: 0.002,
     });
     assert.equal(manifestOf(r.notePath).origin, 'app');
     assert.deepEqual(manifestOf(r.notePath).suggestedLabels, (ev as { labels: unknown }).labels);
@@ -497,35 +498,118 @@ describe('label jobs (core builds, inspects and applies)', () => {
   test('suggestLabelsForPages → unconfirmed AI labels; confirming clears the marks', async () => {
     const vault = realVault();
     const { engine, labeler } = setup({ vault, labels: labelsAnswer(['Green Tea', 'draft']) });
-    const job = await engine.suggestLabelsForPages(['wiki/sources/a.md']);
+    const started = await engine.suggestLabelsForPages(['wiki/concepts/b.md']);
+    assert.equal(started.state, 'running', 'returned at once');
+    await engine.whenIdle();
+    const job = engine.getJob(started.id)!;
     assert.equal(job.state, 'awaitingApproval', job.approval?.planError ?? job.error ?? '');
     assert.equal(job.runnerID, 'fake-labels');
     assert.equal(job.model, 'tiny');
     assert.ok(job.turns.some((t) => t.author === 'worker' && t.costUSD === 0.002));
     assert.deepEqual(labeler.requests[0]!.availableTools, []);
-    assert.ok(labeler.requests[0]!.prompt.includes('About sencha.'));
+    assert.ok(labeler.requests[0]!.prompt.includes('No frontmatter here.'));
     await engine.approve(job.id);
     await engine.whenIdle();
     assert.equal(engine.getJob(job.id)!.state, 'completed');
     assert.equal(
-      fs.readFileSync(path.join(vault, 'wiki/sources/a.md'), 'utf8'),
-      '---\ntype: source\ntitle: "A"\ntags:\n  - draft\n  - green-tea\nlabels_by: ai\nlabels_reviewed: false\nlabels_origin: suggest\nstatus: seed\n---\n\n# A\n\nAbout sencha.\n',
+      fs.readFileSync(path.join(vault, 'wiki/concepts/b.md'), 'utf8'),
+      '---\ntags:\n  - green-tea\n  - draft\nlabels_by: ai\nlabels_reviewed: false\nlabels_origin: suggest\n---\n# B\n\nNo frontmatter here.\n',
     );
     const review = await engine.labelReview();
-    assert.deepEqual(review.toReview, [{ path: 'wiki/sources/a.md', title: 'A', labels: ['draft', 'green-tea'], origin: 'suggest' }]);
+    assert.deepEqual(review.toReview, [{ path: 'wiki/concepts/b.md', title: 'b', labels: ['green-tea', 'draft'], origin: 'suggest' }]);
     assert.deepEqual(await engine.listLabels(), [
-      { name: 'draft', count: 1, unconfirmed: 1 },
+      { name: 'draft', count: 2, unconfirmed: 1 },
       { name: 'green-tea', count: 1, unconfirmed: 1 },
     ]);
 
-    const confirm = await engine.confirmLabels([{ path: 'wiki/sources/a.md', labels: ['green-tea'] }]);
+    const confirm = await engine.confirmLabels([{ path: 'wiki/concepts/b.md', labels: ['green-tea'] }]);
     await engine.approve(confirm.id);
     await engine.whenIdle();
     assert.equal(
-      fs.readFileSync(path.join(vault, 'wiki/sources/a.md'), 'utf8'),
-      '---\ntype: source\ntitle: "A"\ntags:\n  - green-tea\nlabels_by: user\nstatus: seed\n---\n\n# A\n\nAbout sencha.\n',
+      fs.readFileSync(path.join(vault, 'wiki/concepts/b.md'), 'utf8'),
+      '---\ntags:\n  - green-tea\nlabels_by: user\n---\n# B\n\nNo frontmatter here.\n',
     );
     assert.deepEqual((await engine.labelReview()).toReview, []);
+  });
+
+  test('suggestLabelsForPages: returns running, skips labeled pages, counts pages in labelPages progress', async () => {
+    const vault = realVault();
+    writePage(vault, 'wiki/concepts/c.md', '# C\n\nAbout gyokuro.\n');
+    const { engine, labeler, events } = setup({ vault });
+    const job = await engine.suggestLabelsForPages(['wiki/sources/a.md', 'wiki/concepts/b.md', 'wiki/concepts/c.md']);
+    assert.equal(job.state, 'running');
+    assert.deepEqual(job.files, ['wiki/concepts/b.md', 'wiki/concepts/c.md']);
+    assert.equal(job.turns[0]!.text, 'Suggest labels for 2 pages. Skipped 1 page that already has labels.');
+    await engine.whenIdle();
+    assert.equal(labeler.requests.length, 2, 'the labeled page never reaches the AI');
+    const done = engine.getJob(job.id)!;
+    assert.equal(done.state, 'awaitingApproval', done.approval?.planError ?? done.error ?? '');
+    assert.ok(done.approval!.skipped.includes('wiki/sources/a.md: already has labels'));
+    assert.deepEqual(done.approval!.plan!.changed_paths, ['wiki/concepts/b.md', 'wiki/concepts/c.md']);
+    const progress = events.flatMap((e) => (e.type === 'progress' && e.progress.key === job.id ? [e.progress] : []));
+    assert.deepEqual(
+      progress.map((p) => [p.kind, p.done, p.total, p.message, !!p.finished]),
+      [
+        ['labelPages', 0, 2, 'Suggesting labels for 2 pages', false],
+        ['labelPages', 1, 2, 'Suggesting labels for 2 pages', false],
+        ['labelPages', 2, 2, 'Suggesting labels for 2 pages', false],
+        ['labelPages', 2, 2, 'Preparing the change for Review', false],
+        ['labelPages', 2, 2, 'Ready for review', true],
+      ],
+    );
+    assert.equal(progress[0]!.runnerID, 'fake-labels');
+    assert.equal(progress[0]!.model, 'tiny');
+    await assert.rejects(engine.suggestLabelsForPages(['wiki/sources/a.md']), { code: 'busy' });
+    await engine.reject(job.id);
+    await assert.rejects(engine.suggestLabelsForPages(['wiki/sources/a.md']), { code: 'invalid_request', message: /already has labels/ });
+  });
+
+  test('suggestLabelsForPages: cancel keeps the finished pages for review', async () => {
+    const vault = realVault();
+    writePage(vault, 'wiki/concepts/c.md', '# C\n\nAbout gyokuro.\n');
+    writePage(vault, 'wiki/concepts/d.md', '# D\n\nAbout matcha.\n');
+    let release!: () => void;
+    const hung = new Promise<void>((r) => (release = r));
+    const { engine, labeler } = setup({
+      vault,
+      labels: async (req) => {
+        if (!req.prompt.includes('About gyokuro.')) return { structured: { labels: ['tea'] } };
+        release();
+        // Hang until the job is cancelled; a real runner rejects on abort.
+        return new Promise((_, reject) => req.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
+      },
+    });
+    const job = await engine.suggestLabelsForPages(['wiki/concepts/b.md', 'wiki/concepts/c.md', 'wiki/concepts/d.md']);
+    await hung;
+    await engine.cancel(job.id);
+    await engine.whenIdle();
+    const done = engine.getJob(job.id)!;
+    assert.equal(done.state, 'awaitingApproval', done.approval?.planError ?? done.error ?? '');
+    assert.deepEqual(done.approval!.plan!.changed_paths, ['wiki/concepts/b.md']);
+    assert.ok(done.approval!.skipped.includes('wiki/concepts/c.md: not done (stopped)'));
+    assert.ok(done.approval!.skipped.includes('wiki/concepts/d.md: not done (stopped)'));
+    assert.ok(done.turns.some((t) => t.text === 'Stopped after 1 of 3 pages; suggested labels for 1 page.'));
+    assert.equal(labeler.requests.length, 2, 'no page after the stop');
+  });
+
+  test('suggestLabelsForPages: cancel before any page finishes → cancelled', async () => {
+    const vault = realVault();
+    let release!: () => void;
+    const hung = new Promise<void>((r) => (release = r));
+    const { engine, events } = setup({
+      vault,
+      labels: async (req) => {
+        release();
+        return new Promise((_, reject) => req.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
+      },
+    });
+    const job = await engine.suggestLabelsForPages(['wiki/concepts/b.md']);
+    await hung;
+    await engine.cancel(job.id);
+    await engine.whenIdle();
+    assert.equal(engine.getJob(job.id)!.state, 'cancelled');
+    const last = events.filter((e) => e.type === 'progress').at(-1);
+    assert.ok(last?.type === 'progress' && last.progress.finished && last.progress.key === job.id && last.progress.message === 'Cancelled');
   });
 
   test('a page edited after review: apply exits 75, the plan is rebuilt for a new review', async () => {

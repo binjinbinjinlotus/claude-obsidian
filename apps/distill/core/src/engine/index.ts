@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -14,6 +15,7 @@ import {
   type LabelReview,
   type LabelSuggestion,
   type ModelSelection,
+  type Progress,
   type QueueEntry,
   type RunRequest,
   type RunResult,
@@ -27,6 +29,7 @@ import {
 import { encodeJSON, isObject, isoDate, writeFileAtomic } from '../store/json.js';
 import {
   holdsVault,
+  isFinished,
   jobRunnerID,
   jobStateDirectory,
   JobStore,
@@ -78,10 +81,12 @@ import {
   claimFiles,
   copyIntoQueue,
   inboxDir,
+  moveFile,
   pendingFiles,
   queueIsInbox,
   settledFiles,
   toQueueEntry,
+  uniqueDestination,
   type ScanEntry,
 } from './queue.js';
 import { setupProblems } from './validator.js';
@@ -100,7 +105,23 @@ export type AskOwned = 'ask' | 'listConversations' | 'getConversation' | 'delete
 export type CompositionOwned = 'listProgress';
 export type RunnerAdminOwned = 'listRunners' | 'setRunnerSecret';
 
-export type Engine = Pick<DistillCore, EngineOwned> & {
+/**
+ * Engine methods beyond the DistillCore contract (proposed contract additions;
+ * the server exposes them when present).
+ */
+export interface EngineExtras {
+  /** Remove a finished job (completed, failed, rejected, cancelled) from the list; else invalid_state. */
+  deleteJob(id: string): Promise<void>;
+  /** argv that reopens the job's AI session in a terminal, or null when there is none. */
+  jobResumeCommand(id: string): Promise<string[] | null>;
+  /** Move a file in the active queue folder to the Trash; returns the queue afterwards. */
+  removeQueueEntry(path: string): Promise<QueueEntry[]>;
+}
+
+/** Steps of a batch, in order (`Progress.steps`); "Suggesting labels" only when the batch has a label pre-step. */
+export const BATCH_STEPS = ['Moved to inbox', 'Suggesting labels', 'Read sources', 'Drafting page changes', 'Ready for review'] as const;
+
+export type Engine = Pick<DistillCore, EngineOwned> & EngineExtras & {
   readonly runners: RunnerRegistry;
   readonly paths: StatePaths;
   /** Resolves once no turn or inspect is in flight (tests, headless runs). */
@@ -116,6 +137,8 @@ export interface EngineOptions {
   now?: () => Date;
   /** Subprocess launcher for `transaction inspect` (tests). */
   launch?: (opts: RunProcessOptions) => Promise<ProcessOutput>;
+  /** Where removeQueueEntry moves files (default ~/.Trash). */
+  trashDir?: string;
 }
 
 export type { Settings };
@@ -132,6 +155,11 @@ function readVersion(): string {
 }
 
 const clone = <T>(v: T): T => structuredClone(v);
+
+/** "1 source", "3 sources". */
+export function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
+}
 
 type InspectOutcome = { plan: TransactionPlan } | { error: string };
 
@@ -172,6 +200,7 @@ export function createEngine(opts: EngineOptions): Engine {
   const tickMs = opts.tickMs ?? 5000;
   const now = opts.now ?? (() => new Date());
   const launch = opts.launch ?? runProcess;
+  const trashDir = opts.trashDir ?? path.join(os.homedir(), '.Trash');
   const version = readVersion();
 
   const settingsStore = new SettingsStore(paths.settings);
@@ -217,6 +246,87 @@ export function createEngine(opts: EngineOptions): Engine {
   function track(p: Promise<void>): void {
     inflight.add(p);
     void p.finally(() => inflight.delete(p));
+  }
+
+  // ───────────── progress (loading states) ─────────────
+
+  /** In-flight progress by key; every key that starts gets exactly one `finished` event. */
+  const activeProgress = new Map<string, Progress>();
+  /** Steps of each batch job (with or without the label pre-step), for later turns. */
+  const jobSteps = new Map<string, string[]>();
+
+  function publishProgress(p: Progress): void {
+    emit({ type: 'progress', progress: clone(p) });
+  }
+
+  function startProgress(p: Omit<Progress, 'startedAt'> & { startedAt?: string }): void {
+    const next: Progress = { ...p, startedAt: p.startedAt ?? isoDate(now()) };
+    activeProgress.set(next.key, next);
+    publishProgress(next);
+  }
+
+  function updateProgress(key: string, patch: Partial<Omit<Progress, 'key' | 'startedAt' | 'finished'>>): void {
+    const current = activeProgress.get(key);
+    if (!current) return;
+    const next: Progress = { ...current, ...patch };
+    activeProgress.set(key, next);
+    publishProgress(next);
+  }
+
+  function finishProgress(key: string, o: { error?: string; patch?: Partial<Omit<Progress, 'key' | 'startedAt'>> } = {}): void {
+    const current = activeProgress.get(key);
+    if (!current) return;
+    activeProgress.delete(key);
+    const next: Progress = { ...current, ...o.patch, finished: true };
+    if (o.error) next.error = o.error;
+    publishProgress(next);
+  }
+
+  /** A job left `running`: close its progress with the outcome. */
+  function finishJobProgress(job: Job): void {
+    const current = activeProgress.get(job.id);
+    if (!current) return;
+    const patch: Partial<Progress> = {};
+    if (job.state === 'awaitingApproval') patch.message = 'Ready for review';
+    else if (job.state === 'completed') patch.message = current.kind === 'apply' ? 'Applied' : 'Done';
+    else if (job.state === 'cancelled') patch.message = 'Cancelled';
+    else if (job.state === 'failed') patch.message = 'Failed';
+    else if (job.state === 'rejected') patch.message = 'Rejected';
+    if (current.steps && (job.state === 'awaitingApproval' || job.state === 'completed')) {
+      patch.stepIndex = current.steps.length - 1;
+    }
+    finishProgress(job.id, job.state === 'failed' ? { error: job.error ?? 'Failed', patch } : { patch });
+  }
+
+  function batchSteps(withLabels: boolean): string[] {
+    return BATCH_STEPS.filter((s) => withLabels || s !== 'Suggesting labels');
+  }
+
+  function vaultName(vaultPath: string): string {
+    return path.basename(path.resolve(vaultPath));
+  }
+
+  function selectionFields(sel: { runnerID?: string | null; model?: string | null }): Pick<Progress, 'runnerID' | 'model'> {
+    return {
+      ...(sel.runnerID ? { runnerID: sel.runnerID } : {}),
+      ...(sel.model && sel.model !== 'none' ? { model: sel.model } : {}),
+    };
+  }
+
+  /** Batch-style progress for an agent turn on a job (first turn, reply, allow). */
+  function startTurnProgress(job: Job, step: (typeof BATCH_STEPS)[number], message: string): void {
+    const steps = jobSteps.get(job.id) ?? batchSteps(false);
+    const current = activeProgress.get(job.id);
+    startProgress({
+      key: job.id,
+      kind: 'batch',
+      message,
+      steps,
+      stepIndex: Math.max(0, steps.indexOf(step)),
+      ...selectionFields({ runnerID: jobRunnerID(job), model: job.model }),
+      // The same batch keeps its timer across steps.
+      ...(current ? { startedAt: current.startedAt } : {}),
+    });
   }
 
   // ───────────── derived state ─────────────
@@ -271,6 +381,7 @@ export function createEngine(opts: EngineOptions): Engine {
     job.updatedAt = isoDate(now());
     persistJobs();
     emit({ type: 'job', job: clone(job) });
+    if (job.state !== 'running') finishJobProgress(job);
   }
 
   function insert(job: Job): void {
@@ -451,6 +562,10 @@ export function createEngine(opts: EngineOptions): Engine {
         const jobDir = job ? path.resolve(jobStateDirectory(job)) : '';
         if (jobDir && bundle.startsWith(jobDir + '/')) {
           request.bundlePath = bundle;
+          const p = activeProgress.get(id);
+          if (p?.kind === 'batch' && p.steps) {
+            updateProgress(id, { stepIndex: Math.max(0, p.steps.indexOf('Drafting page changes')), message: 'Checking the page changes' });
+          }
           const outcome = await inspect(bundle, vault);
           if ('plan' in outcome) request.plan = outcome.plan;
           else request.planError = outcome.error;
@@ -518,6 +633,8 @@ export function createEngine(opts: EngineOptions): Engine {
     job.turns.push(newTurn('app', `Batched ${files.length} file(s):\n` + files.map((f) => `- ${f}`).join('\n'), now()));
     insert(job);
     const draft = draftBatchLabels(vault.path, files, labelingPreferences(settings));
+    jobSteps.set(job.id, batchSteps(draft.pending.length > 0));
+    const reading = `Reading ${plural(files.length, 'source')} into ${vaultName(vault.path)}`;
     const start = (plan: SourceLabels[]) => {
       if (plan.some((e) => e.labels.length > 0)) {
         try {
@@ -528,6 +645,7 @@ export function createEngine(opts: EngineOptions): Engine {
       }
       const current = findJob(job.id);
       if (!current) return;
+      startTurnProgress(current, 'Read sources', reading);
       runTurn(job.id, kind.initialPrompt(new JobContext(clone(current), vault, settings, plan)), { first: true });
     };
     if (draft.pending.length === 0) {
@@ -536,9 +654,21 @@ export function createEngine(opts: EngineOptions): Engine {
       // Pre-step: AI labels for queue-folder files and CLI notes nobody labeled, before the first turn.
       const controller = new AbortController();
       controllers.set(job.id, controller);
+      const steps = jobSteps.get(job.id) ?? batchSteps(true);
+      startProgress({
+        key: job.id,
+        kind: 'batch',
+        message: `Suggesting labels for ${plural(draft.pending.length, 'source')}`,
+        steps,
+        stepIndex: steps.indexOf('Suggesting labels'),
+        done: 0,
+        total: draft.pending.length,
+        ...selectionFields(labelSuggestSelection(settings)),
+      });
       track(
         (async () => {
           let cost = 0;
+          let done = 0;
           const failures: string[] = [];
           const existing = await existingLabels(vault.path).catch(() => [] as string[]);
           for (const { entry, input } of draft.pending) {
@@ -557,6 +687,8 @@ export function createEngine(opts: EngineOptions): Engine {
               if (controller.signal.aborted) break;
               failures.push(`${entry.file}: ${(err as Error).message}`);
             }
+            done += 1;
+            updateProgress(job.id, { done });
           }
           if (controllers.get(job.id) === controller) controllers.delete(job.id);
           if (controller.signal.aborted) {
@@ -584,12 +716,20 @@ export function createEngine(opts: EngineOptions): Engine {
     const plan = job.approval?.plan;
     const bundle = job.approval?.bundlePath;
     if (!plan || !plan.valid || !bundle) throw new CoreError('invalid_state', `Job ${id} has no valid plan to approve.`);
+    const applying = (agent: boolean) =>
+      startProgress({
+        key: id,
+        kind: 'apply',
+        message: `Applying ${plural(plan.changed_paths.length, 'change')}`,
+        ...(agent ? selectionFields({ runnerID: jobRunnerID(job), model: job.model }) : {}),
+      });
     if (coreApplies(job)) {
       mutate(id, (j) => {
         j.state = 'running';
         delete j.error;
         j.turns.push(newTurn('user', `Approved ${plan.operation_id} (${plan.approval_sha256.slice(0, 12)}…)`, now()));
       });
+      applying(false);
       track(applyInCore(id, plan, bundle));
       return;
     }
@@ -597,6 +737,7 @@ export function createEngine(opts: EngineOptions): Engine {
     // Only the exact approved command is permitted, and only for this turn.
     const applyRule = `Bash(${WorkerProtocol.applyCommand(ctx, plan, bundle)})`;
     mutate(id, (j) => j.turns.push(newTurn('user', `Approved ${plan.operation_id} (${plan.approval_sha256.slice(0, 12)}…)`, now())));
+    applying(true);
     runTurn(id, WorkerProtocol.approvedPrompt(ctx, plan, bundle), { extraTools: [applyRule] });
   }
 
@@ -608,6 +749,8 @@ export function createEngine(opts: EngineOptions): Engine {
     if (job.state === 'running') throw new CoreError('busy', `Job ${id} is running.`);
     if (job.state !== 'awaitingApproval' && holdsOtherJob(job)) throw new CoreError('busy', 'Another job holds this vault.');
     mutate(id, (j) => j.turns.push(newTurn('user', trimmed, now())));
+    const current = findJob(id);
+    if (current) startTurnProgress(current, 'Drafting page changes', 'Working on your reply');
     runTurn(id, WorkerProtocol.replyPrompt(trimmed));
   }
 
@@ -622,6 +765,8 @@ export function createEngine(opts: EngineOptions): Engine {
       j.grantedTools = [...new Set([...j.grantedTools, ...clean])].sort();
       j.turns.push(newTurn('user', 'Allowed:\n' + clean.map((r) => `- ${r}`).join('\n'), now()));
     });
+    const current = findJob(id);
+    if (current) startTurnProgress(current, 'Drafting page changes', 'Continuing with the tools you allowed');
     runTurn(id, WorkerProtocol.grantedPrompt(clean));
   }
 
@@ -638,6 +783,78 @@ export function createEngine(opts: EngineOptions): Engine {
   async function cancel(id: string): Promise<void> {
     requireJob(id);
     controllers.get(id)?.abort();
+  }
+
+  /** Removes a finished job from the list (its job directory in the vault is kept). */
+  async function deleteJob(id: string): Promise<void> {
+    const job = requireJob(id);
+    if (!isFinished(job.state)) {
+      throw new CoreError('invalid_state', `Job ${id} is ${job.state}; only finished jobs can be deleted.`);
+    }
+    // When the queue is the vault inbox, a job's files count as taken only while the job is
+    // listed; deleting it would put files still in inbox/ back into the next batch.
+    const vault = vaultProfileFor(job);
+    if (queueIsInbox(vault)) {
+      const stillThere = job.files.filter((f) => f.startsWith('inbox/') && fs.existsSync(path.join(vault.path, f)));
+      if (stillThere.length > 0) {
+        throw new CoreError(
+          'invalid_state',
+          `Deleting ${id} would put ${plural(stillThere.length, 'file')} in inbox/ back into the queue (${stillThere.join(', ')}). Move them out of the inbox first.`,
+        );
+      }
+    }
+    jobs = jobs.filter((j) => j.id !== id);
+    jobSteps.delete(id);
+    persistJobs();
+    // Proposed contract: a `job` event with deleted: true (mirrors `conversation`).
+    emit({ type: 'job', job: clone(job), deleted: true } as CoreEvent);
+    refreshQueue();
+  }
+
+  async function jobResumeCommand(id: string): Promise<string[] | null> {
+    const job = requireJob(id);
+    if (jobKind(job.kind)?.appliesInCore) return null; // no AI session
+    const runner = runners.get(jobRunnerID(job));
+    const argv = runner?.resumeCommand?.(job.sessionID, job.model, clone(settings));
+    return argv && argv.length > 0 ? argv : null;
+  }
+
+  /** Moves a pending file of the active queue folder to the Trash (a note's manifest goes with it). */
+  async function removeQueueEntry(file: string): Promise<QueueEntry[]> {
+    if (typeof file !== 'string' || file.trim() === '') throw new CoreError('invalid_request', 'path is required.');
+    const vault = activeVault(settings);
+    if (!vault) throw new CoreError('no_vault', 'No vault selected.');
+    const abs = path.resolve(file);
+    let st: fs.Stats;
+    try {
+      st = fs.lstatSync(abs);
+    } catch {
+      throw new CoreError('not_found', `${file} is not in the queue.`);
+    }
+    if (!st.isFile()) throw new CoreError('invalid_request', `${file} is not a regular file.`);
+    const real = (p: string) => {
+      try {
+        return fs.realpathSync(p);
+      } catch {
+        return path.resolve(p);
+      }
+    };
+    const name = path.basename(abs);
+    if (real(path.dirname(abs)) !== real(vault.queueDirectory) || name.startsWith('.')) {
+      throw new CoreError('invalid_request', `${file} is not in the active queue folder (${vault.queueDirectory}).`);
+    }
+    const taken = (n: string) => queueIsInbox(vault) && claimedFiles(vault).has('inbox/' + n);
+    if (taken(name)) throw new CoreError('invalid_state', `A batch already took ${name}.`);
+    const targets = [abs];
+    if (name.toLowerCase().endsWith('.md')) {
+      const manifest = abs.slice(0, -'.md'.length) + NOTE_MANIFEST_SUFFIX;
+      const m = fs.lstatSync(manifest, { throwIfNoEntry: false });
+      if (m?.isFile() && !taken(path.basename(manifest))) targets.push(manifest);
+    }
+    fs.mkdirSync(trashDir, { recursive: true });
+    for (const t of targets) moveFile(t, uniqueDestination(path.basename(t), trashDir));
+    refreshQueue();
+    return queueEntries();
   }
 
   async function updateSettings(patch: Partial<Settings>): Promise<Settings> {
@@ -741,12 +958,15 @@ export function createEngine(opts: EngineOptions): Engine {
     if (req.sourceRef) input.sourceRef = req.sourceRef;
     const state: NoteLabelState = { requestID: randomUUID().toLowerCase(), origin };
     if (confirmed) state.labels = confirmed;
+    let costUSD: number | undefined;
     if (suggest === 'wait') {
       // Suggest first, then write: the batch can never pick the note up mid-wait.
-      try {
-        state.suggestedLabels = (await suggestFor(vault, input)).labels;
-      } catch (err) {
-        state.suggestError = (err as Error).message;
+      const outcome = await suggestWithProgress(vault, state.requestID, input);
+      if ('labels' in outcome) {
+        state.suggestedLabels = outcome.labels;
+        costUSD = outcome.costUSD;
+      } else {
+        state.suggestError = outcome.error;
       }
     }
     const result = writeNote(req, vault, now(), state);
@@ -757,16 +977,40 @@ export function createEngine(opts: EngineOptions): Engine {
     const out: AddNoteResult = { ...result, requestID: state.requestID };
     if (state.suggestedLabels) out.suggestedLabels = state.suggestedLabels;
     if (state.suggestError) out.suggestError = state.suggestError;
+    if (costUSD !== undefined) out.costUSD = costUSD;
     return out;
+  }
+
+  /** One note's label suggestion, wrapped in `labelSuggest` progress (key `note:<requestID>`). Never throws. */
+  async function suggestWithProgress(
+    vault: VaultProfile,
+    requestID: string,
+    input: SuggestInput,
+  ): Promise<{ labels: LabelSuggestion[]; costUSD: number } | { error: string }> {
+    const key = `note:${requestID}`;
+    startProgress({ key, kind: 'labelSuggest', message: 'Suggesting labels', ...selectionFields(labelSuggestSelection(settings)) });
+    let outcome: { labels: LabelSuggestion[]; costUSD: number } | { error: string } = { error: 'The label suggestion did not finish.' };
+    try {
+      const out = await suggestFor(vault, input);
+      outcome = { labels: out.labels, costUSD: out.costUSD };
+    } catch (err) {
+      outcome = { error: (err as Error).message };
+    } finally {
+      finishProgress(key, 'error' in outcome ? { error: outcome.error } : {});
+    }
+    return outcome;
   }
 
   async function suggestInBackground(vault: VaultProfile, requestID: string, notePath: string, input: SuggestInput): Promise<void> {
     let labels: LabelSuggestion[] = [];
     let error: string | undefined;
-    try {
-      labels = (await suggestFor(vault, input)).labels;
-    } catch (err) {
-      error = (err as Error).message;
+    let costUSD: number | undefined;
+    const outcome = await suggestWithProgress(vault, requestID, input);
+    if ('labels' in outcome) {
+      labels = outcome.labels;
+      costUSD = outcome.costUSD;
+    } else {
+      error = outcome.error;
     }
     // Check and write in one synchronous step so a batch can't claim the note in between.
     const where = locateRequest(requestID);
@@ -783,7 +1027,14 @@ export function createEngine(opts: EngineOptions): Engine {
     } else if (!error) {
       error = 'The batch already picked this note up.';
     }
-    emit({ type: 'labelSuggestions', requestID, notePath, labels, ...(error ? { error } : {}) });
+    emit({
+      type: 'labelSuggestions',
+      requestID,
+      notePath,
+      labels,
+      ...(error ? { error } : {}),
+      ...(costUSD !== undefined ? { costUSD } : {}),
+    });
   }
 
   async function labelNote(requestID: string, labels: string[]): Promise<{ notePath: string; labels: string[] }> {
@@ -914,6 +1165,12 @@ export function createEngine(opts: EngineOptions): Engine {
     return clone(requireJob(job.id));
   }
 
+  /**
+   * AI labels for UNLABELED pages. Pages that already have tags are skipped (counted in the first
+   * turn). Returns the job at once in `running`; suggestions run one page at a time with
+   * `labelPages` progress, then the bundle is built and inspected → awaitingApproval. cancel()
+   * keeps the pages that finished (awaitingApproval when at least one did, else cancelled).
+   */
   async function suggestLabelsForPages(
     rawPaths: string[],
     o: { vaultPath?: string; selection?: ModelSelection } = {},
@@ -922,57 +1179,89 @@ export function createEngine(opts: EngineOptions): Engine {
     const vault = resolveVault(o.vaultPath);
     requireFreeVault(vault);
     const selection = o.selection ?? labelSuggestSelection(settings);
-    const job = newLabelJob(vault, files, `Suggest labels for ${files.length} page(s).`, selection);
+    const todo: string[] = [];
+    const tagged: string[] = [];
+    for (const rel of files) {
+      const page = readPage(vault.path, rel);
+      if (typeof page !== 'string' && pageTags(page.text).length > 0) tagged.push(rel);
+      else todo.push(rel); // a missing page is reported as skipped by the run
+    }
+    if (todo.length === 0) {
+      throw new CoreError(
+        'invalid_request',
+        `${files.length === 1 ? 'The page already has' : `All ${files.length} pages already have`} labels; nothing to suggest.`,
+      );
+    }
+    const intro =
+      `Suggest labels for ${plural(todo.length, 'page')}.` +
+      (tagged.length > 0 ? ` Skipped ${plural(tagged.length, 'page')} that already ${tagged.length === 1 ? 'has' : 'have'} labels.` : '');
+    const job = newLabelJob(vault, todo, intro, selection);
     insert(job);
     const controller = new AbortController();
     controllers.set(job.id, controller);
+    startProgress({
+      key: job.id,
+      kind: 'labelPages',
+      message: `Suggesting labels for ${plural(todo.length, 'page')}`,
+      done: 0,
+      total: todo.length,
+      ...selectionFields(selection),
+    });
+    const alreadyLabeled = tagged.map((p) => `${p}: already has labels`);
     const work = (async () => {
       const edits: LabelEdit[] = [];
-      const skipped: string[] = [];
+      const skipped: string[] = [...alreadyLabeled];
       let cost = 0;
+      let done = 0;
       try {
         const existing = await existingLabels(vault.path); // once, not per page
-        for (const rel of files) {
+        for (const rel of todo) {
           if (controller.signal.aborted) break;
           const page = readPage(vault.path, rel);
           if (typeof page === 'string') {
             skipped.push(`${rel}: ${page}`);
-            continue;
+          } else {
+            const title = scalarValue(parseFrontmatter(page.text), 'title') ?? path.posix.basename(rel, '.md');
+            try {
+              const out = await suggestFor(vault, { title, text: bodyOf(page.text) }, { signal: controller.signal, selection, existing });
+              if (controller.signal.aborted) break; // stopped mid-call: the page did not finish
+              cost += out.costUSD;
+              // Keep any current labels; the AI ones are added (all unconfirmed until reviewed).
+              const labels = normalizeLabels([...pageTags(page.text), ...out.labels.map((l) => l.name)]);
+              edits.push({ path: rel, labels, by: 'ai', origin: 'suggest' });
+            } catch (err) {
+              if (controller.signal.aborted) break;
+              skipped.push(`${rel}: ${(err as Error).message}`);
+            }
           }
-          const title = scalarValue(parseFrontmatter(page.text), 'title') ?? path.posix.basename(rel, '.md');
-          try {
-            const out = await suggestFor(vault, { title, text: bodyOf(page.text) }, { signal: controller.signal, selection, existing });
-            cost += out.costUSD;
-            // Keep the page's current labels; the AI ones are added (all unconfirmed until reviewed).
-            const labels = normalizeLabels([...pageTags(page.text), ...out.labels.map((l) => l.name)]);
-            edits.push({ path: rel, labels, by: 'ai', origin: 'suggest' });
-          } catch (err) {
-            if (controller.signal.aborted) break;
-            skipped.push(`${rel}: ${(err as Error).message}`);
-          }
+          done += 1;
+          updateProgress(job.id, { done });
         }
       } finally {
         if (controllers.get(job.id) === controller) controllers.delete(job.id);
       }
-      if (controller.signal.aborted) {
+      const stopped = controller.signal.aborted;
+      if (stopped && edits.length === 0) {
         mutate(job.id, (j) => {
           j.state = 'cancelled';
-          j.turns.push(newTurn('app', 'Cancelled.', now()));
+          j.turns.push(newTurn('app', 'Cancelled.', now(), cost));
         });
         return;
       }
-      mutate(job.id, (j) =>
-        j.turns.push(newTurn('worker', `Suggested labels for ${edits.length} of ${files.length} page(s).`, now(), cost)),
-      );
+      const notDone = stopped ? todo.slice(done).map((p) => `${p}: not done (stopped)`) : [];
+      const head = stopped
+        ? `Stopped after ${done} of ${plural(todo.length, 'page')}; suggested labels for ${plural(edits.length, 'page')}.`
+        : `Suggested labels for ${edits.length} of ${plural(todo.length, 'page')}.`;
+      mutate(job.id, (j) => j.turns.push(newTurn('worker', head, now(), cost)));
       if (edits.length === 0) {
         fail(job.id, ['No labels could be suggested.', ...skipped.map((s) => `- ${s}`)].join('\n'));
         return;
       }
-      await planLabelJob(job.id, { mode: 'suggest', edits }, skipped);
+      updateProgress(job.id, { message: 'Preparing the change for Review' });
+      await planLabelJob(job.id, { mode: 'suggest', edits }, [...skipped, ...notDone]);
     })().catch((err: unknown) => fail(job.id, (err as Error).message));
     track(work);
-    await work;
-    return clone(requireJob(job.id));
+    return clone(job);
   }
 
   // ───────────── the "core applies" approval path ─────────────
@@ -1108,6 +1397,9 @@ export function createEngine(opts: EngineOptions): Engine {
     allow,
     reject,
     cancel,
+    deleteJob,
+    jobResumeCommand,
+    removeQueueEntry,
 
     labelNote,
     listLabels,
