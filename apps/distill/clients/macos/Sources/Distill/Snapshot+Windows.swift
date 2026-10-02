@@ -78,7 +78,7 @@ enum WindowsSnapshot {
         t.entries = [AskEntry(question: "Best water temp for sencha?", askedAt: Date(),
                               request: AskRequest(question: "Best water temp for sencha?"), response: r)]
         render(desk(topLeft: topLeft) {
-            QuickAskCard(thread: t, close: {}, continueInDistill: {}, snapshotHeight: limit).environment(\.snapshotOverflow, true)
+            QuickAskCard(thread: t, close: {}, continueInDistill: {}, snapshotHeight: limit, snapshotWidth: QuickWindowGeometry.defaultWidth).environment(\.snapshotOverflow, true)
         }.environmentObject(engine).environmentObject(ask), "quickask-limit.png")
     }
 

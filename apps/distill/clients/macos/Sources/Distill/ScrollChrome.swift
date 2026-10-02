@@ -79,10 +79,12 @@ struct HeightReader: ViewModifier {
     @Binding var height: CGFloat
 
     func body(content: Content) -> some View {
-        content.background(GeometryReader { geo in
+        // Wrapped so an empty slot (no images, error cleared) still reports 0.
+        VStack(spacing: 0) { content }.background(GeometryReader { geo in
             Color.clear
                 .onAppear { height = geo.size.height }
                 .onChange(of: geo.size.height) { _, h in height = h }
+                .onDisappear { height = 0 }
         })
     }
 }

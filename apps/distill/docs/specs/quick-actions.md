@@ -39,7 +39,7 @@ actions" panels 2–5. Code: `QuickWindow.swift` (window shell, resize corner,
   edge. The close bar, the question (quick ask) and the footer stay put. It
   shrinks back as content shrinks. No scroll-bar strip anywhere: the scroll
   views are forced to the overlay style, also under "Show scroll bars: Always".
-- **Resize**: the bottom-right corner (and window edges) resize with the
+- **Resize**: the bottom-right corner resizes the window with the
   top-left corner fixed; minimum 360 × 160. The dragged size is a floor saved
   per window in UserDefaults (`distill.quickNote.size`, `distill.quickAsk.size`).
   Bigger than the content: the spare height goes to the text area (a click

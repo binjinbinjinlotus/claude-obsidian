@@ -84,6 +84,8 @@ final class QueueRowsTests: XCTestCase {
         XCTAssertEqual(plain(QueueRows.meta(image, now: now, locale: en, timeZone: utc)), "Added at 3:04 AM · 2 KB")
         // Another day shows the date too, so an old file never reads as just added.
         XCTAssertEqual(plain(QueueRows.clock(date("2026-09-03T02:12:00Z"), now: now, locale: en, timeZone: utc)), "Sep 3 at 2:12 AM")
+        let old = QueueEntry(path: "/q/old.pdf", modified: date("2026-09-03T02:12:00Z"), size: 1_000, settled: true)
+        XCTAssertEqual(plain(QueueRows.meta(old, now: now, locale: en, timeZone: utc)), "Dropped Sep 3 at 2:12 AM · 1 KB")
     }
 
     func testVisibleHidesManifests() {
@@ -97,6 +99,8 @@ final class QueueRowsTests: XCTestCase {
         let now = date("2026-10-02T03:30:00Z")
         XCTAssertEqual(plain(QueueRows.nextBatchLine(date("2026-10-02T05:30:00Z"), intervalMinutes: 120, now: now, locale: en, timeZone: utc)),
                        "Next batch at 5:30 AM · every 2 hours")
+        XCTAssertEqual(plain(QueueRows.nextBatchLine(date("2026-10-03T03:30:00Z"), intervalMinutes: 1440, now: now, locale: en, timeZone: utc)),
+                       "Next batch Oct 3 at 3:30 AM · every 1 day")
         XCTAssertEqual(BatchInterval(totalMinutes: 60).phrase, "1 hour")
         XCTAssertEqual(BatchInterval(totalMinutes: 90).phrase, "1 hour 30 minutes")
         XCTAssertEqual(BatchInterval(totalMinutes: 1440).phrase, "1 day")

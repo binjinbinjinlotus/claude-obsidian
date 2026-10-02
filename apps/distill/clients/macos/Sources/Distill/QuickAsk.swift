@@ -78,9 +78,12 @@ struct QuickAskCard: View {
     var onDesiredHeight: (CGFloat) -> Void = { _ in }
     /// Snapshots only (see QuickShell).
     var snapshotHeight: CGFloat? = nil
+    /// Snapshots only: older fixtures (SnapshotAsk) frame the card at 400 pt.
+    var snapshotWidth: CGFloat = 400
 
     var body: some View {
-        QuickShell(title: "Quick ask", close: close, onDesiredHeight: onDesiredHeight, snapshotHeight: snapshotHeight) {
+        QuickShell(title: "Quick ask", close: close, onDesiredHeight: onDesiredHeight, snapshotHeight: snapshotHeight,
+                   snapshotWidth: snapshotWidth) {
             VStack(alignment: .leading, spacing: 12) {
                 questionRow
                 if !thread.isRunning { chips }

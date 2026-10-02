@@ -66,7 +66,7 @@ struct Sidebar: View {
             .padding(.horizontal, 6)
 
             VStack(spacing: 2) {
-                navItem(.queue, "Queue", "tray", count: engine.queued.count, highlight: false)
+                navItem(.queue, "Queue", "tray", count: QueueRows.visible(engine.queued).count, highlight: false)
                 navItem(.review, "Review", "checkmark.square", count: engine.pendingApprovals.count, highlight: true)
                 navItem(.ask, "Ask", "questionmark.bubble", count: 0, highlight: false)
                 navItem(.labels, "Labels", "tag", count: engine.labelsToReviewCount, highlight: false)
@@ -287,15 +287,16 @@ struct QueueView: View {
             Text("Automatic batching is off")
         } else if let next = engine.nextBatchAt {
             // A clock time: it changes only when the schedule does.
-            let clock = QueueRows.clock(next)
+            let when = QueueRows.at(next) // "at 5:30 AM", or "Oct 3 at 5:30 AM" on another day
+            let lead = when.hasPrefix("at ") ? "at " : ""
             let every = BatchInterval(totalMinutes: engine.settings.batchIntervalMinutes).phrase
-            Text("Next batch at \(Text(clock).fontWeight(.semibold).foregroundColor(Theme.ink)) · every \(every)")
+            Text("Next batch \(lead)\(Text(String(when.dropFirst(lead.count))).fontWeight(.semibold).foregroundColor(Theme.ink)) · every \(every)")
         }
     }
 
     private var dropPanel: some View {
         HStack(spacing: 30) {
-            FlaskView(level: min(1, Double(engine.queued.count) / 6 + (engine.queued.isEmpty ? 0.08 : 0.25)),
+            FlaskView(level: min(1, Double(rows.count) / 6 + (engine.queued.isEmpty ? 0.08 : 0.25)),
                       bubbles: !engine.queued.isEmpty, lineWidth: 2.6)
                 .frame(width: 96, height: 106)
             VStack(alignment: .leading, spacing: 8) {

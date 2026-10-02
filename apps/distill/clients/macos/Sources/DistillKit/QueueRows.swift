@@ -63,7 +63,7 @@ public enum QueueRows {
     public static func pillText(_ status: QueueRowStatus, now: Date = Date(),
                                 locale: Locale = .current, timeZone: TimeZone = .current) -> String {
         switch status {
-        case .readyAt(let date): return "Ready at " + clock(date, now: now, locale: locale, timeZone: timeZone)
+        case .readyAt(let date): return "Ready " + at(date, now: now, locale: locale, timeZone: timeZone)
         case .ready: return "Ready"
         case .inBatch: return "In batch"
         case .nextBatch: return "Next batch"
@@ -100,7 +100,7 @@ public enum QueueRows {
     public static func meta(_ entry: QueueEntry, now: Date = Date(),
                             locale: Locale = .current, timeZone: TimeZone = .current) -> String {
         let origin = origin(entry)
-        let when = "\(origin.verb) at \(clock(entry.modified, now: now, locale: locale, timeZone: timeZone))"
+        let when = "\(origin.verb) \(at(entry.modified, now: now, locale: locale, timeZone: timeZone))"
         if origin == .note, entry.name.hasSuffix(".md") { return "Written note · " + when }
         guard entry.size > 0 else { return when }
         let size = ByteCountFormatter.string(fromByteCount: Int64(entry.size), countStyle: .file)
@@ -118,10 +118,18 @@ public enum QueueRows {
         return f.string(from: date)
     }
 
+    /// "at 3:04 AM" today; "Sep 3 at 2:12 AM" on another day.
+    public static func at(_ date: Date, now: Date = Date(), locale: Locale = .current, timeZone: TimeZone = .current) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let text = clock(date, now: now, locale: locale, timeZone: timeZone)
+        return calendar.isDate(date, inSameDayAs: now) ? "at " + text : text
+    }
+
     /// Header: "Next batch at 5:30 AM · every 2 hours".
     public static func nextBatchLine(_ next: Date, intervalMinutes: Int, now: Date = Date(),
                                      locale: Locale = .current, timeZone: TimeZone = .current) -> String {
-        "Next batch at \(clock(next, now: now, locale: locale, timeZone: timeZone)) · every \(BatchInterval(totalMinutes: intervalMinutes).phrase)"
+        "Next batch \(at(next, now: now, locale: locale, timeZone: timeZone)) · every \(BatchInterval(totalMinutes: intervalMinutes).phrase)"
     }
 
     /// "10 min", "30 s", "1 min 30 s".
