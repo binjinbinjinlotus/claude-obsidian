@@ -79,7 +79,8 @@ Success is one JSON object on stdout, exit code 0:
 `notices` is present only when Distill has something to tell the user.
 
 Errors are `{"error": {"code": "…", "message": "…"}}` with exit code 1 (or 2
-for a usage mistake).
+for a usage mistake). An interrupted run (Ctrl-C or SIGINT) stops the answer:
+code `stopped`, exit code 130, and the question is not saved.
 
 ## How to present the answer
 
@@ -103,3 +104,5 @@ answer shows labels look wrong, tell the user to fix them in the Distill app.
   suggest `distill status` or opening the Distill app.
 - `server_start_failed` / `server_unreachable`: report the message, including
   the log path it gives.
+- `stopped` (exit 130): the run was interrupted on purpose. Do not retry unless
+  the user asks.
