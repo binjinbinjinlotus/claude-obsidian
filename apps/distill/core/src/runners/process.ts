@@ -11,7 +11,17 @@ export interface ProcessOutput {
 export class RunnerError extends Error {
   constructor(
     message: string,
-    readonly code: 'launchFailed' | 'nonZeroExit' | 'malformedOutput' | 'cancelled' | 'unknownRunner' | 'unsupported',
+    readonly code:
+      | 'launchFailed'
+      | 'nonZeroExit'
+      | 'malformedOutput'
+      | 'cancelled'
+      | 'unknownRunner'
+      | 'unsupported'
+      /** A secret (API key) the runner needs is not set. */
+      | 'missingSecret'
+      /** An HTTP model API answered with an error (auth, rate limit, bad request, server). */
+      | 'apiError',
   ) {
     super(message);
     this.name = 'RunnerError';
