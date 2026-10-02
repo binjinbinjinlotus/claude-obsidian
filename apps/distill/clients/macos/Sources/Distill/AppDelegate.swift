@@ -1,0 +1,172 @@
+import AppKit
+import Combine
+import SwiftUI
+import WorkerCore
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    let engine = WorkerEngine()
+    private var mainWindow: NSWindow?
+    private var settingsWindow: NSWindow?
+    private var floatingIcon: FloatingIconController?
+    private var pasteMonitor: Any?
+    private var cancellables: Set<AnyCancellable> = []
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.mainMenu = buildMenu()
+        engine.start()
+        floatingIcon = FloatingIconController(engine: engine, onOpen: { [weak self] in self?.showMainWindow() })
+        if UserDefaults.standard.object(forKey: "showFloatingIcon") as? Bool ?? true {
+            floatingIcon?.show()
+        }
+        installPasteShortcut()
+        showMainWindow()
+        if engine.settings.vaults.isEmpty { showSettings() }
+        engine.$jobs
+            .map { $0.filter { $0.state == .awaitingApproval }.count }
+            .removeDuplicates()
+            .sink { count in NSApp.dockTile.badgeLabel = count > 0 ? "\(count)" : nil }
+            .store(in: &cancellables)
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showMainWindow()
+        return true
+    }
+
+    // MARK: Windows
+
+    @objc func showMainWindow() {
+        if mainWindow == nil {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 980, height: 640),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                backing: .buffered, defer: false)
+            window.title = "Distill"
+            Self.styleChrome(window)
+            window.isReleasedWhenClosed = false
+            window.setFrameAutosaveName("DistillMain")
+            window.contentViewController = NSHostingController(
+                rootView: MainView(openSettings: { [weak self] in self?.showSettings() })
+                    .environmentObject(engine))
+            // NSHostingController sizes the window to the view's ideal size; pin a sane default.
+            window.contentMinSize = NSSize(width: 900, height: 600)
+            if !window.setFrameUsingName("DistillMain") || window.frame.width < 900 {
+                window.setContentSize(NSSize(width: 1120, height: 720))
+                window.center()
+            }
+            mainWindow = window
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        mainWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Light, title-less chrome so the traffic lights sit on the design's own surface.
+    private static func styleChrome(_ window: NSWindow) {
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = true
+        window.backgroundColor = .white
+        window.appearance = NSAppearance(named: .aqua)
+    }
+
+    @objc func showSettings() {
+        if settingsWindow == nil {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 720, height: 760),
+                styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+                backing: .buffered, defer: false)
+            window.title = "Distill Settings"
+            Self.styleChrome(window)
+            window.isReleasedWhenClosed = false
+            window.contentViewController = NSHostingController(rootView: SettingsView().environmentObject(engine))
+            window.center()
+            settingsWindow = window
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    @objc func toggleFloatingIcon() {
+        guard let icon = floatingIcon else { return }
+        icon.isVisible ? icon.hide() : icon.show()
+        UserDefaults.standard.set(icon.isVisible, forKey: "showFloatingIcon")
+    }
+
+    @objc func pasteIntoQueue() {
+        if !PasteboardIntake.ingest(NSPasteboard.general, engine: engine) {
+            engine.lastError = "Nothing pasteable on the clipboard (files, images, or text)."
+        }
+    }
+
+    @objc func processNow() { engine.processQueue(force: true) }
+
+    /// ⌘V in a worker window pastes into the queue unless a text field is editing.
+    private func installPasteShortcut() {
+        pasteMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self,
+                  event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                  event.charactersIgnoringModifiers == "v",
+                  let window = NSApp.keyWindow, window === self.mainWindow,
+                  !(window.firstResponder is NSText) else { return event }
+            self.pasteIntoQueue()
+            return nil
+        }
+    }
+
+    // MARK: Menu
+
+    private func buildMenu() -> NSMenu {
+        let main = NSMenu()
+
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "About Distill", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        appMenu.addItem(item("Settings…", #selector(showSettings), ","))
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Hide Distill", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Quit Distill", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+
+        let editItem = NSMenuItem()
+        let edit = NSMenu(title: "Edit")
+        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        edit.addItem(.separator())
+        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = edit
+        main.addItem(editItem)
+
+        let queueItem = NSMenuItem()
+        let queue = NSMenu(title: "Queue")
+        queue.addItem(item("Paste into Queue", #selector(pasteIntoQueue), "V"))
+        queue.addItem(item("Process Queue Now", #selector(processNow), "r"))
+        queueItem.submenu = queue
+        main.addItem(queueItem)
+
+        let windowItem = NSMenuItem()
+        let window = NSMenu(title: "Window")
+        window.addItem(item("Show Worker", #selector(showMainWindow), "0"))
+        window.addItem(item("Toggle Floating Icon", #selector(toggleFloatingIcon), "i"))
+        window.addItem(.separator())
+        window.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        window.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windowItem.submenu = window
+        main.addItem(windowItem)
+        NSApp.windowsMenu = window
+        return main
+    }
+
+    private func item(_ title: String, _ action: Selector, _ key: String) -> NSMenuItem {
+        let i = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        i.target = self
+        return i
+    }
+}

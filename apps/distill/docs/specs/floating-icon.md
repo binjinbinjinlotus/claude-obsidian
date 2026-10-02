@@ -1,0 +1,32 @@
+---
+title: Floating icon
+status: built
+updated: 2026-10-01
+---
+
+# Floating icon
+
+An always-on-top flask that works without opening the main window. Code:
+`clients/macos/Sources/Distill/FloatingIcon.swift`.
+
+## Behavior
+
+- Non-activating panel on every Space and over full-screen apps.
+- **Click** opens the main window. **Drag** (past 4 pt) moves it; the position
+  is saved (`floatingIconOrigin`) and ignored if its display is gone.
+- **Drop** files on it to queue them.
+- **Right-click**: active vault, Open Distill, Paste into Queue, Process Now,
+  Hide Floating Icon. ⌘I toggles it (`showFloatingIcon`).
+
+## States
+
+| State | Look |
+| --- | --- |
+| Empty | white circle, low lime liquid |
+| Queued | liquid rises with the count, blue count badge |
+| Working | light-blue liquid, bubbles, blue ring |
+| Needs approval | peach liquid, dark-peach count badge |
+| Drag over | light-blue face, blue ring |
+
+The hover menu with quick Ask / Add note is designed, not built: see
+[Quick actions and shortcuts](quick-actions.md).
