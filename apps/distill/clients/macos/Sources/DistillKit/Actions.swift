@@ -42,14 +42,17 @@ public struct ActionStatus: RawRepresentable, Codable, Hashable, Sendable, Custo
 /// `ActionSource`: where an item was found.
 public enum ActionSource: Codable, Hashable, Sendable {
     case note(jobID: String?, notePath: String?, pageTitle: String?, quote: String?)
-    /// `turnIndex` and `gap` are optional extras a core may send (which answer, and the
-    /// answer's gap this action turns into); absent on cores that don't.
-    case ask(conversationID: String, question: String?, quote: String?, citedPaths: [String], turnIndex: Int?, gap: String?)
+    /// `turnIndex`: which answer (absent on older cores). `gap`: the item restates the
+    /// answer's gap, so the Gap callout is hidden.
+    case ask(conversationID: String, question: String?, quote: String?, citedPaths: [String], turnIndex: Int?, gap: Bool)
+    /// Added by you (`by` absent or "user").
     case manual
+    /// Added by an agent through the CLI (`kind: manual, by: agent`).
+    case agent
     /// A kind this build does not know.
     case other(kind: String)
 
-    enum Keys: String, CodingKey { case kind, jobID, notePath, pageTitle, quote, conversationID, question, citedPaths, turnIndex, gap }
+    enum Keys: String, CodingKey { case kind, jobID, notePath, pageTitle, quote, conversationID, question, citedPaths, turnIndex, gap, by }
 
     public init(from decoder: Decoder) throws {
         guard let c = try? decoder.container(keyedBy: Keys.self) else { self = .manual; return }
@@ -60,8 +63,8 @@ public enum ActionSource: Codable, Hashable, Sendable {
         case "ask":
             self = .ask(conversationID: c.lossy(String.self, .conversationID) ?? "", question: c.lossy(String.self, .question),
                         quote: c.lossy(String.self, .quote), citedPaths: c.lossyArray(String.self, .citedPaths),
-                        turnIndex: c.lossyInt(.turnIndex), gap: c.lossy(String.self, .gap))
-        case "manual": self = .manual
+                        turnIndex: c.lossyInt(.turnIndex), gap: c.lossy(Bool.self, .gap) ?? false)
+        case "manual": self = c.lossy(String.self, .by) == "agent" ? .agent : .manual
         case let kind: self = .other(kind: kind)
         }
     }
@@ -82,9 +85,12 @@ public enum ActionSource: Codable, Hashable, Sendable {
             try c.encodeIfPresent(quote, forKey: .quote)
             if !citedPaths.isEmpty { try c.encode(citedPaths, forKey: .citedPaths) }
             try c.encodeIfPresent(turnIndex, forKey: .turnIndex)
-            try c.encodeIfPresent(gap, forKey: .gap)
+            if gap { try c.encode(true, forKey: .gap) }
         case .manual:
             try c.encode("manual", forKey: .kind)
+        case .agent:
+            try c.encode("manual", forKey: .kind)
+            try c.encode("agent", forKey: .by)
         case .other(let kind):
             try c.encode(kind, forKey: .kind)
         }

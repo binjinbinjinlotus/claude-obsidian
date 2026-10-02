@@ -40,11 +40,13 @@ final class ActionsClientTests: XCTestCase {
         XCTAssertEqual(odd.fields, [:])
         XCTAssertEqual(odd.title, "")
 
-        let ask = try JSONDecoder.core.decode(ActionSource.self, from: Data(#"{"kind":"ask","conversationID":"c1","quote":"book it","turnIndex":2,"gap":"no temperature"}"#.utf8))
+        let ask = try JSONDecoder.core.decode(ActionSource.self, from: Data(#"{"kind":"ask","conversationID":"c1","quote":"book it","turnIndex":2,"gap":true}"#.utf8))
         XCTAssertEqual(ask.conversationID, "c1")
         guard case .ask(_, _, _, _, let turn, let gap) = ask else { return XCTFail() }
         XCTAssertEqual(turn, 2)
-        XCTAssertEqual(gap, "no temperature")
+        XCTAssertTrue(gap)
+        let agent = try JSONDecoder.core.decode(ActionSource.self, from: Data(#"{"kind":"manual","by":"agent"}"#.utf8))
+        XCTAssertEqual(agent, .agent)
     }
 
     func testItemRoundTrips() throws {

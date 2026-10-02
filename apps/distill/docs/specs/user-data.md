@@ -26,6 +26,7 @@ Nothing goes into the vault except approved notes and pages.
 | Job history (batches, reviews) | `jobs.json` |
 | Ask history | `ask/<chat-id>.json`, one file per chat |
 | Actions (to-dos, drafts, History) | `actions.json` (v3) |
+| Connection details without secrets (Atlassian site, display name) | `connections.json` (v3, mode 0600) |
 | API keys and connection tokens | macOS Keychain, never a file |
 | Backups | `backups/<time>[-tag]/` |
 | Runtime only | `server.json`, `server.log`, `token`, `ask/workspace/` |
@@ -46,7 +47,9 @@ Retention is the user's choice: Ask chats older than `askPreferences.historyDays
   any save could replace it, the core copies it byte for byte to
   `<file>.unreadable-<time>` (`preserveUnreadable` in `core/src/store/json.ts`):
   a `settings.json` that doesn't parse, a `jobs.json` that isn't a list or
-  holds a job this build can't decode. The same bytes are copied once.
+  holds a job this build can't decode, an `actions.json` that doesn't parse
+  (an action item this build can't decode is also written back untouched).
+  The same bytes are copied once.
 - **Ask chat files that can't be read are skipped**, never deleted.
 - **Writes are atomic** (temp file, fsync, rename).
 - **Tests and agents use a temp `DISTILL_STATE_DIR`**, never the real one.
@@ -57,10 +60,11 @@ Retention is the user's choice: Ask chats older than `askPreferences.historyDays
 
 - `update` backs up first (`backups/<time>-update`), installs, then compares
   settings / job / chat counts before and after and prints
-  "Your data is intact: settings kept · N jobs · M Ask chats", or a WARNING
+  "Your data is intact: settings kept · N jobs · M Ask chats · K actions", or a WARNING
   with how to restore.
-- `backup [TAG]` copies `settings.json`, `jobs.json`, `ask/*.json` and any
-  `*.unreadable-*` files. The newest 10 backups are kept; names sort by time
+- `backup [TAG]` copies `settings.json`, `jobs.json`, `ask/*.json`,
+  `actions.json`, `connections.json` and any `*.unreadable-*` files
+  (Keychain secrets stay in the Keychain). The newest 10 backups are kept; names sort by time
   (a same-second counter is zero-padded).
 - `backups` lists them, newest first.
 - `restore NAME` refuses while the app or the core runs, backs up the current

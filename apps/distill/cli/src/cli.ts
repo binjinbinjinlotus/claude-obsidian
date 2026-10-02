@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
 import type {
+  ActionItem,
   AddNoteRequest,
   AddNoteResult,
   AskConversation,
@@ -86,6 +87,9 @@ Usage:
   distill history show <conversation-id> [--json]
   distill history rm <conversation-id> [--json]
   distill status [--json]
+  distill actions list [--type T] [--history] [--json]
+  distill actions add "<title>" [--type todo] [--body "..."] [--why "..."] [--due YYYY-MM-DD]
+              [--vault PATH] [--json]
   distill serve [--port N]
   distill plugin install --target claude|codex [--dry-run] [--copy] [--force] [--json]
   distill --help | --version
@@ -124,6 +128,11 @@ Commands:
                 \`history show ID\` prints every question and answer; \`history rm ID\`
                 deletes one. Continue one with \`distill ask --conversation ID\`.
   status       Server, active vault, queue size, reviews waiting, runner problems.
+  actions list  List open actions (to-dos, Slack messages, Jira tickets, Confluence pages),
+                including found ones waiting for the user to confirm ("to confirm").
+                --type narrows to one type; --history adds done, sent and removed items.
+  actions add   Add a to-do (or, with --type, an item of another enabled type) by hand.
+                It is added for the user; nothing is sent or created outside Distill.
   serve         Run the Distill core server in the foreground (one per user).
   plugin install
                 Install the distill-ask and distill-note agent skills.
@@ -136,6 +145,8 @@ Commands:
 Approval stays with a person: this CLI has no approve, apply, reply or reject
 commands, and no confirm-labels command. Review queued changes, and confirm AI
 labels on pages already in the vault, in the Distill app (or another UI client).
+Likewise there is no command to confirm, complete, send or create actions: found
+actions are confirmed, and Jira/Confluence items created, only by the user.
 \`note label\` only sets the labels of a note that is still in the queue.
 
 Other commands start the server in the background when it is not running
@@ -160,6 +171,11 @@ or $DISTILL_STATE_DIR.
              "queueCount", "pendingApprovals", "runningJobs", "nextBatchAt",
              "runners": [{"id","displayName","enabled","problems"}],
              "server": {"pid","port","startedAt","version"}}
+  actions list
+            {"actions": [{"id","type","status","title","body","fields","why","source",
+             "createdAt","updatedAt","events", ...}]}
+  actions add
+            {the new action, same shape}
   plugin install
             {"target", "dryRun", "pluginDir", "actions": [{"action","skill","source","destination","command"}],
              "notes": [..]}
@@ -252,6 +268,8 @@ async function dispatch(argv: string[], io: CliIO): Promise<number> {
       return history(rest, io, api);
     case 'status':
       return status(rest, io, api);
+    case 'actions':
+      return actions(rest, io, api);
     case 'serve':
       return serve(rest, io, paths);
     case 'plugin':
@@ -595,6 +613,59 @@ async function history(args: string[], io: CliIO, api: ApiFactory): Promise<numb
     return lines.join('\n') + '\n';
   });
   return 0;
+}
+
+// ───────────────────────────── actions ─────────────────────────────
+
+async function actions(args: string[], io: CliIO, api: ApiFactory): Promise<number> {
+  const [sub, ...rest] = args;
+  if (sub === 'list') {
+    const { values, positionals } = parse(rest, { type: { type: 'string' }, history: { type: 'boolean' } });
+    if (positionals.length) throw usageError(`unexpected argument "${positionals[0]}"`);
+    const out = new Output(io, values.json === true);
+    const query = new URLSearchParams();
+    const type = str(values.type);
+    if (type) query.set('type', type);
+    if (values.history === true) query.set('history', '1');
+    const client = await api(out);
+    const qs = query.toString();
+    const res = await client.request<{ actions: ActionItem[] }>('GET', `/v1/actions${qs ? `?${qs}` : ''}`);
+    out.result(res, () => {
+      if (!res.actions.length) return type ? `No ${type} actions.\n` : 'No actions.\n';
+      const lines = res.actions.map((a) => {
+        const due = a.fields.due ? `  due ${a.fields.due}` : '';
+        const where = a.source.kind === 'note' && a.source.notePath ? `  (${a.source.notePath})` : a.source.kind === 'ask' ? '  (Ask)' : '';
+        return `${a.id}  ${a.type}  ${a.status === 'pending' ? 'to confirm' : a.status}  ${a.title}${due}${where}`;
+      });
+      return lines.join('\n') + '\n';
+    });
+    return 0;
+  }
+  if (sub === 'add') {
+    const { values, positionals } = parse(rest, {
+      type: { type: 'string' },
+      body: { type: 'string' },
+      why: { type: 'string' },
+      due: { type: 'string' },
+      vault: { type: 'string' },
+    });
+    const [title, extra] = positionals;
+    if (!title?.trim()) throw usageError('usage: distill actions add "<title>" [--type todo] [--body "..."] [--due YYYY-MM-DD]');
+    if (extra !== undefined) throw usageError(`unexpected argument "${extra}"`);
+    const due = str(values.due);
+    if (due !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(due)) throw usageError('--due must be a date like 2026-10-05');
+    const out = new Output(io, values.json === true);
+    const body: Record<string, unknown> = { type: str(values.type) ?? 'todo', title: title.trim(), source: { kind: 'manual', by: 'agent' } };
+    if (str(values.body) !== undefined) body.body = str(values.body);
+    if (str(values.why) !== undefined) body.why = str(values.why);
+    if (due) body.fields = { due };
+    if (str(values.vault)) body.vaultPath = path.resolve(io.cwd, str(values.vault)!);
+    const client = await api(out);
+    const item = await client.request<ActionItem>('POST', '/v1/actions', body);
+    out.result(item, () => `Added ${item.type === 'todo' ? 'to-do' : item.type} ${item.id}: ${item.title}\nComplete, send or remove it in the Distill app (Actions).\n`);
+    return 0;
+  }
+  throw usageError(sub ? `unknown actions command "${sub}" (use "actions list" or "actions add")` : 'usage: distill actions list | add "<title>"');
 }
 
 // ───────────────────────────── status ─────────────────────────────

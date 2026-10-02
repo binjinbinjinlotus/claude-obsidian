@@ -126,6 +126,16 @@ built; the client UI follows the canvas.
   (`deleteConversation`). **Clear now** = `deleteConversation` on each
   non-pinned conversation.
 
+## Actions in answers (core built)
+
+After each answer, when Settings → Actions → Ask answers detects anything,
+the core looks for actions in that turn in the background: `ask` returns
+first, then `progress` (`actions:<conversationID>`, kind `actions`) and
+`action` events follow. Items have source `{kind: "ask", conversationID,
+question, quote, citedPaths}`; dismissed ones are not suggested again in the
+same chat. `POST /v1/conversations/:id/actions/detect` runs it by hand. See
+[Actions](actions.md).
+
 ## macOS client (built)
 
 Code: `clients/macos/Sources/Distill/AskView.swift`, `AskParts.swift`,

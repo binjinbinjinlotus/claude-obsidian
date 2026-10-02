@@ -34,7 +34,7 @@ Every runner except Claude Code is off until its id is in
 | `RunRequest` | Runner-neutral turn: cwd, prompt, start/resume session, `ModelSelection`, permission rules (Claude Code syntax), readable dirs, plugin dir, output schema, system prompt, env. |
 | `RunResult` | Runner-neutral result: session id, text, error flag, cost, structured output, permission denials, raw bytes. |
 | `ModelSelection` | `runnerID` + `model` + optional `effort`. "Choosing a model" always means choosing all three. |
-| `AITask` | `ingest`, `ask`, `labelSuggest`, `imageText`. Each declares `requiredCapabilities`. |
+| `AITask` | `ingest`, `ask`, `labelSuggest`, `imageText`, `actionFind`, `actionDraft`, `actionImprove`. Each declares `requiredCapabilities`. |
 | `RunnerCapabilities` | `agentTools`, `toolPermissions`, `sandboxedWrites`, `sessionResume`, `structuredOutput`, `effort`, `vision`. |
 
 ## Rules
@@ -68,7 +68,13 @@ Stored in `settings.json`:
   effort for `imageText` ("Text from images": Extract content on an image,
   `extractImageText`; Claude Code gets only `Read` on a copy of the image in an
   empty scratch directory, model APIs get the image attached).
-- `SetupValidator` checks every runner that some task is set to use.
+- `actionFind`, `actionDraft`, `actionImprove` (v3, [Actions](actions.md)):
+  Claude Code · Sonnet by default; any runner with `structuredOutput` can do
+  them. They run with no tools in an empty scratch directory. Per-type and
+  finding models in `actionPreferences` take precedence over `taskDefaults`.
+- `SetupValidator` checks every runner that some task is set to use, except
+  the action tasks: they never block batching (a broken runner shows as a
+  failed "Finding actions" step).
 
 ## Claude Code runner
 
