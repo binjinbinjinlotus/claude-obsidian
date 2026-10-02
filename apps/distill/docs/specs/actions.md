@@ -235,8 +235,9 @@ fields}`; improve: `{body}`); a JSON object in the text is the fallback.
   two actions ("I'll book the room and tell Mei": a to-do and a message).
 - Confirm on → `pending`. Confirm off → `open` (to-do), or `open` and a
   background draft → `ready` (types with `draftWhen: onFind`). Undo for those:
-  `dismissActions` on items untouched since found (only found / drafted
-  events) → `dismissed`, no History entry.
+  `dismissActions` on items untouched since found (only found / drafted /
+  confirmed events, plus confirm's to-do fallback) → `dismissed`, no History
+  entry. The same call is the Undo of "Add all" in the Ask block.
 
 ### Lifecycle rules
 

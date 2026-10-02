@@ -604,6 +604,13 @@ describe('actions from Ask answers', () => {
     const again = await h.service.detectAskActions('conv-1');
     assert.deepEqual(again.map((i) => i.type), ['todo'], 'the open to-do is returned as "already there"; the dismissed one is not');
     assert.equal((await h.service.listActions({ status: ['pending', 'dismissed'] })).length, 2, 'nothing new added');
+
+    // Undo of "Add all": confirmed but untouched items are dismissed, with no History entry.
+    const [todo] = await h.service.confirmActions([again[0]!.id]);
+    assert.equal(todo!.status, 'open');
+    await h.service.dismissActions([todo!.id]);
+    assert.equal((await h.service.getAction(todo!.id))!.status, 'dismissed');
+    assert.equal((await h.service.listActions({ history: true })).some((i) => i.id === todo!.id), false);
   });
 
   test('reads the turn of the answer it was called for, even after a follow-up was saved', async () => {

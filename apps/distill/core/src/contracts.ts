@@ -875,7 +875,8 @@ export interface DistillCore {
   confirmActions(ids: string[]): Promise<ActionItem[]>;
   /**
    * Dismiss found items (pending → dismissed). Also Undo for items added without confirmation:
-   * an item still untouched since it was found (only found/drafted events) → dismissed, no History entry.
+   * an item still untouched since it was found (only found/drafted/confirmed events, plus confirm's
+   * to-do fallback) → dismissed, no History entry. This is also the Undo of "Add all".
    */
   dismissActions(ids: string[]): Promise<void>;
   /** Write the draft now ("Create message"). progress key: action:<id>. */

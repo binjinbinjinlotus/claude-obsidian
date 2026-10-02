@@ -17,6 +17,10 @@ supersede it with a new entry.
 
 ## 2026-10-02
 
+- **Undo of "Add all" dismisses:** confirmed items still untouched since they
+  were found count as untouched, so `dismissActions` drops them with no
+  History entry (ActionsAsk frame 7) instead of the client falling back to
+  remove. → [actions](actions.md)
 - **Settings as built (mac-settings):** search lists results by section and
   opens them (it does not filter the controls in place); To-do defaults has
   only the stored settings (group, sort, retention incl. Forever, overdue
