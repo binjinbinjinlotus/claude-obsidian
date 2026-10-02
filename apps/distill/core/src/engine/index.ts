@@ -62,7 +62,7 @@ import {
   type ParsedStatus,
   type SourceLabels,
 } from './job-kinds.js';
-import { CoreError } from './errors.js';
+import { CoreError, notImplemented } from './errors.js';
 import { noteFileFor, readManifest, validateNote, writeManifest, writeNote, type NoteLabelState } from './notes.js';
 import { draftBatchLabels } from '../labels/batch.js';
 import { bodyOf, parseFrontmatter, scalarValue, setLabelProperties } from '../labels/frontmatter.js';
