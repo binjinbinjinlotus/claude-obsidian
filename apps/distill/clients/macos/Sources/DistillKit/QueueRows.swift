@@ -102,6 +102,7 @@ public enum QueueRows {
         let origin = origin(entry)
         let when = "\(origin.verb) at \(clock(entry.modified, now: now, locale: locale, timeZone: timeZone))"
         if origin == .note, entry.name.hasSuffix(".md") { return "Written note · " + when }
+        guard entry.size > 0 else { return when }
         let size = ByteCountFormatter.string(fromByteCount: Int64(entry.size), countStyle: .file)
         return "\(when) · \(size)"
     }

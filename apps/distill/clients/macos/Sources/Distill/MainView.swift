@@ -217,43 +217,64 @@ struct QueueView: View {
         }
     }
 
+    /// Title, schedule, the add-mode switch and Process now. When the row is too
+    /// narrow (a 900 pt window, a long "3 in this batch · 2 waiting"), the
+    /// switch and the button move under the title instead of squeezing it.
     private var header: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                if engine.isStarting {
-                    Shimmer(width: 320, height: 30, radius: 10).padding(.vertical, 4)
-                    Shimmer(width: 220, height: 12)
-                } else {
-                    Text(title).font(Theme.display(32))
-                    scheduleLine.font(Theme.body(15)).foregroundStyle(Theme.muted)
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 16) {
+                titleBlock.fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 0)
+                headerControls
             }
-            Spacer()
-            AddModeSwitch(mode: $addMode)
-            if engine.isProcessing {
-                ProcessingButton()
-            } else {
-                PrimaryButton(title: "Process now", systemImage: "play.fill") { engine.processNowTracked() }
-                    .disabled(engine.queued.isEmpty || engine.isStarting)
-                    .opacity(engine.queued.isEmpty || engine.isStarting ? 0.5 : 1)
+            VStack(alignment: .leading, spacing: 16) {
+                titleBlock
+                HStack(spacing: 12) { headerControls }
             }
         }
     }
 
+    private var titleBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if engine.isStarting {
+                Shimmer(width: 320, height: 30, radius: 10).padding(.vertical, 4)
+                Shimmer(width: 220, height: 12)
+            } else {
+                Text(title).font(Theme.display(32)).lineLimit(2)
+                scheduleLine.font(Theme.body(15)).foregroundStyle(Theme.muted).lineLimit(1)
+            }
+        }
+    }
+
+    @ViewBuilder private var headerControls: some View {
+        AddModeSwitch(mode: $addMode)
+        if engine.isProcessing {
+            ProcessingButton().fixedSize()
+        } else {
+            PrimaryButton(title: "Process now", systemImage: "play.fill") { engine.processNowTracked() }
+                .fixedSize()
+                .disabled(rows.isEmpty || engine.isStarting)
+                .opacity(rows.isEmpty || engine.isStarting ? 0.5 : 1)
+        }
+    }
+
+    /// Queue rows to show (a note's .distill.json sidecar is hidden).
+    private var rows: [QueueEntry] { QueueRows.visible(engine.queued) }
+
     private var title: String {
         if let batch = engine.runningBatch {
-            let waiting = engine.queued.count
-            return "\(batch.files.count) in this batch" + (waiting > 0 ? " · \(waiting) waiting" : "")
+            let inBatch = batch.files.filter { !$0.hasSuffix(QueueRows.manifestSuffix) }.count
+            let waiting = rows.count
+            return "\(inBatch) in this batch" + (waiting > 0 ? " · \(waiting) waiting" : "")
         }
-        switch engine.queued.count {
+        switch rows.count {
         case 0: return "All caught up"
         case 1: return "1 source in the queue"
-        default: return "\(engine.queued.count) sources in the queue"
+        default: return "\(rows.count) sources in the queue"
         }
     }
 
     @ViewBuilder private var scheduleLine: some View {
-        let every = "every \(BatchInterval(totalMinutes: engine.settings.batchIntervalMinutes).description)"
         if engine.runningBatch != nil {
             Text("New drops wait for the next batch")
         } else if let holder = engine.jobs.first(where: { $0.vaultPath == engine.activeVault?.path && $0.state.holdsVault }) {
@@ -265,7 +286,10 @@ struct QueueView: View {
         } else if !engine.settings.autoProcessEnabled {
             Text("Automatic batching is off")
         } else if let next = engine.nextBatchAt {
-            Text("Next batch \(Text(next, style: .relative).bold().foregroundColor(Theme.ink)) · \(every)")
+            // A clock time: it changes only when the schedule does.
+            let clock = QueueRows.clock(next)
+            let every = BatchInterval(totalMinutes: engine.settings.batchIntervalMinutes).phrase
+            Text("Next batch at \(Text(clock).fontWeight(.semibold).foregroundColor(Theme.ink)) · every \(every)")
         }
     }
 
@@ -294,50 +318,39 @@ struct QueueView: View {
     private var fileList: some View {
         VStack(spacing: 4) {
             if let batch = engine.runningBatch {
-                ForEach(batch.files, id: \.self) { file in
-                    let name = (file as NSString).lastPathComponent
-                    let style = FileStyle.tile(for: name)
-                    HStack(spacing: 14) {
-                        Tile(text: style.0, fill: style.1, ink: style.2)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(name).font(Theme.body(14, .semibold)).lineLimit(1)
-                            Text((file as NSString).deletingLastPathComponent).font(Theme.body(12)).foregroundStyle(Theme.muted)
-                        }
-                        Spacer()
-                        Text("In batch").font(Theme.body(12)).foregroundStyle(Theme.muted)
-                    }
-                    .padding(.horizontal, 14).padding(.vertical, 10)
+                ForEach(batch.files.filter { !$0.hasSuffix(QueueRows.manifestSuffix) }, id: \.self) { file in
+                    let entry = Self.batchEntry(file, vaultPath: batch.vaultPath)
+                    QueueRowView(title: QueueRows.title(entry), meta: QueueRows.meta(entry), tileName: entry.name,
+                                 status: .inBatch, help: QueueRows.pillHelp(.inBatch, settleSeconds: engine.settings.settleSeconds),
+                                 noteTile: entry.kind == .note && entry.name.hasSuffix(".md"),
+                                 onReveal: { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) })
                 }
             }
-            ForEach(engine.queued, id: \.url) { entry in
-                let style = FileStyle.tile(for: entry.url.lastPathComponent)
-                HStack(spacing: 14) {
-                    Tile(text: style.0, fill: style.1, ink: style.2)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(entry.url.lastPathComponent).font(Theme.body(14, .semibold)).lineLimit(1)
-                        Text("\(Text(entry.modified, style: .relative)) ago · \(ByteCountFormatter.string(fromByteCount: Int64(entry.size), countStyle: .file))")
-                            .font(Theme.body(12)).foregroundStyle(Theme.muted)
-                    }
-                    Spacer()
-                    Text(engine.runningBatch != nil ? "Next batch" : (entry.settled ? "Ready" : "Settling…"))
-                        .font(Theme.body(12)).foregroundStyle(Theme.muted)
-                    Button { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) } label: {
-                        Image(systemName: "magnifyingglass").foregroundStyle(Theme.faint)
-                    }
-                    .buttonStyle(.plain).help("Show in Finder")
-                    Button { engine.removeFromQueue(entry) } label: {
-                        Image(systemName: "xmark").foregroundStyle(Theme.faint)
-                    }
-                    .buttonStyle(.plain).help("Remove from queue (moves to Trash)")
-                }
-                .padding(.horizontal, 14).padding(.vertical, 10)
+            ForEach(rows) { entry in
+                let status = QueueRows.status(entry, batchRunning: engine.runningBatch != nil)
+                QueueRowView(title: QueueRows.title(entry), meta: QueueRows.meta(entry), tileName: entry.name, status: status,
+                             help: QueueRows.pillHelp(status, settleSeconds: engine.settings.settleSeconds),
+                             noteTile: entry.kind == .note && entry.name.hasSuffix(".md"),
+                             onRemove: { engine.removeFromQueue(entry) },
+                             onReveal: { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) })
             }
-            if engine.queued.isEmpty && engine.runningBatch == nil {
+            if rows.isEmpty && engine.runningBatch == nil {
                 Text("Nothing waiting. New files will show up here.")
                     .font(Theme.body(13)).foregroundStyle(Theme.faint)
                     .frame(maxWidth: .infinity).padding(.vertical, 20)
             }
         }
+    }
+
+    /// A file a running batch took (`inbox/...` in the vault), described like a queue entry.
+    static func batchEntry(_ file: String, vaultPath: String) -> QueueEntry {
+        let url = URL(fileURLWithPath: vaultPath).appendingPathComponent(file)
+        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        let stem = url.deletingPathExtension().lastPathComponent
+        let manifest = url.deletingLastPathComponent().appendingPathComponent(stem + QueueRows.manifestSuffix)
+        let isNote = url.pathExtension == "md" && FileManager.default.fileExists(atPath: manifest.path)
+        return QueueEntry(path: url.path, modified: values?.contentModificationDate ?? Date(), size: values?.fileSize ?? 0,
+                          settled: true, kind: isNote ? .note : .file)
     }
 
     private func chooseFiles() {

@@ -37,6 +37,7 @@ enum Snapshot {
         }.padding(20).background(Color(hex: 0xEAE8E3)), size: CGSize(width: 260, height: 130), to: outDir.appendingPathComponent("floating.png"))
         NotesSnapshot.run(engine: engine, outDir: outDir) // Snapshot+Notes.swift (replaces settings.png with the full window)
         renderV3(engine: engine, size: size, outDir: outDir)
+        WindowsSnapshot.run(engine: engine, outDir: outDir) // Snapshot+Windows.swift: quick windows, compose sizing, queue rows
         exit(0)
     }
 

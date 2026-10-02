@@ -65,22 +65,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     /// Click on the flask: reopens a quick answer still on its way (green ring), else the app.
     private func flaskClicked() {
-        if engine.ask.quickInBackground { showQuickAsk() } else { showMainWindow() }
+        if engine.ask.quickInBackground { quickAsk?.show(near: flaskFrame) } else { showMainWindow() }
     }
 
     private func hoverMenu(_ action: HoverMenuController.Action) {
         switch action {
-        case .ask: showQuickAsk()
-        case .addNote: NotificationCenter.default.post(name: Self.openQuickNote, object: nil)
+        case .ask: quickAsk?.show(near: flaskFrame) // from the flask: open on its screen
+        case .addNote: QuickNoteController.anchor = flaskFrame; NotificationCenter.default.post(name: Self.openQuickNote, object: nil)
         case .paste: pasteIntoQueue()
         case .open: showMainWindow()
         }
     }
 
-    @objc func showQuickAsk() {
-        let anchor = floatingIcon?.isVisible == true ? floatingIcon?.frame : nil
-        quickAsk?.show(near: anchor)
-    }
+    /// Shortcuts and the Window menu: open on the screen with the pointer.
+    @objc func showQuickAsk() { quickAsk?.show(near: nil) }
+
+    private var flaskFrame: NSRect? { floatingIcon?.isVisible == true ? floatingIcon?.frame : nil }
 
     // MARK: Windows
 
