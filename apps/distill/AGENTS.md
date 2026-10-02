@@ -39,12 +39,15 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Labels and sources](docs/specs/labels-and-sources.md) | built |
 | [Quick actions and shortcuts](docs/specs/quick-actions.md) | built |
 | [App icon](docs/specs/app-icon.md) | built |
+| [Actions](docs/specs/actions.md) | built (core, API, CLI; macOS UI designed) |
 
 ## Layout
 
 - `core/src/contracts.ts`: the shared contract every layer builds against (lead-owned).
 - `core/src/engine/`: queue, batches, jobs, approval state machine, notes, progress.
 - `core/src/ask/`, `core/src/labels/`: Ask (filters, history, cancel) and labels.
+- `core/src/actions/`: actions (registry of types and handlers, actions.json,
+  finding, drafts) and connections (Atlassian).
 - `core/src/runners/`: AI backends behind `AgentRunner` (Claude Code, Codex,
   OpenAI, OpenRouter, Vercel AI SDK) and Keychain secrets.
 - `core/src/store/`: settings.json / jobs.json; `core/src/server/`: the local

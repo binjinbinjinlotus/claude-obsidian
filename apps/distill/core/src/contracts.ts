@@ -576,8 +576,14 @@ export type ActionStatus = 'pending' | 'open' | 'drafting' | 'ready' | 'creating
 
 export type ActionSource =
   | { kind: 'note'; jobID?: string | null; notePath?: string | null; pageTitle?: string | null; quote?: string | null }
-  | { kind: 'ask'; conversationID: string; question?: string | null; quote?: string | null; citedPaths?: string[] }
-  | { kind: 'manual' };
+  | {
+      kind: 'ask'; conversationID: string; question?: string | null; quote?: string | null; citedPaths?: string[];
+      /** Which turn of the chat it came from (0-based). */
+      turnIndex?: number | null;
+      /** It came from the answer's gap (what the vault didn't cover): clients then hide that Gap callout. */
+      gap?: boolean;
+    }
+  | { kind: 'manual'; /** Who added it: the user in the app (default) or an agent through the CLI/API. */ by?: 'user' | 'agent' };
 
 export interface ActionError {
   /** not_connected / auth_expired → show "Sign in"; refused → `field` is the bad field; unreachable; ai_failed. */

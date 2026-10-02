@@ -403,6 +403,34 @@ describe('distill CLI', () => {
     });
   });
 
+  describe('actions', () => {
+    it('list: human and --json, with --type and --history', async () => {
+      const r = await cli(['actions', 'list']);
+      assert.equal(r.code, 0, r.stderr);
+      assert.match(r.stdout, /act-1 {2}todo {2}to confirm {2}Book the tasting room for Saturday {2}due 2026-10-04 {2}\(wiki\/sources\/tea.md\)/);
+      const j = await cli(['actions', 'list', '--type', 'todo', '--history', '--json']);
+      assert.equal(j.code, 0);
+      assert.equal(JSON.parse(j.stdout).actions[0].id, 'act-1');
+      assert.deepEqual(lastCall('listActions')?.args[0], { type: 'todo', history: true });
+    });
+    it('add: a to-do by hand (source manual); no confirm command exists', async () => {
+      const r = await cli(['actions', 'add', 'Order tasting cups', '--due', '2026-10-09', '--why', 'Club on Saturday', '--json']);
+      assert.equal(r.code, 0, r.stderr);
+      const item = JSON.parse(r.stdout);
+      assert.equal(item.title, 'Order tasting cups');
+      assert.deepEqual(lastCall('createAction')?.args[0], { type: 'todo', title: 'Order tasting cups', source: { kind: 'manual', by: 'agent' }, why: 'Club on Saturday', fields: { due: '2026-10-09' } });
+      const human = await cli(['actions', 'add', 'Ping Mei', '--type', 'slack']);
+      assert.match(human.stdout, /^Added slack act-\d+: Ping Mei\n/);
+      assert.equal((await cli(['actions', 'add'])).code, 2);
+      assert.equal((await cli(['actions', 'add', 'x', '--due', 'friday'])).code, 2);
+      assert.equal((await cli(['actions', 'confirm', 'act-1'])).code, 2);
+      assert.equal((await cli(['actions'])).code, 2);
+      const help = await cli(['--help']);
+      assert.ok(help.stdout.includes('distill actions list'));
+      assert.ok(help.stdout.includes('no command to confirm, complete, send or create actions'));
+    });
+  });
+
   describe('status', () => {
     it('--json includes StatusResponse and the server lock', async () => {
       const r = await cli(['status', '--json']);
