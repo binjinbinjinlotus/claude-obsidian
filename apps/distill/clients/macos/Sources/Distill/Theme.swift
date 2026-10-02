@@ -230,3 +230,27 @@ struct Scrolling<Content: View>: View {
         }
     }
 }
+
+/// A chat-style scroll area: short content starts at the top (as on the
+/// canvas), long content opens at its latest part (bottom anchor). The
+/// content is at least as tall as the viewport, so the bottom anchor never
+/// pushes a short thread down.
+struct ChatScrolling<Content: View>: View {
+    @Environment(\.snapshotMode) private var snapshot
+    /// false: open at the top even when the content is taller (an empty chat's intro).
+    var followsEnd = true
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        if snapshot {
+            VStack(spacing: 0) { content; Spacer(minLength: 0) }
+        } else {
+            GeometryReader { geo in
+                ScrollView {
+                    content.frame(minHeight: geo.size.height, alignment: .top)
+                }
+                .defaultScrollAnchor(followsEnd ? .bottom : .top)
+            }
+        }
+    }
+}

@@ -670,6 +670,19 @@ struct JobDetailView: View {
     @ViewBuilder
     private func content(_ job: Job) -> some View {
         let changes = changeList(job)
+        // What needs the user (plan error, questions, blocked tools with
+        // "Allow & continue") comes first, so it is visible without scrolling
+        // even at the 900 × 600 minimum window.
+        if let approval = job.approval, job.state == .awaitingApproval {
+            if let error = approval.planError {
+                Callout(icon: "exclamationmark.triangle", title: "Can't apply this plan yet", text: error)
+            }
+            if !approval.questions.isEmpty {
+                Callout(icon: "questionmark.bubble", title: "Claude has questions",
+                        text: approval.questions.map { "• \($0)" }.joined(separator: "\n"))
+            }
+            if !approval.denials.isEmpty { blocked(job, approval) }
+        }
         if job.state == .running {
             BatchBanner(job: job, showsCancel: false)
         }
@@ -704,16 +717,6 @@ struct JobDetailView: View {
                     .buttonStyle(.plain)
                 }
             }
-        }
-        if let approval = job.approval, job.state == .awaitingApproval {
-            if let error = approval.planError {
-                Callout(icon: "exclamationmark.triangle", title: "Can't apply this plan yet", text: error)
-            }
-            if !approval.questions.isEmpty {
-                Callout(icon: "questionmark.bubble", title: "Claude has questions",
-                        text: approval.questions.map { "• \($0)" }.joined(separator: "\n"))
-            }
-            if !approval.denials.isEmpty { blocked(job, approval) }
         }
         DisclosureGroup("Inputs (\(job.files.count))") {
             ForEach(job.files, id: \.self) { file in
@@ -774,7 +777,7 @@ struct JobDetailView: View {
                 .help("Open this session in Terminal")
                 .disabled(job.state == .running)
             }
-            Scrolling {
+            ChatScrolling {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(job.turns) { turn in
                         VStack(alignment: .leading, spacing: 4) {
@@ -789,7 +792,6 @@ struct JobDetailView: View {
                     }
                 }
             }
-            .defaultScrollAnchor(.bottom)
             if canReply(job) {
                 Text("Reply to Claude").font(Theme.body(12, .semibold)).foregroundStyle(Theme.muted)
                 ReplyEditor(text: $reply)

@@ -25,6 +25,18 @@ final class MarkdownTextView: NSTextView {
 
     override func pasteAsRichText(_ sender: Any?) { paste(sender) }
 
+    /// Redraw the whole view when the text turns empty or stops being empty:
+    /// a partial redraw (only the edited glyphs) would leave the placeholder
+    /// half drawn or missing.
+    private var drewEmpty = true
+    override func didChangeText() {
+        super.didChangeText()
+        if string.isEmpty != drewEmpty {
+            drewEmpty = string.isEmpty
+            needsDisplay = true
+        }
+    }
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if window?.firstResponder === self, isEditable, controller?.handleKeyEquivalent(event) == true { return true }
         return super.performKeyEquivalent(with: event)
