@@ -1,4 +1,5 @@
 #!/usr/bin/env node
-// OWNER: server-cli teammate. Replace this stub with the `distill` CLI.
-console.error('distill: not implemented');
-process.exit(1);
+import { run } from './cli.js';
+
+const code = await run(process.argv.slice(2));
+process.exitCode = code;
