@@ -43,6 +43,8 @@ final class AskThread: ObservableObject {
     /// The id the in-flight turn uses (client-chosen for a new chat, so Stop works early).
     var inFlightID: String?
     var task: Task<Void, Never>?
+    /// Identifies the run this thread shows; a run moved to the background keeps its token.
+    var runToken: UUID?
     var stopRequested = false
     /// Set when "Continue in Distill" moved this chat to the Ask screen.
     var handedOff = false
@@ -56,6 +58,7 @@ final class AskThread: ObservableObject {
     func reset(filter: AskFilter) {
         task?.cancel()
         task = nil
+        runToken = nil
         conversationID = nil
         entries = []
         pending = nil
@@ -68,12 +71,36 @@ final class AskThread: ObservableObject {
     }
 }
 
+/// A question still being answered after its window moved on (New chat, another
+/// chat opened, Continue in Distill). It is never stopped for that: it finishes,
+/// is saved to History, and can be reopened while it runs.
+struct BackgroundAsk: Identifiable {
+    /// The conversation id the run uses (client-chosen for a new chat).
+    let id: String
+    let token: UUID
+    var pending: PendingQuestion
+    /// The chat has no saved turns yet (its first question is the one running).
+    let isNew: Bool
+    let task: Task<Void, Never>?
+}
+
+enum BackgroundAskText {
+    /// "Asked today at 3:40 PM · answering…" — a fixed time, never a counter.
+    static func meta(_ run: BackgroundAsk, now: Date = Date()) -> String {
+        let asked = HistoryTime.asked(run.pending.startedAt, now: now)
+        if case .failed(let message) = run.pending.status { return "\(asked) · couldn't answer: \(message)" }
+        return "\(asked) · answering…"
+    }
+}
+
 /// Ask chats for the whole app: history, runners and labels for the pickers,
 /// the Ask screen's thread and the quick ask window's thread.
 @MainActor
 final class AskModel: ObservableObject {
     unowned let engine: AppModel
     @Published var conversations: [AskConversationSummary] = []
+    /// Questions still answering after their window moved on, by conversation id (History shows them).
+    @Published var background: [String: BackgroundAsk] = [:]
     @Published var runners: [RunnerInfo] = []
     @Published var labels: [LabelCount] = []
     /// Bumped to ask the main window to show the Ask screen.
@@ -181,26 +208,79 @@ final class AskModel: ObservableObject {
         let started = Date()
         thread.pending = PendingQuestion(question: question, startedAt: started, request: request, status: .running)
         if thread === quick { quickUnseen = false }
-        thread.task = Task { [weak self, weak thread] in
+        let token = UUID()
+        thread.runToken = token
+        thread.task = Task { [weak self] in
+            let result: Result<AskResponse, Error>
             do {
-                let response = isNew ? try await client.askNewChat(request) : try await client.ask(request)
-                guard let self, let thread, !thread.stopRequested else { return }
-                thread.conversationID = response.conversationID
-                thread.inFlightID = nil
-                if let s = response.selection { thread.selection = s }
-                var applied = request
-                applied.conversationID = response.conversationID
-                thread.entries.append(AskEntry(question: question, askedAt: started, request: applied, response: response,
-                                               duration: Date().timeIntervalSince(started)))
-                thread.pending = nil
-                if thread === self.quick, !self.quickVisible { self.quickUnseen = true }
+                result = .success(isNew ? try await client.askNewChat(request) : try await client.ask(request))
             } catch {
-                guard let thread, !thread.stopRequested else { return }
-                thread.inFlightID = nil
-                thread.pending?.status = .failed(Self.message(for: error))
+                result = .failure(error)
             }
+            self?.finish(token: token, conversationID: id, result: result)
         }
     }
+
+    /// A run ended: it lands in whichever thread shows it now, else in History.
+    private func finish(token: UUID, conversationID id: String, result: Result<AskResponse, Error>) {
+        if let thread = [main, quick].first(where: { $0.runToken == token }) {
+            guard !thread.stopRequested, let pending = thread.pending else { return }
+            thread.runToken = nil
+            thread.inFlightID = nil
+            thread.task = nil
+            switch result {
+            case .success(let response):
+                thread.conversationID = response.conversationID
+                if let s = response.selection { thread.selection = s }
+                var applied = pending.request
+                applied.conversationID = response.conversationID
+                thread.entries.append(AskEntry(question: pending.question, askedAt: pending.startedAt, request: applied,
+                                               response: response, duration: Date().timeIntervalSince(pending.startedAt)))
+                thread.pending = nil
+                if thread === quick, !quickVisible { quickUnseen = true }
+            case .failure(let error):
+                thread.pending?.status = .failed(Self.message(for: error))
+            }
+            return
+        }
+        guard var run = background[id], run.token == token else { return }
+        switch result {
+        case .success:
+            background[id] = nil
+            refresh() // the core's conversation event usually arrives first; this covers a missed one
+        case .failure(let error):
+            run.pending.status = .failed(Self.message(for: error))
+            background[id] = run
+        }
+    }
+
+    /// Moves the thread's running question to the background without stopping it.
+    private func detach(_ thread: AskThread) {
+        guard thread.isRunning, let id = thread.inFlightID, let token = thread.runToken, let pending = thread.pending else { return }
+        background[id] = BackgroundAsk(id: id, token: token, pending: pending, isNew: thread.conversationID == nil,
+                                       task: thread.task)
+        thread.task = nil // reset() must not cancel it
+        thread.runToken = nil
+        thread.inFlightID = nil
+        thread.pending = nil
+    }
+
+    /// New chats still answering in the background (not in History yet), newest first.
+    var backgroundNew: [BackgroundAsk] {
+        background.values.filter { run in run.isNew && !conversations.contains { $0.id == run.id } }
+            .sorted { $0.pending.startedAt > $1.pending.startedAt }
+    }
+
+    /// Stops a question that is answering in the background (History's Stop).
+    func stopBackground(_ id: String) {
+        guard let run = background[id] else { return }
+        run.task?.cancel()
+        background[id] = nil
+        if let client = engine.client { Task { try? await client.cancelAsk(conversationID: id) } }
+    }
+
+    /// Dismisses a failed background question.
+    func dismissBackground(_ id: String) { background[id] = nil }
 
     /// Stop: cancels the request here (so the UI frees up even on a core
     /// without `cancelAsk`) and asks the core to stop the run.
@@ -209,6 +289,7 @@ final class AskModel: ObservableObject {
         thread.stopRequested = true
         thread.task?.cancel()
         thread.task = nil
+        thread.runToken = nil
         thread.pending?.status = .stopped
         if let id = thread.inFlightID, let client = engine.client {
             Task { try? await client.cancelAsk(conversationID: id) }
@@ -224,9 +305,10 @@ final class AskModel: ObservableObject {
     }
 
     /// New chat: leaves the current one (deleted when Keep history is off) and starts empty.
+    /// A question still answering keeps going in the background and lands in History.
     func newChat(_ thread: AskThread) {
         leave(thread)
-        if thread.isRunning { stop(thread) }
+        detach(thread)
         thread.reset(filter: AskFilter(preferences: preferences))
     }
 
@@ -251,11 +333,22 @@ final class AskModel: ObservableObject {
     /// Opens a stored chat on the Ask screen.
     func open(conversationID id: String) {
         guard let client = engine.client else { return }
+        if main.conversationID == id, main.isRunning { showAskRequest += 1; return }
+        if quick.conversationID == id || quick.inFlightID == id, quick.isRunning { detach(quick); quick.reset(filter: AskFilter(preferences: preferences)) }
         if main.conversationID != id { leave(main) }
-        if main.isRunning { stop(main) }
+        detach(main)
         main.reset(filter: AskFilter(preferences: preferences))
-        main.conversationID = id
+        let run = background.removeValue(forKey: id)
+        if let run {
+            // Reattach: the answer keeps arriving here.
+            main.pending = run.pending
+            main.runToken = run.pending.status == .running ? run.token : nil
+            main.inFlightID = run.pending.status == .running ? id : nil
+            main.task = run.task
+        }
         showAskRequest += 1
+        if run?.isNew == true { return } // nothing saved yet: its first question is the one running
+        main.conversationID = id
         Task {
             do {
                 let conversation = try await client.conversation(id)
@@ -277,7 +370,7 @@ final class AskModel: ObservableObject {
     /// "Continue in Distill": the quick chat becomes the Ask screen's chat; a run in flight keeps going.
     func continueInMain() {
         if main.conversationID != quick.conversationID || main.conversationID == nil { leave(main) }
-        if main.isRunning { stop(main) }
+        detach(main)
         main = quick
         quick = AskThread(filter: AskFilter(preferences: preferences))
         observeQuick()

@@ -49,6 +49,9 @@ final class AppModel: ObservableObject {
         self.launcher = launcher
     }
 
+    /// Tests: talk to a stubbed core.
+    func useClientForTesting(_ client: CoreClient) { self.client = client }
+
     /// Fixture model for `--snapshot` (no core, nothing is sent anywhere).
     init(fixtureSettings: Settings, jobs: [Job], queue: [QueueEntry], status: StatusResponse?) {
         launcher = nil

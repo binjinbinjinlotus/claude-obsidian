@@ -120,11 +120,26 @@ struct RecentQuestions: View {
     @ObservedObject var ask: AskModel
 
     var body: some View {
-        let recent = ask.conversations.prefix(5)
-        if !recent.isEmpty {
+        let recent = ask.conversations.prefix(max(0, 5 - ask.backgroundNew.count))
+        if !recent.isEmpty || !ask.backgroundNew.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 Text("RECENT QUESTIONS").font(Theme.body(11, .bold)).foregroundStyle(Theme.faint).kerning(0.6)
                     .padding(.horizontal, 12).padding(.bottom, 4)
+                ForEach(ask.backgroundNew.prefix(5)) { run in
+                    Button { ask.open(conversationID: run.id) } label: {
+                        HStack(spacing: 6) {
+                            Text(run.pending.question).font(Theme.body(13)).foregroundStyle(Theme.softInk)
+                                .lineLimit(1).truncationMode(.tail)
+                            Spacer(minLength: 0)
+                            if run.pending.status == .running { Spinner(size: 10) }
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(run.pending.status == .running ? "Still answering — open it" : "Couldn't answer — open it")
+                }
                 ForEach(Array(recent)) { c in
                     Button { ask.open(conversationID: c.id) } label: {
                         Text(c.title).font(Theme.body(13)).foregroundStyle(c.id == ask.main.conversationID ? Theme.primary : Theme.softInk)
@@ -464,8 +479,49 @@ struct AskChatList: View {
     var openAsk: () -> Void
 
     var body: some View {
-        if ask.conversations.isEmpty {
+        if ask.conversations.isEmpty && ask.backgroundNew.isEmpty {
             Text("No Ask chats yet.").font(Theme.body(13)).foregroundStyle(Theme.faint).padding(.top, 8)
+        }
+        // A new chat still answering after you moved on: it is saved here when the answer lands.
+        ForEach(ask.backgroundNew) { run in
+            HStack(alignment: .top, spacing: 10) {
+                Group {
+                    if case .failed = run.pending.status {
+                        Image(systemName: "exclamationmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.peachInk)
+                    } else {
+                        Spinner(size: 12)
+                    }
+                }
+                .frame(width: 24, height: 24).background(Circle().fill(Theme.primaryTint))
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(run.pending.question).font(Theme.body(13, .semibold))
+                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if case .failed = run.pending.status {
+                            Button { ask.dismissBackground(run.id) } label: {
+                                Image(systemName: "xmark").font(.system(size: 10)).foregroundStyle(Theme.faint)
+                            }
+                            .buttonStyle(.plain).help("Dismiss")
+                        } else {
+                            Button { ask.stopBackground(run.id) } label: {
+                                Image(systemName: "stop.fill").font(.system(size: 10)).foregroundStyle(Theme.faint)
+                            }
+                            .buttonStyle(.plain).help("Stop this question")
+                        }
+                    }
+                    Text(BackgroundAskText.meta(run))
+                        .font(Theme.body(11)).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.tail)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                ask.open(conversationID: run.id)
+                openAsk()
+            }
+            .help("Open in Ask")
+            .accessibilityAddTraits(.isButton)
+            .padding(.horizontal, 12).padding(.vertical, 9)
         }
         ForEach(ask.conversations) { c in
             // Pin and delete sit beside the title so the meta line gets the full width.
@@ -487,7 +543,7 @@ struct AskChatList: View {
                         }
                         .buttonStyle(.plain).help("Delete this chat")
                     }
-                    Text("\(c.turnCount == 1 ? "1 question" : "\(c.turnCount) questions") · \(HistoryTime.asked(c.updatedAt))")
+                    Text("\(c.turnCount == 1 ? "1 question" : "\(c.turnCount) questions") · \(HistoryTime.asked(c.updatedAt))\(ask.background[c.id]?.pending.status == .running ? " · answering…" : "")")
                         .font(Theme.body(11)).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.tail)
                 }
             }
