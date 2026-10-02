@@ -43,6 +43,7 @@ import { uniqueDenials } from '../runners/permissions.js';
 import { isCancelled, runProcess, type ProcessOutput, type RunProcessOptions } from '../runners/process.js';
 import { defaultRegistry } from '../runners/registry.js';
 import { JobContext, jobKind, parseWorkerStatus, queueConsumer, WorkerProtocol, type ParsedStatus } from './job-kinds.js';
+import { CoreError } from './errors.js';
 import { writeNote } from './notes.js';
 import {
   claimFiles,
@@ -178,7 +179,7 @@ export function createEngine(opts: EngineOptions): Engine {
 
   function requireJob(id: string): Job {
     const job = findJob(id);
-    if (!job) throw new Error(`Unknown job ${id}.`);
+    if (!job) throw new CoreError('not_found', `Unknown job ${id}.`);
     return job;
   }
 
@@ -475,10 +476,10 @@ export function createEngine(opts: EngineOptions): Engine {
 
   async function approve(id: string): Promise<void> {
     const job = requireJob(id);
-    if (job.state !== 'awaitingApproval') throw new Error(`Job ${id} is not awaiting approval.`);
+    if (job.state !== 'awaitingApproval') throw new CoreError('invalid_state', `Job ${id} is not awaiting approval.`);
     const plan = job.approval?.plan;
     const bundle = job.approval?.bundlePath;
-    if (!plan || !plan.valid || !bundle) throw new Error(`Job ${id} has no valid plan to approve.`);
+    if (!plan || !plan.valid || !bundle) throw new CoreError('invalid_state', `Job ${id} has no valid plan to approve.`);
     const ctx = new JobContext(clone(job), vaultProfileFor(job), settings);
     // Only the exact approved command is permitted, and only for this turn.
     const applyRule = `Bash(${WorkerProtocol.applyCommand(ctx, plan, bundle)})`;
@@ -488,10 +489,10 @@ export function createEngine(opts: EngineOptions): Engine {
 
   async function reply(id: string, text: string): Promise<void> {
     const trimmed = text.trim();
-    if (!trimmed) throw new Error('Reply text is empty.');
+    if (!trimmed) throw new CoreError('invalid_request', 'Reply text is empty.');
     const job = requireJob(id);
-    if (job.state === 'running') throw new Error(`Job ${id} is running.`);
-    if (job.state !== 'awaitingApproval' && holdsOtherJob(job)) throw new Error('Another job holds this vault.');
+    if (job.state === 'running') throw new CoreError('busy', `Job ${id} is running.`);
+    if (job.state !== 'awaitingApproval' && holdsOtherJob(job)) throw new CoreError('busy', 'Another job holds this vault.');
     mutate(id, (j) => j.turns.push(newTurn('user', trimmed, now())));
     runTurn(id, WorkerProtocol.replyPrompt(trimmed));
   }
@@ -499,9 +500,9 @@ export function createEngine(opts: EngineOptions): Engine {
   /** Grants rules for previously denied calls for the rest of this job, then resumes. */
   async function allow(id: string, rules: string[]): Promise<void> {
     const clean = rules.map((r) => r.trim()).filter(Boolean);
-    if (clean.length === 0) throw new Error('No rules to allow.');
+    if (clean.length === 0) throw new CoreError('invalid_request', 'No rules to allow.');
     const job = requireJob(id);
-    if (job.state !== 'awaitingApproval') throw new Error(`Job ${id} is not awaiting approval.`);
+    if (job.state !== 'awaitingApproval') throw new CoreError('invalid_state', `Job ${id} is not awaiting approval.`);
     mutate(id, (j) => {
       j.grantedTools = [...new Set([...j.grantedTools, ...clean])].sort();
       j.turns.push(newTurn('user', 'Allowed:\n' + clean.map((r) => `- ${r}`).join('\n'), now()));
@@ -511,7 +512,7 @@ export function createEngine(opts: EngineOptions): Engine {
 
   async function reject(id: string): Promise<void> {
     const job = requireJob(id);
-    if (job.state !== 'awaitingApproval') throw new Error(`Job ${id} is not awaiting approval.`);
+    if (job.state !== 'awaitingApproval') throw new CoreError('invalid_state', `Job ${id} is not awaiting approval.`);
     mutate(id, (j) => {
       j.state = 'rejected';
       j.turns.push(newTurn('user', 'Rejected. Inbox files are kept; nothing was applied.', now()));
@@ -546,7 +547,7 @@ export function createEngine(opts: EngineOptions): Engine {
 
   async function addQueueFiles(files: string[]): Promise<QueueEntry[]> {
     const vault = activeVault(settings);
-    if (!vault) throw new Error('No vault selected.');
+    if (!vault) throw new CoreError('no_vault', 'No vault selected.');
     const copies = new Set(copyIntoQueue(files.map((f) => path.resolve(f)), vault.queueDirectory));
     refreshQueue();
     return queueEntries().filter((e) => copies.has(e.path));
@@ -556,7 +557,11 @@ export function createEngine(opts: EngineOptions): Engine {
     const vault = req.vaultPath
       ? settings.vaults.find((v) => path.resolve(v.path) === path.resolve(req.vaultPath as string))
       : activeVault(settings);
-    if (!vault) throw new Error(req.vaultPath ? `Unknown vault ${req.vaultPath}.` : 'No vault selected.');
+    if (!vault) {
+      throw req.vaultPath
+        ? new CoreError('invalid_request', `Unknown vault ${req.vaultPath}.`)
+        : new CoreError('no_vault', 'No vault selected.');
+    }
     const result = writeNote(req, vault, now());
     if (vault.path === activeVault(settings)?.path) refreshQueue();
     return result;

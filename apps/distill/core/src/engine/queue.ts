@@ -98,6 +98,8 @@ export function settledFiles(entries: ScanEntry[], settleSeconds: number, now: D
 }
 
 export function isSettled(e: ScanEntry, settleSeconds: number, now: Date): boolean {
+  // No delay means every file (an mtime can sit a fraction of a ms past Date.now()).
+  if (settleSeconds <= 0) return true;
   return (now.getTime() - e.modifiedMs) / 1000 >= settleSeconds;
 }
 

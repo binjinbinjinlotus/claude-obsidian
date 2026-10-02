@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { AddNoteRequest, AddNoteResult, NoteImage, VaultProfile } from '../contracts.js';
 import { encodeJSON } from '../store/json.js';
+import { CoreError } from './errors.js';
 import { NOTE_MANIFEST_SUFFIX } from './job-kinds.js';
 import { inboxDir } from './queue.js';
 
@@ -45,9 +46,9 @@ export function noteMarkdown(req: AddNoteRequest, now: Date): string {
   const lines = ['---', `title: ${yamlString(req.title.trim())}`];
   if (req.source) lines.push(`source_type: ${yamlString(req.source)}`);
   if (req.sourceRef) lines.push(`source_ref: ${yamlString(req.sourceRef)}`);
-  lines.push(`created: ${localDate(now)}`, '---', '');
+  lines.push(`created: ${localDate(now)}`, '---');
   const body = req.text.replace(/\s+$/, '');
-  return lines.join('\n') + (body ? body + '\n' : '');
+  return lines.join('\n') + '\n' + (body ? '\n' + body + '\n' : '');
 }
 
 /**
@@ -58,17 +59,17 @@ export function noteMarkdown(req: AddNoteRequest, now: Date): string {
  */
 export function writeNote(req: AddNoteRequest, vault: VaultProfile, now: Date): AddNoteResult {
   const title = req.title.trim();
-  if (!title) throw new Error('A note needs a title.');
+  if (!title) throw new CoreError('invalid_request', 'A note needs a title.');
   const images = (req.images ?? []).map((img) => ({ path: path.resolve(img.path), mode: img.mode === 'extract' ? 'extract' : 'keep' }) as NoteImage);
-  if (!req.text.trim() && images.length === 0) throw new Error('A note needs text or at least one image.');
+  if (!req.text.trim() && images.length === 0) throw new CoreError('invalid_request', 'A note needs text or at least one image.');
   for (const img of images) {
     let st: fs.Stats;
     try {
       st = fs.statSync(img.path);
     } catch {
-      throw new Error(`Image not found: ${img.path}`);
+      throw new CoreError('invalid_request', `Image not found: ${img.path}`);
     }
-    if (!st.isFile()) throw new Error(`Image is not a file: ${img.path}`);
+    if (!st.isFile()) throw new CoreError('invalid_request', `Image is not a file: ${img.path}`);
   }
 
   const queue = path.resolve(vault.queueDirectory);
