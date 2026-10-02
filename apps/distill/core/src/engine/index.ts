@@ -84,7 +84,8 @@ import {
   moveIntoDirNoOverwrite,
   pendingFiles,
   queueIsInbox,
-  settledFiles,
+  noteSetPaths,
+  readyFiles,
   toQueueEntry,
   type ScanEntry,
 } from './queue.js';
@@ -406,7 +407,8 @@ export function createEngine(opts: EngineOptions): Engine {
 
   function queueEntries(): QueueEntry[] {
     const t = now();
-    return queued.map((e) => toQueueEntry(e, settings.settleSeconds, t));
+    const notes = noteSetPaths(queued);
+    return queued.map((e) => toQueueEntry(e, settings.settleSeconds, t, notes));
   }
 
   function refreshQueue(): void {
@@ -612,7 +614,8 @@ export function createEngine(opts: EngineOptions): Engine {
     const vault = activeVault(settings);
     if (!vault) return null;
     const settle = o.force ? 0 : settings.settleSeconds;
-    const ready = settledFiles(pendingFiles(vault.queueDirectory), settle, now());
+    // Notes written by addNote skip the wait; files the core can't read stay behind.
+    const ready = readyFiles(pendingFiles(vault.queueDirectory), settle, now());
     if (ready.length === 0) return null;
     let files: string[];
     try {

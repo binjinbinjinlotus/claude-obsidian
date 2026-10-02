@@ -394,6 +394,59 @@ describe('engine state machine', () => {
     await h.engine.whenIdle();
   });
 
+  test('queue entries carry readyAt (a clock time), kind and problem', async () => {
+    h = setup([]);
+    await h.engine.updateSettings({ settleSeconds: 600 });
+    const file = path.join(h.queue, 'a.md');
+    fs.writeFileSync(file, '# A\n');
+    const modified = new Date(Math.floor(Date.now() / 1000) * 1000 - 60_000 + 250);
+    fs.utimesSync(file, modified, modified);
+    const expected = new Date(Math.floor(modified.getTime() / 1000) * 1000 + 601_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+    const entry = h.engine.listQueue()[0]!;
+    assert.equal(entry.kind, 'file');
+    assert.equal(entry.settled, false);
+    assert.equal(entry.readyAt, expected, 'modified + settle, rounded up to the second');
+    assert.equal(entry.problem, undefined);
+    fs.chmodSync(file, 0o000);
+    try {
+      const blocked = h.engine.listQueue()[0]!;
+      if (process.getuid?.() !== 0) assert.match(blocked.problem ?? '', /can't read/);
+    } finally {
+      fs.chmodSync(file, 0o644);
+    }
+    await h.engine.updateSettings({ settleSeconds: 0 });
+    const ready = h.engine.listQueue()[0]!;
+    assert.equal(ready.settled, true);
+    assert.equal(ready.readyAt, undefined, 'absent once ready');
+  });
+
+  test('notes skip the settle wait: the whole note set goes into the next batch', async () => {
+    h = setup([{ structured: { status: 'done', summary: 'ok' } }]);
+    await h.engine.updateSettings({ settleSeconds: 3600 });
+    const img = path.join(tmp, 'card.png');
+    fs.writeFileSync(img, 'PNGDATA');
+    await h.engine.addNote({ title: 'Gyokuro at 60 °C', text: 'Shop said 60 °C.', images: [{ path: img, mode: 'keep' }], suggest: 'none' });
+    fs.writeFileSync(path.join(h.queue, 'plain.md'), '# Plain\n');
+    const entries = h.engine.listQueue();
+    const byName = new Map(entries.map((e) => [e.name, e]));
+    for (const name of ['Gyokuro at 60 °C.md', 'Gyokuro at 60 °C.distill.json', 'Gyokuro at 60 °C image 1.png']) {
+      assert.equal(byName.get(name)?.kind, 'note', name);
+      assert.equal(byName.get(name)?.settled, true, name);
+      assert.equal(byName.get(name)?.readyAt, undefined, name);
+    }
+    assert.equal(byName.get('plain.md')?.kind, 'file');
+    assert.equal(byName.get('plain.md')?.settled, false);
+    assert.ok(byName.get('plain.md')?.readyAt);
+
+    const job = await h.engine.processQueue();
+    assert.ok(job, 'a scheduled (not forced) batch takes the note right away');
+    assert.deepEqual([...job.files].sort(), [
+      'inbox/Gyokuro at 60 °C image 1.png', 'inbox/Gyokuro at 60 °C.distill.json', 'inbox/Gyokuro at 60 °C.md',
+    ]);
+    assert.ok(fs.existsSync(path.join(h.queue, 'plain.md')), 'the plain file still waits');
+    await h.engine.whenIdle();
+  });
+
   test('scheduler: tick runs a batch once nextBatchAt passes', async () => {
     let clock = new Date('2026-10-01T12:00:00Z');
     h = setup([{ structured: { status: 'done', summary: 'ok' } }], { tickMs: 5, now: () => clock });
