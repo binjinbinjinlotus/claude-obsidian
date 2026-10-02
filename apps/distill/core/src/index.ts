@@ -2,6 +2,7 @@ import path from 'node:path';
 import type { DistillCore, StatePaths } from './contracts.js';
 import { createEngine, type EngineOptions } from './engine/index.js';
 import { createAskService } from './ask/index.js';
+import { createRunnerAdmin } from './runners/admin.js';
 import { statePaths } from './store/paths.js';
 
 export * from './contracts.js';
@@ -20,5 +21,15 @@ export function createCore(opts: CoreOptions = {}): DistillCore {
     runners: engine.runners,
     stateDir: path.join(paths.dir, 'ask'),
   });
-  return { ...engine, ask: (req) => ask.ask(req) };
+  const admin = createRunnerAdmin({ runners: engine.runners, getSettings: () => engine.getSettings() });
+  return {
+    ...engine,
+    ask: (req) => ask.ask(req),
+    listConversations: () => ask.listConversations(),
+    getConversation: (id) => ask.getConversation(id),
+    deleteConversation: (id) => ask.deleteConversation(id),
+    setConversationPinned: (id, pinned) => ask.setConversationPinned(id, pinned),
+    listRunners: () => admin.listRunners(),
+    setRunnerSecret: (id, name, value) => admin.setRunnerSecret(id, name, value),
+  };
 }

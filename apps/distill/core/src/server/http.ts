@@ -220,6 +220,7 @@ function coreErrorStatus(err: unknown, untyped?: { status: number; code: string 
     invalid_state: 409,
     no_vault: 409,
     not_implemented: 501,
+    not_implemented: 501,
   };
   if (code && byCode[code] !== undefined) return { status: byCode[code]!, code, message };
   // A plain Error (no code/status) from a route whose core call throws for precondition failures.

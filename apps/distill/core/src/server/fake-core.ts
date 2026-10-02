@@ -1,3 +1,4 @@
+import { notImplemented } from '../contracts.js';
 import type {
   AddNoteRequest,
   AddNoteResult,
@@ -119,7 +120,7 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
     async addNote(req: AddNoteRequest): Promise<AddNoteResult> {
       record('addNote', req);
       const notePath = `/tmp/vault/inbox/${req.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`;
-      return { notePath, queued: [notePath, ...(req.images ?? []).filter((i) => i.mode === 'keep').map((i) => i.path)] };
+      return { notePath, requestID: 'req-1', queued: [notePath, ...(req.images ?? []).filter((i) => i.mode === 'keep').map((i) => i.path)] };
     },
     listJobs() {
       record('listJobs');
@@ -155,6 +156,18 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
         costUSD: 0.01,
       };
     },
+    // v2 stubs: server-cli teammate fills these with recorded fakes.
+    labelNote: async () => notImplemented('labelNote'),
+    listLabels: async () => notImplemented('listLabels'),
+    labelReview: async () => notImplemented('labelReview'),
+    suggestLabelsForPages: async () => notImplemented('suggestLabelsForPages'),
+    confirmLabels: async () => notImplemented('confirmLabels'),
+    listConversations: async () => notImplemented('listConversations'),
+    getConversation: async () => notImplemented('getConversation'),
+    deleteConversation: async () => notImplemented('deleteConversation'),
+    setConversationPinned: async () => notImplemented('setConversationPinned'),
+    listRunners: async () => notImplemented('listRunners'),
+    setRunnerSecret: async () => notImplemented('setRunnerSecret'),
     subscribe(listener) {
       record('subscribe');
       listeners.add(listener);

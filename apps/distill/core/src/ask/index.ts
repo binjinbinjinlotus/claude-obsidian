@@ -1,3 +1,5 @@
+import { notImplemented, type DistillCore } from '../contracts.js';
+import type { AskOwned } from '../engine/index.js';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
@@ -26,9 +28,7 @@ export interface AskDeps {
   now?: () => Date;
 }
 
-export interface AskService {
-  ask(req: AskRequest): Promise<AskResponse>;
-}
+export type AskService = Pick<DistillCore, AskOwned>;
 
 export { DEFAULT_SOURCE_TAXONOMY } from './taxonomy.js';
 
@@ -215,7 +215,14 @@ export function createAskService(deps: AskDeps): AskService {
     };
   }
 
-  return { ask };
+  return {
+    ask,
+    // v2 history: owner core-ask
+    listConversations: async () => notImplemented('listConversations'),
+    getConversation: async () => notImplemented('getConversation'),
+    deleteConversation: async () => notImplemented('deleteConversation'),
+    setConversationPinned: async () => notImplemented('setConversationPinned'),
+  };
 }
 
 /** Canonical filter scope: sorted normalized labels and expanded sources; '' when unfiltered. */

@@ -40,7 +40,93 @@ export interface Settings {
   taskDefaults: Partial<Record<AITask, ModelSelection>>;
   /** New in the TS core; absent in Swift-written files. Path to node for spawning bridges. */
   nodePath?: string | null;
+
+  // ── v2 (all optional; absent = the DEFAULT_* below) ──
+  /** Editable source groups (Settings → Sources). Default DEFAULT_SOURCE_TAXONOMY. */
+  sourceTaxonomy?: SourceGroup[];
+  /** Defaults for new Ask chats and Ask history retention. */
+  askPreferences?: Partial<AskPreferences>;
+  /** How notes that don't come from the Distill UI get labels. */
+  labeling?: Partial<LabelingPreferences>;
+  /** Global shortcuts; no defaults (null = off). Stored as e.g. "ctrl+opt+space". */
+  shortcuts?: { ask?: string | null; addNote?: string | null };
+  /** Non-secret per-runner options, e.g. {"openrouter": {"baseURL": "..."}}. Secrets live in the Keychain. */
+  runnerOptions?: Record<string, Record<string, string>>;
 }
+
+export interface SourceDefinition {
+  id: string; // stored in a note's `source_type`, e.g. "slack"
+  label: string;
+}
+
+export interface SourceGroup {
+  id: string; // e.g. "discussion"; picking a group in Ask includes all its sources
+  label: string;
+  sources: SourceDefinition[];
+}
+
+export const DEFAULT_SOURCE_TAXONOMY: SourceGroup[] = [
+  {
+    id: 'discussion',
+    label: 'Discussion',
+    sources: [
+      { id: 'slack', label: 'Slack' },
+      { id: 'meeting', label: 'Meeting' },
+      { id: 'github-review', label: 'GitHub review' },
+      { id: 'jira-comment', label: 'Jira comment' },
+      { id: 'email', label: 'Email' },
+      { id: 'in-person', label: 'In person' },
+    ],
+  },
+  {
+    id: 'reference',
+    label: 'Reference',
+    sources: [
+      { id: 'web-page', label: 'Web page' },
+      { id: 'document', label: 'Document' },
+      { id: 'paper', label: 'Paper' },
+    ],
+  },
+  {
+    id: 'personal',
+    label: 'Personal',
+    sources: [
+      { id: 'remember-this', label: 'Remember this' },
+      { id: 'idea', label: 'Idea' },
+    ],
+  },
+];
+
+/** any = a note with at least one of the labels; all = a note with every label. */
+export type LabelMatch = 'any' | 'all';
+
+export interface AskPreferences {
+  labelMatch: LabelMatch;
+  /** Count AI labels not yet confirmed (labels_reviewed: false) when filtering. */
+  includeUnconfirmed: boolean;
+  keepHistory: boolean;
+  /** Delete chats whose last message is older than this; pinned chats are kept. */
+  historyDays: number;
+}
+
+export const DEFAULT_ASK_PREFERENCES: AskPreferences = {
+  labelMatch: 'any',
+  includeUnconfirmed: true,
+  keepHistory: true,
+  historyDays: 10,
+};
+
+export interface LabelingPreferences {
+  /** Files dropped straight into the queue folder get AI labels at batch time (unconfirmed). */
+  autoLabelQueueFolder: boolean;
+  /** CLI notes with no labels sent back before the batch runs get the AI labels (unconfirmed). */
+  cliFallbackToAI: boolean;
+}
+
+export const DEFAULT_LABELING_PREFERENCES: LabelingPreferences = {
+  autoLabelQueueFolder: true,
+  cliFallbackToAI: true,
+};
 
 // ───────────────────────────── Jobs (jobs.json) ─────────────────────────────
 
@@ -169,6 +255,10 @@ export interface SetupProblem {
 export interface AgentRunner {
   readonly id: string;
   readonly displayName: string;
+  /** Default "agent". */
+  readonly kind?: 'agent' | 'modelAPI';
+  /** Keychain secrets the runner reads, e.g. [{name: "apiKey", label: "API key"}]. */
+  readonly secrets?: { name: string; label: string }[];
   readonly capabilities: ReadonlySet<RunnerCapability>;
   readonly models: ModelOption[];
   readonly effortLevels: string[];
@@ -228,12 +318,66 @@ export interface AddNoteRequest {
   /** Free text: link, channel or person, e.g. "#tea-club · with Mei". */
   sourceRef?: string;
   vaultPath?: string; // default: active vault
+  /** Labels chosen by the caller. They count as confirmed; no suggestion is made. */
+  labels?: string[];
+  /**
+   * When to suggest labels (labelSuggest task) if `labels` is absent:
+   * wait = include them in the result (CLI); background = emit a `labelSuggestions` event (app, default);
+   * none = don't suggest.
+   */
+  suggest?: 'wait' | 'background' | 'none';
+  /** Who added the note; decides the fallback when no labels are confirmed before the batch. Default "app". */
+  origin?: 'app' | 'cli';
 }
 
 export interface AddNoteResult {
   /** Files written into the queue folder (note .md, images, manifest). */
   queued: string[];
   notePath: string;
+  /** Pass to labelNote() to confirm labels until the batch picks the note up. */
+  requestID: string;
+  /** Present when suggest = "wait" and the suggestion succeeded. */
+  suggestedLabels?: LabelSuggestion[];
+  /** Why suggestions are missing with suggest = "wait" (e.g. no runner for labelSuggest). */
+  suggestError?: string;
+}
+
+// ───────────────────────────── Labels ─────────────────────────────
+//
+// Labels are a note's `tags` property in the vault, which is the only record of
+// whether they are confirmed:
+//   labels_by: ai | user        who chose them
+//   labels_reviewed: false      AI labels not yet confirmed (absent or true = confirmed)
+//   labels_origin: queue-folder | cli | suggest   where unconfirmed AI labels came from
+// Every vault change (applying AI labels to existing pages, confirming) is a
+// transaction the user approves in Review.
+
+export type LabelOrigin = 'queue-folder' | 'cli' | 'suggest';
+
+export interface LabelSuggestion {
+  name: string; // without '#'
+  /** true = already used in the vault; false = new label. */
+  existing: boolean;
+}
+
+export interface LabelCount {
+  name: string;
+  count: number; // pages with this label
+  unconfirmed: number; // of which labels_reviewed: false
+}
+
+export interface LabelReviewItem {
+  path: string; // vault-relative page
+  title: string;
+  labels: string[];
+  origin?: LabelOrigin | null;
+}
+
+export interface LabelReview {
+  /** Pages with labels_reviewed: false. */
+  toReview: LabelReviewItem[];
+  /** Pages under wiki/ (excluding meta/system pages) with no tags. */
+  unlabeled: { path: string; title: string }[];
 }
 
 // ───────────────────────────── Ask ─────────────────────────────
@@ -247,6 +391,10 @@ export interface AskRequest {
   labels?: string[];
   sources?: string[];
   vaultPath?: string;
+  /** Default: settings askPreferences.labelMatch ("any"). */
+  labelMatch?: LabelMatch;
+  /** Default: settings askPreferences.includeUnconfirmed (true). */
+  includeUnconfirmed?: boolean;
 }
 
 export interface AskCitation {
@@ -262,6 +410,66 @@ export interface AskResponse {
   gaps: string[];
   selection: ModelSelection;
   costUSD: number;
+  /** Things the user should know, e.g. "Started a new session because the filter changed." */
+  notices?: string[];
+}
+
+export interface AskTurn {
+  askedAt: string; // ISO-8601
+  request: AskRequest;
+  response: AskResponse;
+}
+
+export interface AskConversationSummary {
+  id: string;
+  title: string; // first question, trimmed
+  vaultPath: string;
+  createdAt: string;
+  updatedAt: string; // last message; retention counts from here
+  pinned: boolean;
+  turnCount: number;
+}
+
+export interface AskConversation extends AskConversationSummary {
+  turns: AskTurn[];
+}
+
+// ───────────────────────────── Runner admin ─────────────────────────────
+
+export interface RunnerInfo {
+  id: string;
+  displayName: string;
+  /** agent = reads files and runs tools (ingest, ask); modelAPI = plain model calls. */
+  kind: 'agent' | 'modelAPI';
+  enabled: boolean;
+  capabilities: RunnerCapability[];
+  /** Tasks this runner can do (runnerSupports). */
+  tasks: AITask[];
+  models: ModelOption[];
+  effortLevels: string[];
+  defaultModel: string;
+  problems: SetupProblem[];
+  /** Secrets the runner needs (stored in the macOS Keychain, never in settings.json). */
+  secrets: { name: string; label: string; isSet: boolean }[];
+}
+
+// ───────────────────────────── Errors ─────────────────────────────
+
+/** HTTP mapping: not_found→404, invalid_request→400, invalid_state/busy/no_vault→409, not_implemented→501. */
+export type CoreErrorCode = 'not_found' | 'invalid_request' | 'invalid_state' | 'busy' | 'no_vault' | 'not_implemented';
+
+export class CoreError extends Error {
+  constructor(
+    readonly code: CoreErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'CoreError';
+  }
+}
+
+export function notImplemented(what: string): never {
+  throw new CoreError('not_implemented', `${what}: not implemented`);
 }
 
 // ───────────────────────────── Events ─────────────────────────────
@@ -270,7 +478,9 @@ export type CoreEvent =
   | { type: 'queue'; entries: QueueEntry[] }
   | { type: 'job'; job: Job }
   | { type: 'settings'; settings: Settings }
-  | { type: 'log'; level: 'info' | 'warn' | 'error'; message: string };
+  | { type: 'log'; level: 'info' | 'warn' | 'error'; message: string }
+  | { type: 'labelSuggestions'; requestID: string; notePath: string; labels: LabelSuggestion[]; error?: string }
+  | { type: 'conversation'; conversation: AskConversationSummary; deleted?: boolean };
 
 // ───────────────────────────── The core facade ─────────────────────────────
 
@@ -311,6 +521,27 @@ export interface DistillCore {
   cancel(id: string): Promise<void>;
 
   ask(req: AskRequest): Promise<AskResponse>;
+
+  // ── v2: labels (owner: core-labels) ──
+  /** Confirm labels for a queued note until the batch picks it up; afterwards → invalid_state. */
+  labelNote(requestID: string, labels: string[]): Promise<{ notePath: string; labels: string[] }>;
+  listLabels(vaultPath?: string): Promise<LabelCount[]>;
+  labelReview(vaultPath?: string): Promise<LabelReview>;
+  /** AI-label existing pages (writes labels_reviewed: false). Returns a job awaiting approval. */
+  suggestLabelsForPages(paths: string[], opts?: { vaultPath?: string; selection?: ModelSelection }): Promise<Job>;
+  /** Write confirmed labels (clears the unconfirmed marks). Returns a job awaiting approval. */
+  confirmLabels(items: { path: string; labels: string[] }[], vaultPath?: string): Promise<Job>;
+
+  // ── v2: Ask history (owner: core-ask) ──
+  listConversations(): Promise<AskConversationSummary[]>;
+  getConversation(id: string): Promise<AskConversation | undefined>;
+  deleteConversation(id: string): Promise<void>;
+  setConversationPinned(id: string, pinned: boolean): Promise<AskConversationSummary>;
+
+  // ── v2: runners (owner: runners) ──
+  listRunners(): Promise<RunnerInfo[]>;
+  /** null clears the secret. */
+  setRunnerSecret(runnerID: string, name: string, value: string | null): Promise<void>;
 
   subscribe(listener: (event: CoreEvent) => void): () => void;
 }

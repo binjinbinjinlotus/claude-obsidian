@@ -43,7 +43,7 @@ import { uniqueDenials } from '../runners/permissions.js';
 import { isCancelled, runProcess, type ProcessOutput, type RunProcessOptions } from '../runners/process.js';
 import { defaultRegistry } from '../runners/registry.js';
 import { JobContext, jobKind, parseWorkerStatus, queueConsumer, WorkerProtocol, type ParsedStatus } from './job-kinds.js';
-import { CoreError } from './errors.js';
+import { CoreError, notImplemented } from './errors.js';
 import { writeNote } from './notes.js';
 import {
   claimFiles,
@@ -63,7 +63,12 @@ import { setupProblems } from './validator.js';
 const INGEST_AVAILABLE_TOOLS = ['Skill', 'Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash', 'WebFetch'] as const;
 
 /** Everything in DistillCore except `ask`, plus what Ask needs from the engine. */
-export type Engine = Omit<DistillCore, 'ask'> & {
+/** Ask (ask/) and runner admin (runners/admin.ts) are composed in index.ts. */
+export type EngineOwned = Exclude<keyof DistillCore, AskOwned | RunnerAdminOwned>;
+export type AskOwned = 'ask' | 'listConversations' | 'getConversation' | 'deleteConversation' | 'setConversationPinned';
+export type RunnerAdminOwned = 'listRunners' | 'setRunnerSecret';
+
+export type Engine = Pick<DistillCore, EngineOwned> & {
   readonly runners: RunnerRegistry;
   readonly paths: StatePaths;
   /** Resolves once no turn or inspect is in flight (tests, headless runs). */
@@ -631,6 +636,13 @@ export function createEngine(opts: EngineOptions): Engine {
     allow,
     reject,
     cancel,
+
+    // v2 labels: owner core-labels
+    labelNote: async () => notImplemented('labelNote'),
+    listLabels: async () => notImplemented('listLabels'),
+    labelReview: async () => notImplemented('labelReview'),
+    suggestLabelsForPages: async () => notImplemented('suggestLabelsForPages'),
+    confirmLabels: async () => notImplemented('confirmLabels'),
 
     subscribe(listener) {
       listeners.add(listener);

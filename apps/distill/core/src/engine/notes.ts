@@ -110,5 +110,5 @@ export function writeNote(req: AddNoteRequest, vault: VaultProfile, now: Date): 
   const notePath = path.join(queue, names.note);
   fs.writeFileSync(notePath, noteMarkdown({ ...req, title }, now), { flag: 'wx' });
   queued.unshift(notePath);
-  return { queued, notePath };
+  return { queued, notePath, requestID: '' };
 }
