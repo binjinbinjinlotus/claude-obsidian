@@ -44,6 +44,8 @@ public struct VaultProfile: Codable, Hashable, Identifiable, Sendable {
 
 public enum AITask: String, Codable, CaseIterable, Sendable {
     case ingest, ask, labelSuggest, imageText
+    /// v3: find actions in notes and answers; write and improve action drafts.
+    case actionFind, actionDraft, actionImprove
 }
 
 public struct ModelSelection: Codable, Hashable, Sendable {
@@ -152,6 +154,8 @@ public struct Settings: Codable, Equatable, Sendable {
     public var labeling: LabelingPreferences?
     public var shortcuts: ShortcutSettings?
     public var runnerOptions: [String: [String: String]]?
+    /// v3 (optional; absent = DEFAULT_ACTION_PREFERENCES). Raw object, so unknown nested keys survive.
+    public var actionPreferences: ActionPreferences?
 
     public init() {}
 
@@ -191,6 +195,7 @@ public struct Settings: Codable, Equatable, Sendable {
         labeling = c.lossy(LabelingPreferences.self, .labeling)
         shortcuts = c.lossy(ShortcutSettings.self, .shortcuts)
         runnerOptions = c.lossy([String: [String: String]].self, .runnerOptions)
+        actionPreferences = c.lossy(ActionPreferences.self, .actionPreferences)
     }
 
     /// This value as a JSON object (nil optionals omitted).
@@ -958,10 +963,12 @@ public enum CoreEvent: Equatable, Sendable {
     case labelSuggestions(requestID: String, notePath: String, labels: [LabelSuggestion], error: String?)
     case conversation(AskConversationSummary, deleted: Bool)
     case progress(CoreProgress)
+    /// v3: a connection changed (signed in, expired, disconnected).
+    case connection(ConnectionInfo)
     case unknown(type: String)
 
     private enum Keys: String, CodingKey {
-        case type, entries, job, settings, level, message, requestID, notePath, labels, error, conversation, deleted, progress
+        case type, entries, job, settings, level, message, requestID, notePath, labels, error, conversation, deleted, progress, connection
     }
 
     /// Decodes the JSON of one `data:` line.
@@ -988,6 +995,7 @@ public enum CoreEvent: Equatable, Sendable {
                 event = .conversation(try c.decode(AskConversationSummary.self, forKey: .conversation),
                                       deleted: c.lossy(Bool.self, .deleted) ?? false)
             case "progress": event = .progress(try c.decode(CoreProgress.self, forKey: .progress))
+            case "connection": event = .connection(try c.decode(ConnectionInfo.self, forKey: .connection))
             default: event = .unknown(type: type)
             }
         }

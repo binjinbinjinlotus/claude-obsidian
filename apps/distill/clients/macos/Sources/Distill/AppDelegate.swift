@@ -31,6 +31,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NotificationCenter.default.addObserver(forName: Self.openQuickAsk, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.showQuickAsk() }
         }
+        // Other screens open a Settings section ("connections", "models", "actions/jira").
+        NotificationCenter.default.addObserver(forName: Notification.Name("distill.openSettingsSection"), object: nil, queue: .main) { [weak self] note in
+            let id = note.object as? String
+            MainActor.assumeIsolated {
+                if let id { self?.engine.settingsUI.open(id) }
+                self?.showSettings()
+            }
+        }
         if UserDefaults.standard.object(forKey: "showFloatingIcon") as? Bool ?? true {
             floatingIcon?.show()
         }
@@ -129,7 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func showSettings() {
         if settingsWindow == nil {
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 720, height: 760),
+                contentRect: NSRect(x: 0, y: 0, width: 1140, height: 720),
                 styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
                 backing: .buffered, defer: false)
             window.title = "Distill Settings"

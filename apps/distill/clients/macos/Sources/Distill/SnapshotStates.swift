@@ -42,6 +42,7 @@ enum StatesSnapshot {
         quickAskStates()
         quickNoteStates()
         settingsStates()
+        settingsNavStates()
         writeManifest()
     }
 
@@ -951,34 +952,41 @@ extension StatesSnapshot {
 extension StatesSnapshot {
     static func settingsStates() {
         let f = Flow.app
-        func settings(_ file: String, _ state: String, _ desc: String, advanced: Bool = false, defaults: [String: Any] = [:], _ e: AppModel) {
-            // Full height: measure the stacked (snapshot-mode) layout, then draw the
-            // live window that tall so its scroll view shows everything.
+        func settings(_ file: String, _ state: String, _ desc: String, group: SettingsGroup = .general, advanced: Bool = false,
+                      defaults: [String: Any] = [:], _ e: AppModel) {
+            // A whole group page: measure the stacked (snapshot-mode) layout, then draw
+            // the live window that tall so its scroll view shows everything.
+            e.settingsUI.target = SettingsTarget(group.sections[0])
             let measure = ImageRenderer(content: SettingsView(showAdvanced: advanced).environmentObject(e)
-                .environment(\.snapshotMode, true).frame(width: 720).fixedSize(horizontal: false, vertical: true))
-            let height = ((measure.nsImage?.size.height ?? 2400) + (advanced ? 120 : 24)).rounded(.up)
-            let view = SettingsView(showAdvanced: advanced).environmentObject(e).frame(width: 720, height: height)
-            shoot(file, f, "Settings", state, desc, defaults: defaults, live: true, liveSize: CGSize(width: 720, height: height), view)
+                .environment(\.snapshotMode, true).frame(width: settingsSize.width).fixedSize(horizontal: false, vertical: true))
+            let height = max(settingsSize.height, ((measure.nsImage?.size.height ?? 2400) + (advanced ? 160 : 40)).rounded(.up))
+            settingsWindow(file, state, desc, e, target: SettingsTarget(group.sections[0]),
+                           size: CGSize(width: settingsSize.width, height: height), advanced: advanced, defaults: defaults)
         }
         let busy: (AppModel) -> Void = { $0.notes.runnerBusy = ["openai": "Checking…"] }
         var e = engine { $0.enabledRunners = ["claude-code", "ai-sdk"] }
         busy(e)
-        settings("settings", "Full · every section", "Vaults (one missing .claude-obsidian.json), schedule, sources, labels, Ask history, shortcuts (one set), runners (on, off, set up, checking, error), task defaults.", e)
+        settings("settings", "General · every section", "Vaults (one missing .claude-obsidian.json), batching, sources, labels, Ask history, shortcuts (one set).", e)
+        e = engine { $0.enabledRunners = ["claude-code", "ai-sdk"] }
+        busy(e)
+        settings("settings-ai", "AI · every section", "Runners (on, off, set up, checking, error) and Models for tasks with Finding actions and the Action drafts link.", group: .ai, e)
+        e = engine()
+        settings("settings-actions-all", "Actions and connections · every section", "Where actions come from, finding model, action types, to-do defaults, connections.", group: .actions, e)
 
         e = engine { $0.enabledRunners = ["claude-code", "ai-sdk"] }
-        settings("settings-advanced", "Advanced expanded", "Advanced: model, paths, extra allowed tools.", advanced: true, e)
+        settings("settings-advanced", "Advanced expanded", "End of the AI page. Advanced: model, paths, extra allowed tools.", group: .ai, advanced: true, e)
 
         e = engine()
         e.notes.runners = []
         e.notes.runnersLoading = true
         problem(e, [nodeMissing, "The claude CLI was not found at /Users/me/.local/bin/claude."])
-        settings("settings-problems", "Setup problems · runners loading", "Problems block at the end; runner cards shimmer while loading.", e)
+        settings("settings-problems", "Setup problems · runners loading", "Problems block at the top of the AI page; runner cards shimmer while loading.", group: .ai, e)
 
         e = engine()
         e.notes.runners = []
         e.notes.labelCounts = []
         problem(e, [], connection: .unreachable(coreDown))
-        settings("settings-disconnected", "Core not running", "No runners or labels until the core is connected; Retry at the end. Also shows “Suggest labels after a note is queued” switched off.", defaults: [AppModel.suggestAfterQueueKey: false], e)
+        settings("settings-disconnected", "Core not running", "No labels until the core is connected; Retry at the top. Also shows “Suggest labels after a note is queued” switched off.", defaults: [AppModel.suggestAfterQueueKey: false], e)
 
         // Sections in their other states.
         e = engine { $0.enabledRunners = ["claude-code", "codex"] }

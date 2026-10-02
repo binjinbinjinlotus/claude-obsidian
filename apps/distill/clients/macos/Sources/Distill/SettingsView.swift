@@ -1,40 +1,58 @@
 import SwiftUI
 import DistillKit
 
+// The Settings window (canvas: SettingsNav, Settings): a section list on the
+// left (General, AI, Actions) with search on top, and on the right the page of
+// the selected section's group, scrolled to that section. Search results,
+// "No settings match" and each action type's page replace the group page.
+// Every edit changes `engine.settings`; AppModel sends the changed top-level
+// key about 0.5 s later.
+
 struct SettingsView: View {
     @EnvironmentObject var engine: AppModel
-    @State private var showAdvanced: Bool
-    @State private var extraTools = ""
-    @State private var editingVault: VaultProfile?
+    private let showAdvanced: Bool
 
     /// `showAdvanced` starts expanded only in snapshots.
-    init(showAdvanced: Bool = false) { _showAdvanced = State(initialValue: showAdvanced) }
-
-    private let presets: [(String, Int)] = [("5 min", 5), ("15 min", 15), ("1 hour", 60), ("Daily", 1440)]
+    init(showAdvanced: Bool = false) { self.showAdvanced = showAdvanced }
 
     var body: some View {
-        Scrolling {
-            VStack(alignment: .leading, spacing: 28) {
-                Text("Settings").font(Theme.display(30))
-                vaults
-                schedule
-                SourcesSettings()
-                LabelsSettings(notes: engine.notes)
-                AskHistorySettings(notes: engine.notes)
-                ShortcutsSettingsSection()
-                RunnersSettings(notes: engine.notes)
-                TaskDefaultsSettings(notes: engine.notes)
-                advanced
-                status
-            }
-            .padding(.horizontal, 40).padding(.top, 40).padding(.bottom, 32)
+        SettingsWindowContent(ui: engine.settingsUI, showAdvanced: showAdvanced)
+    }
+}
+
+private struct SettingsWindowContent: View {
+    @EnvironmentObject var engine: AppModel
+    @ObservedObject var ui: SettingsStore
+    @State private var showAdvanced: Bool
+    @State private var editingVault: VaultProfile?
+    @Environment(\.snapshotMode) private var snapshot
+
+    init(ui: SettingsStore, showAdvanced: Bool) {
+        self.ui = ui
+        _showAdvanced = State(initialValue: showAdvanced)
+    }
+
+    private var searching: Bool { !ui.query.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var results: [SettingsEntry] { SettingsIndex.search(ui.query, in: SettingsIndex.all(types: ui.actionTypes)) }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            SettingsSectionNav(selected: ui.target.section, query: $ui.query,
+                               matches: searching ? SettingsIndex.counts(results) : nil) { ui.show(SettingsTarget($0)) }
+                .frame(width: 236)
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(Theme.window)
         }
         .onAppear {
             engine.loadRunners()
             engine.refreshLabels()
+            engine.loadActionTypes()
+            engine.loadConnections()
         }
-        .frame(minWidth: 680, minHeight: 640)
-        .background(Theme.window)
+        .onDisappear { ui.promptUndo = [:] }
+        .frame(minWidth: 900, minHeight: 600)
+        .background(Theme.panel)
         .foregroundStyle(Theme.ink)
         .ignoresSafeArea()
         .sheet(item: $editingVault) { vault in
@@ -42,60 +60,205 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Vaults
-
-    private var vaults: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Vaults").font(Theme.body(14, .bold))
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 12) {
-                ForEach(engine.settings.vaults) { vault in
-                    let active = vault.path == engine.activeVault?.path
-                    let chip = VaultChip.colors(for: vault)
-                    Button { engine.settings.activeVaultPath = vault.path } label: {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                Tile(text: String(vault.name.prefix(1)).uppercased(), fill: chip.0, ink: chip.1, size: 34, display: true)
-                                Spacer()
-                                if !VaultProfile.isVault(vault.path) {
-                                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.peachInk)
-                                        .help("Missing .claude-obsidian.json")
-                                        .padding(.trailing, 30) // clear of the edit button
-                                }
-                            }
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(vault.name).font(Theme.body(14, .semibold))
-                                Text(queueLabel(vault)).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
-                            }
-                        }
-                        .padding(16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .card(18, selected: active)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        Button("Edit…") { editingVault = vault }
-                        Button("Remove", role: .destructive) { remove(vault) }
-                    }
-                    .overlay(alignment: .topTrailing) {
-                        Button { editingVault = vault } label: {
-                            Image(systemName: "ellipsis").foregroundStyle(Theme.muted).frame(width: 28, height: 28)
-                        }
-                        .buttonStyle(.plain).padding(8).help("Edit vault")
-                    }
+    @ViewBuilder private var content: some View {
+        if searching {
+            Scrolling {
+                SettingsSearchResults(ui: ui, results: results)
+                    .padding(.horizontal, 36).padding(.vertical, 30)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        } else if let typeID = ui.target.actionType {
+            Scrolling {
+                VStack(alignment: .leading, spacing: 18) {
+                    SettingsStatusBanner()
+                    ActionTypeSettingsPage(ui: ui, typeID: typeID, confirmingReset: ui.fixtureConfirmReset)
                 }
-                Button { VaultPicker.addVault(engine: engine) } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "plus").font(.system(size: 18))
-                        Text("Add vault").font(Theme.body(13, .semibold))
+                .padding(.horizontal, 36).padding(.vertical, 30)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .id(typeID)
+        } else {
+            groupPage(ui.target.section.group)
+        }
+    }
+
+    private func groupPage(_ group: SettingsGroup) -> some View {
+        ScrollViewReader { proxy in
+            Scrolling {
+                VStack(alignment: .leading, spacing: 30) {
+                    SettingsStatusBanner()
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(group.title).font(Theme.display(26))
+                        Text(group.note).font(Theme.body(13)).foregroundStyle(Theme.muted)
                     }
-                    .foregroundStyle(Theme.primary)
-                    .frame(maxWidth: .infinity, minHeight: 112)
-                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color(hex: 0xD6D3CC), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5])))
+                    ForEach(group.sections) { section in
+                        VStack(alignment: .leading, spacing: 14) {
+                            SettingsSectionHeader(section: section)
+                            sectionContent(section)
+                        }
+                        .id(section)
+                    }
+                    if group == .ai { advanced }
+                }
+                .padding(.horizontal, 36).padding(.top, 30).padding(.bottom, 40)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .onAppear { scroll(proxy, delayed: true) }
+            .onChange(of: ui.scrollRequest) { scroll(proxy, delayed: true) }
+        }
+        .id(group)
+    }
+
+    private func scroll(_ proxy: ScrollViewProxy, delayed: Bool) {
+        let section = ui.target.section
+        guard section != section.group.sections.first else { return }
+        // The page may have just been built: scroll once it has laid out.
+        DispatchQueue.main.asyncAfter(deadline: .now() + (delayed ? 0.05 : 0)) {
+            proxy.scrollTo(section, anchor: .top)
+        }
+    }
+
+    @ViewBuilder private func sectionContent(_ section: SettingsSection) -> some View {
+        switch section {
+        case .vaults: VaultsSettings(editingVault: $editingVault)
+        case .batching: BatchingSettings()
+        case .sources: SourcesSettings()
+        case .labels: LabelsSettings(notes: engine.notes)
+        case .askHistory: AskHistorySettings(notes: engine.notes)
+        case .shortcuts: ShortcutsSettingsSection()
+        case .runners: RunnersSettings(notes: engine.notes)
+        case .models: TaskDefaultsSettings(notes: engine.notes)
+        case .actions: ActionsSettings(ui: ui, notes: engine.notes)
+        case .todo: TodoDefaultsSettings()
+        case .connections: ConnectionsSettings(ui: ui)
+        }
+    }
+
+    // MARK: Advanced (end of the AI page)
+
+    private var advanced: some View {
+        DisclosureGroup(isExpanded: $showAdvanced) {
+            AdvancedSettings().padding(.top, 12)
+        } label: {
+            Text("Advanced").font(Theme.body(14, .bold))
+        }
+        .tint(Theme.primary)
+    }
+}
+
+/// h2 + note for one section on its group page.
+struct SettingsSectionHeader: View {
+    let section: SettingsSection
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(section.title).font(Theme.display(22))
+            Text(section.note).font(Theme.body(13)).foregroundStyle(Theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// Setup problems or an unreachable core, at the top of every page.
+struct SettingsStatusBanner: View {
+    @EnvironmentObject var engine: AppModel
+
+    var body: some View {
+        let problems = engine.problems
+        if case .unreachable(let problem) = engine.connection {
+            VStack(alignment: .leading, spacing: 8) {
+                Label(problem, systemImage: "bolt.horizontal.circle.fill")
+                    .font(Theme.body(13)).foregroundStyle(Theme.peachInk).textSelection(.enabled)
+                SoftButton(title: "Retry", fill: .white, size: .small, stroke: true) { engine.connect() }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0xFFF4EE)))
+        } else if !problems.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(problems, id: \.description) { problem in
+                    Label(problem.description, systemImage: "exclamationmark.triangle.fill")
+                        .font(Theme.body(13)).foregroundStyle(Theme.peachInk)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0xFFF4EE)))
+        }
+    }
+}
+
+/// A calm note for a section an older core can't serve yet.
+struct CoreUpdateNote: View {
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "arrow.down.circle").foregroundStyle(Theme.muted)
+            Text(text).font(Theme.body(12)).foregroundStyle(Color(hex: 0x48463F))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.panel))
+    }
+}
+
+// MARK: Vaults
+
+struct VaultsSettings: View {
+    @EnvironmentObject var engine: AppModel
+    @Binding var editingVault: VaultProfile?
+
+    var body: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 12) {
+            ForEach(engine.settings.vaults) { vault in
+                let active = vault.path == engine.activeVault?.path
+                let chip = VaultChip.colors(for: vault)
+                Button { engine.settings.activeVaultPath = vault.path } label: {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Tile(text: String(vault.name.prefix(1)).uppercased(), fill: chip.0, ink: chip.1, size: 34, display: true)
+                            Spacer()
+                            if !VaultProfile.isVault(vault.path) {
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.peachInk)
+                                    .help("Missing .claude-obsidian.json")
+                                    .padding(.trailing, 30) // clear of the edit button
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(vault.name).font(Theme.body(14, .semibold))
+                            Text(queueLabel(vault)).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
+                        }
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .card(18, selected: active)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .contextMenu {
+                    Button("Edit…") { editingVault = vault }
+                    Button("Remove", role: .destructive) { engine.settings.removeVault(vault.path) }
+                }
+                .overlay(alignment: .topTrailing) {
+                    Button { editingVault = vault } label: {
+                        Image(systemName: "ellipsis").foregroundStyle(Theme.muted).frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain).padding(8).help("Edit vault")
+                }
             }
+            Button { VaultPicker.addVault(engine: engine) } label: {
+                VStack(spacing: 4) {
+                    Image(systemName: "plus").font(.system(size: 18))
+                    Text("Add vault").font(Theme.body(13, .semibold))
+                }
+                .foregroundStyle(Theme.primary)
+                .frame(maxWidth: .infinity, minHeight: 112)
+                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color(hex: 0xD6D3CC), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5])))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -104,22 +267,18 @@ struct SettingsView: View {
             ? "Queue: vault inbox"
             : "Queue: \(vault.queueURL.lastPathComponent)"
     }
+}
 
-    private func remove(_ vault: VaultProfile) {
-        engine.settings.vaults.removeAll { $0.path == vault.path }
-        if engine.settings.activeVaultPath == vault.path {
-            engine.settings.activeVaultPath = engine.settings.vaults.first?.path
-        }
-    }
+// MARK: Batching
 
-    // MARK: Schedule
+struct BatchingSettings: View {
+    @EnvironmentObject var engine: AppModel
 
-    private var schedule: some View {
+    private let presets: [(String, Int)] = [("5 min", 5), ("15 min", 15), ("1 hour", 60), ("Daily", 1440)]
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Batch every").font(Theme.body(14, .bold))
-                Spacer()
-                Text("Automatic").font(Theme.body(13)).foregroundStyle(Theme.muted)
+            SettingsRow(title: "Batch every", note: "Automatic: runs on this schedule. Off: only when you press Process now.", bold: true) {
                 PillSwitch(isOn: $engine.settings.autoProcessEnabled, label: "Automatic batching")
             }
             HStack(spacing: 12) {
@@ -183,74 +342,49 @@ struct SettingsView: View {
                 engine.settings.batchIntervalMinutes = interval.totalMinutes
             })
     }
+}
 
-    // MARK: Advanced
+// MARK: Advanced
 
-    private var advanced: some View {
-        DisclosureGroup(isExpanded: $showAdvanced) {
-            VStack(alignment: .leading, spacing: 12) {
-                LabeledField(title: "Specific model") {
-                    Picker("", selection: $engine.settings.model) {
-                        ForEach(ModelChoice.presets, id: \.id) { Text($0.label).tag($0.id) }
-                        if !ModelChoice.presets.contains(where: { $0.id == engine.settings.model }) {
-                            Text(engine.settings.model).tag(engine.settings.model)
-                        }
+struct AdvancedSettings: View {
+    @EnvironmentObject var engine: AppModel
+    @State private var extraTools = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            LabeledField(title: "Specific model") {
+                Picker("", selection: $engine.settings.model) {
+                    ForEach(ModelChoice.presets, id: \.id) { Text($0.label).tag($0.id) }
+                    if !ModelChoice.presets.contains(where: { $0.id == engine.settings.model }) {
+                        Text(engine.settings.model).tag(engine.settings.model)
                     }
-                    .labelsHidden()
                 }
-                LabeledField(title: "Custom model ID") { TextField("", text: $engine.settings.model).textFieldStyle(.roundedBorder) }
-                PathField(title: "claude CLI", path: $engine.settings.claudePath, directory: false)
-                PathField(title: "python3", path: $engine.settings.pythonPath, directory: false)
-                PathField(title: "node (empty = find it: nvm, Homebrew, /usr/local, /usr/bin)", path: nodePath, directory: false)
-                PathField(title: "Product root", path: $engine.settings.productRoot, directory: true)
-                LabeledField(title: "Extra allowed tools (one rule per line)") {
-                    TextEditor(text: $extraTools)
-                        .font(.system(size: 12, design: .monospaced))
-                        .frame(minHeight: 60)
-                        .scrollContentBackground(.hidden)
-                        .padding(6)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Theme.panel))
-                        .onAppear { extraTools = engine.settings.extraAllowedTools.joined(separator: "\n") }
-                        .onChange(of: extraTools) {
-                            engine.settings.extraAllowedTools = extraTools
-                                .split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                        }
-                }
+                .labelsHidden()
             }
-            .padding(.top, 12)
-        } label: {
-            Text("Advanced").font(Theme.body(14, .bold))
+            LabeledField(title: "Custom model ID") { TextField("", text: $engine.settings.model).textFieldStyle(.roundedBorder) }
+            PathField(title: "claude CLI", path: $engine.settings.claudePath, directory: false)
+            PathField(title: "python3", path: $engine.settings.pythonPath, directory: false)
+            PathField(title: "node (empty = find it: nvm, Homebrew, /usr/local, /usr/bin)", path: nodePath, directory: false)
+            PathField(title: "Product root", path: $engine.settings.productRoot, directory: true)
+            LabeledField(title: "Extra allowed tools (one rule per line)") {
+                TextEditor(text: $extraTools)
+                    .font(.system(size: 12, design: .monospaced))
+                    .frame(minHeight: 60)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Theme.panel))
+                    .onAppear { extraTools = engine.settings.extraAllowedTools.joined(separator: "\n") }
+                    .onChange(of: extraTools) {
+                        engine.settings.extraAllowedTools = extraTools
+                            .split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                    }
+            }
         }
-        .tint(Theme.primary)
     }
 
     private var nodePath: Binding<String> {
         Binding(get: { engine.settings.nodePath ?? "" },
                 set: { engine.settings.nodePath = $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 })
-    }
-
-    @ViewBuilder private var status: some View {
-        let problems = engine.problems
-        if case .unreachable(let problem) = engine.connection {
-            VStack(alignment: .leading, spacing: 8) {
-                Label(problem, systemImage: "bolt.horizontal.circle.fill")
-                    .font(Theme.body(13)).foregroundStyle(Theme.peachInk).textSelection(.enabled)
-                SoftButton(title: "Retry") { engine.connect() }
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0xFFF4EE)))
-        } else if !problems.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(problems, id: \.description) { problem in
-                    Label(problem.description, systemImage: "exclamationmark.triangle.fill")
-                        .font(Theme.body(13)).foregroundStyle(Theme.peachInk)
-                }
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0xFFF4EE)))
-        }
     }
 }
 

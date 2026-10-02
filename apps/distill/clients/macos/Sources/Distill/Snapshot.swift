@@ -35,7 +35,7 @@ enum Snapshot {
         if let job = engine.pendingApprovals.first {
             render(ReviewScreen(jobID: job.id).environmentObject(engine), size: size, to: outDir.appendingPathComponent("review.png"))
         }
-        render(SettingsView().environmentObject(engine), size: CGSize(width: 720, height: 820), to: outDir.appendingPathComponent("settings.png"))
+        render(SettingsView().environmentObject(engine), size: StatesSnapshot.settingsSize, to: outDir.appendingPathComponent("settings.png"))
         render(HStack(spacing: 24) {
             FloatingFace(dropState: DropState()).environmentObject(engine)
             FloatingFace(dropState: { let s = DropState(); s.targeted = true; return s }()).environmentObject(engine)
