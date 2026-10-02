@@ -59,7 +59,7 @@ final class QuickWindowContainer: NSView {
     static let radius: CGFloat = 16
 
     init<Content: View>(root: Content, onResize: @escaping (NSRect, Bool) -> Void) {
-        super.init(frame: NSRect(x: 0, y: 0, width: 420, height: 200))
+        super.init(frame: NSRect(x: 0, y: 0, width: QuickWindowGeometry.defaultWidth, height: 200))
         wantsLayer = true
         layer?.cornerRadius = Self.radius
         layer?.cornerCurve = .continuous
@@ -136,7 +136,7 @@ final class ResizeCornerView: NSView {
 }
 
 /// Owns one quick window's frame: opening position, growth with the content,
-/// the remembered floor (UserDefaults) and the dragged position (until quit).
+/// the remembered floor (UserDefaults) and the dragged position (until the window closes).
 @MainActor
 final class QuickWindowSizer: NSObject, NSWindowDelegate {
     let window: QuickWindow
@@ -145,7 +145,7 @@ final class QuickWindowSizer: NSObject, NSWindowDelegate {
     private var hidden: CGFloat = 0
     private var floor: CGSize
     private var programmatic = false
-    /// Where the user dragged the window, until the app quits.
+    /// Where the user dragged the window, until it closes (× or Esc).
     private var rememberedTopLeft: NSPoint?
 
     init(window: QuickWindow, sizeKey: String) {
@@ -176,6 +176,9 @@ final class QuickWindowSizer: NSObject, NSWindowDelegate {
         let frame = QuickWindowGeometry.openFrame(desired: max(desired, 1), floor: floor, visible: target, remembered: remembered)
         setFrame(frame, animate: false)
     }
+
+    /// × or Esc: the next open is centered again (canvas: "On the screen you are using").
+    func forgetPosition() { rememberedTopLeft = nil }
 
     /// The content's natural height changed (typing, images, errors, the label step).
     func contentHeight(_ height: CGFloat) {
@@ -233,11 +236,16 @@ final class QuickWindowSizer: NSObject, NSWindowDelegate {
         userResize(window.frame, done: true)
     }
 
-    private static func loadFloor(_ key: String) -> CGSize {
-        if let v = UserDefaults.standard.array(forKey: key) as? [Double], v.count == 2 {
+    /// UserDefaults keys for the dragged size. `.v2`: sizes saved before the 560 × 214
+    /// default were not chosen at the new size, so everyone starts at the default.
+    static let quickNoteSizeKey = "distill.quickNote.size.v2"
+    static let quickAskSizeKey = "distill.quickAsk.size.v2"
+
+    static func loadFloor(_ key: String, defaults: UserDefaults = .standard) -> CGSize {
+        if let v = defaults.array(forKey: key) as? [Double], v.count == 2 {
             return CGSize(width: max(v[0], QuickWindowGeometry.minSize.width), height: max(v[1], QuickWindowGeometry.minSize.height))
         }
-        return CGSize(width: QuickWindowGeometry.defaultWidth, height: QuickWindowGeometry.minSize.height)
+        return QuickWindowGeometry.defaultSize
     }
 
     /// The screen with the pointer (shortcuts), or the flask's (hover menu).

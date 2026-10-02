@@ -31,7 +31,7 @@ final class QuickNoteController: NSObject {
             let panel = QuickNotePanel(width: QuickWindowGeometry.defaultWidth)
             panel.engine = engine
             panel.onCancel = { [weak self] in self?.close() }
-            let sizer = QuickWindowSizer(window: panel, sizeKey: "distill.quickNote.size")
+            let sizer = QuickWindowSizer(window: panel, sizeKey: QuickWindowSizer.quickNoteSizeKey)
             sizer.setContent(QuickNoteView(close: { [weak self] in self?.close() },
                                            onDesiredHeight: { [weak sizer] h in sizer?.contentHeight(h) },
                                            focusText: { [weak panel] in NoteEditorFocus.focus(in: panel) })

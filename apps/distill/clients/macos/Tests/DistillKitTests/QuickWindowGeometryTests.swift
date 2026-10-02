@@ -24,6 +24,19 @@ final class QuickWindowGeometryTests: XCTestCase {
         XCTAssertTrue(second.contains(g))
     }
 
+    func testDefaultSizeIsAThirdBigger() {
+        XCTAssertEqual(G.defaultSize, CGSize(width: 560, height: 214), "was 420 × 160")
+        XCTAssertEqual(G.defaultWidth, 560)
+        XCTAssertEqual(G.minSize, CGSize(width: 360, height: 160), "the drag minimum stays")
+        let f = G.openFrame(desired: 50, floor: G.defaultSize, visible: visible)
+        XCTAssertEqual(f.size, CGSize(width: 560, height: 214), "short content opens at the default size")
+        XCTAssertEqual(f.midX, visible.midX)
+        let grown = G.openFrame(desired: 320, floor: G.defaultSize, visible: visible)
+        XCTAssertEqual(grown.height, 320, "still grows with the content")
+        let dragged = G.resized(f, dx: -400, dy: 400, visible: visible)
+        XCTAssertEqual(dragged.size, G.minSize, "can be dragged down to 360 × 160")
+    }
+
     func testOpensWhereTheUserDraggedIt() {
         let f = G.openFrame(desired: 200, floor: floor, visible: visible, remembered: CGPoint(x: 100, y: 700))
         XCTAssertEqual(f.minX, 100)

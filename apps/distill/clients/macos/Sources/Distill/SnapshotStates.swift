@@ -222,7 +222,7 @@ enum StatesSnapshot {
         window.contentView = probe
         liveWindows.append(window)
         for _ in 0..<6 { RunLoop.main.run(until: Date().addingTimeInterval(0.04)) }
-        let height = max(QuickWindowGeometry.minSize.height, desired)
+        let height = max(QuickWindowGeometry.defaultSize.height, desired)
         natural(file, flow, screen, state, description, e, padding: padding) {
             content { _ in }.frame(width: width, height: height)
         }

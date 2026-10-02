@@ -6,7 +6,10 @@ import CoreGraphics
 ///
 /// Rules:
 /// - Open centered horizontally on the chosen screen with the top edge 30 %
-///   down the visible frame (like Spotlight), or where the user last dragged it.
+///   down the visible frame (like Spotlight), or where the user dragged it while
+///   it stayed open. Closing forgets the spot, so the next open is centered again.
+/// - Open at `defaultSize` (560 × 214, a third bigger than the old 420 × 160)
+///   unless the user dragged another size, which is kept as the opening size.
 /// - The top edge never moves while the window fits its content: it grows and
 ///   shrinks downward, and stops `bottomMargin` above the visible frame's bottom.
 /// - A size the user drags is a floor: content never shrinks the window below it.
@@ -16,7 +19,9 @@ import CoreGraphics
 ///   next keystroke doesn't snap the window back to full height.
 public enum QuickWindowGeometry {
     public static let minSize = CGSize(width: 360, height: 160)
-    public static let defaultWidth: CGFloat = 420
+    /// The opening size until the user drags one (canvas: "Default size (a third bigger)").
+    public static let defaultSize = CGSize(width: 560, height: 214)
+    public static let defaultWidth: CGFloat = defaultSize.width
     public static let bottomMargin: CGFloat = 8
     public static let sideMargin: CGFloat = 8
     /// The top edge sits this far down the visible frame.

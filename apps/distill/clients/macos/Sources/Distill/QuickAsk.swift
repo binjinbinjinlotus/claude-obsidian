@@ -19,7 +19,7 @@ final class QuickAskController {
     init(engine: AppModel, onContinue: @escaping () -> Void) {
         self.engine = engine
         let panel = QuickWindow(width: QuickWindowGeometry.defaultWidth)
-        sizer = QuickWindowSizer(window: panel, sizeKey: "distill.quickAsk.size")
+        sizer = QuickWindowSizer(window: panel, sizeKey: QuickWindowSizer.quickAskSizeKey)
         let ask = engine.ask
         panel.onCancel = { [weak panel, weak engine] in
             panel?.orderOut(nil)
