@@ -483,6 +483,9 @@ extension StatesSnapshot {
         main("review-ready", f, "Review", "Awaiting approval · plan ready", "Summary, 1 new page / 4 updated, changes list, conversation, Approve & apply.", e, section: .review, job: e.jobs[0].id) {
             ReviewSection(selectedJob: .constant(e.jobs[0].id))
         }
+        main("review-ready-900", f, "Review", "Plan ready · smallest window (900×600)", "The review at the window's minimum size: the conversation starts at the top.", e, section: .review, job: e.jobs[0].id, size: CGSize(width: 900, height: 600)) {
+            ReviewSection(selectedJob: .constant(e.jobs[0].id))
+        }
 
         e = engine()
         e.jobs = [awaiting(e), awaiting(e, id: "job-b", files: ["inbox/q3-architecture-sync.md"], summary: "One meeting note becomes a new page under Project X."),
@@ -514,6 +517,9 @@ extension StatesSnapshot {
         e = engine()
         e.jobs = [awaiting(e, denials: denials, worker: "I couldn't fetch the shop's guide or run the linter. Allow them and I'll continue.")]
         main("review-denials-allowed", f, "Review", "Blocked tools · rule ticked", "A rule is ticked: “Allow & continue” appears.", e, section: .review, job: e.jobs[0].id) {
+            JobDetailView(jobID: e.jobs[0].id, allowed: ["WebFetch(domain:www.example-tea.com)"])
+        }
+        main("review-denials-allowed-900", f, "Review", "Rule ticked · smallest window (900×600)", "“Allow & continue” is visible without scrolling at the minimum size.", e, section: .review, job: e.jobs[0].id, size: CGSize(width: 900, height: 600)) {
             JobDetailView(jobID: e.jobs[0].id, allowed: ["WebFetch(domain:www.example-tea.com)"])
         }
 
@@ -593,6 +599,7 @@ extension StatesSnapshot {
         var e = engine()
         e.ask.conversations = []
         main("ask-empty", f, "Ask", "Empty · first use", "No chats yet: intro, suggestions, model and effort.", e, section: .ask) { AskScreen() }
+        main("ask-empty-900", f, "Ask", "Empty · smallest window (900×600)", "The intro sits at the top of the chat area.", e, section: .ask, size: CGSize(width: 900, height: 600)) { AskScreen() }
 
         e = engine()
         main("ask-empty-recents", f, "Ask", "Empty · with recent chats", "Recent chats in the screen and Recent questions in the sidebar.", e, section: .ask) { AskScreen() }
@@ -605,6 +612,7 @@ extension StatesSnapshot {
         t.filter.includeUnconfirmed = false
         t.draft = "How hot should the water be for gyokuro?"
         main("ask-filtered", f, "Ask", "Filtered · labels and source", "#tea and #gyokuro (All labels), unconfirmed off, Slack source, a typed question.", e, section: .ask) { AskScreen() }
+        main("ask-filtered-900", f, "Ask", "Filtered · smallest window (900×600)", "The filter bar and its count line at the minimum size.", e, section: .ask, size: CGSize(width: 900, height: 600)) { AskScreen() }
 
         e = engine()
         AskFixtures.loading(e.ask.main, question: "How hot should the water be for green tea, and does it differ for gyokuro?")
@@ -627,6 +635,7 @@ extension StatesSnapshot {
         e = engine()
         AskFixtures.answered(e.ask.main)
         main("ask-answered", f, "Ask", "Answered · gaps and notices", "Answer with citation markers, cards, a Gap callout and a page-limit notice.", e, section: .ask) { AskScreen() }
+        main("ask-answered-900", f, "Ask", "Answered · smallest window (900×600)", "An answer at the minimum size.", e, section: .ask, size: CGSize(width: 900, height: 600)) { AskScreen() }
 
         e = engine()
         AskFixtures.answered(e.ask.main)
@@ -646,6 +655,9 @@ extension StatesSnapshot {
 
         e = engine()
         main("history-chats", f, "History · Ask chats", "Chats list · keep history on", "Ask chats with pin and delete; kept N days.", e, section: .history) {
+            HistorySection(selectedJob: .constant(nil), part: .chats)
+        }
+        main("history-chats-900", f, "History · Ask chats", "Chats list · smallest window (900×600)", "Each chat's “N questions · Asked …” stays on one line.", e, section: .history, size: CGSize(width: 900, height: 600)) {
             HistorySection(selectedJob: .constant(nil), part: .chats)
         }
 
