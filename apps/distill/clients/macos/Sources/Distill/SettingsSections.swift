@@ -53,7 +53,6 @@ struct SourcesSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SettingsHeading(title: "Sources", note: "Where a note came from. Picking a group in Ask includes everything inside it.")
             VStack(alignment: .leading, spacing: 8) {
                 let groups = SettingsEdits.taxonomy(engine.settings)
                 ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
@@ -132,7 +131,6 @@ struct LabelsSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SettingsHeading(title: "Labels", note: "Read from your vault's tags. Rename or merge to keep suggestions tidy.")
             FlowRow(spacing: 8) {
                 ForEach(notes.labelCounts.sorted { $0.count > $1.count }.prefix(24), id: \.name) { label in
                     HStack(spacing: 6) {
@@ -214,7 +212,7 @@ struct AskHistorySettings: View {
         let days = SettingsEdits.historyDays(engine.settings)
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                SettingsHeading(title: "Ask history", note: "Past questions and answers, listed in History. Stored on this Mac only.")
+                Text("Keep Ask history").font(Theme.body(13, .semibold))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text("Keep").font(Theme.body(13)).foregroundStyle(Theme.muted)
                 PillSwitch(isOn: Binding(get: { SettingsEdits.keepHistory(engine.settings) },
@@ -254,7 +252,6 @@ struct ShortcutsSettingsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SettingsHeading(title: "Keyboard shortcuts", note: "Off until you record one. They work from any app.")
             VStack(alignment: .leading, spacing: 0) {
                 row(.ask, "Ask a question", "Opens the quick-ask window by the flask", "bubble.left", Theme.primaryTint, Theme.primary)
                 Divider().overlay(Theme.border)
@@ -376,7 +373,6 @@ struct RunnersSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SettingsHeading(title: "AI runners", note: "Turn on the AI tools Distill may use.")
             if notes.runners.isEmpty {
                 if notes.runnersLoading {
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible())], spacing: 10) {
@@ -554,65 +550,3 @@ struct RunnerSetupSheet: View {
     }
 }
 
-// MARK: Default model for each task
-
-struct TaskDefaultsSettings: View {
-    @EnvironmentObject var engine: AppModel
-    @ObservedObject var notes: NotesStore
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SettingsHeading(title: "Default model for each task", note: "Runner, model and effort. You can still change them per question in Ask.")
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(AITask.allCases.enumerated()), id: \.element) { index, task in
-                    if index > 0 { Divider().overlay(Theme.border) }
-                    row(task)
-                }
-            }
-            .background(RoundedRectangle(cornerRadius: 16).fill(Theme.panel))
-            Text("Adding notes and Ask need a runner that can read files and respect permissions (Claude Code, Codex). Model APIs like OpenRouter show up only for label suggestions and text from images.")
-                .font(Theme.body(12)).foregroundStyle(Color(hex: 0x48463F))
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 12).padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color(hex: 0xFFF4EE)))
-        }
-    }
-
-    private func row(_ task: AITask) -> some View {
-        let sel = SettingsEdits.selection(task, settings: engine.settings)
-        let runner = notes.runners.first { $0.id == sel.runnerID }
-        let candidates = SettingsEdits.candidates(for: task, runners: notes.runners, settings: engine.settings)
-        let (name, note) = SettingsEdits.taskTitle(task)
-        return HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name).font(Theme.body(13, .bold))
-                Text(note).font(Theme.body(11)).foregroundStyle(Theme.muted)
-            }
-            .frame(width: 170, alignment: .leading)
-            DropdownButton(title: runner?.displayName ?? (sel.runnerID == "claude-code" ? "Claude Code" : sel.runnerID), width: 180) {
-                ForEach(candidates) { r in
-                    Button(r.displayName) { SettingsEdits.setTaskRunner(task, runner: r, in: &engine.settings) }
-                }
-            }
-            .accessibilityLabel("Runner for \(name)")
-            DropdownButton(title: SettingsEdits.modelTitle(sel.model, runner: runner), width: 130) {
-                ForEach(runner?.models ?? [], id: \.id) { m in
-                    Button(m.label) { SettingsEdits.setTaskModel(task, model: m.id, in: &engine.settings) }
-                }
-            }
-            .accessibilityLabel("Model for \(name)")
-            DropdownButton(title: SettingsEdits.effortTitle(sel.effort), width: 104) {
-                Button("Default") { SettingsEdits.setTaskEffort(task, effort: nil, in: &engine.settings) }
-                ForEach(runner?.effortLevels ?? [], id: \.self) { e in
-                    Button(SettingsEdits.effortTitle(e)) { SettingsEdits.setTaskEffort(task, effort: e, in: &engine.settings) }
-                }
-            }
-            .disabled(runner.map { $0.effortLevels.isEmpty } ?? false)
-            .accessibilityLabel("Effort for \(name)")
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 14).padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}

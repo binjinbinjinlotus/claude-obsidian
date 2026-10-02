@@ -72,7 +72,7 @@ using it. `distill.sh core-stop` stops it.
 ## Windows and menus
 
 - AppKit lifecycle (`main.swift` → `AppDelegate`), SwiftUI content.
-- Main window 1120×720 (min 900×600) and Settings window use a transparent,
+- Main window 1120×720 (min 900×600) and Settings window 1140×720 (min 900×600; section list on the left, see [Vaults and settings](vaults-and-settings.md)) use a transparent,
   title-less title bar so the traffic lights sit on the light sidebar.
 - Menus: Distill (Settings ⌘,), Edit, Queue (Paste into Queue ⇧⌘V, Process
   Queue Now ⌘R), Window (Show Worker ⌘0, Toggle Floating Icon ⌘I, Quick Ask).
@@ -120,4 +120,7 @@ using it. `distill.sh core-stop` stops it.
 - Type: SF Rounded heavy for headings (stands in for Bricolage Grotesque),
   system font for body.
 - Shared pieces in `Theme.swift`: `FlaskView`, `PrimaryButton`, `SoftButton`,
-  `Pill`, `Tile`, `card()`.
+  `Pill`, `Tile`, `card()`. `PrimaryButton` and `SoftButton` take `size`:
+  regular 40 (default), small 30, mini 26. `PrimaryButton` also takes
+  `enabled` (45% when off), and `SoftButton` takes `stroke` (a 1 pt ring on
+  white).

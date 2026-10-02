@@ -17,6 +17,42 @@ supersede it with a new entry.
 
 ## 2026-10-02
 
+- **Settings window built with section navigation and search** (mac-settings):
+  - Picking a section shows its group's page (General, AI, Actions and
+    connections), scrolled to that section. This follows the Settings board,
+    which shows each group as one page with an h2 per section. Search results
+    are a list of settings that open their section. They don't filter the
+    live controls in place.
+  - The search index is data, `SettingsIndex`. Each action type adds its own
+    entries from the core's type list. Why: a new setting must be searchable
+    by adding one entry.
+  - Advanced moves to the end of the AI page. Setup problems move to the top
+    of every page.
+  - Deep links use section ids through the `distill.openSettingsSection`
+    notification. The image "Settings" link opens Models for tasks (Text from
+    images).
+  - `actionPreferences` is kept as raw JSON in the app, because the core
+    merges settings one top-level key at a time and unknown nested keys must
+    survive.
+  - Finding actions is stored once, in `actionPreferences.findSelection`.
+    Both Settings rows edit it. The core reads findSelection, then
+    taskDefaults.actionFind, then Sonnet.
+  - To-do defaults ship only what the contract stores: group, sort, history
+    days and remind overdue. The board's Show, Due date filter, New to-dos
+    get, Completed to-dos and reminder time wait for contract fields.
+  - Connections show one Atlassian card for Jira and Confluence, not two
+    rows, because it is one sign-in. Its sign-in panel holds the site, email
+    and API-token form, since a pasted token replaces the board's
+    browser-only flow.
+  - Field defaults live on each type's page, not on the Connections card.
+  - Prompt editors use the shared Markdown editor. Placeholders aren't tinted
+    blue as on the board.
+
+  → [vaults-and-settings](vaults-and-settings.md), [actions](actions.md#settings)
+- **PrimaryButton and SoftButton take a size**: regular 40, small 30, mini 26
+  (font 14/13/12, padding 20/14/11, SoftButton regular 18), with
+  PrimaryButton `enabled` (45% when off) and SoftButton `stroke`. Existing
+  call sites stay regular. → [app-shell](app-shell.md)
 - **Fresh quick note has no source** (shows "+ Source"), even though Write a
   note remembers the last source. Clicking the flask while its green ring
   shows (a quick ask still answering) opens that chat on the Ask screen.
