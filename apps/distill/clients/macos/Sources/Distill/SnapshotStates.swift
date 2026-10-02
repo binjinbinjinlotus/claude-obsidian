@@ -378,7 +378,7 @@ extension StatesSnapshot {
         slow.createdAt = Date().addingTimeInterval(-11 * 60 - 4)
         e.jobs = [slow]
         e.queued = []
-        main("queue-batch-slow", f, "Queue", "Batch still working (10+ min)", "“Still working · m:ss” after 10 minutes.", e, section: .queue) { QueueView() }
+        main("queue-batch-slow", f, "Queue", "Batch still working (10+ min)", "“Still working” after 10 minutes; the detail keeps “started at” its clock time.", e, section: .queue) { QueueView() }
 
         e = engine()
         e.jobs = [awaiting(e)]

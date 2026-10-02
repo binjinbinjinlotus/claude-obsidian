@@ -80,7 +80,7 @@ struct AskFoundBlock: View {
     @State private var editText = ""
 
     var body: some View {
-        let found = store.askItems(conversationID: conversationID, turnIndex: turnIndex, answer: answer, isLast: isLast)
+        let found = store.phase == .unavailable ? [] : store.askItems(conversationID: conversationID, turnIndex: turnIndex, answer: answer, isLast: isLast)
         let already = isLast ? store.alreadyItems(conversationID: conversationID) : []
         if isLast, found.isEmpty, let p = store.detecting(conversationID) {
             detectingView(p)
@@ -128,7 +128,7 @@ struct AskFoundBlock: View {
             Text(ActionCounts.addedPhrase(todos: todos, drafts: auto.count - todos) + " from this answer").font(Theme.body(12, .semibold))
             Spacer(minLength: 6)
             link("Show") { store.expandedAdded.insert(key) }
-            link("Undo") { store.dismiss(auto.map(\.id)) }
+            link("Undo") { store.undoAdd(auto.map(\.id)) }
             link("Open Actions") { store.open(tab: "todo") }
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
@@ -162,7 +162,7 @@ struct AskFoundBlock: View {
                 Image(systemName: "checkmark.circle.fill").font(.system(size: 12)).foregroundStyle(Theme.limeInk)
                 Text(ActionCounts.addedPhrase(todos: todos, drafts: added.count - todos)).font(Theme.body(12, .heavy))
                 Spacer(minLength: 6)
-                link("Undo") { store.dismiss(ids); store.addedAll[key] = nil }
+                link("Undo") { store.undoAdd(ids); store.addedAll[key] = nil }
                 if !compact { link("Open Actions") { store.open(tab: "todo") } }
             }
             .padding(.horizontal, 4).padding(.top, 2).padding(.bottom, 4)
@@ -327,6 +327,11 @@ struct AnswerActionButtons: View {
     @State var menu: Bool = false
 
     var body: some View {
+        // A core without Actions: no buttons (they would do nothing).
+        if store.phase != .unavailable { buttons }
+    }
+
+    private var buttons: some View {
         HStack(spacing: 8) {
             button("Add to to-do", icon: "checklist") { menu.toggle() }
             button("Send to", icon: "arrow.turn.up.right") { menu.toggle() }

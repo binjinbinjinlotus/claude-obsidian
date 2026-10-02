@@ -31,7 +31,8 @@ private struct ActionsScreenContent: View {
         }
         .overlay(alignment: .bottom) {
             if let toast = store.toast {
-                ActionToastView(toast: toast, openHistory: { store.historyRequest += 1 }, dismiss: { store.toast = nil })
+                ActionToastView(toast: toast, openHistory: { store.historyRequest += 1 }, dismiss: { store.toast = nil },
+                                undoShortcut: store.editing.isEmpty)
             }
         }
         .onAppear { if store.phase == .idle { store.load() } }
@@ -195,6 +196,10 @@ struct TodoScreen: View {
                 }
             }
             .padding(.trailing, 8).padding(.bottom, 80)
+        }
+        // Delete removes the open to-do (never from a text field, unlike a key equivalent).
+        .onDeleteCommand {
+            if let item = selectedItem ?? visible.first(where: { $0.status == .open }) { store.remove(item) }
         }
     }
 
@@ -773,7 +778,7 @@ struct TodoDetail: View {
                             ink: item.status == .done ? Theme.limeInk : Theme.softInk)
                 Spacer()
                 IconButton(icon: editing ? "checkmark" : "pencil", help: editing ? "Done" : "Edit", size: 28) { editing.toggle() }
-                    .keyboardShortcut(.return, modifiers: editing ? .command : [])
+                    .keyboardShortcut(editing ? KeyboardShortcut(.return, modifiers: .command) : nil)
             }
             if editing { editor } else { reading }
             ActionContextBlock(item: item)
@@ -795,7 +800,6 @@ struct TodoDetail: View {
                     }
                     Spacer()
                     IconButton(icon: "trash", help: "Remove (Delete)") { store.remove(item) }
-                        .keyboardShortcut(.delete, modifiers: [])
                 }
                 .overlay(alignment: .bottomTrailing) {
                     if menu == "sendto" {

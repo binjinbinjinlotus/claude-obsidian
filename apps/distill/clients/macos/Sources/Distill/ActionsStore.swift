@@ -72,6 +72,7 @@ final class ActionsStore: ObservableObject {
     var fixtureFoundEdit: String?
 
     private var tasks: [String: Task<Void, Never>] = [:]
+    private var settingsWatch: AnyCancellable?
     private var arrivals: [ActionItem] = []
     private var arrivalTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
@@ -85,6 +86,10 @@ final class ActionsStore: ObservableObject {
         let s = ActionsStore()
         s.engine = engine
         stores[key] = s
+        // A type turned on or off in Settings: reload the registry (sub-items) and items (off types fall back to to-dos).
+        s.settingsWatch = engine.$settings.map(\.actionPreferences).removeDuplicates().dropFirst()
+            .debounce(for: .milliseconds(800), scheduler: RunLoop.main)
+            .sink { [weak s] _ in if s?.phase == .loaded { s?.load() } }
         return s
     }
 
@@ -309,6 +314,20 @@ final class ActionsStore: ObservableObject {
         Task {
             do {
                 for item in try await client.confirmActions(ids) { items[item.id] = item }
+            } catch { engine?.report(error) }
+        }
+    }
+
+    /// Undo of an add from Ask (Add all, or an automatic add): dismissed, no History entry.
+    /// A core that counts the confirm as an edit refuses; then the items are removed (History).
+    func undoAdd(_ ids: [String]) {
+        guard let client, !ids.isEmpty else { return }
+        Task {
+            do {
+                try await client.dismissActions(ids)
+                for id in ids { items[id]?.status = .dismissed }
+            } catch let e as CoreClientError where e.code == "invalid_state" {
+                for id in ids { if let item = items[id] { call { try await $0.removeAction(item.id) } } }
             } catch { engine?.report(error) }
         }
     }

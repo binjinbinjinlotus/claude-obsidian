@@ -103,7 +103,7 @@ struct ActionsHistoryContent: View {
             if let id = ui.confirmDelete, let item = store.items[id] { deleteDialog(item) }
         }
         .overlay(alignment: .bottom) {
-            if let toast = store.toast { ActionToastView(toast: toast, openHistory: {}, dismiss: { store.toast = nil }) }
+            if let toast = store.toast { ActionToastView(toast: toast, openHistory: {}, dismiss: { store.toast = nil }, undoShortcut: store.editing.isEmpty) }
         }
         .onAppear { if !store.historyLoaded { store.loadHistory() } }
     }

@@ -100,9 +100,11 @@ using it. `distill.sh core-stop` stops it.
 - **Process now** shows a disabled "Processing…" while the request is in
   flight or a batch runs on the active vault. The Queue title becomes
   "N in this batch · M waiting"; a banner shows "Reading N sources into
-  <vault>", runner · model · elapsed, "nothing is written until you approve",
+  <vault>", runner · model · "started at 3:41 PM" (a clock time),
+  "nothing is written until you approve",
   **Cancel**, and the steps from `progress` events (job state only on a core
-  without them). After 10 minutes the title reads "Still working · m:ss".
+  without them). After 10 minutes the title reads "Still working". The steps end with
+  "Finding actions (after you apply)" while the core's list stops at review.
   Batch files show "In batch", queued ones "Next batch".
 - `progress` events are kept by key in `AppModel.progress` (also loaded from
   `GET /v1/progress` on connect); finished entries leave after 2 s.

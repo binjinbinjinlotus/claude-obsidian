@@ -506,6 +506,8 @@ struct ActionToastView: View {
     let toast: ActionToast
     var openHistory: () -> Void
     var dismiss: () -> Void
+    /// ⌘Z undoes the toast's action, except while an editor is open (its own Undo wins).
+    var undoShortcut = true
 
     var body: some View {
         HStack(spacing: 14) {
@@ -513,7 +515,7 @@ struct ActionToastView: View {
             Text(toast.text).font(Theme.body(13, .semibold)).foregroundStyle(.white).lineLimit(1)
             if let undo = toast.undo {
                 Button("Undo") { undo(); dismiss() }.buttonStyle(.plain).font(Theme.body(13, .bold)).foregroundStyle(Color(hex: 0x9CC2FF))
-                    .keyboardShortcut("z", modifiers: .command)
+                    .keyboardShortcut(undoShortcut ? KeyboardShortcut("z", modifiers: .command) : nil)
             }
             if let open = toast.open {
                 Button(toast.openTitle) { open(); dismiss() }.buttonStyle(.plain).font(Theme.body(13, .bold)).foregroundStyle(Color(hex: 0x9CC2FF))

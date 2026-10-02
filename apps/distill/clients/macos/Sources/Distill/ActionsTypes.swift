@@ -354,7 +354,8 @@ struct ImprovedLine: View {
                         HStack(spacing: 4) { Image(systemName: "arrow.uturn.backward").font(.system(size: 9, weight: .bold)); Text("Undo ⌘Z") }
                     }
                     .buttonStyle(.plain).foregroundStyle(Theme.primary).fontWeight(.bold)
-                    .keyboardShortcut("z", modifiers: .command)
+                    // Only right after the improve and with no editor open, so ⌘Z never reaches another card.
+                    .keyboardShortcut(store.justImproved.contains(item.id) && store.editing.isEmpty ? KeyboardShortcut("z", modifiers: .command) : nil)
                     Button(store.showingChanges.contains(item.id) ? "Hide changes" : "Show changes") {
                         if store.showingChanges.contains(item.id) { store.showingChanges.remove(item.id) } else { store.showingChanges.insert(item.id) }
                     }
