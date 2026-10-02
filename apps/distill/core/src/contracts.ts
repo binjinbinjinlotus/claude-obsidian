@@ -186,6 +186,20 @@ export interface Job {
   operationID?: string | null;
   changedPaths: string[];
   error?: string | null;
+  /** v3: actions found after the batch was applied ("Found 5 actions to confirm"). */
+  actionsFound?: JobActionsSummary | null;
+}
+
+export interface JobActionsSummary {
+  status: 'finding' | 'done' | 'failed' | 'skipped';
+  found: number;
+  /** Waiting for you to confirm. */
+  pending: number;
+  /** Added without confirmation (confirm off). */
+  added: number;
+  byType: Record<string, number>;
+  error?: string | null;
+  model?: string | null;
 }
 
 /** Structured status every agent turn must end with (JSON schema in WorkerProtocol). */
@@ -499,7 +513,7 @@ export interface RunnerInfo {
 export interface Progress {
   /** Stable key: a job id, "ask:<conversationID>", or "note:<requestID>". */
   key: string;
-  kind: 'batch' | 'labelSuggest' | 'labelPages' | 'ask' | 'apply';
+  kind: 'batch' | 'labelSuggest' | 'labelPages' | 'ask' | 'apply' | 'actions';
   /** Short present-tense text, e.g. "Reading 3 sources", "Suggesting labels". */
   message: string;
   /** Ordered steps for batches: ["Moved to inbox", "Read sources", "Drafting page changes", "Ready for review"]. */
