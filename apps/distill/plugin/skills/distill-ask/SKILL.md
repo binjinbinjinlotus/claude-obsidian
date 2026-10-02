@@ -31,6 +31,8 @@ Scope defaults to **all notes**. Add filters only when the user asks for them:
 | Flag | Meaning |
 | --- | --- |
 | `--label L` (repeatable) | only pages with label `L` |
+| `--match any\|all` | with several labels: `any` = pages with at least one of them, `all` = pages with every one |
+| `--unconfirmed include\|exclude` | whether AI labels the user has not confirmed yet count when filtering |
 | `--source S` (repeatable) | only pages from source `S` (e.g. `slack`, `meeting`, `in-person`) |
 | `--conversation ID` | follow-up question in the same conversation (use the `conversationID` from the previous answer) |
 | `--runner R --model M` | use a specific runner and model (`--model` is required when `--runner` differs from the default) |
@@ -39,6 +41,18 @@ Scope defaults to **all notes**. Add filters only when the user asks for them:
 
 Only set runner, model or effort when the user asks for them (for example
 "think harder" means a higher `--effort`).
+
+`--match` and `--unconfirmed` default to the user's Ask settings, so omit
+them unless the user says otherwise: "notes tagged both tea and japan" means
+`--label tea --label japan --match all`; "only labels I confirmed" means
+`--unconfirmed exclude`. Different filter kinds always combine with AND (a
+label filter and a source filter must both match).
+
+Past conversations: `distill history --json` lists them
+(`{"conversations": [{"id", "title", "updatedAt", "pinned", "turnCount", …}]}`),
+`distill history show ID --json` returns one with its `turns`, and
+`distill ask "…" --conversation ID` continues one. Delete one
+(`distill history rm ID`) only when the user asks.
 
 The first call may print nothing for a few seconds while the Distill server
 starts in the background. Answers can take a minute or more (longer at high
@@ -57,9 +71,12 @@ Success is one JSON object on stdout, exit code 0:
   "citations": [{ "n": 1, "path": "wiki/tea/sencha.md", "title": "Sencha" }],
   "gaps": ["No notes on cold brewing."],
   "selection": { "runnerID": "claude-code", "model": "sonnet", "effort": "medium" },
-  "costUSD": 0.01
+  "costUSD": 0.01,
+  "notices": ["Started a new session because the filter changed."]
 }
 ```
+
+`notices` is present only when Distill has something to tell the user.
 
 Errors are `{"error": {"code": "…", "message": "…"}}` with exit code 1 (or 2
 for a usage mistake).
@@ -73,6 +90,10 @@ for a usage mistake).
    Do not fill those gaps with your own knowledge unless the user asks, and
    then label that part as not from their notes.
 4. Keep the `conversationID` for follow-up questions on the same topic.
+5. Pass on any `notices` in one short line.
+
+Ask is read-only. You cannot approve vault changes or confirm labels; if the
+answer shows labels look wrong, tell the user to fix them in the Distill app.
 
 ## When it fails
 

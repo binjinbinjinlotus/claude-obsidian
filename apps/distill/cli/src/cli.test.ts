@@ -8,6 +8,7 @@ import {
   createFakeCore,
   ensureToken,
   releaseLock,
+  sampleConversation,
   startServer,
   statePaths,
   writeLock,
@@ -81,7 +82,12 @@ describe('distill CLI', () => {
     it('--help documents commands, JSON shapes and that approval is not in the CLI', async () => {
       const r = await cli(['--help']);
       assert.equal(r.code, 0);
-      for (const s of ['distill ask', 'note add', 'status', 'serve', 'plugin install', 'no approve', '--json output', 'Exit codes']) {
+      for (const s of [
+        'distill ask', 'note add', 'note label', 'distill history', 'history show', 'history rm', '--match any|all',
+        '--unconfirmed include|exclude', '--no-suggest', 'status', 'serve', 'plugin install', 'no approve',
+        'no confirm-labels command', '"requestID"', '"suggestedLabels"', '"conversations"', '"deleted": true', '"notices"',
+        '--json output', 'Exit codes',
+      ]) {
         assert.ok(r.stdout.includes(s), s);
       }
       assert.equal((await cli([])).code, 2);
@@ -162,7 +168,11 @@ describe('distill CLI', () => {
       ]);
       assert.equal(r.code, 0, r.stderr);
       const res = JSON.parse(r.stdout);
-      assert.deepEqual(Object.keys(res).sort(), ['notePath', 'queued', 'requestID']);
+      assert.deepEqual(Object.keys(res).sort(), ['notePath', 'queued', 'requestID', 'suggestedLabels']);
+      assert.deepEqual(res.suggestedLabels, [
+        { name: 'tea', existing: true },
+        { name: 'gyokuro', existing: false },
+      ]);
       assert.deepEqual(lastCall('addNote')?.args[0], {
         title: 'Gyokuro at 60 °C',
         text: 'Steep 2 min.',
@@ -172,7 +182,46 @@ describe('distill CLI', () => {
         ],
         source: 'in-person',
         sourceRef: 'with Mei',
+        origin: 'cli',
+        suggest: 'wait',
       });
+    });
+    it('--label sends labels without a suggestion; --no-suggest skips it', async () => {
+      const r = await cli(['note', 'add', '--title', 'L', '--text', 'x', '--label', '#tea', '--label', 'green', '--label', 'tea', '--json']);
+      assert.equal(r.code, 0, r.stdout);
+      assert.deepEqual(lastCall('addNote')?.args[0], { title: 'L', text: 'x', origin: 'cli', labels: ['tea', 'green'], suggest: 'none' });
+      assert.equal(JSON.parse(r.stdout).suggestedLabels, undefined);
+      const human = await cli(['note', 'add', '--title', 'L', '--text', 'x', '--label', 'tea']);
+      assert.match(human.stdout, /Labels: tea\n/);
+      const ns = await cli(['note', 'add', '--title', 'N', '--text', 'x', '--no-suggest', '--json']);
+      assert.equal(ns.code, 0, ns.stdout);
+      assert.deepEqual(lastCall('addNote')?.args[0], { title: 'N', text: 'x', origin: 'cli', suggest: 'none' });
+      assert.deepEqual(Object.keys(JSON.parse(ns.stdout)).sort(), ['notePath', 'queued', 'requestID']);
+      assert.equal((await cli(['note', 'add', '--title', 'E', '--text', 'x', '--label', '#'])).code, 2);
+    });
+    it('human output prints the request ID, suggestions (new marked) and the exact follow-up command', async () => {
+      const r = await cli(['note', 'add', '--title', 'Sug', '--text', 'x']);
+      assert.equal(r.code, 0, r.stderr);
+      const id = /Request ID: (\S+)/.exec(r.stdout)?.[1];
+      assert.ok(id, r.stdout);
+      assert.match(r.stdout, /Suggested labels: tea, gyokuro \(new\)\n/);
+      assert.ok(r.stdout.includes(`distill note label ${id} --label tea --label gyokuro\n`), r.stdout);
+      // The printed command works as-is.
+      const follow = await cli(['note', 'label', id!, '--label', 'tea', '--label', 'gyokuro', '--json']);
+      assert.equal(follow.code, 0, follow.stdout);
+    });
+    it('human output reports a suggestion error with a template command', async () => {
+      core.suggestError = 'no runner can do labelSuggest';
+      try {
+        const r = await cli(['note', 'add', '--title', 'Err', '--text', 'x']);
+        assert.equal(r.code, 0);
+        assert.match(r.stdout, /No label suggestions: no runner can do labelSuggest/);
+        assert.match(r.stdout, /Set labels: distill note label req-\d+ --label <label>/);
+        const j = JSON.parse((await cli(['note', 'add', '--title', 'Err', '--text', 'x', '--json'])).stdout);
+        assert.equal(j.suggestError, 'no runner can do labelSuggest');
+      } finally {
+        core.suggestError = undefined;
+      }
     });
     it('reads text from --file and from stdin', async () => {
       assert.equal((await cli(['note', 'add', '--title', 'F', '--file', 'note.md', '--json'])).code, 0);
@@ -193,6 +242,98 @@ describe('distill CLI', () => {
       assert.equal(r.code, 0);
       assert.match(r.stdout, /Queued "H"/);
       assert.match(r.stdout, /approve/);
+    });
+  });
+
+  describe('note label', () => {
+    it('--json returns {notePath, labels} and calls labelNote with the request ID', async () => {
+      const added = JSON.parse((await cli(['note', 'add', '--title', 'To label', '--text', 'x', '--json'])).stdout);
+      const r = await cli(['note', 'label', added.requestID, '--label', '#tea', '--label', 'sencha', '--json']);
+      assert.equal(r.code, 0, r.stdout);
+      assert.deepEqual(JSON.parse(r.stdout), { notePath: added.notePath, labels: ['tea', 'sencha'] });
+      assert.deepEqual(lastCall('labelNote')?.args, [added.requestID, ['tea', 'sencha']]);
+      const human = await cli(['note', 'label', added.requestID, '--label', 'tea']);
+      assert.match(human.stdout, /Labels for .*: tea/);
+    });
+    it('usage errors: no id, no labels, extra args', async () => {
+      assert.equal((await cli(['note', 'label', '--label', 'tea'])).code, 2);
+      assert.equal((await cli(['note', 'label', 'req-1'])).code, 2);
+      assert.equal((await cli(['note', 'label', 'req-1', 'req-2', '--label', 'x'])).code, 2);
+      assert.equal((await cli(['note', 'bogus'])).code, 2);
+    });
+    it('an unknown or already-ingested request ID exits 1 with the server error', async () => {
+      const r = await cli(['note', 'label', 'req-unknown', '--label', 'tea', '--json']);
+      assert.equal(r.code, 1);
+      assert.equal(JSON.parse(r.stdout).error.code, 'not_found');
+      core.failNext('labelNote', Object.assign(new Error('the batch already took this note'), { code: 'invalid_state' }));
+      const late = await cli(['note', 'label', 'req-1', '--label', 'tea', '--json']);
+      assert.equal(late.code, 1);
+      assert.equal(JSON.parse(late.stdout).error.code, 'invalid_state');
+    });
+  });
+
+  describe('ask filters', () => {
+    it('--match and --unconfirmed map to labelMatch/includeUnconfirmed; omitted = server defaults', async () => {
+      await cli(['ask', 'q', '--label', 'tea', '--label', 'green', '--match', 'all', '--unconfirmed', 'exclude', '--json']);
+      assert.deepEqual(lastCall('ask')?.args[0], { question: 'q', labels: ['tea', 'green'], labelMatch: 'all', includeUnconfirmed: false });
+      await cli(['ask', 'q', '--unconfirmed', 'include', '--json']);
+      assert.deepEqual(lastCall('ask')?.args[0], { question: 'q', includeUnconfirmed: true });
+      await cli(['ask', 'q', '--json']);
+      assert.deepEqual(lastCall('ask')?.args[0], { question: 'q' });
+      assert.equal((await cli(['ask', 'q', '--match', 'some'])).code, 2);
+      assert.equal((await cli(['ask', 'q', '--unconfirmed', 'yes'])).code, 2);
+    });
+    it('prints notices above the answer and returns them in --json', async () => {
+      const notice = 'Started a new session because the filter changed.';
+      const original = core.ask;
+      core.ask = async (req) => ({ ...(await original(req)), notices: [notice] });
+      try {
+        const r = await cli(['ask', 'q']);
+        assert.ok(r.stdout.startsWith(`Note: ${notice}\n`), r.stdout);
+        const j = JSON.parse((await cli(['ask', 'q', '--json'])).stdout);
+        assert.deepEqual(j.notices, [notice]);
+      } finally {
+        core.ask = original;
+      }
+    });
+  });
+
+  describe('history', () => {
+    it('lists conversations (--json {conversations}) and human', async () => {
+      const r = await cli(['history', '--json']);
+      assert.equal(r.code, 0, r.stdout);
+      const res = JSON.parse(r.stdout);
+      assert.deepEqual(Object.keys(res), ['conversations']);
+      assert.deepEqual(Object.keys(res.conversations[0]).sort(), ['createdAt', 'id', 'pinned', 'title', 'turnCount', 'updatedAt', 'vaultPath']);
+      assert.equal(lastCall('listConversations')?.method, 'listConversations');
+      const human = await cli(['history']);
+      assert.match(human.stdout, /conv-1 .*How hot for sencha\?/);
+      assert.equal((await cli(['history', 'bogus'])).code, 2);
+    });
+    it('show prints the turns (--json AskConversation)', async () => {
+      const r = await cli(['history', 'show', 'conv-1', '--json']);
+      assert.equal(r.code, 0, r.stdout);
+      const c = JSON.parse(r.stdout);
+      assert.equal(c.id, 'conv-1');
+      assert.equal(c.turns[0].request.question, 'How hot for sencha?');
+      assert.deepEqual(lastCall('getConversation')?.args, ['conv-1']);
+      const human = await cli(['history', 'show', 'conv-1']);
+      assert.match(human.stdout, /Q1 .*How hot for sencha\?/);
+      assert.match(human.stdout, /\[1\] Sencha/);
+      assert.match(human.stdout, /--conversation conv-1/);
+      const missing = await cli(['history', 'show', 'conv-x', '--json']);
+      assert.equal(missing.code, 1);
+      assert.equal(JSON.parse(missing.stdout).error.code, 'conversation_not_found');
+      assert.equal((await cli(['history', 'show'])).code, 2);
+    });
+    it('rm deletes (--json {id, deleted})', async () => {
+      core.conversations.push(sampleConversation({ id: 'conv-rm' }));
+      const r = await cli(['history', 'rm', 'conv-rm', '--json']);
+      assert.equal(r.code, 0, r.stdout);
+      assert.deepEqual(JSON.parse(r.stdout), { id: 'conv-rm', deleted: true });
+      assert.deepEqual(lastCall('deleteConversation')?.args, ['conv-rm']);
+      const again = await cli(['history', 'rm', 'conv-rm']);
+      assert.equal(again.code, 1);
     });
   });
 

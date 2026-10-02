@@ -47,9 +47,11 @@ apps/distill/
 2. **The vault is written only by the Python core**, through reviewed
    transactions. The TS core orchestrates; it does not reimplement transactions.
 3. **The approval gate stays with a person.** Approve/apply exist only in UI
-   clients. The CLI exposes `ask` (read-only) and `note add` (queues a note,
-   which still goes through Review). The plugin's skills tell agents plainly
-   that they cannot approve changes.
+   clients. The CLI exposes `ask` and `history` (read-only, plus deleting a
+   chat), `note add` (queues a note, which still goes through Review) and
+   `note label` (labels for a note still in the queue). Confirming AI labels
+   on vault pages is also UI-only. The plugin's skills tell agents plainly
+   that they cannot approve changes or confirm labels.
 4. **Local API security.** Bind to `127.0.0.1` only (or a Unix socket);
    require a per-user token stored in a `0600` file next to the settings; reject
    requests whose `Host`/`Origin` are not local. Remote access for web/mobile is
@@ -57,42 +59,100 @@ apps/distill/
 5. **State compatibility.** Keep today's `settings.json` / `jobs.json` format
    and location so existing settings carry over.
 
-## Core API (sketch)
+## Core API (built: `core/src/server/http.ts`)
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/v1/status` | server, vault, runners, setup problems |
-| GET/PUT | `/v1/settings` | settings (no secrets) |
-| GET | `/v1/queue` · POST `/v1/queue/files` · POST `/v1/queue/process` | queue |
-| POST | `/v1/notes` | add a written note (text, images with keep/extract, source) |
-| GET | `/v1/jobs` · GET `/v1/jobs/:id` | jobs and history |
-| POST | `/v1/jobs/:id/approve` · `/reply` · `/allow` · `/reject` · `/cancel` | review actions (UI clients only) |
-| POST | `/v1/ask` | ask a question (runner/model/effort, optional label/source filters); follow-ups by session id |
-| GET | `/v1/labels` · `/v1/sources` | taxonomy |
-| GET | `/v1/events` | server-sent events: queue, job and approval changes |
+Every request needs `Authorization: Bearer <token>` and a local `Host`
+(`127.0.0.1`, `localhost`, `[::1]`); a non-local or `null` `Origin` is refused
+(403) before the token is checked. Bodies are JSON (`Content-Type:
+application/json`, at most 1 MiB). Every error is `{"error": {"code",
+"message"}}`: 400 `invalid_request`/`invalid_json`, 401 `unauthorized`, 403
+`forbidden_host`/`forbidden_origin`, 404 `not_found` (or `job_not_found`,
+`conversation_not_found`), 405 `method_not_allowed`, 409
+`invalid_state`/`busy`/`no_vault`, 413, 415, 501 `not_implemented`, 500
+`internal_error`. Types are those in `core/src/contracts.ts`.
 
-## CLI
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| GET | `/v1/status` | | `StatusResponse` |
+| GET · PUT | `/v1/settings` | PUT: partial `Settings` | `Settings` (no secrets) |
+| GET | `/v1/queue` | | `{entries: QueueEntry[]}` |
+| POST | `/v1/queue/files` | `{paths}` | `{entries}` |
+| POST | `/v1/queue/process` | `{force?}` | `{job: Job \| null}` |
+| POST | `/v1/notes` | `AddNoteRequest` (`labels?`, `suggest?: wait\|background\|none`, `origin?: app\|cli`) | 201 `AddNoteResult` |
+| POST | `/v1/notes/:requestID/labels` | `{labels: string[]}` | `{notePath, labels}`; 409 once the batch took the note |
+| GET | `/v1/labels[?vault=PATH]` | | `{labels: LabelCount[]}` |
+| GET | `/v1/labels/review[?vault=PATH]` | | `LabelReview` |
+| POST | `/v1/labels/suggest` | `{paths, vaultPath?, selection?}` | `{job}` (UI clients) |
+| POST | `/v1/labels/confirm` | `{items: [{path, labels}], vaultPath?}` | `{job}` (UI clients) |
+| GET | `/v1/jobs` · `/v1/jobs/:id` | | `{jobs}` · `Job` |
+| POST | `/v1/jobs/:id/approve` · `/reply` · `/allow` · `/reject` · `/cancel` | `reply {text}`, `allow {rules}` | `{job}` (UI clients only) |
+| POST | `/v1/ask` | `AskRequest` (`labelMatch?: any\|all`, `includeUnconfirmed?`) | `AskResponse` (`notices?`) |
+| GET | `/v1/conversations` | | `{conversations: AskConversationSummary[]}` |
+| GET · DELETE | `/v1/conversations/:id` | | `AskConversation` · `{id, deleted: true}` |
+| POST | `/v1/conversations/:id/pin` | `{pinned: boolean}` | `AskConversationSummary` |
+| GET | `/v1/runners` | | `{runners: RunnerInfo[]}` |
+| PUT | `/v1/runners/:id/secrets/:name` | `{value: string}` or `{value: null}` to clear | `{runnerID, name, isSet}` |
+| GET | `/v1/events` | | server-sent events, below |
+
+Label names in bodies are trimmed, lose a leading `#`, are de-duplicated and
+may not contain whitespace. Omitted `labelMatch`/`includeUnconfirmed` take the
+user's `askPreferences`. Sources come from `settings.sourceTaxonomy`; there is
+no separate sources route.
+
+**Secrets.** The secret route never echoes, logs or stores the value in the
+response; any error message that contains it is redacted (`[redacted]`). The
+value goes only to the core, which keeps it in the Keychain.
+
+**Events.** `GET /v1/events` is `text/event-stream`: `retry: 2000`, then one
+`event: <type>\ndata: <CoreEvent JSON>\n\n` per event (`queue`, `job`,
+`settings`, `log`, `labelSuggestions`, `conversation`), and a `: keep-alive`
+comment every 15 s.
+
+## CLI (built: `cli/src/cli.ts`)
 
 ```bash
-distill ask "How hot for sencha?" [--label tea] [--source slack] \
-            [--runner claude-code --model sonnet --effort medium] [--json]
+distill ask "How hot for sencha?" [--label tea]... [--match any|all] \
+            [--unconfirmed include|exclude] [--source slack]... \
+            [--runner claude-code --model sonnet --effort medium] \
+            [--conversation ID] [--vault PATH] [--json]
 distill note add --title "Gyokuro at 60 °C" [--text "…" | --file note.md | -] \
             [--image card.png:extract] [--image setup.jpg] \
-            [--source in-person --ref "with Mei"] [--json]
-distill status            # server, vault, queue, pending reviews
-distill serve             # run the core server in the foreground
+            [--source in-person --ref "with Mei"] [--label L]... [--no-suggest] [--json]
+distill note label <request-id> --label L... [--json]
+distill history [--json]          # list Ask conversations
+distill history show <id> [--json]
+distill history rm <id> [--json]
+distill status [--json]           # server, vault, queue, pending reviews
+distill serve [--port N]          # run the core server in the foreground
+distill plugin install --target claude|codex [--dry-run] [--copy] [--force] [--json]
 ```
 
-The CLI talks to the running server and starts it if it is not running. `--json`
-gives stable machine-readable output for agents.
+- `note add` always sends `origin: "cli"`. With `--label` it sends the labels
+  and `suggest: "none"`; with `--no-suggest`, `suggest: "none"`; otherwise
+  `suggest: "wait"`, and the human output prints the request ID, the suggested
+  labels (new ones marked `(new)`) and the exact `distill note label …` command
+  to keep them.
+- `ask` leaves `--match`/`--unconfirmed` out of the request when not given, so
+  the server's Ask settings apply; notices print above the answer.
+- There are no approve, apply, reply, reject or confirm-labels commands:
+  approval and label confirmation stay in UI clients. `--help` says so.
+- `--json` prints one JSON document (each shape is documented in `--help`);
+  errors are `{"error": {"code","message"}}` with exit code 1, or 2 for usage.
 
-## Plugin
+The CLI talks to the running server and starts it if it is not running.
+
+## Plugin (built: `plugin/`)
 
 `apps/distill/plugin/` holds portable Agent Skills (only `name` and
 `description` in frontmatter, as in the repo's `skills/`):
 
-- `distill-ask`: when and how to call `distill ask`, how to cite the answer.
-- `distill-note`: how to call `distill note add`, choosing a source, images.
+- `distill-ask`: when and how to call `distill ask`, the `--match` and
+  `--unconfirmed` filters, history, how to cite the answer and pass on notices.
+- `distill-note`: how to call `distill note add`, choosing a source, images,
+  and the request-ID labeling loop: read `suggestedLabels` (prefer
+  `existing: true`), decide, then `distill note label <request-id> --label …`
+  before the next batch. Both skills state that agents cannot approve changes
+  or confirm labels.
 
 Packaging:
 
@@ -106,6 +166,37 @@ Packaging:
   location `~/.codex/skills/`). Locations come from third-party guides; confirm
   against OpenAI's docs at build time.
 - `distill plugin install --target claude|codex` automates both.
+
+## Server lifecycle and state files (built)
+
+Transport is **localhost HTTP + bearer token** (decided and built): the server
+binds `127.0.0.1` only, on a free port unless `distill serve --port N`.
+Lifecycle (built for the CLI): `distill serve` runs it in the foreground, and
+any other CLI command starts it **on demand**, detached, when no live server
+is found. One server runs per state dir (`~/Library/Application
+Support/Distill`, or `$DISTILL_STATE_DIR`). The Mac app and a launchd login
+item can use the same `distill serve` entry point later.
+
+- `<state dir>/token`: 64 lowercase hex characters (32 random bytes), no
+  newline, mode `0600`; created by the first server, tightened to `0600` if
+  looser. Clients read it to send `Authorization: Bearer <token>`.
+- `<state dir>/server.json` (mode `0600`), written only after the server
+  listens, atomically (temp file hard-linked into place, so two servers cannot
+  both win):
+
+  ```json
+  { "pid": 41235, "port": 52011, "startedAt": "2026-10-01T15:42:00.000Z", "version": "0.1.0" }
+  ```
+
+  It is removed on shutdown (SIGINT/SIGTERM or process exit) only by the
+  process that owns it. A file whose `pid` is dead is stale: the next server
+  replaces it, and clients treat it as "no server".
+- `<state dir>/server.log`: stdout and stderr of a server the CLI started,
+  appended (mode `0600`). Lines are `distill serve: <message>`, e.g.
+  `distill serve: listening on http://127.0.0.1:52011 (pid 41235, state …)`
+  and `distill serve: received SIGTERM, shutting down`. When a started server
+  exits before it is ready, the CLI reports the log path and the new lines.
+  Secret values are never logged.
 
 ## Runtime and secrets
 
@@ -140,8 +231,10 @@ Packaging:
 
 ## Open decisions
 
-- Transport: localhost HTTP + token (proposed) or Unix socket.
-- Server lifecycle: started by the Mac app, by the CLI on demand, or a
-  login item (launchd).
+- ~~Transport~~: decided and built, localhost HTTP + token (see
+  [Server lifecycle and state files](#server-lifecycle-and-state-files-built)).
+- ~~Server lifecycle~~: built for the CLI (on demand, or `distill serve`).
+  Whether the Mac app or a launchd login item also starts it is the macOS
+  client's call; both would use `distill serve`.
 - Node: bundled runtime or system install with a `nodePath` setting.
 - Confirm the build order above.

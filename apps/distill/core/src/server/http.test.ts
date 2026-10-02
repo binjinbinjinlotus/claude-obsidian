@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { after, before, describe, it } from 'node:test';
-import { createFakeCore, type FakeCore } from './fake-core.js';
+import { CoreError, type CoreEvent } from '../contracts.js';
+import { createFakeCore, sampleConversation, type FakeCore } from './fake-core.js';
 import { startServer, type RunningServer } from './http.js';
 
 const TOKEN = 'a'.repeat(64);
@@ -276,6 +277,199 @@ describe('HTTP API', () => {
       assert.equal(res.body.conversationID, 'conv-9');
       assert.deepEqual(lastCall(), { method: 'ask', args: [body] });
     });
+  });
+
+  describe('v2 routes', () => {
+    it('POST /v1/notes passes labels, suggest and origin, and validates them', async () => {
+      const body = { title: 'L', text: 'x', labels: ['#tea', ' green ', 'tea'], suggest: 'none', origin: 'cli' };
+      const res = await request(port, 'POST', '/v1/notes', { body });
+      assert.equal(res.status, 201);
+      assert.deepEqual(lastCall()?.args[0], { title: 'L', text: 'x', labels: ['tea', 'green'], suggest: 'none', origin: 'cli' });
+      const wait = await request(port, 'POST', '/v1/notes', { body: { title: 'W', text: 'x', suggest: 'wait', origin: 'cli' } });
+      assert.equal(wait.status, 201);
+      assert.match(wait.body.requestID, /^req-\d+$/);
+      assert.deepEqual(wait.body.suggestedLabels, [
+        { name: 'tea', existing: true },
+        { name: 'gyokuro', existing: false },
+      ]);
+      for (const bad of [{ suggest: 'later' }, { origin: 'web' }, { labels: 'tea' }, { labels: [''] }, { labels: ['two words'] }]) {
+        const r = await request(port, 'POST', '/v1/notes', { body: { title: 't', text: 'x', ...bad } });
+        assert.equal(r.status, 400, JSON.stringify(bad));
+        assert.equal(r.body.error.code, 'invalid_request');
+      }
+    });
+    it('POST /v1/notes/:requestID/labels maps to labelNote (200, not 201)', async () => {
+      const added = await request(port, 'POST', '/v1/notes', { body: { title: 'Lab', text: 'x' } });
+      const id = added.body.requestID as string;
+      const res = await request(port, 'POST', `/v1/notes/${encodeURIComponent(id)}/labels`, { body: { labels: ['tea', '#gyokuro'] } });
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body, { notePath: added.body.notePath, labels: ['tea', 'gyokuro'] });
+      assert.deepEqual(lastCall(), { method: 'labelNote', args: [id, ['tea', 'gyokuro']] });
+      const missing = await request(port, 'POST', '/v1/notes/req-nope/labels', { body: { labels: ['tea'] } });
+      assert.equal(missing.status, 404);
+      assert.equal(missing.body.error.code, 'not_found');
+      const noLabels = await request(port, 'POST', `/v1/notes/${id}/labels`, { body: {} });
+      assert.equal(noLabels.status, 400);
+      core.failNext('labelNote', new Error('the batch already picked this note up'));
+      const late = await request(port, 'POST', `/v1/notes/${id}/labels`, { body: { labels: ['tea'] } });
+      assert.equal(late.status, 409);
+      assert.equal(late.body.error.code, 'invalid_state');
+    });
+    it('GET /v1/labels and /v1/labels/review pass ?vault=', async () => {
+      const all = await request(port, 'GET', '/v1/labels');
+      assert.equal(all.status, 200);
+      assert.equal(all.body.labels[0].name, 'tea');
+      assert.deepEqual(lastCall(), { method: 'listLabels', args: [undefined] });
+      await request(port, 'GET', '/v1/labels?vault=%2Ftmp%2Fother');
+      assert.deepEqual(lastCall(), { method: 'listLabels', args: ['/tmp/other'] });
+      await request(port, 'GET', '/v1/labels?vault=');
+      assert.deepEqual(lastCall(), { method: 'listLabels', args: [undefined] });
+      const review = await request(port, 'GET', '/v1/labels/review?vault=/tmp/v2');
+      assert.equal(review.status, 200);
+      assert.deepEqual(Object.keys(review.body).sort(), ['toReview', 'unlabeled']);
+      assert.deepEqual(lastCall(), { method: 'labelReview', args: ['/tmp/v2'] });
+    });
+    it('POST /v1/labels/suggest and /v1/labels/confirm return {job}', async () => {
+      const sel = { runnerID: 'claude-code', model: 'haiku' };
+      const sug = await request(port, 'POST', '/v1/labels/suggest', { body: { paths: ['wiki/a.md'], vaultPath: '/tmp/v', selection: sel } });
+      assert.equal(sug.status, 200);
+      assert.equal(sug.body.job.id, 'job-label-suggest');
+      assert.deepEqual(lastCall(), { method: 'suggestLabelsForPages', args: [['wiki/a.md'], { vaultPath: '/tmp/v', selection: sel }] });
+      await request(port, 'POST', '/v1/labels/suggest', { body: { paths: ['wiki/b.md'] } });
+      assert.deepEqual(lastCall(), { method: 'suggestLabelsForPages', args: [['wiki/b.md'], {}] });
+      for (const bad of [{}, { paths: [] }, { paths: ['a'], selection: { model: 'x' } }]) {
+        assert.equal((await request(port, 'POST', '/v1/labels/suggest', { body: bad })).status, 400, JSON.stringify(bad));
+      }
+      const items = [{ path: 'wiki/a.md', labels: ['tea'] }];
+      const conf = await request(port, 'POST', '/v1/labels/confirm', { body: { items, vaultPath: '/tmp/v' } });
+      assert.equal(conf.status, 200);
+      assert.equal(conf.body.job.id, 'job-label-confirm');
+      assert.deepEqual(lastCall(), { method: 'confirmLabels', args: [items, '/tmp/v'] });
+      await request(port, 'POST', '/v1/labels/confirm', { body: { items } });
+      assert.deepEqual(lastCall(), { method: 'confirmLabels', args: [items, undefined] });
+      for (const bad of [{}, { items: [] }, { items: [{ path: 'a' }] }, { items: [{ labels: ['x'] }] }]) {
+        assert.equal((await request(port, 'POST', '/v1/labels/confirm', { body: bad })).status, 400, JSON.stringify(bad));
+      }
+    });
+    it('conversation routes', async () => {
+      const list = await request(port, 'GET', '/v1/conversations');
+      assert.equal(list.status, 200);
+      assert.equal(list.body.conversations[0].id, 'conv-1');
+      assert.equal(list.body.conversations[0].turns, undefined);
+      const one = await request(port, 'GET', '/v1/conversations/conv-1');
+      assert.equal(one.status, 200);
+      assert.equal(one.body.turns.length, 1);
+      assert.deepEqual(lastCall(), { method: 'getConversation', args: ['conv-1'] });
+      const missing = await request(port, 'GET', '/v1/conversations/conv-x');
+      assert.equal(missing.status, 404);
+      assert.equal(missing.body.error.code, 'conversation_not_found');
+      const pin = await request(port, 'POST', '/v1/conversations/conv-1/pin', { body: { pinned: true } });
+      assert.equal(pin.status, 200);
+      assert.equal(pin.body.pinned, true);
+      assert.deepEqual(lastCall(), { method: 'setConversationPinned', args: ['conv-1', true] });
+      assert.equal((await request(port, 'POST', '/v1/conversations/conv-1/pin', { body: { pinned: 'yes' } })).status, 400);
+      assert.equal((await request(port, 'POST', '/v1/conversations/conv-1/pin', { body: {} })).status, 400);
+      const del = await request(port, 'DELETE', '/v1/conversations/conv-1');
+      assert.equal(del.status, 200);
+      assert.deepEqual(del.body, { id: 'conv-1', deleted: true });
+      assert.deepEqual(lastCall(), { method: 'deleteConversation', args: ['conv-1'] });
+      const again = await request(port, 'DELETE', '/v1/conversations/conv-1');
+      assert.equal(again.status, 404);
+      core.conversations.push(sampleConversation());
+    });
+    it('GET /v1/runners', async () => {
+      const res = await request(port, 'GET', '/v1/runners');
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body.runners.map((r: { id: string }) => r.id), ['claude-code', 'openrouter']);
+      assert.equal(lastCall()?.method, 'listRunners');
+    });
+    it('PUT /v1/runners/:id/secrets/:name sets and clears, and never echoes the value', async () => {
+      const SECRET = 'sk-LEAK-123';
+      const raw = (r: Res) => (typeof r.body === 'string' ? r.body : JSON.stringify(r.body)) + JSON.stringify(r.headers);
+      const set = await request(port, 'PUT', '/v1/runners/openrouter/secrets/apiKey', { body: { value: SECRET } });
+      assert.equal(set.status, 200);
+      assert.deepEqual(set.body, { runnerID: 'openrouter', name: 'apiKey', isSet: true });
+      assert.ok(!raw(set).includes(SECRET));
+      assert.deepEqual(lastCall(), { method: 'setRunnerSecret', args: ['openrouter', 'apiKey', SECRET] });
+      const runners = await request(port, 'GET', '/v1/runners');
+      assert.ok(!raw(runners).includes(SECRET));
+      assert.equal(runners.body.runners[1].secrets[0].isSet, true);
+
+      const cleared = await request(port, 'PUT', '/v1/runners/openrouter/secrets/apiKey', { body: { value: null } });
+      assert.deepEqual(cleared.body, { runnerID: 'openrouter', name: 'apiKey', isSet: false });
+      assert.deepEqual(lastCall(), { method: 'setRunnerSecret', args: ['openrouter', 'apiKey', null] });
+
+      for (const bad of [{}, { value: '' }, { value: 42 }, { value: [SECRET] }]) {
+        const r = await request(port, 'PUT', '/v1/runners/openrouter/secrets/apiKey', { body: bad });
+        assert.equal(r.status, 400, JSON.stringify(bad));
+        assert.ok(!raw(r).includes(SECRET));
+      }
+      const bj = await request(port, 'PUT', '/v1/runners/openrouter/secrets/apiKey', { raw: `{"value":"${SECRET}"` });
+      assert.equal(bj.status, 400);
+      assert.ok(!raw(bj).includes(SECRET));
+
+      core.failNext('setRunnerSecret', new Error(`keychain rejected ${SECRET} for openrouter`));
+      const failed = await request(port, 'PUT', '/v1/runners/openrouter/secrets/apiKey', { body: { value: SECRET } });
+      assert.equal(failed.status, 500);
+      assert.ok(!raw(failed).includes(SECRET), raw(failed));
+      assert.match(failed.body.error.message, /\[redacted\]/);
+
+      const unknown = await request(port, 'PUT', '/v1/runners/nope/secrets/apiKey', { body: { value: SECRET } });
+      assert.equal(unknown.status, 404);
+      assert.ok(!raw(unknown).includes(SECRET));
+      assert.equal((await request(port, 'GET', '/v1/runners/openrouter/secrets/apiKey')).status, 405);
+    });
+    it('POST /v1/ask passes labelMatch and includeUnconfirmed, and validates them', async () => {
+      const body = { question: 'q', labels: ['tea', 'green'], labelMatch: 'all', includeUnconfirmed: false };
+      const res = await request(port, 'POST', '/v1/ask', { body });
+      assert.equal(res.status, 200);
+      assert.deepEqual(lastCall(), { method: 'ask', args: [body] });
+      assert.equal((await request(port, 'POST', '/v1/ask', { body: { question: 'q', labelMatch: 'some' } })).status, 400);
+      assert.equal((await request(port, 'POST', '/v1/ask', { body: { question: 'q', includeUnconfirmed: 'no' } })).status, 400);
+    });
+    it('CoreError not_implemented maps to 501', async () => {
+      core.failNext('listLabels', new CoreError('not_implemented', 'listLabels: not implemented'));
+      const res = await request(port, 'GET', '/v1/labels');
+      assert.equal(res.status, 501);
+      assert.deepEqual(res.body, { error: { code: 'not_implemented', message: 'listLabels: not implemented' } });
+    });
+    it('new routes keep auth and Host/Origin checks', async () => {
+      assert.equal((await request(port, 'GET', '/v1/conversations', { auth: false })).status, 401);
+      assert.equal((await request(port, 'GET', '/v1/runners', { headers: { origin: 'https://evil.example' } })).status, 403);
+      const before = core.calls.length;
+      const r = await request(port, 'PUT', '/v1/runners/openrouter/secrets/apiKey', { auth: false, body: { value: 'sk-x' } });
+      assert.equal(r.status, 401);
+      assert.equal(core.calls.length, before);
+    });
+  });
+
+  it('GET /v1/events forwards labelSuggestions and conversation events', async () => {
+    const { turns: _t, ...summary } = sampleConversation();
+    const events: CoreEvent[] = [
+      { type: 'labelSuggestions', requestID: 'req-9', notePath: '/tmp/vault/inbox/a.md', labels: [{ name: 'tea', existing: true }] },
+      { type: 'conversation', conversation: summary, deleted: true },
+    ];
+    const received = await new Promise<string>((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port, path: '/v1/events', headers: { authorization: `Bearer ${TOKEN}` } }, (res) => {
+        let text = '';
+        let emitted = false;
+        res.on('data', (c: Buffer) => {
+          text += c.toString('utf8');
+          if (!emitted && text.includes(': connected')) {
+            emitted = true;
+            for (const e of events) core.emit(e);
+          }
+          if (text.includes('event: labelSuggestions') && text.includes('event: conversation')) {
+            req.destroy();
+            resolve(text);
+          }
+        });
+      });
+      req.on('error', (e) => ((e as NodeJS.ErrnoException).code === 'ECONNRESET' ? undefined : reject(e)));
+      req.end();
+    });
+    assert.ok(received.includes(`event: labelSuggestions\ndata: ${JSON.stringify(events[0])}\n\n`));
+    assert.ok(received.includes(`event: conversation\ndata: ${JSON.stringify(events[1])}\n\n`));
   });
 
   it('GET /v1/events streams CoreEvents with keep-alive, and unsubscribes on close', async () => {

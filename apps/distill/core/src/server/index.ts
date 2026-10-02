@@ -15,7 +15,7 @@ export { startServer, HttpError, type ServerOptions, type RunningServer } from '
 export * from './lifecycle.js';
 export { statePaths } from '../store/paths.js';
 /** In-memory DistillCore for tests and client development. */
-export { createFakeCore, sampleJob, type FakeCore } from './fake-core.js';
+export { createFakeCore, sampleJob, sampleConversation, FAKE_SUGGESTIONS, type FakeCore } from './fake-core.js';
 
 export interface RunServerOptions {
   paths?: StatePaths;

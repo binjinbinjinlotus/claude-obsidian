@@ -6,10 +6,11 @@ CLI:
 | Skill | What it does |
 | --- | --- |
 | `distill-ask` | Answers questions from the user's own vault with citations (`distill ask … --json`). Read-only. |
-| `distill-note` | Queues a note (text, images, source) for Distill to ingest (`distill note add … --json`). |
+| `distill-note` | Queues a note (text, images, source) for Distill to ingest (`distill note add … --json`), then labels it from Distill's suggestions (`distill note label <request-id> …`). |
 
-Agents cannot approve vault changes. The CLI has no approve, apply, reply or
-reject command; queued notes go through Review in the Distill app.
+Agents cannot approve vault changes or confirm labels. The CLI has no approve,
+apply, reply, reject or confirm-labels command; queued notes go through Review
+in the Distill app.
 
 This plugin is separate from the repository-root `claude-obsidian` plugin and
 is not part of its release artifact.
