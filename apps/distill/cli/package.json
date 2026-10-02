@@ -5,8 +5,12 @@
   "type": "module",
   "bin": { "distill": "dist/main.js" },
   "scripts": {
+    "build:core": "tsc -p ../core/tsconfig.json",
+    "prebuild": "npm run build:core",
     "build": "tsc -p tsconfig.json",
+    "pretypecheck": "npm run build:core",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "npm run build:core",
     "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {

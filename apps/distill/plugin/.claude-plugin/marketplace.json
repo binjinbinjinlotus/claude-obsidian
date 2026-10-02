@@ -1,0 +1,16 @@
+{
+  "name": "distill-local",
+  "description": "Local marketplace for the Distill agent plugin (apps/distill/plugin in a claude-obsidian checkout)",
+  "owner": {
+    "name": "AgriciDaniel"
+  },
+  "plugins": [
+    {
+      "name": "distill",
+      "source": "./",
+      "description": "Ask your own notes through Distill and queue new notes for review.",
+      "version": "0.1.0",
+      "license": "MIT"
+    }
+  ]
+}

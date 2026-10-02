@@ -1,0 +1,13 @@
+{
+  "name": "distill",
+  "version": "0.1.0",
+  "description": "Ask your own Obsidian notes through Distill (read-only, cited answers) and queue new notes for Distill to ingest. Agents never approve vault changes; a person reviews them in the Distill app.",
+  "author": {
+    "name": "AgriciDaniel",
+    "url": "https://github.com/AgriciDaniel"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/AgriciDaniel/claude-obsidian",
+  "repository": "https://github.com/AgriciDaniel/claude-obsidian",
+  "keywords": ["distill", "obsidian", "notes", "ask", "knowledge-base"]
+}
