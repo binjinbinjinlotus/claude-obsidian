@@ -59,11 +59,13 @@ struct AskThreadView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let note = thread.note { NoticeLine(text: note) }
                 if thread.isEmpty { emptyState }
-                ForEach(thread.entries) { entry in
+                ForEach(Array(thread.entries.enumerated()), id: \.element.id) { index, entry in
                     QuestionBubble(text: entry.question)
                     AnswerBlock(entry: entry, saved: ask.savedEntries.contains(entry.id),
                                 save: { ask.save(entry) }, copy: { ask.copy(entry) },
-                                open: { ask.openCitation($0) })
+                                open: { ask.openCitation($0) },
+                                conversationID: thread.conversationID ?? (entry.response.conversationID.isEmpty ? nil : entry.response.conversationID),
+                                turnIndex: index, isLast: index == thread.entries.count - 1 && thread.pending == nil)
                 }
                 if let pending = thread.pending {
                     QuestionBubble(text: pending.question)
@@ -191,12 +193,18 @@ struct AskThreadView: View {
 
 /// One answer: header, text with markers, citation cards, gaps, notices, actions.
 struct AnswerBlock: View {
+    @EnvironmentObject var engine: AppModel
     let entry: AskEntry
     var saved = false
     let save: () -> Void
     let copy: () -> Void
     let open: (AskCitation) -> Void
+    /// The chat and which answer this is, for "Found in this answer" (ActionsAsk).
+    var conversationID: String? = nil
+    var turnIndex = 0
+    var isLast = false
     @State private var copied = false
+    @State private var todoForm: NewTodo?
 
     var body: some View {
         let r = entry.response
@@ -221,7 +229,11 @@ struct AnswerBlock: View {
                     }
                 }
             }
-            ForEach(r.gaps, id: \.self) { GapCallout(text: $0) }
+            // The Gap callout only when the gap did not become an action.
+            AnswerGaps(store: engine.actions, gaps: r.gaps, conversationID: conversationID, turnIndex: turnIndex, answer: r.answer, isLast: isLast)
+            if let cid = conversationID {
+                AskFoundBlock(store: engine.actions, conversationID: cid, turnIndex: turnIndex, answer: r.answer, isLast: isLast)
+            }
             HStack(spacing: 8) {
                 Button(action: save) {
                     HStack(spacing: 6) {
@@ -241,7 +253,13 @@ struct AnswerBlock: View {
                         .background(Capsule().fill(Theme.panel))
                 }
                 .buttonStyle(.plain)
+                AnswerActionButtons(store: engine.actions, conversationID: conversationID, turnIndex: turnIndex, question: entry.question,
+                                    answer: r.answer, cited: r.citations.map(\.path), form: $todoForm)
             }
+            .zIndex(2)
+            AnswerTodoForm(store: engine.actions, conversationID: conversationID, turnIndex: turnIndex, question: entry.question,
+                           answer: r.answer, cited: r.citations.map(\.path), form: $todoForm)
+                .onAppear { if isLast, let f = engine.actions.fixtureTodoForm { todoForm = f } }
         }
         .frame(maxWidth: 760, alignment: .leading)
     }

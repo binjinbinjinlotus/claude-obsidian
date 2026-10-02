@@ -28,6 +28,26 @@ supersede it with a new entry.
   completed to-dos, reminder time) are deferred until the contract stores
   them. Connections is one Atlassian card with a pasted API token; field
   defaults live on each type's page. → [vaults-and-settings](vaults-and-settings.md), [actions](actions.md)
+- **Actions client (mac-actions):** the sidebar badge counts open to-dos and
+  drafts in `ready`; pending items wait in "To confirm" and are not counted
+  (matches the SidebarStates numbers). Every Undo is `restore` (complete,
+  remove, mark as sent, Send to, a dismissed Ask row); Undo of an automatic
+  add or of Add all is `dismiss`; Undo improve is `undo-improve`. To-do group
+  and sort start from Settings → To-do defaults; a change on the screen is
+  remembered in app defaults (`distill.todo.group` / `.sort`). Menus inside
+  scrolling lists (answer buttons, Found rows, Slack recipient) are popovers
+  in the app and drawn panels in snapshots; the To do filter menus are drawn
+  panels. History's "Kept until" follows `historyDays`. → [actions](actions.md)
+- **Selected answer text is not an action source yet:** Ask answers render as
+  a SwiftUI `Text`, whose selection the app can't read, so "To-do from
+  selected text" is listed disabled and the selection bar (Add as to-do /
+  Send to / Copy) waits for a selectable answer view. → [ask](ask.md)
+- **Open in Actions from the Ask screen leaves Ask,** which deletes the chat
+  when Keep history is off (as leaving Ask always does). Items keep the quote
+  and question; their "Ask chat" source stops being a link once the chat is
+  gone. → [ask](ask.md), [actions](actions.md)
+- **Settings uses the shared `ActionTypeInfo`** (`SettingsActionType` is now a
+  typealias with Settings helpers); the private JSON decoding is gone.
 - **Settings window built with section navigation and search** (mac-settings):
   - Picking a section shows its group's page (General, AI, Actions and
     connections), scrolled to that section. This follows the Settings board,

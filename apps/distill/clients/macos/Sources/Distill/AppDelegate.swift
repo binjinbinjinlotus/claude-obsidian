@@ -52,6 +52,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 self.showSettings()
             }
             .store(in: &cancellables)
+        // Open in Actions (from quick ask, a toast or a job): the quick window closes, the main window shows.
+        Publishers.Merge(engine.actions.$showRequest.dropFirst(), engine.actions.$historyRequest.dropFirst())
+            .sink { [weak self] _ in
+                if self?.quickAsk?.isVisible == true { self?.quickAsk?.hide() }
+                self?.showMainWindow()
+            }
+            .store(in: &cancellables)
         engine.$jobs
             .map { $0.filter { $0.state == .awaitingApproval }.count }
             .removeDuplicates()

@@ -168,6 +168,7 @@ final class AppModel: ObservableObject {
         self.jobs = jobs
         self.status = status
         refreshLiveExtras()
+        actions.load()
     }
 
     private func apply(_ event: CoreEvent) {
@@ -192,9 +193,12 @@ final class AppModel: ObservableObject {
             applyProgress(p)
         case .connection(let connection):
             applyConnection(connection)
+            actions.load() // the Create handlers' availability follows the connection
         case .jobDeleted(let id):
             jobs.removeAll { $0.id == id }
             refreshStatusSoon()
+        case .action(let item, let deleted):
+            actions.apply(item, deleted: deleted)
         case .unknown:
             break
         }

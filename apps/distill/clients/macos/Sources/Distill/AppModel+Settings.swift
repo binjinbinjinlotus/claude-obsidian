@@ -77,7 +77,7 @@ extension AppModel {
         if store.typesLoad != .loaded { store.typesLoad = .loading }
         Task {
             do {
-                let list = try await client.actionTypesJSON().compactMap(SettingsActionType.init(json:))
+                let list = try await client.actionTypes()
                 if !list.isEmpty { store.actionTypes = list }
                 store.typesLoad = .loaded
             } catch {

@@ -232,17 +232,17 @@ enum SettingsEdits {
 
     /// The prompt in use: the user's, or the type's default.
     static func prompt(_ t: SettingsActionType, improve: Bool, _ s: Settings) -> String {
-        (improve ? actions(s).improvePrompt(t.id) : actions(s).draftPrompt(t.id)) ?? (improve ? t.defaultImprovePrompt : t.defaultDraftPrompt)
+        (improve ? actions(s).improvePrompt(t.id) : actions(s).draftPrompt(t.id)) ?? ((improve ? t.defaultImprovePrompt : t.defaultDraftPrompt) ?? "")
     }
 
     static func promptEdited(_ t: SettingsActionType, improve: Bool, _ s: Settings) -> Bool {
         let stored = improve ? actions(s).improvePrompt(t.id) : actions(s).draftPrompt(t.id)
-        return stored != nil && stored != (improve ? t.defaultImprovePrompt : t.defaultDraftPrompt)
+        return stored != nil && stored != ((improve ? t.defaultImprovePrompt : t.defaultDraftPrompt) ?? "")
     }
 
     /// Text equal to the default (or nil) removes the key, so the core uses its built-in prompt.
     static func setPrompt(_ t: SettingsActionType, improve: Bool, text: String?, in s: inout Settings) {
-        let defaultText = improve ? t.defaultImprovePrompt : t.defaultDraftPrompt
+        let defaultText = (improve ? t.defaultImprovePrompt : t.defaultDraftPrompt) ?? ""
         let value: JSONValue? = text.flatMap { $0 == defaultText ? nil : .string($0) }
         setActions(&s) { $0.setTypeValue(t.id, improve ? "improvePrompt" : "draftPrompt", value) }
     }

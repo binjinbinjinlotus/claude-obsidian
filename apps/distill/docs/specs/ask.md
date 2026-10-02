@@ -136,6 +136,29 @@ question, quote, citedPaths}`; dismissed ones are not suggested again in the
 same chat. `POST /v1/conversations/:id/actions/detect` runs it by hand. See
 [Actions](actions.md).
 
+The macOS client (built, `AskActions.swift`) shows **Found in this answer**
+under the answer the items belong to (`source.turnIndex`; on a core without
+it, the answer that contains the quote, else the latest one): while detection
+runs (progress `actions:<id>`), "Looking for actions in this answer… Sonnet"
+with shimmer; then each item with its type (a menu: change where it goes),
+target, title (click to fix it before adding; Return adds, Esc cancels) and
+Why, Add / Create draft and ×; Dismiss all and Add all (the header becomes
+"Added 1 to-do and created 3 drafts · Undo · Open Actions"); added rows say
+"Added to To do · Open" / "Draft in Slack messages · Open" / "Writing
+draft…"; dismissed rows fold into one faded line with Undo (restore); items
+detection found already open say "Already in …". With confirm off, one line
+"Added … from this answer · Show · Undo · Open Actions". Quick ask shows the
+same block compact (no Why line, no Dismiss all). Every answer also has
+**Add to to-do ▾ / Send to ▾**: To-do from the whole answer (a small
+prefilled form: title from the first sentence, due, priority; the quote and
+the chat are kept as context), Slack / Jira / Confluence "Draft from this
+answer" (opens the draft in its list), Email disabled. "To-do from selected
+text" is listed disabled ("Select text in the answer first"): the answer
+text is a SwiftUI `Text`, so the selection bar waits for a selectable answer
+view (see decisions). The **Gap** callout shows only when no item for that
+answer has `gap: true` (a dismissed gap item brings it back). Open from quick
+ask closes the window and opens the main window on the item.
+
 ## macOS client (built)
 
 Code: `clients/macos/Sources/Distill/AskView.swift`, `AskParts.swift`,

@@ -3,26 +3,31 @@ import SwiftUI
 import DistillKit
 
 enum Section: Hashable {
-    case queue, review, ask, labels, history
+    case queue, review, actions, ask, labels, history
 }
+
+/// History's sub-items in the sidebar (Jobs, Ask chats, Actions).
+enum HistoryPart: Hashable { case jobs, chats, actions }
 
 struct MainView: View {
     @EnvironmentObject var engine: AppModel
     var openSettings: () -> Void
     @State private var section: Section = .queue
     @State private var selectedJob: String?
+    @State private var historyPart: HistoryPart = .jobs
 
     var body: some View {
         HStack(spacing: 0) {
-            Sidebar(section: $section, selectedJob: $selectedJob, openSettings: openSettings)
+            Sidebar(section: $section, selectedJob: $selectedJob, historyPart: $historyPart, openSettings: openSettings)
                 .layoutPriority(1)
             Group {
                 switch section {
                 case .queue: QueueView()
                 case .review: ReviewSection(selectedJob: $selectedJob)
+                case .actions: ActionsScreen()
                 case .ask: AskScreen()
                 case .labels: LabelsSection()
-                case .history: HistorySection(selectedJob: $selectedJob, openAsk: { section = .ask })
+                case .history: HistorySection(selectedJob: $selectedJob, part: $historyPart, openAsk: { section = .ask })
                 }
             }
             // minWidth 0 + clipped: a screen that asks for more width than the
@@ -41,6 +46,8 @@ struct MainView: View {
             if new > old, section != .ask { section = .review; selectedJob = engine.pendingApprovals.first?.id }
         }
         .onReceive(engine.ask.$showAskRequest.dropFirst()) { _ in section = .ask }
+        .onReceive(engine.actions.$showRequest.dropFirst()) { _ in section = .actions }
+        .onReceive(engine.actions.$historyRequest.dropFirst()) { _ in section = .history; historyPart = .actions }
         .onChange(of: section) { old, _ in
             // Keep history off: leaving the Ask screen deletes its finished chat.
             if old == .ask { engine.ask.leave(engine.ask.main) }
@@ -54,6 +61,7 @@ struct Sidebar: View {
     @EnvironmentObject var engine: AppModel
     @Binding var section: Section
     @Binding var selectedJob: String?
+    var historyPart: Binding<HistoryPart> = .constant(.jobs)
     var openSettings: () -> Void
 
     var body: some View {
@@ -68,9 +76,15 @@ struct Sidebar: View {
             VStack(spacing: 2) {
                 navItem(.queue, "Queue", "tray", count: QueueRows.count(engine.queued), highlight: false)
                 navItem(.review, "Review", "checkmark.square", count: engine.pendingApprovals.count, highlight: true)
+                SidebarActions(section: $section)
                 navItem(.ask, "Ask", "questionmark.bubble", count: 0, highlight: false)
                 navItem(.labels, "Labels", "tag", count: engine.labelsToReviewCount, highlight: false)
-                navItem(.history, "History", "clock", count: 0, highlight: false)
+                navItem(.history, "History", "clock", count: 0, highlight: false, open: section == .history)
+                if section == .history {
+                    ForEach([(HistoryPart.jobs, "Jobs"), (.chats, "Ask chats"), (.actions, "Actions")], id: \.0) { part, title in
+                        SidebarSubItem(title: title, count: 0, selected: historyPart.wrappedValue == part) { historyPart.wrappedValue = part }
+                    }
+                }
             }
 
             if section == .ask { RecentQuestions(ask: engine.ask) }
@@ -85,7 +99,7 @@ struct Sidebar: View {
         .background(Theme.panel)
     }
 
-    private func navItem(_ s: Section, _ title: String, _ icon: String, count: Int, highlight: Bool) -> some View {
+    private func navItem(_ s: Section, _ title: String, _ icon: String, count: Int, highlight: Bool, open: Bool = false) -> some View {
         let active = section == s
         return Button {
             section = s
@@ -107,11 +121,82 @@ struct Sidebar: View {
                 }
             }
             .padding(.horizontal, 12).frame(height: 36)
-            .background(RoundedRectangle(cornerRadius: 10).fill(active ? Color.white : .clear)
-                .shadow(color: .black.opacity(active ? 0.07 : 0), radius: 2, y: 1))
+            // An open parent with sub-items is not a card: its selected sub-item is.
+            .background(RoundedRectangle(cornerRadius: 10).fill(active && !open ? Color.white : .clear)
+                .shadow(color: .black.opacity(active && !open ? 0.07 : 0), radius: 2, y: 1))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Actions in the sidebar (canvas: SidebarStates): the parent with the total
+/// while closed; open, a sub-item per enabled type with its own count.
+struct SidebarActions: View {
+    @EnvironmentObject var engine: AppModel
+    @Binding var section: Section
+
+    var body: some View {
+        SidebarActionsContent(store: engine.actions, section: $section)
+    }
+}
+
+private struct SidebarActionsContent: View {
+    @ObservedObject var store: ActionsStore
+    @Binding var section: Section
+
+    var body: some View {
+        let open = section == .actions
+        let counts = store.counts
+        Button { section = .actions } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "checklist")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(open ? Theme.primary : Theme.muted)
+                    .frame(width: 18)
+                Text("Actions").font(Theme.body(14, open ? .semibold : .regular))
+                Spacer()
+                let total = counts.values.reduce(0, +)
+                if !open && total > 0 { Pill(text: "\(total)", fill: Theme.primaryTint, ink: Theme.primary) }
+            }
+            .padding(.horizontal, 12).frame(height: 36)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        if open {
+            ForEach(store.listTypes) { t in
+                SidebarSubItem(title: t.id == "todo" ? "To do" : t.pluralLabel, count: counts[t.id] ?? 0, selected: store.tab == t.id) {
+                    store.tab = t.id
+                }
+            }
+        }
+    }
+}
+
+/// A sub-item under an open sidebar parent.
+struct SidebarSubItem: View {
+    let title: String
+    let count: Int
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Text(title).font(Theme.body(12.5, selected ? .semibold : .medium)).foregroundStyle(selected ? Theme.ink : Theme.softInk)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if count > 0 {
+                    Text("\(count)").font(Theme.body(11, .semibold)).foregroundStyle(selected ? Theme.primary : Theme.faint)
+                }
+            }
+            .padding(.horizontal, 10).frame(height: 28)
+            .background(RoundedRectangle(cornerRadius: 8).fill(selected ? Color.white : .clear)
+                .shadow(color: .black.opacity(selected ? 0.07 : 0), radius: 2, y: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.leading, 30)
     }
 }
 
@@ -409,23 +494,34 @@ struct HistorySection: View {
     @EnvironmentObject var engine: AppModel
     @Binding var selectedJob: String?
     var openAsk: () -> Void = {}
-    @State private var part: HistoryPart
+    /// Picked in the sidebar (History's sub-items).
+    @Binding var part: HistoryPart
 
-    enum HistoryPart: Hashable { case jobs, chats }
-
-    /// `part` other than .jobs only in snapshots.
-    init(selectedJob: Binding<String?>, openAsk: @escaping () -> Void = {}, part: HistoryPart = .jobs) {
+    init(selectedJob: Binding<String?>, part: Binding<HistoryPart>, openAsk: @escaping () -> Void = {}) {
         _selectedJob = selectedJob
+        _part = part
         self.openAsk = openAsk
-        _part = State(initialValue: part)
+    }
+
+    /// Snapshots: a fixed part.
+    init(selectedJob: Binding<String?>, openAsk: @escaping () -> Void = {}, part: HistoryPart = .jobs) {
+        self.init(selectedJob: selectedJob, part: .constant(part), openAsk: openAsk)
     }
 
     var body: some View {
+        if part == .actions {
+            ActionsHistoryView()
+        } else {
+            jobsAndChats
+        }
+    }
+
+    private var jobsAndChats: some View {
         let jobs = engine.jobs.filter { $0.state != .awaitingApproval }
-        HStack(spacing: 0) {
+        return HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("History").font(Theme.display(24))
+                    Text(part == .jobs ? "Jobs" : "Ask chats").font(Theme.display(24))
                     Spacer()
                     if part == .jobs && engine.hasFinishedJobs {
                         Button("Clear") { engine.clearFinishedJobs() }
@@ -433,7 +529,6 @@ struct HistorySection: View {
                             .help("Remove finished jobs from this list (the vault keeps every change)")
                     }
                 }
-                Segmented(options: [(HistoryPart.jobs, "Jobs"), (.chats, "Ask chats")], selection: $part, height: 26)
                 Scrolling {
                     VStack(alignment: .leading, spacing: 4) {
                         switch part {
@@ -450,7 +545,7 @@ struct HistorySection: View {
                             if jobs.isEmpty && !engine.isStarting {
                                 Text("No jobs yet.").font(Theme.body(13)).foregroundStyle(Theme.faint).padding(.top, 8)
                             }
-                        case .chats:
+                        case .chats, .actions:
                             AskChatList(ask: engine.ask, openAsk: openAsk)
                         }
                     }
@@ -742,6 +837,15 @@ struct JobDetailView: View {
         if job.state == .running {
             BatchBanner(job: job, showsCancel: false)
         }
+        if job.state == .awaitingApproval, job.kind == "ingest" || job.kind == "batch" {
+            let n = job.files.filter { !$0.hasSuffix(QueueRows.manifestSuffix) }.count
+            HStack(spacing: 8) {
+                Image(systemName: "checklist").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.primary)
+                Text("After you apply, Distill looks for actions in \(n == 1 ? "this note" : "these \(n) notes") with Sonnet and asks you to confirm them.")
+                    .font(Theme.body(12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        if let summary = job.actionsFound { JobActionsLine(job: job, summary: summary) }
         if !changes.isEmpty {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 165), spacing: 10)], alignment: .leading, spacing: 10) {
                 StatTile(n: changes.filter(\.isNew).count, label: plural(changes.filter(\.isNew).count, "new page", "new pages"), fill: Theme.limeTint, ink: Theme.limeInk)

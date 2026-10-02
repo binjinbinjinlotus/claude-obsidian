@@ -24,7 +24,7 @@ struct BatchBanner: View {
                 HStack(spacing: 12) {
                     Spinner(size: 18)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(seconds >= Self.slowAfter ? "Still working · \(ElapsedText.format(seconds))" : title(progress))
+                        Text(seconds >= Self.slowAfter ? "Still working" : title(progress))
                             .font(Theme.body(15, .bold))
                         Text(detail(progress, seconds: seconds)).font(Theme.body(13)).foregroundStyle(Theme.softInk)
                             .lineLimit(2)
@@ -40,7 +40,7 @@ struct BatchBanner: View {
                     }
                 }
                 if let progress, !progress.steps.isEmpty {
-                    StepRow(steps: progress.steps, index: progress.stepIndex ?? 0)
+                    StepRow(steps: Self.steps(progress.steps), index: progress.stepIndex ?? 0)
                         .padding(.leading, 30)
                 }
             }
@@ -48,6 +48,12 @@ struct BatchBanner: View {
         .padding(.horizontal, 20).padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 20).fill(Theme.primaryTint))
+    }
+
+    /// The batch's steps, ending with "Finding actions (after you apply)" while the
+    /// core's list stops at review (Finding actions runs once the batch is applied).
+    static func steps(_ core: [String]) -> [String] {
+        core.contains { $0.localizedCaseInsensitiveContains("finding actions") } ? core : core + ["Finding actions (after you apply)"]
     }
 
     private func title(_ p: CoreProgress?) -> String {
@@ -61,7 +67,8 @@ struct BatchBanner: View {
         let runner = (p?.runnerID ?? job.selection.runnerID) == "claude-code" ? "Claude Code" : (p?.runnerID ?? job.selection.runnerID)
         let model = ModelChoice.shortName(p?.model ?? job.model)
         var parts = [runner, model]
-        if seconds >= 3 && seconds < Self.slowAfter { parts.append(ElapsedText.format(seconds)) }
+        // A clock time, never a ticking counter (canvas: MainLoading).
+        parts.append("started at \(ActionsClock.time(p?.startedAt ?? job.createdAt))")
         parts.append("nothing is written until you approve")
         return parts.joined(separator: " · ")
     }

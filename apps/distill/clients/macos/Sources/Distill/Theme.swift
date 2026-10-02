@@ -179,17 +179,39 @@ struct SoftButton: View {
     }
 }
 
+/// The canvas Pill: regular (24 pt) or small (20 pt), an optional SF Symbol,
+/// `busy` (a spinner before the text: Writing, Creating), `stroke` (an outline,
+/// "Coming later") and `dashed` (a reserved slot, "Send in Slack · later").
 struct Pill: View {
+    enum Size { case regular, small }
+
     let text: String
     var fill: Color
     var ink: Color
+    var size: Size = .regular
+    var systemImage: String? = nil
+    var busy = false
+    var stroke = false
+    var dashed = false
 
     var body: some View {
-        Text(text)
-            .font(Theme.body(12, .bold))
-            .padding(.horizontal, 10).padding(.vertical, 4)
-            .foregroundStyle(ink)
-            .background(Capsule().fill(fill))
+        HStack(spacing: size == .small ? 4 : 5) {
+            if busy { Spinner(color: ink, size: size == .small ? 9 : 10) }
+            if let systemImage { Image(systemName: systemImage).font(.system(size: size == .small ? 9 : 10, weight: .bold)) }
+            Text(text).font(Theme.body(size == .small ? 11 : 12, .bold)).lineLimit(1)
+        }
+        .fixedSize()
+        .padding(.horizontal, size == .small ? 8 : 10)
+        .frame(height: size == .small ? 20 : 24)
+        .foregroundStyle(ink)
+        .background(Capsule().fill(dashed ? Color.clear : fill))
+        .overlay {
+            if dashed {
+                Capsule().strokeBorder(ink.opacity(0.45), style: StrokeStyle(lineWidth: 1.2, dash: [3, 3]))
+            } else if stroke {
+                Capsule().strokeBorder(ink.opacity(0.3), lineWidth: 1)
+            }
+        }
     }
 }
 

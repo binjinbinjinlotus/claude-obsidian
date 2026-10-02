@@ -237,23 +237,14 @@ enum SettingsIndex {
 
 /// What Settings needs from an `ActionTypeInfo`. Decoded leniently from the
 /// core's JSON; `builtIn` stands in when the core can't list types.
-struct SettingsActionType: Hashable, Identifiable {
-    struct Field: Hashable { var key: String; var title: String }
-    struct Handler: Hashable { var id: String; var label: String; var available: Bool; var reason: String? }
+/// Settings uses the shared registry DTO (DistillKit `ActionTypeInfo`).
+typealias SettingsActionType = ActionTypeInfo
 
-    var id: String
-    var label: String
-    var pluralLabel: String
-    var enabled: Bool
-    var reserved: Bool
-    var connectionID: String?
-    var draftWhen: String
-    var improveAfterEdit: Bool
-    var defaultDraftPrompt: String
-    var defaultImprovePrompt: String
-    var placeholders: [String]
-    var handlers: [Handler]
-    var fieldKeys: [String]
+extension ActionTypeInfo {
+    typealias Handler = ActionHandlerInfo
+    struct Field: Hashable { var key: String; var title: String }
+
+    var fieldKeys: [String] { fields.map(\.key) }
 
     /// Field defaults Settings offers (Jira project and issue type, Confluence space and parent).
     var defaultFields: [Field] {
@@ -269,38 +260,28 @@ struct SettingsActionType: Hashable, Identifiable {
     /// The app the item is created in ("Jira", "Confluence").
     var appName: String { label.split(separator: " ").first.map(String.init) ?? label }
 
-    init(id: String, label: String, pluralLabel: String, enabled: Bool = true, reserved: Bool = false, connectionID: String? = nil,
-         draftWhen: String = "onFind", improveAfterEdit: Bool = true, defaultDraftPrompt: String = "", defaultImprovePrompt: String = "",
-         placeholders: [String] = [], handlers: [Handler] = [], fieldKeys: [String] = []) {
-        self.id = id; self.label = label; self.pluralLabel = pluralLabel; self.enabled = enabled; self.reserved = reserved
-        self.connectionID = connectionID; self.draftWhen = draftWhen; self.improveAfterEdit = improveAfterEdit
-        self.defaultDraftPrompt = defaultDraftPrompt; self.defaultImprovePrompt = defaultImprovePrompt
-        self.placeholders = placeholders; self.handlers = handlers; self.fieldKeys = fieldKeys
+    /// One registry entry from the core's JSON (nil without an id).
+    init?(json: JSONValue) {
+        guard let id = json["id"]?.stringValue, !id.isEmpty,
+              let data = try? JSONEncoder.core.encode(json),
+              let t = try? JSONDecoder.core.decode(ActionTypeInfo.self, from: data) else { return nil }
+        self = t
     }
 
-    init?(json: JSONValue) {
-        guard let id = json["id"]?.stringValue, !id.isEmpty else { return nil }
-        let label = json["label"]?.stringValue ?? id
-        self.init(id: id, label: label, pluralLabel: json["pluralLabel"]?.stringValue ?? label + "s",
-                  enabled: json["enabled"]?.boolValue ?? true, reserved: json["reserved"]?.boolValue ?? false,
-                  connectionID: json["connectionID"]?.stringValue,
-                  draftWhen: json["draftWhen"]?.stringValue == "onRequest" ? "onRequest" : "onFind",
-                  improveAfterEdit: json["improveAfterEdit"]?.boolValue ?? true,
-                  defaultDraftPrompt: json["defaultDraftPrompt"]?.stringValue ?? "",
-                  defaultImprovePrompt: json["defaultImprovePrompt"]?.stringValue ?? "",
-                  placeholders: json["placeholders"]?.stringArray ?? [],
-                  handlers: (json["handlers"]?.arrayValue ?? []).compactMap { h in
-                      h["id"]?.stringValue.map { Handler(id: $0, label: h["label"]?.stringValue ?? $0,
-                                                         available: h["available"]?.boolValue ?? true, reason: h["reason"]?.stringValue) }
-                  },
-                  fieldKeys: (json["fields"]?.arrayValue ?? []).compactMap { $0["key"]?.stringValue })
+    init(settingsID id: String, label: String, pluralLabel: String, enabled: Bool = true, reserved: Bool = false,
+         connectionID: String? = nil, improveAfterEdit: Bool = true, defaultDraftPrompt: String = "",
+         defaultImprovePrompt: String = "", placeholders: [String] = [], handlers: [Handler] = [], fieldKeys: [String] = []) {
+        self.init(id: id, label: label, pluralLabel: pluralLabel, enabled: enabled, reserved: reserved,
+                  fields: fieldKeys.map { ActionFieldSpec(key: $0, label: $0) }, handlers: handlers, connectionID: connectionID,
+                  improveAfterEdit: improveAfterEdit, defaultDraftPrompt: defaultDraftPrompt, defaultImprovePrompt: defaultImprovePrompt,
+                  placeholders: placeholders)
     }
 
     /// The registry's types, for a core that can't list them yet (and snapshots).
     static let builtIn: [SettingsActionType] = [
-        SettingsActionType(id: "todo", label: "To do", pluralLabel: "To-dos", improveAfterEdit: false),
+        SettingsActionType(settingsID: "todo", label: "To do", pluralLabel: "To-dos", improveAfterEdit: false),
         SettingsActionType(
-            id: "slack", label: "Slack message", pluralLabel: "Slack messages",
+            settingsID: "slack", label: "Slack message", pluralLabel: "Slack messages",
             defaultDraftPrompt: "Write a short Slack message to {recipient} that does what the note asks.\nUse only facts from {excerpt} and {note_title}. Don’t invent times, names or numbers.\nFriendly and direct, under 80 words. Use Slack formatting: *bold*, bullet lists, @mentions.\nReturn only the message.",
             defaultImprovePrompt: "The user edited this Slack message. Fix grammar, spelling and punctuation only.\nKeep their words, tone, length and formatting. Don’t add or remove content.\nReturn only the message.",
             placeholders: ["{recipient}", "{excerpt}", "{note_title}", "{title}", "{why}"],
@@ -308,19 +289,19 @@ struct SettingsActionType: Hashable, Identifiable {
                        Handler(id: "send", label: "Send in Slack", available: false, reason: "Copy only for now")],
             fieldKeys: ["to"]),
         SettingsActionType(
-            id: "jira", label: "Jira ticket", pluralLabel: "Jira tickets", connectionID: "atlassian",
+            settingsID: "jira", label: "Jira ticket", pluralLabel: "Jira tickets", connectionID: "atlassian",
             defaultDraftPrompt: "Draft a Jira ticket for project {project} from {excerpt}.\nSummary: one line, starts with a verb. Description sections: Context, Steps, Acceptance criteria.\nReturn the summary on the first line, then the description.",
             defaultImprovePrompt: "The user edited this Jira ticket. Fix grammar, spelling and punctuation only.\nKeep their words, structure and fields. Don’t add or remove content.\nReturn only the ticket.",
             placeholders: ["{project}", "{issue_type}", "{excerpt}", "{note_title}", "{labels}", "{title}"],
             handlers: [Handler(id: "create", label: "Create in Jira", available: true), Handler(id: "refresh", label: "Refresh", available: true)],
             fieldKeys: ["project", "issueType", "priority"]),
         SettingsActionType(
-            id: "confluence", label: "Confluence page", pluralLabel: "Confluence pages", connectionID: "atlassian",
+            settingsID: "confluence", label: "Confluence page", pluralLabel: "Confluence pages", connectionID: "atlassian",
             defaultDraftPrompt: "Draft a Confluence page for space {space} from {excerpt}.\nStart with a one-paragraph summary, then sections with headings. Link {note_title} as the source.\nReturn the title on the first line, then the page.",
             defaultImprovePrompt: "The user edited this Confluence page. Fix grammar, spelling and punctuation only.\nKeep their words, headings and structure. Don’t add or remove content.\nReturn only the page.",
             placeholders: ["{space}", "{parent}", "{excerpt}", "{note_title}", "{title}"],
             handlers: [Handler(id: "create", label: "Create in Confluence", available: true), Handler(id: "refresh", label: "Refresh", available: true)],
             fieldKeys: ["space", "parent"]),
-        SettingsActionType(id: "email", label: "Email", pluralLabel: "Emails", enabled: false, reserved: true),
+        SettingsActionType(settingsID: "email", label: "Email", pluralLabel: "Emails", enabled: false, reserved: true),
     ]
 }
