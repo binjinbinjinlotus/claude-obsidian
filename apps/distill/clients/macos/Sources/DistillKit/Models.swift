@@ -131,7 +131,8 @@ public struct Settings: Codable, Equatable, Sendable {
     public var vaults: [VaultProfile] = []
     public var activeVaultPath: String?
     public var batchIntervalMinutes: Int = 10
-    public var settleSeconds: Int = 10
+    /// Default 600 (10 minutes), as in the core. Process now ignores it.
+    public var settleSeconds: Int = 600
     public var model: String = "sonnet"
     public var claudePath: String = ""
     public var pythonPath: String = "/usr/bin/python3"

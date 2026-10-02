@@ -108,6 +108,7 @@ final class ModelDecodingTests: XCTestCase {
     func testEmptySettingsUseDefaults() throws {
         let s = try decode(Settings.self, "{}")
         XCTAssertEqual(s.batchIntervalMinutes, 10)
+        XCTAssertEqual(s.settleSeconds, 600, "core default: 10 minutes")
         XCTAssertEqual(s.model, "sonnet")
         XCTAssertTrue(s.autoProcessEnabled)
         XCTAssertEqual(s.enabledRunners, ["claude-code"])
@@ -231,6 +232,20 @@ final class BatchIntervalTests: XCTestCase {
         XCTAssertEqual(i.totalMinutes, 1)
         i[.hours] = 99
         XCTAssertEqual(i.hours, 23)
+    }
+}
+
+final class SettleWaitTests: XCTestCase {
+    func testSplitsClampsAndRecombines() {
+        var w = SettleWait(totalSeconds: 600)
+        XCTAssertEqual([w.minutes, w.seconds], [10, 0])
+        w.seconds = 75
+        XCTAssertEqual(w.seconds, 59)
+        XCTAssertEqual(w.totalSeconds, 659)
+        w.minutes = -3
+        XCTAssertEqual(w.totalSeconds, 59)
+        XCTAssertEqual(SettleWait(totalSeconds: 7200).totalSeconds, 3599, "longer waits clamp to 59:59 in the editor")
+        XCTAssertEqual(SettleWait(totalSeconds: 0).totalSeconds, 0)
     }
 }
 
