@@ -30,6 +30,7 @@ enum Snapshot {
             FloatingFace(dropState: DropState()).environmentObject(engine)
             FloatingFace(dropState: { let s = DropState(); s.targeted = true; return s }()).environmentObject(engine)
         }.padding(20).background(Color(hex: 0xEAE8E3)), size: CGSize(width: 260, height: 130), to: outDir.appendingPathComponent("floating.png"))
+        NotesSnapshot.run(engine: engine, outDir: outDir) // Snapshot+Notes.swift (replaces settings.png with the full window)
         exit(0)
     }
 

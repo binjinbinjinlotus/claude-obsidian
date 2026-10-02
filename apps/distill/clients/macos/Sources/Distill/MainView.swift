@@ -158,15 +158,20 @@ struct QueueView: View {
     @EnvironmentObject var engine: AppModel
     @Environment(\.snapshotMode) private var snapshot
     @State private var targeted = false
+    @AppStorage("distill.addMode") private var addMode: AddMode = .files
 
     var body: some View {
-        Scrolling {
-            VStack(alignment: .leading, spacing: 26) {
-                header
-                dropPanel
-                fileList
+        if addMode == .note {
+            ComposeScreen(mode: $addMode) // Write a note (ComposeView.swift)
+        } else {
+            Scrolling {
+                VStack(alignment: .leading, spacing: 26) {
+                    header
+                    dropPanel
+                    fileList
+                }
+                .padding(.horizontal, 44).padding(.top, 44).padding(.bottom, 30)
             }
-            .padding(.horizontal, 44).padding(.top, 44).padding(.bottom, 30)
         }
     }
 
@@ -177,6 +182,7 @@ struct QueueView: View {
                 scheduleLine.font(Theme.body(15)).foregroundStyle(Theme.muted)
             }
             Spacer()
+            AddModeSwitch(mode: $addMode)
             PrimaryButton(title: "Process now", systemImage: "play.fill") { engine.processQueue(force: true) }
                 .disabled(engine.queued.isEmpty)
                 .opacity(engine.queued.isEmpty ? 0.5 : 1)
