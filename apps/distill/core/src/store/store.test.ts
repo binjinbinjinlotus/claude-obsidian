@@ -5,7 +5,10 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import { isoDate } from './json.js';
 import { encodeJob, JobStore, MAX_STORED_JOBS, newJob, RECOVERY_NOTE } from './jobs.js';
-import { SettingsStore } from './settings.js';
+import { askPreferences, decodeSettings, labelingPreferences, SettingsStore, sourceTaxonomy } from './settings.js';
+import { createEngine } from '../engine/index.js';
+import { createRunnerRegistry } from '../runners/registry.js';
+import { DEFAULT_ASK_PREFERENCES, DEFAULT_LABELING_PREFERENCES, DEFAULT_SOURCE_TAXONOMY } from '../contracts.js';
 import { statePaths } from './paths.js';
 
 /** What Swift's JSONEncoder([.prettyPrinted, .sortedKeys], .iso8601) actually writes. */
@@ -183,6 +186,71 @@ describe('SettingsStore', () => {
     assert.equal('nodePath' in raw, false);
     assert.deepEqual(Object.keys(raw), [...Object.keys(raw)].sort(), 'sorted keys like Swift');
     assert.deepEqual(fs.readdirSync(tmp), ['settings.json'], 'atomic write leaves no temp file');
+  });
+
+  test('v2 keys round-trip, stay absent when unset, and decode tolerantly', () => {
+    const file = path.join(tmp, 'settings.json');
+    fs.writeFileSync(file, SWIFT_SETTINGS);
+    const store = new SettingsStore(file);
+    const s = store.load();
+    for (const key of ['sourceTaxonomy', 'askPreferences', 'labeling', 'shortcuts', 'runnerOptions'] as const) {
+      assert.equal(s[key], undefined, `${key} absent`);
+    }
+    assert.deepEqual(labelingPreferences(s), DEFAULT_LABELING_PREFERENCES);
+    assert.deepEqual(askPreferences(s), DEFAULT_ASK_PREFERENCES);
+    assert.deepEqual(sourceTaxonomy(s), DEFAULT_SOURCE_TAXONOMY);
+    store.save(s);
+    let raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    for (const key of ['sourceTaxonomy', 'askPreferences', 'labeling', 'shortcuts', 'runnerOptions']) {
+      assert.equal(key in raw, false, `${key} not invented on write`);
+    }
+
+    s.labeling = { cliFallbackToAI: false };
+    s.askPreferences = { labelMatch: 'all', historyDays: 3 };
+    s.shortcuts = { ask: 'ctrl+opt+space', addNote: null };
+    s.runnerOptions = { openrouter: { baseURL: 'https://example.test' } };
+    s.sourceTaxonomy = [{ id: 'chat', label: 'Chat', sources: [{ id: 'slack', label: 'Slack' }] }];
+    store.save(s);
+    raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.deepEqual(raw.labeling, { cliFallbackToAI: false });
+    assert.deepEqual(raw.shortcuts, { addNote: null, ask: 'ctrl+opt+space' });
+    const back = new SettingsStore(file).load();
+    assert.deepEqual(back.labeling, s.labeling);
+    assert.deepEqual(back.askPreferences, s.askPreferences);
+    assert.deepEqual(back.shortcuts, s.shortcuts);
+    assert.deepEqual(back.runnerOptions, s.runnerOptions);
+    assert.deepEqual(back.sourceTaxonomy, s.sourceTaxonomy);
+    assert.deepEqual(labelingPreferences(back), { autoLabelQueueFolder: true, cliFallbackToAI: false });
+
+    const messy = decodeSettings({
+      labeling: { autoLabelQueueFolder: 'yes', cliFallbackToAI: true },
+      askPreferences: { labelMatch: 'some', historyDays: 2.7 },
+      runnerOptions: { openrouter: { baseURL: 'u', retries: 3 }, broken: 'x' },
+      shortcuts: { ask: 5, addNote: 'cmd+n' },
+      sourceTaxonomy: [{ id: 'g', label: 'G', sources: [{ id: 's' }, { id: 't', label: 'T' }] }, 'junk'],
+    });
+    assert.deepEqual(messy.labeling, { cliFallbackToAI: true });
+    assert.deepEqual(messy.askPreferences, { historyDays: 2 });
+    assert.deepEqual(messy.runnerOptions, { openrouter: { baseURL: 'u' } });
+    assert.deepEqual(messy.shortcuts, { addNote: 'cmd+n' });
+    assert.deepEqual(messy.sourceTaxonomy, [{ id: 'g', label: 'G', sources: [{ id: 't', label: 'T' }] }]);
+  });
+
+  test('updateSettings persists v2 keys and null clears them', async () => {
+    const paths = statePaths(tmp);
+    fs.writeFileSync(paths.settings, SWIFT_SETTINGS);
+    const engine = createEngine({ paths, runners: createRunnerRegistry([]), tickMs: 60_000 });
+    const updated = await engine.updateSettings({ runnerOptions: { openrouter: { baseURL: 'https://x.test' } }, labeling: { autoLabelQueueFolder: false } });
+    assert.deepEqual(updated.runnerOptions, { openrouter: { baseURL: 'https://x.test' } });
+    let raw = JSON.parse(fs.readFileSync(paths.settings, 'utf8'));
+    assert.deepEqual(raw.runnerOptions, { openrouter: { baseURL: 'https://x.test' } });
+    assert.deepEqual(raw.labeling, { autoLabelQueueFolder: false });
+    assert.deepEqual(raw.futureFeature, { labels: ['tea'] });
+    assert.deepEqual(new SettingsStore(paths.settings).load().runnerOptions, { openrouter: { baseURL: 'https://x.test' } });
+    await engine.updateSettings({ labeling: null } as never);
+    raw = JSON.parse(fs.readFileSync(paths.settings, 'utf8'));
+    assert.equal('labeling' in raw, false);
+    assert.deepEqual(raw.runnerOptions, { openrouter: { baseURL: 'https://x.test' } });
   });
 
   test('missing file loads defaults', () => {
