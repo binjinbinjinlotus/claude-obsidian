@@ -50,6 +50,8 @@ export interface PromptScope {
   vaultPath: string;
   labels: string[];
   sources: string[];
+  /** How several labels combine; default any. */
+  labelMatch?: 'any' | 'all';
   /** Present only when the question is filtered. */
   allowedPages?: VaultPage[];
 }
@@ -60,7 +62,9 @@ export function buildAskPrompt(question: string, scope: PromptScope): string {
   lines.push('');
   if (scope.allowedPages) {
     const filters: string[] = [];
-    if (scope.labels.length) filters.push(`labels: ${scope.labels.join(', ')}`);
+    if (scope.labels.length) filters.push(
+        `labels (${scope.labelMatch === 'all' && scope.labels.length > 1 ? 'all of' : 'any of'}): ${scope.labels.join(', ')}`,
+      );
     if (scope.sources.length) filters.push(`sources: ${scope.sources.join(', ')}`);
     lines.push(`Scope: limited to pages matching ${filters.join('; ')}.`);
     lines.push('You may read only these pages (vault-relative). Every other read is denied by permission rules:');

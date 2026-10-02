@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { ModelSelection } from '../contracts.js';
+import { CoreError, type AskConversation, type AskConversationSummary, type AskTurn, type ModelSelection } from '../contracts.js';
 
 /** Persisted as <stateDir>/<conversationID>.json. */
 export interface ConversationRecord {
@@ -16,9 +16,41 @@ export interface ConversationRecord {
   /** Filter scope of the session ('' = all notes). A session never crosses scopes. */
   scope?: string;
   createdAt: string;
+  /** Last message; retention counts from here. Pinning does not change it. */
   updatedAt: string;
+  /** Runner turns that actually ran (legacy v1 field, kept for compatibility). */
   turns: number;
   costUSD: number;
+  // ── v2 (absent in v1 records) ──
+  /** First question, trimmed to 80 characters. */
+  title?: string;
+  pinned?: boolean;
+  /** Every question and answer, oldest first (v1 records have none). */
+  history?: AskTurn[];
+}
+
+export const TITLE_MAX = 80;
+const LEGACY_TITLE = 'Earlier conversation';
+
+export function titleFrom(question: string): string {
+  const flat = question.replace(/\s+/g, ' ').trim();
+  return flat.length <= TITLE_MAX ? flat : `${flat.slice(0, TITLE_MAX - 1).trimEnd()}…`;
+}
+
+export function summaryOf(record: ConversationRecord): AskConversationSummary {
+  return {
+    id: record.conversationID,
+    title: record.title || LEGACY_TITLE,
+    vaultPath: record.vaultPath,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    pinned: record.pinned === true,
+    turnCount: record.history ? record.history.length : record.turns,
+  };
+}
+
+export function conversationOf(record: ConversationRecord): AskConversation {
+  return { ...summaryOf(record), turns: record.history ?? [] };
 }
 
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
@@ -31,7 +63,7 @@ export class ConversationStore {
   constructor(private readonly dir: string) {}
 
   private file(id: string): string {
-    if (!isValidConversationID(id)) throw new Error(`ask: invalid conversation id "${id}"`);
+    if (!isValidConversationID(id)) throw new CoreError('invalid_request', `ask: invalid conversation id "${id}"`);
     return path.join(this.dir, `${id}.json`);
   }
 
@@ -51,7 +83,34 @@ export class ConversationStore {
     if (record.conversationID !== id || typeof record.vaultPath !== 'string' || !record.selection?.runnerID) {
       throw new Error(`ask: conversation ${id} state is corrupt`);
     }
+    if (record.history !== undefined && !Array.isArray(record.history)) delete record.history;
     return record;
+  }
+
+  /** Ids of every stored conversation (files named <valid id>.json). */
+  async ids(): Promise<string[]> {
+    let names: string[];
+    try {
+      names = await fs.readdir(this.dir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    }
+    return names
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => name.slice(0, -'.json'.length))
+      .filter(isValidConversationID);
+  }
+
+  /** true when a file was removed. */
+  async delete(id: string): Promise<boolean> {
+    try {
+      await fs.unlink(this.file(id));
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
+    }
   }
 
   /** Atomic write: temp file then rename. */

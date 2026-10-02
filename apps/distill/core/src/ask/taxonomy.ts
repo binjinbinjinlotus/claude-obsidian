@@ -1,53 +1,20 @@
 /**
- * Default source taxonomy (docs/specs/labels-and-sources.md). Notes store the
- * source id in their `source_type` property. Until Settings carries an
- * editable taxonomy, Ask uses this one.
+ * Source taxonomy helpers (docs/specs/labels-and-sources.md). Notes store the
+ * source id in their `source_type` property. The taxonomy comes from
+ * `settings.sourceTaxonomy`, falling back to the contract default.
  */
 
-export interface SourceDefinition {
-  id: string;
-  label: string;
-}
+import { DEFAULT_SOURCE_TAXONOMY, type Settings, type SourceGroup } from '../contracts.js';
 
-export interface SourceGroup {
-  id: string;
-  label: string;
-  sources: SourceDefinition[];
-}
+export { DEFAULT_SOURCE_TAXONOMY };
+export type { SourceDefinition, SourceGroup } from '../contracts.js';
 
 export type SourceTaxonomy = SourceGroup[];
 
-export const DEFAULT_SOURCE_TAXONOMY: SourceTaxonomy = [
-  {
-    id: 'discussion',
-    label: 'Discussion',
-    sources: [
-      { id: 'slack', label: 'Slack' },
-      { id: 'meeting', label: 'Meeting' },
-      { id: 'github-review', label: 'GitHub review' },
-      { id: 'jira-comment', label: 'Jira comment' },
-      { id: 'email', label: 'Email' },
-      { id: 'in-person', label: 'In person' },
-    ],
-  },
-  {
-    id: 'reference',
-    label: 'Reference',
-    sources: [
-      { id: 'web-page', label: 'Web page' },
-      { id: 'document', label: 'Document' },
-      { id: 'paper', label: 'Paper' },
-    ],
-  },
-  {
-    id: 'personal',
-    label: 'Personal',
-    sources: [
-      { id: 'remember-this', label: 'Remember this' },
-      { id: 'idea', label: 'Idea' },
-    ],
-  },
-];
+/** The taxonomy Ask filters with: the user's edited groups, else the default. */
+export function taxonomyFrom(settings: Pick<Settings, 'sourceTaxonomy'>): SourceTaxonomy {
+  return settings.sourceTaxonomy ?? DEFAULT_SOURCE_TAXONOMY;
+}
 
 /** Canonical form of a source id or label: "GitHub review" / "github_review" -> "github-review". */
 export function normalizeSourceID(value: string): string {

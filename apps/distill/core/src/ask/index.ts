@@ -1,55 +1,197 @@
-import { notImplemented, type DistillCore } from '../contracts.js';
-import type { AskOwned } from '../engine/index.js';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { AskOwned } from '../engine/index.js';
 import {
+  CoreError,
+  DEFAULT_ASK_PREFERENCES,
   runnerSupports,
   type AskCitation,
+  type AskConversation,
+  type AskConversationSummary,
+  type AskPreferences,
   type AskRequest,
   type AskResponse,
+  type AskTurn,
+  type CoreEvent,
+  type DistillCore,
+  type LabelMatch,
   type ModelSelection,
   type RunRequest,
   type RunnerRegistry,
   type Settings,
 } from '../contracts.js';
-import { ConversationStore, KeyedMutex, type ConversationRecord } from './conversations.js';
+import { ConversationStore, KeyedMutex, conversationOf, summaryOf, titleFrom, type ConversationRecord } from './conversations.js';
 import { filterPages, hasFilter, normalizeTag, readRule, scanVaultPages, type VaultPage } from './filters.js';
 import { ASK_OUTPUT_SCHEMA_TEXT, ASK_READ_ONLY_TOOLS, ASK_SYSTEM_PROMPT, buildAskPrompt } from './prompt.js';
-import { DEFAULT_SOURCE_TAXONOMY, expandSources, type SourceTaxonomy } from './taxonomy.js';
+import { expandSources, taxonomyFrom, type SourceTaxonomy } from './taxonomy.js';
 
 export interface AskDeps {
   getSettings(): Settings;
   runners: RunnerRegistry;
-  /** Directory for Ask conversation state (sessions), e.g. <stateDir>/ask. */
+  /** Directory for Ask conversation state (sessions, history), e.g. <stateDir>/ask. */
   stateDir: string;
-  /** Source taxonomy for group expansion; default DEFAULT_SOURCE_TAXONOMY. */
-  taxonomy?: SourceTaxonomy;
+  /** Receives `conversation` events (saved, pinned, deleted) and `log` warnings. */
+  emit?: (event: CoreEvent) => void;
   /** Clock, for tests. */
   now?: () => Date;
 }
 
-export type AskService = Pick<DistillCore, AskOwned>;
+export type AskService = Pick<DistillCore, AskOwned> & {
+  /** Run the retention sweep now (it also runs on creation and at most hourly on ask/list). */
+  sweepHistory(): Promise<void>;
+};
 
 export { DEFAULT_SOURCE_TAXONOMY } from './taxonomy.js';
 
 const DEFAULT_RUNNER = 'claude-code';
+const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Settings askPreferences merged over the defaults, with usable values. */
+export function askPreferences(settings: Settings): AskPreferences {
+  const prefs = { ...DEFAULT_ASK_PREFERENCES, ...(settings.askPreferences ?? {}) };
+  if (prefs.labelMatch !== 'any' && prefs.labelMatch !== 'all') prefs.labelMatch = DEFAULT_ASK_PREFERENCES.labelMatch;
+  if (typeof prefs.includeUnconfirmed !== 'boolean') prefs.includeUnconfirmed = DEFAULT_ASK_PREFERENCES.includeUnconfirmed;
+  if (typeof prefs.keepHistory !== 'boolean') prefs.keepHistory = DEFAULT_ASK_PREFERENCES.keepHistory;
+  if (typeof prefs.historyDays !== 'number' || !Number.isFinite(prefs.historyDays) || prefs.historyDays <= 0) {
+    prefs.historyDays = DEFAULT_ASK_PREFERENCES.historyDays;
+  }
+  return prefs;
+}
+
+interface SessionState {
+  conversationID: string;
+  sessionID: string | null;
+  selection: ModelSelection;
+  vaultPath: string;
+  workspace: string;
+  scope: string;
+  cost: number;
+  ran: boolean;
+}
 
 export function createAskService(deps: AskDeps): AskService {
   const store = new ConversationStore(deps.stateDir);
   const mutex = new KeyedMutex();
-  const now = () => (deps.now ? deps.now() : new Date()).toISOString();
+  const clock = () => (deps.now ? deps.now() : new Date());
+  const now = () => clock().toISOString();
+
+  function emit(event: CoreEvent): void {
+    try {
+      deps.emit?.(event);
+    } catch {
+      // A listener must never fail an Ask call.
+    }
+  }
+
+  function warn(message: string): void {
+    emit({ type: 'log', level: 'warn', message });
+  }
+
+  async function loadQuietly(id: string): Promise<ConversationRecord | undefined> {
+    try {
+      return await store.load(id);
+    } catch (error) {
+      warn(`Skipping Ask conversation ${id}: ${(error as Error).message}`);
+      return undefined;
+    }
+  }
+
+  // ── retention ──
+
+  let lastSweep = Number.NEGATIVE_INFINITY;
+  let sweeping: Promise<void> | undefined;
+
+  /** Delete non-pinned conversations whose last message is older than historyDays (Keep history on). */
+  function sweepHistory(): Promise<void> {
+    if (sweeping) return sweeping;
+    lastSweep = clock().getTime();
+    sweeping = sweep().finally(() => {
+      sweeping = undefined;
+    });
+    return sweeping;
+  }
+
+  /** Sweep when none ran in the last hour; never throws. */
+  function maybeSweep(): Promise<void> {
+    if (!sweeping && clock().getTime() - lastSweep < SWEEP_INTERVAL_MS) return Promise.resolve();
+    return sweepHistory().catch((error) => warn(`Ask history sweep failed: ${(error as Error).message}`));
+  }
+
+  async function sweep(): Promise<void> {
+    const prefs = askPreferences(deps.getSettings());
+    if (!prefs.keepHistory) return; // clients delete each chat when it is closed
+    const cutoff = clock().getTime() - prefs.historyDays * DAY_MS;
+    for (const id of await store.ids()) {
+      // Under the conversation's lock, re-read: a follow-up may just have landed.
+      await mutex.run(id, async () => {
+        const record = await loadQuietly(id);
+        if (!record || record.pinned) return;
+        const updated = Date.parse(record.updatedAt);
+        if (!Number.isFinite(updated) || updated >= cutoff) return;
+        if (await store.delete(id)) emit({ type: 'conversation', conversation: summaryOf(record), deleted: true });
+      });
+    }
+  }
+
+  void maybeSweep(); // on creation; failures only log
+
+  // ── history ──
+
+  async function listConversations(): Promise<AskConversationSummary[]> {
+    await maybeSweep();
+    const out: AskConversationSummary[] = [];
+    for (const id of await store.ids()) {
+      const record = await loadQuietly(id);
+      if (record) out.push(summaryOf(record));
+    }
+    return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
+  }
+
+  async function getConversation(id: string): Promise<AskConversation | undefined> {
+    const record = await store.load(id);
+    return record ? conversationOf(record) : undefined;
+  }
+
+  async function deleteConversation(id: string): Promise<void> {
+    await mutex.run(id, async () => {
+      const record = await store.load(id);
+      if (!record) throw new CoreError('not_found', `ask: unknown conversation ${id}`);
+      await store.delete(id);
+      emit({ type: 'conversation', conversation: summaryOf(record), deleted: true });
+    });
+  }
+
+  async function setConversationPinned(id: string, pinned: boolean): Promise<AskConversationSummary> {
+    return mutex.run(id, async () => {
+      const record = await store.load(id);
+      if (!record) throw new CoreError('not_found', `ask: unknown conversation ${id}`);
+      // updatedAt is the last message: pinning must not extend retention.
+      const next: ConversationRecord = { ...record, pinned: pinned === true };
+      await store.save(next);
+      const summary = summaryOf(next);
+      emit({ type: 'conversation', conversation: summary });
+      return summary;
+    });
+  }
+
+  // ── ask ──
 
   async function ask(req: AskRequest): Promise<AskResponse> {
     const question = (req.question ?? '').trim();
-    if (!question) throw new Error('ask: question is empty');
+    if (!question) throw new CoreError('invalid_request', 'ask: question is empty');
+    await maybeSweep();
     const conversationID = req.conversationID ?? store.newID();
     return mutex.run(conversationID, () => askLocked(req, question, conversationID));
   }
 
   async function askLocked(req: AskRequest, question: string, conversationID: string): Promise<AskResponse> {
+    const askedAt = now();
     const settings = deps.getSettings();
+    const prefs = askPreferences(settings);
+    const taxonomy = taxonomyFrom(settings);
     const record = req.conversationID ? await store.load(conversationID) : undefined;
-    if (req.conversationID && !record) throw new Error(`ask: unknown conversation ${conversationID}`);
+    if (req.conversationID && !record) throw new CoreError('not_found', `ask: unknown conversation ${conversationID}`);
 
     const vaultPath = await resolveVault(req, record, settings);
     const notices: string[] = [];
@@ -80,11 +222,26 @@ export function createAskService(deps: AskDeps): AskService {
       throw new Error(`ask: productRoot "${productRoot}" is not a claude-obsidian checkout (skills/wiki-query/SKILL.md missing)`);
     }
 
-    // Filters.
+    // Filters: request, else the settings defaults.
     const labels = (req.labels ?? []).filter((l) => l.trim());
     const sources = (req.sources ?? []).filter((s) => s.trim());
-    const filtered = hasFilter({ labels, sources });
-    const scope = scopeKey(labels, sources, deps.taxonomy ?? DEFAULT_SOURCE_TAXONOMY);
+    const labelMatch: LabelMatch = req.labelMatch === 'all' || req.labelMatch === 'any' ? req.labelMatch : prefs.labelMatch;
+    const includeUnconfirmed = typeof req.includeUnconfirmed === 'boolean' ? req.includeUnconfirmed : prefs.includeUnconfirmed;
+    const filter = { labels, sources, labelMatch, includeUnconfirmed };
+    const filtered = hasFilter(filter);
+    const scope = scopeKey(filter, taxonomy);
+
+    // The request as applied (defaults resolved), so a client can restore the chips.
+    const appliedRequest: AskRequest = {
+      question,
+      ...(req.conversationID ? { conversationID: req.conversationID } : {}),
+      selection,
+      vaultPath,
+      labels,
+      sources,
+      labelMatch,
+      includeUnconfirmed,
+    };
 
     // Session: resume unless there is none yet, or the runner, vault or scope changed.
     // A session never crosses filter scopes: earlier turns' page text stays in
@@ -113,22 +270,46 @@ export function createAskService(deps: AskDeps): AskService {
     let allowedPages: VaultPage[] | undefined;
     if (filtered) {
       const pages = await scanVaultPages(vaultPath);
-      allowedPages = filterPages(pages, { labels, sources }, deps.taxonomy ?? DEFAULT_SOURCE_TAXONOMY);
+      allowedPages = filterPages(pages, filter, taxonomy);
+      const labelled = labels.some((l) => normalizeTag(l));
+      // Pages that match only when unconfirmed labels count.
+      const leftOut =
+        labelled && !includeUnconfirmed
+          ? filterPages(pages, { ...filter, includeUnconfirmed: true }, taxonomy).length - allowedPages.length
+          : 0;
+      const unconfirmed = labelled && includeUnconfirmed ? allowedPages.filter((p) => p.labelsUnconfirmed).length : 0;
+
       if (allowedPages.length === 0) {
-        const describe = [labels.length ? `labels ${labels.join(', ')}` : '', sources.length ? `sources ${sources.join(', ')}` : '']
+        const describe = [
+          labels.length ? `${labelMatch === 'all' && labels.length > 1 ? 'all of labels' : 'labels'} ${labels.join(', ')}` : '',
+          sources.length ? `sources ${sources.join(', ')}` : '',
+        ]
           .filter(Boolean)
           .join(' and ');
-        const answer = `No notes in the vault match ${describe}, so there is nothing to answer from. Remove or change the filters to search all notes.`;
-        await store.save(nextRecord(record, { conversationID, sessionID, selection, vaultPath, workspace, scope, cost: 0, ran: false }));
-        return {
+        if (leftOut) {
+          notices.push(`${countPages(leftOut)} would match with unconfirmed labels; Include unconfirmed is off.`);
+        }
+        const response: AskResponse = {
           conversationID,
-          answer: withNotices(notices, answer),
+          answer: `No notes in the vault match ${describe}, so there is nothing to answer from. Remove or change the filters to search all notes.`,
           citations: [],
           gaps: [`No notes match ${describe}.`],
           selection,
           costUSD: 0,
+          notices,
         };
+        await saveTurn(
+          record,
+          { conversationID, sessionID, selection, vaultPath, workspace, scope, cost: 0, ran: false },
+          { askedAt, request: appliedRequest, response },
+        );
+        return response;
       }
+
+      notices.push(
+        `Limited to ${countPages(allowedPages.length)}${unconfirmed ? ` (${unconfirmed} unconfirmed)` : ''}.` +
+          (leftOut ? ` Left out ${countPages(leftOut)} whose labels are not confirmed yet.` : ''),
+      );
     }
 
     const isNewSession = sessionID === null;
@@ -137,7 +318,7 @@ export function createAskService(deps: AskDeps): AskService {
       // Not the vault: Claude Code auto-approves reads inside its working
       // directories, which would bypass the per-page Read rules (verified).
       workingDirectory: workspace,
-      prompt: buildAskPrompt(question, { vaultPath, labels, sources, allowedPages }),
+      prompt: buildAskPrompt(question, { vaultPath, labels, sources, labelMatch, allowedPages }),
       session: isNewSession ? { start: runSessionID } : { resume: runSessionID },
       selection,
       availableTools: allowedPages ? ['Skill', 'Read'] : [...ASK_READ_ONLY_TOOLS],
@@ -159,49 +340,30 @@ export function createAskService(deps: AskDeps): AskService {
     }
 
     const mapped = mapStructured(result.structured);
-    const answer = mapped?.answer ?? result.resultText;
     const allowed = allowedPages ? new Set(allowedPages.map((p) => p.path)) : undefined;
     const citations = mapped ? await validateCitations(mapped.citations, vaultPath, allowed, allowedPages) : [];
     const costUSD = Number.isFinite(result.costUSD) ? result.costUSD : 0;
-
-    await store.save(
-      nextRecord(record, {
-        conversationID,
-        sessionID: result.sessionID || runSessionID,
-        selection,
-        vaultPath,
-        workspace,
-        scope,
-        cost: costUSD,
-        ran: true,
-      }),
-    );
-
-    return {
+    const response: AskResponse = {
       conversationID,
-      answer: withNotices(notices, answer),
+      answer: mapped?.answer ?? result.resultText,
       citations,
       gaps: mapped?.gaps ?? [],
       selection,
       costUSD,
+      notices,
     };
+    await saveTurn(
+      record,
+      { conversationID, sessionID: result.sessionID || runSessionID, selection, vaultPath, workspace, scope, cost: costUSD, ran: true },
+      { askedAt, request: appliedRequest, response },
+    );
+    return response;
   }
 
-  function nextRecord(
-    previous: ConversationRecord | undefined,
-    next: {
-      conversationID: string;
-      sessionID: string | null;
-      selection: ModelSelection;
-      vaultPath: string;
-      workspace: string;
-      scope: string;
-      cost: number;
-      ran: boolean;
-    },
-  ): ConversationRecord {
+  /** Persist the conversation with this turn appended, and announce it. */
+  async function saveTurn(previous: ConversationRecord | undefined, next: SessionState, turn: AskTurn): Promise<void> {
     const stamp = now();
-    return {
+    const record: ConversationRecord = {
       conversationID: next.conversationID,
       sessionID: next.sessionID,
       selection: next.selection,
@@ -212,25 +374,37 @@ export function createAskService(deps: AskDeps): AskService {
       updatedAt: stamp,
       turns: (previous?.turns ?? 0) + (next.ran ? 1 : 0),
       costUSD: (previous?.costUSD ?? 0) + next.cost,
+      title: previous?.title || titleFrom(turn.request.question),
+      pinned: previous?.pinned === true,
+      history: [...(previous?.history ?? []), turn],
     };
+    await store.save(record);
+    emit({ type: 'conversation', conversation: summaryOf(record) });
   }
 
-  return {
-    ask,
-    // v2 history: owner core-ask
-    listConversations: async () => notImplemented('listConversations'),
-    getConversation: async () => notImplemented('getConversation'),
-    deleteConversation: async () => notImplemented('deleteConversation'),
-    setConversationPinned: async () => notImplemented('setConversationPinned'),
-  };
+  return { ask, listConversations, getConversation, deleteConversation, setConversationPinned, sweepHistory };
 }
 
-/** Canonical filter scope: sorted normalized labels and expanded sources; '' when unfiltered. */
-function scopeKey(labels: string[], sources: string[], taxonomy: SourceTaxonomy): string {
-  if (!hasFilter({ labels, sources })) return '';
-  const l = [...new Set(labels.map(normalizeTag).filter(Boolean))].sort();
-  const s = sources.some((x) => x.trim()) ? [...expandSources(sources, taxonomy)].sort() : [];
-  return JSON.stringify({ labels: l, sources: s });
+function countPages(n: number): string {
+  return `${n} ${n === 1 ? 'page' : 'pages'}`;
+}
+
+/**
+ * Canonical filter scope: sorted normalized labels and expanded sources; '' when
+ * unfiltered. `match` and `unconfirmed` appear only when they differ from v1
+ * behaviour (any, include), so v1 scopes stay byte-identical and still resume.
+ */
+function scopeKey(
+  filter: { labels: string[]; sources: string[]; labelMatch: LabelMatch; includeUnconfirmed: boolean },
+  taxonomy: SourceTaxonomy,
+): string {
+  if (!hasFilter(filter)) return '';
+  const l = [...new Set(filter.labels.map(normalizeTag).filter(Boolean))].sort();
+  const s = filter.sources.some((x) => x.trim()) ? [...expandSources(filter.sources, taxonomy)].sort() : [];
+  const key: Record<string, unknown> = { labels: l, sources: s };
+  if (filter.labelMatch === 'all' && l.length > 1) key.match = 'all';
+  if (!filter.includeUnconfirmed && l.length > 0) key.unconfirmed = false;
+  return JSON.stringify(key);
 }
 
 function isInside(child: string, parent: string): boolean {
@@ -277,11 +451,6 @@ async function resolveVault(req: AskRequest, record: ConversationRecord | undefi
   const wiki = await fs.stat(path.join(real, 'wiki')).catch(() => undefined);
   if (!wiki?.isDirectory()) throw new Error(`ask: ${candidate} is not a claude-obsidian vault (no wiki/ directory)`);
   return real;
-}
-
-function withNotices(notices: string[], answer: string): string {
-  if (!notices.length) return answer;
-  return `${notices.map((n) => `> [!note] ${n}`).join('\n>\n')}\n\n${answer}`;
 }
 
 interface StructuredAnswer {
