@@ -11,17 +11,26 @@ struct SettingsView: View {
 
     var body: some View {
         Scrolling {
-            VStack(alignment: .leading, spacing: 30) {
+            VStack(alignment: .leading, spacing: 28) {
                 Text("Settings").font(Theme.display(30))
                 vaults
                 schedule
-                model
+                SourcesSettings()
+                LabelsSettings(notes: engine.notes)
+                AskHistorySettings(notes: engine.notes)
+                ShortcutsSettingsSection()
+                RunnersSettings(notes: engine.notes)
+                TaskDefaultsSettings(notes: engine.notes)
                 advanced
                 status
             }
             .padding(.horizontal, 40).padding(.top, 40).padding(.bottom, 32)
         }
-        .frame(minWidth: 640, minHeight: 640)
+        .onAppear {
+            engine.loadRunners()
+            engine.refreshLabels()
+        }
+        .frame(minWidth: 680, minHeight: 640)
         .background(Theme.window)
         .foregroundStyle(Theme.ink)
         .ignoresSafeArea()
@@ -108,8 +117,7 @@ struct SettingsView: View {
                 Text("Batch every").font(Theme.body(14, .bold))
                 Spacer()
                 Text("Automatic").font(Theme.body(13)).foregroundStyle(Theme.muted)
-                Toggle("Automatic", isOn: $engine.settings.autoProcessEnabled)
-                    .toggleStyle(.switch).labelsHidden().tint(Theme.primary)
+                PillSwitch(isOn: $engine.settings.autoProcessEnabled, label: "Automatic batching")
             }
             HStack(spacing: 12) {
                 IntervalCounter(label: "days", value: intervalPart(.days), range: BatchInterval.Part.days.range)
@@ -126,18 +134,20 @@ struct SettingsView: View {
                     chip(BatchInterval(totalMinutes: engine.settings.batchIntervalMinutes).description, selected: true) {}
                 }
             }
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Wait before picking up a file").font(Theme.body(14, .bold))
-                Text("A file joins a batch only after it has not changed for this long, so downloads and edits in progress are left alone. Process now ignores the wait.")
-                    .font(Theme.body(12)).foregroundStyle(Theme.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Wait before picking up a file").font(Theme.body(13, .semibold))
+                    Text("A file must stay unchanged this long before a batch takes it, so half-written notes wait. Process now ignores it.")
+                        .font(Theme.body(11)).foregroundStyle(Theme.muted).lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                IntervalCounter(label: "minutes", value: settlePart(\.minutes), range: SettleWait.range, compact: true)
+                    .frame(width: 170)
+                IntervalCounter(label: "seconds", value: settlePart(\.seconds), range: SettleWait.range, compact: true)
+                    .frame(width: 170)
             }
             .padding(.top, 6)
-            HStack(spacing: 12) {
-                IntervalCounter(label: "minutes", value: settlePart(\.minutes), range: SettleWait.range)
-                IntervalCounter(label: "seconds", value: settlePart(\.seconds), range: SettleWait.range)
-                Spacer().frame(maxWidth: .infinity)
-            }
         }
     }
 
@@ -169,41 +179,6 @@ struct SettingsView: View {
                 interval[part] = value
                 engine.settings.batchIntervalMinutes = interval.totalMinutes
             })
-    }
-
-    // MARK: Model
-
-    private var model: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Model").font(Theme.body(14, .bold))
-            HStack(spacing: 12) {
-                modelCard("haiku", "Haiku", "Fastest and lightest", "bolt", Theme.skyTint, Theme.skyInk)
-                modelCard("sonnet", "Sonnet", "Balanced, recommended", "drop", Theme.limeTint, Theme.limeInk)
-                modelCard("opus", "Opus", "Deepest synthesis", "star", Theme.peachTint, Theme.peachInk)
-            }
-            if !["haiku", "sonnet", "opus"].contains(engine.settings.model) {
-                Text("Using pinned model \(engine.settings.model)").font(Theme.body(12)).foregroundStyle(Theme.muted)
-            }
-        }
-    }
-
-    private func modelCard(_ id: String, _ name: String, _ note: String, _ icon: String, _ fill: Color, _ ink: Color) -> some View {
-        let selected = engine.settings.model == id
-        return Button { engine.settings.model = id } label: {
-            VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: icon).font(.system(size: 15, weight: .semibold)).foregroundStyle(ink)
-                    .frame(width: 34, height: 34).background(Circle().fill(fill))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(name).font(Theme.body(15, .bold))
-                    Text(note).font(Theme.body(12)).foregroundStyle(Theme.muted)
-                }
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .card(18, selected: selected)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: Advanced
@@ -281,29 +256,36 @@ struct IntervalCounter: View {
     let label: String
     @Binding var value: Int
     let range: ClosedRange<Int>
+    /// Smaller variant (the settle wait row).
+    var compact = false
+    @Environment(\.snapshotMode) private var snapshot
 
     var body: some View {
         HStack(spacing: 6) {
             round("minus") { value = max(range.lowerBound, value - 1) }
             VStack(spacing: 1) {
-                TextField("", value: $value, format: .number)
-                    .textFieldStyle(.plain)
-                    .multilineTextAlignment(.center)
-                    .font(Theme.display(28))
-                    .frame(width: 56)
-                Text(label).font(Theme.body(12)).foregroundStyle(Theme.muted)
+                if snapshot {
+                    Text("\(value)").font(Theme.display(compact ? 22 : 28)).frame(width: compact ? 44 : 56)
+                } else {
+                    TextField("", value: $value, format: .number)
+                        .textFieldStyle(.plain)
+                        .multilineTextAlignment(.center)
+                        .font(Theme.display(compact ? 22 : 28))
+                        .frame(width: compact ? 44 : 56)
+                }
+                Text(label).font(Theme.body(compact ? 11 : 12)).foregroundStyle(Theme.muted)
             }
             .frame(maxWidth: .infinity)
             round("plus") { value = min(range.upperBound, value + 1) }
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 16).fill(Theme.panel))
+        .padding(compact ? 8 : 10)
+        .background(RoundedRectangle(cornerRadius: compact ? 14 : 16).fill(Theme.panel))
     }
 
     private func round(_ icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: icon).font(.system(size: 12, weight: .bold))
-                .frame(width: 32, height: 32)
+            Image(systemName: icon).font(.system(size: compact ? 11 : 12, weight: .bold))
+                .frame(width: compact ? 28 : 32, height: compact ? 28 : 32)
                 .background(Circle().fill(Color.white).shadow(color: .black.opacity(0.1), radius: 1, y: 1))
         }
         .buttonStyle(.plain)
