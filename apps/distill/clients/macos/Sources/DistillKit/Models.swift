@@ -68,6 +68,8 @@ public struct ModelSelection: Codable, Hashable, Sendable {
 public struct SourceDefinition: Codable, Hashable, Sendable {
     public var id: String
     public var label: String
+
+    public init(id: String, label: String) { self.id = id; self.label = label }
 }
 
 public struct SourceGroup: Codable, Hashable, Sendable {
@@ -122,6 +124,8 @@ public struct LabelingPreferences: Codable, Hashable, Sendable {
 public struct ShortcutSettings: Codable, Hashable, Sendable {
     public var ask: String?
     public var addNote: String?
+
+    public init(ask: String? = nil, addNote: String? = nil) { self.ask = ask; self.addNote = addNote }
 }
 
 /// Mirrors `Settings` in contracts.ts. Edit a copy and send the difference with
@@ -880,10 +884,11 @@ public enum CoreEvent: Equatable, Sendable {
     case log(level: String, message: String)
     case labelSuggestions(requestID: String, notePath: String, labels: [LabelSuggestion], error: String?)
     case conversation(AskConversationSummary, deleted: Bool)
+    case progress(CoreProgress)
     case unknown(type: String)
 
     private enum Keys: String, CodingKey {
-        case type, entries, job, settings, level, message, requestID, notePath, labels, error, conversation, deleted
+        case type, entries, job, settings, level, message, requestID, notePath, labels, error, conversation, deleted, progress
     }
 
     /// Decodes the JSON of one `data:` line.
@@ -907,6 +912,7 @@ public enum CoreEvent: Equatable, Sendable {
             case "conversation":
                 event = .conversation(try c.decode(AskConversationSummary.self, forKey: .conversation),
                                       deleted: c.lossy(Bool.self, .deleted) ?? false)
+            case "progress": event = .progress(try c.decode(CoreProgress.self, forKey: .progress))
             default: event = .unknown(type: type)
             }
         }

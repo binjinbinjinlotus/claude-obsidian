@@ -43,6 +43,13 @@ public enum CoreClientError: Error, Equatable, CustomStringConvertible, Sendable
         return false
     }
 
+    /// An older core refusing a new chat's client-chosen conversation id.
+    public var rejectsClientConversationID: Bool {
+        guard case .api(let status, let code, _) = self else { return false }
+        return (status == 404 && (code == "not_found" || code == "conversation_not_found"))
+            || (status == 400 && code == "invalid_request")
+    }
+
     public var status: Int? { if case .api(let s, _, _) = self { return s }; return nil }
     public var code: String? { if case .api(_, let c, _) = self { return c }; return nil }
 }
@@ -97,6 +104,11 @@ public final class CoreClient: Sendable {
         try await send("POST", "/v1/queue/process", body: ["force": force], as: Wrapped<Job?>.self, key: "job").value
     }
 
+    /// `DELETE /v1/queue/entries` `{path}`: drops one file from the queue (the core moves it to the Trash).
+    public func removeQueueEntry(path: String) async throws {
+        let _: JSONValue = try await send("DELETE", "/v1/queue/entries", body: ["path": path])
+    }
+
     // MARK: Notes
 
     public func addNote(_ request: AddNoteRequest) async throws -> AddNoteResult {
@@ -125,6 +137,16 @@ public final class CoreClient: Sendable {
     @discardableResult public func reject(_ id: String) async throws -> Job? { try await jobAction(id, "reject") }
     @discardableResult public func cancel(_ id: String) async throws -> Job? { try await jobAction(id, "cancel") }
 
+    /// `DELETE /v1/jobs/:id`: removes a finished job from the list (History → Clear).
+    public func deleteJob(_ id: String) async throws {
+        let _: JSONValue = try await send("DELETE", "/v1/jobs/\(Self.segment(id))", body: Optional<JSONValue>.none)
+    }
+
+    /// `GET /v1/jobs/:id/resume`: the argv that reopens the job's runner session interactively.
+    public func jobResume(_ id: String) async throws -> ResumeCommand {
+        try await get("/v1/jobs/\(Self.segment(id))/resume")
+    }
+
     private func jobAction(_ id: String, _ action: String, body: [String: JSONValue] = [:]) async throws -> Job? {
         try await send("POST", "/v1/jobs/\(Self.segment(id))/\(action)", body: JSONValue.object(body), as: Wrapped<Job?>.self, key: "job").value
     }
@@ -133,6 +155,21 @@ public final class CoreClient: Sendable {
 
     public func ask(_ request: AskRequest) async throws -> AskResponse {
         try await send("POST", "/v1/ask", body: request, timeout: Self.askTimeout)
+    }
+
+    /// First turn of a new chat with a client-chosen `conversationID` (so Stop
+    /// works before the first reply). A core that does not accept client ids
+    /// answers 404/400 for the unknown id; then the question is sent again
+    /// without one and the core picks the id.
+    public func askNewChat(_ request: AskRequest) async throws -> AskResponse {
+        guard request.conversationID != nil else { return try await ask(request) }
+        do {
+            return try await ask(request)
+        } catch let e as CoreClientError where e.rejectsClientConversationID {
+            var retry = request
+            retry.conversationID = nil
+            return try await ask(retry)
+        }
     }
 
     public func conversations() async throws -> [AskConversationSummary] {
@@ -149,6 +186,18 @@ public final class CoreClient: Sendable {
 
     public func setConversationPinned(_ id: String, pinned: Bool) async throws -> AskConversationSummary {
         try await send("POST", "/v1/conversations/\(Self.segment(id))/pin", body: ["pinned": pinned])
+    }
+
+    /// `POST /v1/conversations/:id/cancel`: stops the in-flight turn (Stop). No-op when idle.
+    public func cancelAsk(conversationID: String) async throws {
+        let _: JSONValue = try await send("POST", "/v1/conversations/\(Self.segment(conversationID))/cancel", body: JSONValue.object([:]))
+    }
+
+    // MARK: Progress
+
+    /// `GET /v1/progress`: progress in flight (for a client that connects mid-run).
+    public func listProgress() async throws -> [CoreProgress] {
+        try await get("/v1/progress", as: Wrapped<LossyList<CoreProgress>>.self, key: "progress").value.items
     }
 
     // MARK: Labels
@@ -323,6 +372,14 @@ struct Wrapped<T: Decodable>: WrappedDecodable {
             return Wrapped(value: try JSONDecoder.core.decode(T.self, from: JSONEncoder.core.encode(inner)))
         }
         return Wrapped(value: try JSONDecoder.core.decode(T.self, from: data.isEmpty ? Data("null".utf8) : data))
+    }
+}
+
+/// An array that skips elements of the wrong shape.
+struct LossyList<T: Decodable>: Decodable {
+    let items: [T]
+    init(from decoder: Decoder) throws {
+        items = try decoder.singleValueContainer().decode([Lossy<T>].self).compactMap(\.value)
     }
 }
 
