@@ -62,7 +62,7 @@ export function defaultSettings(): Settings {
   return {
     vaults: [],
     batchIntervalMinutes: 10,
-    settleSeconds: 10,
+    settleSeconds: 600,
     model: 'sonnet',
     claudePath: path.join(os.homedir(), '.local', 'bin', 'claude'),
     pythonPath: '/usr/bin/python3',

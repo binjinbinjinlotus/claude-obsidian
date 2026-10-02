@@ -162,7 +162,7 @@ describe('SettingsStore', () => {
     fs.writeFileSync(file, '{"model":"haiku","settleSeconds":"soon"}');
     const s = new SettingsStore(file).load();
     assert.equal(s.model, 'haiku');
-    assert.equal(s.settleSeconds, 10);
+    assert.equal(s.settleSeconds, 600);
     assert.equal(s.batchIntervalMinutes, 10);
     assert.equal(s.autoProcessEnabled, true);
     assert.deepEqual(s.enabledRunners, ['claude-code']);
