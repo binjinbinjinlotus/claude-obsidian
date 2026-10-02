@@ -1,9 +1,14 @@
 # Distill (macOS)
 
-A native Mac wrapper that runs claude-obsidian unattended with `claude -p`.
-Drop or paste sources, let them batch on a schedule, and approve each vault
-change before it is applied. Approving or replying resumes the **same** Claude
-session (`claude -p --resume <session-id>`).
+The Mac client for Distill. Drop or paste sources, let the core batch them on a
+schedule, and approve each vault change before it is applied.
+
+The app is a **thin client of the Distill core** (`apps/distill/core`, Node +
+TypeScript). The core owns settings, the queue, the schedule, jobs and the AI
+runners, and serves them on a local HTTP API (`127.0.0.1`, bearer token). The
+app only shows that state and sends commands. See
+[Architecture](../../docs/specs/architecture.md) and
+[App shell](../../docs/specs/app-shell.md).
 
 This app is contributor tooling. `apps/` is outside `config/release-allowlist.json`,
 so it never ships in the plugin release artifact.
@@ -11,96 +16,69 @@ so it never ships in the plugin release artifact.
 ## Build and run
 
 ```bash
-apps/distill/clients/macos/scripts/build-app.sh            # → apps/distill/clients/macos/build/Distill.app
+apps/distill/clients/macos/scripts/build-app.sh            # TS workspace build (if stale) + Distill.app
 apps/distill/clients/macos/scripts/build-app.sh --install  # also copies it to ~/Applications
-swift test --package-path apps/distill/clients/macos       # WorkerCore unit tests
+swift test --package-path apps/distill/clients/macos       # DistillKit unit tests
 ```
 
 Day-to-day control (also available as the `/distill` project skill):
 
 ```bash
-apps/distill/clients/macos/scripts/distill.sh toggle    # start if stopped, quit if running
-apps/distill/clients/macos/scripts/distill.sh update    # after code changes: test, rebuild, reinstall, relaunch
-apps/distill/clients/macos/scripts/distill.sh status    # app state + running / awaiting-approval jobs
+apps/distill/clients/macos/scripts/distill.sh toggle     # start if stopped, quit if running
+apps/distill/clients/macos/scripts/distill.sh update     # after code changes: test, rebuild, reinstall, relaunch
+apps/distill/clients/macos/scripts/distill.sh status     # app + core + running / awaiting-approval jobs
+apps/distill/clients/macos/scripts/distill.sh core-stop  # stop the core server
 ```
 
-`stop`, `restart` and `update` refuse to quit while a job is running. Pass
-`--force` to quit anyway.
+`stop`, `restart`, `update` and `core-stop` refuse while a job is running.
+Pass `--force` to go ahead anyway.
 
-Requires macOS 14+, the Swift 5.10+ toolchain, an authenticated `claude` CLI, and
-a vault created with `scripts/claude-obsidian.py init` or `adopt`.
+Requires macOS 14+, the Swift 5.10+ toolchain, Node.js 20+, an authenticated
+`claude` CLI, and a vault created with `scripts/claude-obsidian.py init` or `adopt`.
+
+## How the app finds the core
+
+1. State dir: `$DISTILL_STATE_DIR`, else `~/Library/Application Support/Distill`.
+2. If `server.json` names a live process with a port, the app connects with the
+   token in `<state>/token`.
+3. Otherwise it starts `node <product root>/apps/distill/cli/dist/main.js serve`
+   detached (its own session, output appended to `<state>/server.log`) and
+   waits for `server.json`. The product root comes from `$DISTILL_PRODUCT_ROOT`,
+   the `ClaudeObsidianProductRoot` key in Info.plist (set by `build-app.sh`),
+   or `productRoot` in settings.json.
+4. Node is found without the shell PATH: Settings → node (`nodePath`), the
+   highest `~/.nvm/versions/node/*/bin/node`, `/opt/homebrew/bin/node`,
+   `/usr/local/bin/node`, `/usr/bin/node`. Versions below 20 are skipped.
+
+Quitting the app leaves the core running, since the `distill` CLI and agents may
+be using it. Use `distill.sh core-stop` to stop it. If the core goes away, the
+app shows a banner with **Retry**, which starts it again.
 
 ## Using it
 
-1. **Pick a vault.** Choose the vault root (the folder that contains
-   `.claude-obsidian.json`) from the toolbar or Settings. You can keep several
-   vaults and switch between them. Every vault has its own queue folder.
-2. **Feed the queue.** Drag files onto the window or the floating icon, or press
-   ⌘V (⇧⌘V from any worker window) to paste a screenshot, a copied file, or
-   text. Pasted images are saved as `Screenshot <timestamp>.png` and text as
-   `Clipping <timestamp>.md`. Dropped files are copied, so your originals stay
-   where they are. Anything you save into the queue folder also counts.
-3. **Batching.** Every *N* minutes (1/5/10/15/30/60/120 or a custom value), all
-   files that have stopped changing are moved into `<vault>/inbox/` and handled
-   together by one job. **Process Now** (⌘R) runs a batch immediately.
-4. **Approve.** When Claude has an inspected transaction bundle, the job moves to
-   **Needs your approval**. The floating icon and the Dock show a red badge.
-   - **Approve & Apply** resumes the session and allows only the exact command
-     `transaction apply <bundle> --vault <vault> --approved-plan-sha256 <sha>`.
-   - **Reply** sends feedback, such as "skip the second file" or "merge into the
-     existing page". Claude rebuilds the bundle and asks again.
-   - **Blocked tool calls**: if Claude was denied a tool, tick it and choose
-     **Allow Selected & Continue**. The permission is kept for the rest of that job.
-   - **Reject** stops the job. Inbox files are kept.
-   - **Open Session in Terminal** reopens the same session interactively.
-5. **Model.** Choose the model for new jobs from the toolbar: Opus, Sonnet, or
-   Haiku (latest), a pinned model ID, or a custom ID in Settings. A job keeps
-   its model when it is resumed.
+1. **Pick a vault** in Settings or the sidebar switcher (a folder containing
+   `.claude-obsidian.json`). Each vault has its own queue folder.
+2. **Feed the queue.** Drop files on the window or the floating icon, or paste
+   (⌘V, ⇧⌘V) a screenshot, copied files or text. The core copies files into the
+   queue. Pasted images become `Screenshot <timestamp>.png` and text becomes
+   `Clipping <timestamp>.md`.
+3. **Batching** happens in the core on the interval from Settings. **Process
+   Now** (⌘R) asks the core for a batch right away.
+4. **Review.** Approve & apply, reply, allow blocked tools, reject or cancel.
+   Each action is an API call; the core runs the AI turn and the approved
+   `transaction apply`.
 
-### Floating icon
+## Code
 
-The floating icon stays on top on every Space. Click it to open the worker,
-drag it to move it (its position is remembered), and drop files on it to queue
-them. Right-click it to paste, process, or hide it. Toggle it with ⌘I.
-
-## Safety model
-
-- **Two phases.** The first turn can read anything, write only to
-  `<vault>/.vault-meta/worker/<job-id>/`, and run only `transaction inspect`,
-  `doctor`, `lint`, and `shasum` through the core. It is never allowed to run
-  `transaction apply`. That permission is granted on resume, and only for the
-  approved hash.
-- **The plan comes from the app.** The app runs `transaction inspect` itself, so
-  the changed paths and approval hash on the approval screen come from the core,
-  not from Claude's summary.
-- **One job per vault.** A vault has one running or awaiting-approval job at a
-  time, so a new batch never builds against hashes a pending approval is about
-  to change. New files wait in the queue in the meantime.
-- **Inspectable runs.** Each turn's raw `claude` JSON is stored next to the
-  bundle as `turn-N.json`. Job history lives in
-  `~/Library/Application Support/Distill/`.
-
-## Headless mode
-
-```bash
-Distill.app/Contents/MacOS/Distill --run-once \
-  --vault ~/Vaults/research --queue ~/Desktop/to-ingest --model sonnet [--approve]
-```
-
-This mode batches the queue once, prints the approval request, and with
-`--approve` applies a valid plan and prints the changed paths.
-
-## Extending
-
-`Sources/WorkerCore` has no UI and holds all the behavior:
-
-| File | Role |
+| Path | Role |
 | --- | --- |
-| `JobKind.swift` | `JobKind` protocol, `JobKinds.all` registry, the shared `WorkerProtocol` (system prompt, output schema, approve, reply, and allow prompts) |
-| `WorkerEngine.swift` | Schedule, batching, the per-vault lock, and the run → approval → resume state machine |
-| `Runners/` | AI backends behind `AgentRunner` (Claude Code today): request mapping, results, permission denials |
-| `Queue.swift` | Queue scanning, settle delay, moving files into the inbox, paste and drop intake |
+| `Sources/DistillKit/Models.swift` | Codable mirrors of `core/src/contracts.ts`, with tolerant decoding |
+| `Sources/DistillKit/CoreClient.swift` | Every API route, error shape, and the SSE event stream parser |
+| `Sources/DistillKit/CoreLauncher.swift` | State paths, `server.json`/token, node discovery, detached `serve` |
+| `Sources/Distill/AppModel.swift` | What the windows show; events, debounced settings patches, commands |
+| `Sources/Distill/*View.swift`, `FloatingIcon.swift`, `Intake.swift` | AppKit/SwiftUI shell |
+| `Sources/Distill/Snapshot.swift` | `--snapshot` design QA from fixture files (no core) |
 
-To add a capability (for example a scheduled `wiki-lint` sweep or a `save`
-digest), conform a new type to `JobKind` and register it in `JobKinds.all`. The
-approval UI, resume, cost tracking, and terminal hand-off work for every kind.
+The Swift engine (`WorkerEngine`, runners, queue scanning, job kinds) was
+retired when the app moved onto the core. Two engines on one state dir would
+both process the queue. New behavior goes in the core, and the app surfaces it.

@@ -18,6 +18,10 @@ An always-on-top flask that works without opening the main window. Code:
 - **Right-click**: active vault, Open Distill, Paste into Queue, Process Now,
   Hide Floating Icon. ⌘I toggles it (`showFloatingIcon`).
 
+Counts come from the app's mirror of the core (`AppModel`: queue and job
+events). Drop and Paste go through [intake](intake-paste-drop.md), and Process Now
+calls `POST /v1/queue/process`.
+
 ## States
 
 | State | Look |
