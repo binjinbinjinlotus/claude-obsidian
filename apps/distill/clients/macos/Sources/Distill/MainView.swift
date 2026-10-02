@@ -15,6 +15,7 @@ struct MainView: View {
     var body: some View {
         HStack(spacing: 0) {
             Sidebar(section: $section, selectedJob: $selectedJob, openSettings: openSettings)
+                .layoutPriority(1)
             Group {
                 switch section {
                 case .queue: QueueView()
@@ -24,7 +25,10 @@ struct MainView: View {
                 case .history: HistorySection(selectedJob: $selectedJob, openAsk: { section = .ask })
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // minWidth 0 + clipped: a screen that asks for more width than the
+            // window has is squeezed to fit instead of pushing the sidebar off.
+            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
             .background(Theme.window)
         }
         .environmentObject(engine.ask)

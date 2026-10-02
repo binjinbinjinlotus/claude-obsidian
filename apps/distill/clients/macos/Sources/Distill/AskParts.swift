@@ -584,6 +584,9 @@ struct QuestionField: View {
                 .textFieldStyle(.plain)
                 .font(Theme.body(size))
                 .lineLimit(1...5)
+                // Wrap at the available width. Without this a vertical TextField
+                // asks for the full width of its text and widens the window.
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .focused($focused)
                 .disabled(disabled)
                 .onSubmit(submit)
