@@ -346,6 +346,10 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       queue.splice(i, 1);
       return queue;
     },
+    extractImageText: async (req: { imagePath: string; vaultPath?: string }) => {
+      record('extractImageText', req);
+      return { text: '', model: 'Haiku' };
+    },
     searchPages: async (query: string, opts?: { vaultPath?: string; limit?: number }) => {
       record('searchPages', query, opts);
       return [{ path: 'wiki/sources/sencha.md', title: 'Sencha basics' }];

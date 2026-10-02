@@ -63,7 +63,7 @@ import {
   type ParsedStatus,
   type SourceLabels,
 } from './job-kinds.js';
-import { CoreError } from './errors.js';
+import { CoreError, notImplemented } from './errors.js';
 import { searchVaultPages } from './pages.js';
 import { noteFileFor, readManifest, validateNote, writeManifest, writeNote, type NoteLabelState } from './notes.js';
 import { draftBatchLabels } from '../labels/batch.js';
@@ -1428,6 +1428,7 @@ export function createEngine(opts: EngineOptions): Engine {
     allow,
     reject,
     cancel,
+    extractImageText: async () => notImplemented('extractImageText'), // owner: mac-images
     async searchPages(query, opts) {
       return searchVaultPages(resolveVault(opts?.vaultPath).path, query, opts?.limit);
     },

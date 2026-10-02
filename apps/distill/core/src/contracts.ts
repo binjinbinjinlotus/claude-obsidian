@@ -319,8 +319,24 @@ export interface QueueEntry {
 export interface NoteImage {
   /** Absolute path of an image file to include. */
   path: string;
-  /** keep = store as attachment (default); extract = read text, do not store. */
+  /**
+   * keep = store as attachment (default; the note text embeds it as ![[file name]] where it was pasted);
+   * extract = read text at batch time, do not store (legacy: the app now extracts on demand via extractImageText).
+   */
   mode: 'keep' | 'extract';
+}
+
+export interface ExtractImageTextRequest {
+  /** Absolute path of a local image file (png, jpg, gif, webp, heic). */
+  imagePath: string;
+  vaultPath?: string; // default: active vault (for runner context only; nothing is written)
+}
+
+export interface ExtractImageTextResult {
+  /** Markdown read from the image; '' when no text was found. */
+  text: string;
+  /** Model label shown to the user, e.g. "Haiku". */
+  model: string;
 }
 
 export interface AddNoteRequest {
@@ -566,6 +582,12 @@ export interface DistillCore {
   jobResumeCommand(id: string): Promise<string[] | null>;
   /** Vault pages for the note picker (`[[`), best matches first. */
   searchPages(query: string, opts?: { vaultPath?: string; limit?: number }): Promise<{ path: string; title: string }[]>;
+  /**
+   * Read the text in one image now (imageText task; Settings default Claude Code · Haiku · Low),
+   * for "Extract content" in the editors. Returns Markdown; empty text means none was found.
+   * Aborting the signal (HTTP: the client closes the request) stops the runner.
+   */
+  extractImageText(req: ExtractImageTextRequest, opts?: { signal?: AbortSignal }): Promise<ExtractImageTextResult>;
   /** Move a file in the active queue folder to the Trash (with its note manifest). */
   removeQueueEntry(path: string): Promise<QueueEntry[]>;
 
