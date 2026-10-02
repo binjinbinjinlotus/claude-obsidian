@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import DistillKit
 
@@ -10,6 +11,9 @@ import DistillKit
 final class QuickAskController {
     private let panel: QuickPanel
     private let engine: AppModel
+    private var resizeObserver: AnyCancellable?
+    /// The window grows away from the flask: upward when it sits above it.
+    private var growsUp = true
 
     var isVisible: Bool { panel.isVisible }
 
@@ -36,6 +40,24 @@ final class QuickAskController {
             .environmentObject(ask))
         panel.contentView = host
         panel.onClose = { [weak engine] in engine?.ask.quickVisible = false }
+        // The answer replaces the shimmer, chips wrap: follow the content's size.
+        resizeObserver = ask.objectWillChange
+            .debounce(for: .milliseconds(30), scheduler: RunLoop.main)
+            .sink { [weak self] _ in MainActor.assumeIsolated { self?.fitToContent() } }
+    }
+
+    private func fitToContent() {
+        guard panel.isVisible, let content = panel.contentView else { return }
+        content.layoutSubtreeIfNeeded()
+        let size = content.fittingSize
+        var frame = panel.frame
+        guard abs(frame.height - size.height) > 0.5 || abs(frame.width - size.width) > 0.5 else { return }
+        if !growsUp { frame.origin.y += frame.height - size.height } // keep the top edge
+        frame.size = size
+        if let visible = panel.screen?.visibleFrame {
+            frame.origin.y = min(max(frame.origin.y, visible.minY + 8), visible.maxY - size.height - 8)
+        }
+        panel.setFrame(frame, display: true, animate: false)
     }
 
     /// Shows the window next to `anchor` (the flask's frame), toward the screen center.
@@ -53,6 +75,7 @@ final class QuickAskController {
             let toLeft = a.midX > visible.midX
             let x = toLeft ? a.maxX - 12 - size.width : a.minX + 12
             let above = a.midY < visible.midY
+            growsUp = above
             let y = above ? a.maxY - 4 : a.minY + 4 - size.height
             origin = NSPoint(x: x, y: y)
         } else {
@@ -61,7 +84,7 @@ final class QuickAskController {
         origin.x = min(max(origin.x, visible.minX + 8), visible.maxX - size.width - 8)
         origin.y = min(max(origin.y, visible.minY + 8), visible.maxY - size.height - 8)
         panel.setFrameOrigin(origin)
-        NSApp.activate(ignoringOtherApps: true)
+        // A non-activating panel takes typing without bringing Distill's other windows forward.
         panel.makeKeyAndOrderFront(nil)
     }
 
@@ -116,6 +139,7 @@ struct QuickAskCard: View {
         }
         .padding(16)
         .frame(width: 400, alignment: .leading)
+        .onExitCommand(perform: close)
         .background(RoundedRectangle(cornerRadius: 20).fill(Color.white)
             .shadow(color: .black.opacity(0.22), radius: 20, y: 18))
     }

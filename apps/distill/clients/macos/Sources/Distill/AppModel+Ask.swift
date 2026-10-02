@@ -10,6 +10,7 @@ extension AppModel {
     func applyProgress(_ p: CoreProgress) {
         progress[p.key] = p
         guard p.finished else { return }
+        if p.kind == "apply" { pendingActions["approve:\(p.key)"] = nil }
         // Keep a finished entry briefly so the last step / error can be shown.
         let key = p.key, startedAt = p.startedAt
         Task { [weak self] in

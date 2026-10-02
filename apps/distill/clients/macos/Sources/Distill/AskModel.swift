@@ -87,6 +87,7 @@ final class AskModel: ObservableObject {
     @Published private(set) var main: AskThread
     @Published private(set) var quick: AskThread
     private var quickObserver: AnyCancellable?
+    private var settingsObserver: AnyCancellable?
 
     init(engine: AppModel) {
         self.engine = engine
@@ -94,6 +95,19 @@ final class AskModel: ObservableObject {
         main = AskThread(filter: AskFilter(preferences: prefs))
         quick = AskThread(filter: AskFilter(preferences: prefs))
         observeQuick()
+        // The model is created before the core sends settings: an untouched
+        // chat follows the Ask defaults as they arrive or change.
+        settingsObserver = engine.$settings
+            .map(\.resolvedAskPreferences)
+            .removeDuplicates()
+            .sink { [weak self] prefs in self?.reseedUntouched(prefs) }
+    }
+
+    private func reseedUntouched(_ prefs: AskPreferences) {
+        for thread in [main, quick] where thread.isEmpty && thread.filter.labels.isEmpty {
+            thread.filter.labelMatch = prefs.resolvedLabelMatch
+            thread.filter.includeUnconfirmed = prefs.resolvedIncludeUnconfirmed
+        }
     }
 
     /// The flask's ring follows the quick thread, so forward its changes.
