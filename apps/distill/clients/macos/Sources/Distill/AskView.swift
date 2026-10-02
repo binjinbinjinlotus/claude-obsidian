@@ -138,13 +138,13 @@ struct AskThreadView: View {
                 ModelChip(thread: thread)
                 EffortPicker(thread: thread)
                 Text("effort").font(Theme.body(11)).foregroundStyle(Theme.faint).padding(.trailing, 8)
-                ForEach(suggestions, id: \.self) { s in
-                    Button { thread.draft = s } label: {
-                        Text(s).font(Theme.body(12, .semibold)).foregroundStyle(Theme.softInk).lineLimit(1).fixedSize()
-                            .padding(.horizontal, 12).frame(height: 30)
-                            .background(Capsule().fill(Theme.panel))
-                    }
-                    .buttonStyle(.plain)
+                // Suggestions only take the room that is left: two, one, or none.
+                // A fixed-width row wider than the window would stretch the whole
+                // screen and clip the sidebar.
+                ViewThatFits(in: .horizontal) {
+                    suggestionRow(suggestions)
+                    suggestionRow(Array(suggestions.prefix(1)))
+                    Color.clear.frame(width: 0, height: 30)
                 }
                 Spacer(minLength: 0)
             }
@@ -161,6 +161,19 @@ struct AskThreadView: View {
             .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Theme.border, lineWidth: 1.5))
         }
         .padding(.horizontal, 44).padding(.bottom, 26).padding(.top, 4)
+    }
+
+    private func suggestionRow(_ items: [String]) -> some View {
+        HStack(spacing: 8) {
+            ForEach(items, id: \.self) { s in
+                Button { thread.draft = s } label: {
+                    Text(s).font(Theme.body(12, .semibold)).foregroundStyle(Theme.softInk).lineLimit(1).fixedSize()
+                        .padding(.horizontal, 12).frame(height: 30)
+                        .background(Capsule().fill(Theme.panel))
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private var placeholder: String {
