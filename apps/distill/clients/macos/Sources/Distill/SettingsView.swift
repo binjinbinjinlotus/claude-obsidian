@@ -349,8 +349,10 @@ struct VaultEditor: View {
                     }
                 }
             }
-            Button("Use the vault's inbox/ as the queue") { vault.queueDirectory = vault.inboxURL.path }
-                .buttonStyle(.link)
+            Button { vault.queueDirectory = vault.inboxURL.path } label: {
+                Text("Use the vault's inbox/ as the queue").font(Theme.body(13, .semibold)).foregroundStyle(Theme.primary)
+            }
+            .buttonStyle(.plain)
             HStack {
                 Button("Remove vault", role: .destructive) {
                     engine.settings.vaults.removeAll { $0.path == vault.path }
