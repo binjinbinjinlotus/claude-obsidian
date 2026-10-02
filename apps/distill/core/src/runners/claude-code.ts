@@ -93,6 +93,7 @@ export type ProcessLauncher = (opts: RunProcessOptions) => Promise<ProcessOutput
 export class ClaudeCodeRunner implements AgentRunner {
   readonly id = CLAUDE_CODE_ID;
   readonly displayName = 'Claude Code';
+  readonly kind = 'agent' as const;
   readonly capabilities: ReadonlySet<RunnerCapability> = new Set<RunnerCapability>([
     'agentTools',
     'toolPermissions',
