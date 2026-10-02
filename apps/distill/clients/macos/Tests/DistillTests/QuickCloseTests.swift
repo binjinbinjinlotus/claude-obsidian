@@ -26,12 +26,15 @@ final class QuickCloseTests: XCTestCase {
         var d = ComposeDraft()
         d.title = "Gyokuro at 60 °C"
         d.text = "Shop recommended 60 °C, 2 min first steep."
+        d.source = "in-person"
         app.notes.drafts[.quick] = d
         app.notes.addErrors[.quick] = "Couldn't queue the note."
+        UserDefaults.standard.set("in-person", forKey: "distill.lastSource")
+        defer { UserDefaults.standard.removeObject(forKey: "distill.lastSource") }
 
         QuickNoteController.closed(app)
 
-        XCTAssertNil(app.notes.drafts[.quick], "the next open is empty")
+        XCTAssertNil(app.notes.draft(.quick).source, "fresh means no remembered source: + Source")
         XCTAssertEqual(app.notes.draft(.quick).title, "")
         XCTAssertEqual(app.notes.draft(.quick).text, "")
         XCTAssertNil(app.notes.addErrors[.quick])

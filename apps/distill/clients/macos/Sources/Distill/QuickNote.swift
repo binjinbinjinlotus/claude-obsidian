@@ -68,6 +68,8 @@ final class QuickNoteController: NSObject {
         // Add to queue is in flight: the core is still copying the images, and the label step follows.
         guard !engine.notes.adding.contains(.quick) else { return }
         engine.discardDraft(.quick)
+        // Fresh means fresh: no remembered source either (canvas: "Close, then open again").
+        engine.notes.drafts[.quick] = ComposeDraft()
     }
 }
 

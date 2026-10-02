@@ -17,6 +17,10 @@ supersede it with a new entry.
 
 ## 2026-10-02
 
+- **Fresh quick note has no source** (shows "+ Source"), even though Write a
+  note remembers the last source. Clicking the flask while its green ring
+  shows (a quick ask still answering) opens that chat on the Ask screen.
+  → [quick-actions](quick-actions.md), [floating-icon](floating-icon.md)
 - **Design follow-ups (lead, from the canvas audit):** the flask hover menu
   gets an "Actions N" entry, while the flask badge stays queue-only. Every
   elapsed timer becomes a clock time ("started at 3:12 PM"), including "Still
