@@ -143,6 +143,8 @@ export interface TransactionPlan {
 export interface PermissionDenial {
   toolName: string;
   input: Record<string, unknown>;
+  /** API responses only (not stored): the allow rule a client can offer, null for compound commands. */
+  suggestedRule?: string | null;
 }
 
 export interface ApprovalRequest {
@@ -502,7 +504,7 @@ export function notImplemented(what: string): never {
 
 export type CoreEvent =
   | { type: 'queue'; entries: QueueEntry[] }
-  | { type: 'job'; job: Job }
+  | { type: 'job'; job: Job; deleted?: true }
   | { type: 'settings'; settings: Settings }
   | { type: 'log'; level: 'info' | 'warn' | 'error'; message: string }
   | { type: 'labelSuggestions'; requestID: string; notePath: string; labels: LabelSuggestion[]; error?: string; costUSD?: number }
@@ -546,6 +548,12 @@ export interface DistillCore {
   allow(id: string, rules: string[]): Promise<void>;
   reject(id: string): Promise<void>;
   cancel(id: string): Promise<void>;
+  /** Finished jobs only (completed/failed/rejected/cancelled); else invalid_state. */
+  deleteJob(id: string): Promise<void>;
+  /** argv that reopens the job's session interactively; null when the runner has none. */
+  jobResumeCommand(id: string): Promise<string[] | null>;
+  /** Move a file in the active queue folder to the Trash (with its note manifest). */
+  removeQueueEntry(path: string): Promise<QueueEntry[]>;
 
   ask(req: AskRequest): Promise<AskResponse>;
 
