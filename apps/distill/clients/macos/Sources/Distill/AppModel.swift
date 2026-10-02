@@ -193,6 +193,8 @@ final class AppModel: ObservableObject {
         case .jobDeleted(let id):
             jobs.removeAll { $0.id == id }
             refreshStatusSoon()
+        case .action:
+            break
         case .unknown:
             break
         }

@@ -329,7 +329,7 @@ public struct TurnRecord: Codable, Equatable, Sendable, Identifiable {
 public struct Job: Codable, Identifiable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, kind, vaultPath, files, sessionID, runnerID, model, effort, state, createdAt, updatedAt
-        case approval, turns, grantedTools, operationID, changedPaths, error
+        case approval, turns, grantedTools, operationID, changedPaths, error, actionsFound
     }
 
     public var id: String
@@ -349,6 +349,8 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
     public var operationID: String?
     public var changedPaths: [String]
     public var error: String?
+    /// v3: what the batch's "Finding actions" step found (nil on older cores and other kinds).
+    public var actionsFound: JobActionsSummary?
 
     public var totalCostUSD: Double { turns.reduce(0) { $0 + $1.costUSD } }
     public var selection: ModelSelection { ModelSelection(runnerID: runnerID ?? "claude-code", model: model, effort: effort) }
@@ -396,6 +398,7 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
         operationID = c.lossy(String.self, .operationID)
         changedPaths = c.lossyArray(String.self, .changedPaths)
         error = c.lossy(String.self, .error)
+        actionsFound = c.lossy(JobActionsSummary.self, .actionsFound)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -417,6 +420,7 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
         try c.encodeIfPresent(operationID, forKey: .operationID)
         try c.encode(changedPaths, forKey: .changedPaths)
         try c.encodeIfPresent(error, forKey: .error)
+        try c.encodeIfPresent(actionsFound, forKey: .actionsFound)
     }
 }
 
@@ -958,10 +962,12 @@ public enum CoreEvent: Equatable, Sendable {
     case labelSuggestions(requestID: String, notePath: String, labels: [LabelSuggestion], error: String?)
     case conversation(AskConversationSummary, deleted: Bool)
     case progress(CoreProgress)
+    /// An action item changed (`deleted`: removed for good, Delete forever or an Undo).
+    case action(ActionItem, deleted: Bool)
     case unknown(type: String)
 
     private enum Keys: String, CodingKey {
-        case type, entries, job, settings, level, message, requestID, notePath, labels, error, conversation, deleted, progress
+        case type, entries, job, settings, level, message, requestID, notePath, labels, error, conversation, deleted, progress, action
     }
 
     /// Decodes the JSON of one `data:` line.
@@ -988,6 +994,8 @@ public enum CoreEvent: Equatable, Sendable {
                 event = .conversation(try c.decode(AskConversationSummary.self, forKey: .conversation),
                                       deleted: c.lossy(Bool.self, .deleted) ?? false)
             case "progress": event = .progress(try c.decode(CoreProgress.self, forKey: .progress))
+            case "action":
+                event = .action(try c.decode(ActionItem.self, forKey: .action), deleted: c.lossy(Bool.self, .deleted) ?? false)
             default: event = .unknown(type: type)
             }
         }

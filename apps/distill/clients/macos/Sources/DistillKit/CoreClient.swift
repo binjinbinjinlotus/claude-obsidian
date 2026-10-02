@@ -262,6 +262,97 @@ public final class CoreClient: Sendable {
                                           body: JSONValue.object(body))
     }
 
+    // MARK: Actions
+
+    /// `GET /v1/action-types`: the registry (built-in and newer types).
+    public func actionTypes() async throws -> [ActionTypeInfo] {
+        try await get("/v1/action-types", as: Wrapped<LossyList<ActionTypeInfo>>.self, key: "types").value.items
+    }
+
+    /// `GET /v1/actions?type=&status=a,b&history=1&vault=&q=`. Items of the wrong shape are skipped.
+    public func actions(_ query: ActionQuery = ActionQuery()) async throws -> [ActionItem] {
+        var c = URLComponents()
+        c.queryItems = query.queryItems
+        let q = (c.percentEncodedQuery ?? "").replacingOccurrences(of: "+", with: "%2B")
+        return try await get("/v1/actions" + (q.isEmpty ? "" : "?" + q), as: Wrapped<LossyList<ActionItem>>.self, key: "actions").value.items
+    }
+
+    public func action(_ id: String) async throws -> ActionItem { try await get("/v1/actions/\(Self.segment(id))") }
+
+    /// `POST /v1/actions` (add by hand, Add to to-do, Send to from an answer) → 201 with the item.
+    public func createAction(_ input: NewActionInput) async throws -> ActionItem {
+        try await send("POST", "/v1/actions", body: input)
+    }
+
+    public func updateAction(_ id: String, _ patch: ActionPatch) async throws -> ActionItem {
+        try await send("PATCH", "/v1/actions/\(Self.segment(id))", body: patch)
+    }
+
+    /// `DELETE /v1/actions/:id`: Delete forever (History only).
+    public func deleteActionForever(_ id: String) async throws {
+        let _: JSONValue = try await send("DELETE", "/v1/actions/\(Self.segment(id))", body: Optional<JSONValue>.none)
+    }
+
+    /// `POST /v1/actions/confirm {ids}`: pending → open / ready (drafts may be written).
+    public func confirmActions(_ ids: [String]) async throws -> [ActionItem] {
+        try await send("POST", "/v1/actions/confirm", body: ["ids": ids], as: Wrapped<LossyList<ActionItem>>.self, key: "actions").value.items
+    }
+
+    /// `POST /v1/actions/dismiss {ids}`: found items never added (also Undo of an automatic add).
+    public func dismissActions(_ ids: [String]) async throws {
+        let _: JSONValue = try await send("POST", "/v1/actions/dismiss", body: ["ids": ids])
+    }
+
+    /// `POST /v1/actions/:id/draft`: Create message / Write draft. Long-running (AI); cancelling
+    /// the task closes the request, which stops the run, and throws `CancellationError`.
+    public func draftAction(_ id: String) async throws -> ActionItem { try await longAction(id, "draft") }
+
+    /// `POST /v1/actions/:id/improve`: the type's improve pass after an edit (Done). Cancellable like `draftAction`.
+    public func improveAction(_ id: String) async throws -> ActionItem { try await longAction(id, "improve") }
+
+    public func undoImprove(_ id: String) async throws -> ActionItem { try await itemAction(id, "undo-improve") }
+
+    /// `POST /v1/actions/:id/perform {handler}`. A handler failure is not an HTTP error: the item comes back with `error` set.
+    public func performAction(_ id: String, handler: String) async throws -> ActionItem {
+        try await send("POST", "/v1/actions/\(Self.segment(id))/perform", body: ["handler": handler], timeout: Self.askTimeout)
+    }
+
+    /// `POST /v1/actions/:id/send {type}`: Send to another type; returns the new item (it keeps `fromActionID`).
+    public func sendAction(_ id: String, to type: String) async throws -> ActionItem {
+        try await send("POST", "/v1/actions/\(Self.segment(id))/send", body: ["type": type])
+    }
+
+    public func removeAction(_ id: String) async throws -> ActionItem { try await itemAction(id, "remove") }
+    public func restoreAction(_ id: String) async throws -> ActionItem { try await itemAction(id, "restore") }
+
+    /// `POST /v1/conversations/:id/actions/detect {turnIndex?}`: find actions in an answer (runs AI).
+    public func detectAskActions(conversationID: String, turnIndex: Int? = nil) async throws -> [ActionItem] {
+        var body: [String: JSONValue] = [:]
+        if let turnIndex { body["turnIndex"] = .number(Double(turnIndex)) }
+        let request = makeRequest("POST", "/v1/conversations/\(Self.segment(conversationID))/actions/detect",
+                                  body: try Self.encode(JSONValue.object(body)), timeout: Self.askTimeout)
+        do {
+            let wrapped: Wrapped<LossyList<ActionItem>> = try await performWrapped(request, key: "actions")
+            return wrapped.value.items
+        } catch {
+            if Task.isCancelled { throw CancellationError() }
+            throw error
+        }
+    }
+
+    private func itemAction(_ id: String, _ action: String) async throws -> ActionItem {
+        try await send("POST", "/v1/actions/\(Self.segment(id))/\(action)", body: JSONValue.object([:]))
+    }
+
+    private func longAction(_ id: String, _ action: String) async throws -> ActionItem {
+        do {
+            return try await send("POST", "/v1/actions/\(Self.segment(id))/\(action)", body: JSONValue.object([:]), timeout: Self.askTimeout)
+        } catch {
+            if Task.isCancelled { throw CancellationError() }
+            throw error
+        }
+    }
+
     // MARK: Events
 
     /// One connection to `GET /v1/events`. The stream ends (or throws) when the

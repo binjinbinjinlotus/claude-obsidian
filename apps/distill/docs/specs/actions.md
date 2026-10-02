@@ -91,3 +91,25 @@ Atlassian Cloud REST with the user's email and an API token stored in the
 Keychain. "Sign in in your browser" opens Atlassian's API-token page; the
 user signs in there and pastes the token (an OAuth app would need a client
 secret Distill can't ship; the `ConnectionInfo` interface allows OAuth later).
+
+## macOS client
+
+Status per part; `built` parts ship in `clients/macos`.
+
+- **DistillKit** (built): `Actions.swift` decodes `ActionItem`, `ActionTypeInfo`,
+  `ActionHandlerInfo`, `ActionFieldSpec`, `ActionSource`, `ActionError`,
+  `ActionEvent`, `JobActionsSummary` (`Job.actionsFound`, kept on re-encode)
+  leniently: statuses, type ids, handler ids and error codes stay raw strings,
+  an unknown source kind is `.other`, `fields` drops nulls and turns numbers
+  into text, a bad list element is skipped. `CoreEvent.action(item, deleted:)`.
+  `CoreClient` has one method per route (`actionTypes`, `actions(query)`,
+  `action`, `createAction`, `updateAction`, `deleteActionForever`,
+  `confirmActions`, `dismissActions`, `draftAction`, `improveAction`,
+  `undoImprove`, `performAction(handler:)`, `sendAction(to:)`, `removeAction`,
+  `restoreAction`, `detectAskActions`). Draft, improve, detect and perform use
+  the long Ask timeout; cancelling the Swift task closes the request (which
+  aborts the run in the core) and throws `CancellationError`. Handler failures
+  arrive as items with `error`, never as thrown errors. Old cores (501 /
+  "no route for" 404) are `isNotAvailable`.
+- The ask source also decodes optional `turnIndex` and `gap` when a core sends
+  them (requested from the core; see decisions).
