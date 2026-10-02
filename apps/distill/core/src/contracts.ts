@@ -340,6 +340,8 @@ export interface AddNoteResult {
   suggestedLabels?: LabelSuggestion[];
   /** Why suggestions are missing with suggest = "wait" (e.g. no runner for labelSuggest). */
   suggestError?: string;
+  /** Cost of the suggestion call, when one ran. */
+  costUSD?: number;
 }
 
 // ───────────────────────────── Labels ─────────────────────────────
@@ -453,6 +455,30 @@ export interface RunnerInfo {
   secrets: { name: string; label: string; isSet: boolean }[];
 }
 
+// ───────────────────────────── Progress (loading states) ─────────────────────────────
+
+/**
+ * Live progress for long AI work, so clients can show what is happening.
+ * One event per change; the last one for a key has `finished: true`.
+ */
+export interface Progress {
+  /** Stable key: a job id, "ask:<conversationID>", or "note:<requestID>". */
+  key: string;
+  kind: 'batch' | 'labelSuggest' | 'labelPages' | 'ask' | 'apply';
+  /** Short present-tense text, e.g. "Reading 3 sources", "Suggesting labels". */
+  message: string;
+  /** Ordered steps for batches: ["Moved to inbox", "Read sources", "Drafting page changes", "Ready for review"]. */
+  steps?: string[];
+  stepIndex?: number;
+  done?: number;
+  total?: number;
+  startedAt: string; // ISO-8601, for the elapsed timer
+  runnerID?: string;
+  model?: string;
+  finished?: boolean;
+  error?: string;
+}
+
 // ───────────────────────────── Errors ─────────────────────────────
 
 /** HTTP mapping: not_found→404, invalid_request→400, invalid_state/busy/no_vault→409, not_implemented→501. */
@@ -479,7 +505,8 @@ export type CoreEvent =
   | { type: 'job'; job: Job }
   | { type: 'settings'; settings: Settings }
   | { type: 'log'; level: 'info' | 'warn' | 'error'; message: string }
-  | { type: 'labelSuggestions'; requestID: string; notePath: string; labels: LabelSuggestion[]; error?: string }
+  | { type: 'labelSuggestions'; requestID: string; notePath: string; labels: LabelSuggestion[]; error?: string; costUSD?: number }
+  | { type: 'progress'; progress: Progress }
   | { type: 'conversation'; conversation: AskConversationSummary; deleted?: boolean };
 
 // ───────────────────────────── The core facade ─────────────────────────────
@@ -527,7 +554,11 @@ export interface DistillCore {
   labelNote(requestID: string, labels: string[]): Promise<{ notePath: string; labels: string[] }>;
   listLabels(vaultPath?: string): Promise<LabelCount[]>;
   labelReview(vaultPath?: string): Promise<LabelReview>;
-  /** AI-label existing pages (writes labels_reviewed: false). Returns a job awaiting approval. */
+  /**
+   * AI-label existing UNLABELED pages (pages that already have tags are skipped) and write
+   * labels_reviewed: false. Returns the job at once in `running`; `progress` events count pages; the
+   * job moves to awaitingApproval when done. cancel() keeps finished pages.
+   */
   suggestLabelsForPages(paths: string[], opts?: { vaultPath?: string; selection?: ModelSelection }): Promise<Job>;
   /** Write confirmed labels (clears the unconfirmed marks). Returns a job awaiting approval. */
   confirmLabels(items: { path: string; labels: string[] }[], vaultPath?: string): Promise<Job>;
@@ -537,6 +568,10 @@ export interface DistillCore {
   getConversation(id: string): Promise<AskConversation | undefined>;
   deleteConversation(id: string): Promise<void>;
   setConversationPinned(id: string, pinned: boolean): Promise<AskConversationSummary>;
+  /** Stop the in-flight turn of this conversation (Stop button). The question is not stored. No-op if idle. */
+  cancelAsk(conversationID: string): Promise<void>;
+  /** Progress currently in flight (for clients that connect mid-run). */
+  listProgress(): Promise<Progress[]>;
 
   // ── v2: runners (owner: runners) ──
   listRunners(): Promise<RunnerInfo[]>;

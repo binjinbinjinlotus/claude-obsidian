@@ -1,3 +1,4 @@
+import { notImplemented } from '../contracts.js';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { AskOwned } from '../engine/index.js';
@@ -385,7 +386,7 @@ export function createAskService(deps: AskDeps): AskService {
     emit({ type: 'conversation', conversation: summaryOf(record) });
   }
 
-  return { ask, listConversations, getConversation, deleteConversation, setConversationPinned, sweepHistory };
+  return { ask, listConversations, getConversation, deleteConversation, setConversationPinned, sweepHistory, cancelAsk: async () => notImplemented('cancelAsk') };
 }
 
 function countPages(n: number): string {

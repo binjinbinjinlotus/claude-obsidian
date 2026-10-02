@@ -308,6 +308,14 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       if (!secret) throw new CoreError('not_found', `runner "${runnerID}" has no secret "${name}"`);
       secret.isSet = value !== null;
     },
+    // v3 stubs: filled by the core-v3 teammate.
+    cancelAsk: async (id: string) => {
+      record('cancelAsk', id);
+    },
+    listProgress: async () => {
+      record('listProgress');
+      return [];
+    },
     subscribe(listener) {
       record('subscribe');
       listeners.add(listener);
