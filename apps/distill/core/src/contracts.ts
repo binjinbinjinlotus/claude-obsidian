@@ -655,6 +655,11 @@ export interface ActionTypeInfo {
   draftWhen: 'onFind' | 'onRequest';
   /** Run the improve prompt after you finish editing. */
   improveAfterEdit: boolean;
+  /** Built-in prompts, shown in Settings as the Default and restored by Reset to default. */
+  defaultDraftPrompt?: string | null;
+  defaultImprovePrompt?: string | null;
+  /** Placeholders a prompt may use (Settings → Insert field), e.g. "{title}", "{excerpt}", "{recipient}". */
+  placeholders?: string[];
 }
 
 export interface ActionSourcePreferences {
@@ -690,7 +695,7 @@ export interface ActionPreferences {
   /** Prompt for finding actions; null = default. */
   findPrompt?: string | null;
   todo: { defaultSort: 'due' | 'created' | 'priority' | 'note'; defaultGroup: 'due' | 'note' | 'none'; remindOverdue: boolean };
-  /** Removed / done / sent items stay in History this many days. Default 90. */
+  /** Removed / done / sent items stay in History this many days. Default 90; 0 or less = forever. */
   historyDays: number;
 }
 
@@ -858,7 +863,10 @@ export interface DistillCore {
   updateAction(id: string, patch: ActionPatch): Promise<ActionItem>;
   /** Confirm found items (pending → open/ready, writing drafts if draftWhen is onFind). */
   confirmActions(ids: string[]): Promise<ActionItem[]>;
-  /** Dismiss found items (pending → dismissed). */
+  /**
+   * Dismiss found items (pending → dismissed). Also Undo for items added without confirmation:
+   * an item still untouched since it was found (only found/drafted events) → dismissed, no History entry.
+   */
   dismissActions(ids: string[]): Promise<void>;
   /** Write the draft now ("Create message"). progress key: action:<id>. */
   draftAction(id: string, opts?: { signal?: AbortSignal }): Promise<ActionItem>;
