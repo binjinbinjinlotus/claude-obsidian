@@ -75,15 +75,37 @@ using it. `distill.sh core-stop` stops it.
 - Main window 1120×720 (min 900×600) and Settings window use a transparent,
   title-less title bar so the traffic lights sit on the light sidebar.
 - Menus: Distill (Settings ⌘,), Edit, Queue (Paste into Queue ⇧⌘V, Process
-  Queue Now ⌘R), Window (Show Worker ⌘0, Toggle Floating Icon ⌘I).
+  Queue Now ⌘R), Window (Show Worker ⌘0, Toggle Floating Icon ⌘I, Quick Ask).
+- The app icon is `Resources/AppIcon.icns` ([App icon](app-icon.md)).
 
 ## Sections
 
 - **Queue**: heading with count and next-batch line, Process now, drop panel
   with a flask that fills with the queue, file list.
 - **Review**: jobs waiting for approval (see [Approval and review](approval-and-review.md)).
-- **History**: all other jobs with status dots and details. (The old local
-  "Clear" button is gone: the core owns the job list and has no delete route yet.)
+  **Approve & apply** turns into a disabled "Applying N changes…" and the
+  card locks (Reject, Send reply disabled; "Writing to <vault> · m:ss") until
+  the job event arrives or the call fails.
+- **Ask**: questions over the vault ([Ask](ask.md)); "Recent questions" show
+  under the nav while it is open.
+- **Labels**: label review ([Labels and sources](labels-and-sources.md)).
+- **History**: **Jobs | Ask chats**. Jobs: all other jobs with status dots and
+  details; **Clear** removes finished jobs (`DELETE /v1/jobs/:id`). Ask chats:
+  open, pin, delete.
+
+### Loading states
+
+- While the core has not answered yet, Queue and History show "Starting
+  Distill…" and shimmer instead of empty states.
+- **Process now** shows a disabled "Processing…" while the request is in
+  flight or a batch runs on the active vault. The Queue title becomes
+  "N in this batch · M waiting"; a banner shows "Reading N sources into
+  <vault>", runner · model · elapsed, "nothing is written until you approve",
+  **Cancel**, and the steps from `progress` events (job state only on a core
+  without them). After 10 minutes the title reads "Still working · m:ss".
+  Batch files show "In batch", queued ones "Next batch".
+- `progress` events are kept by key in `AppModel.progress` (also loaded from
+  `GET /v1/progress` on connect); finished entries leave after 2 s.
 - Sidebar footer: active vault switcher with model and status.
 - Bottom banner: connecting to the core, core unreachable (Retry), or the last error.
 

@@ -135,6 +135,33 @@ extension AppModel {
         }
     }
 
+    /// Reopens a job's runner session in Terminal: the core's resume argv
+    /// (`GET /v1/jobs/:id/resume`), or the local Claude Code command on an older core.
+    func openInTerminal(_ job: Job) {
+        Task {
+            do {
+                if let client, let resume = try? await client.jobResume(job.id), !resume.argv.isEmpty {
+                    NSWorkspace.shared.open(try Self.writeTerminalScript(name: job.id, argv: resume.argv, cwd: resume.cwd ?? job.vaultPath))
+                } else {
+                    NSWorkspace.shared.open(try terminalScript(for: job))
+                }
+            } catch {
+                lastError = "\(error)"
+            }
+        }
+    }
+
+    static func writeTerminalScript(name: String, argv: [String], cwd: String) throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("Distill-resume", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("\(name).command")
+        let q = { (s: String) in "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+        let script = "#!/bin/zsh\ncd \(q(cwd)) || exit 1\nexec \(argv.map(q).joined(separator: " "))\n"
+        try script.write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
+        return url
+    }
+
     /// Whether we are still waiting for the core's first answer.
     var isStarting: Bool { connection == .connecting && status == nil }
 }

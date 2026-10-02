@@ -36,8 +36,8 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Ask](docs/specs/ask.md) | designed |
 | [Write a note](docs/specs/notes-composer.md) | designed |
 | [Labels and sources](docs/specs/labels-and-sources.md) | designed |
-| [Quick actions and shortcuts](docs/specs/quick-actions.md) | designed |
-| [App icon](docs/specs/app-icon.md) | designed |
+| [Quick actions and shortcuts](docs/specs/quick-actions.md) | designed (hover menu, quick ask built) |
+| [App icon](docs/specs/app-icon.md) | built |
 
 ## Layout
 

@@ -41,11 +41,12 @@ https://claude.ai/artifact/VSqHFPZjcqY2bMqFEnPqpG
 - [Floating icon](floating-icon.md): the always-on-top flask, states, click/drag/drop.
 - [Headless and snapshot modes](headless-and-snapshot.md): `--run-once` and `--snapshot`.
 - [Tooling](tooling.md): build, install, control script, `/distill` skill, tests.
+- [Ask](ask.md): question answering over the vault with model, effort and optional filters (core and macOS screen).
+- [App icon](app-icon.md): the Dock/Finder icon, drawn in SwiftUI and built into `AppIcon.icns`.
 
 ## Designed, not built
 
-- [Ask](ask.md): question answering over the vault with model, effort and optional filters.
 - [Write a note](notes-composer.md): text notes with images (keep vs. extract text), source and labels.
 - [Labels and sources](labels-and-sources.md): taxonomy, AI label suggestions, filter semantics, Notes screen backfill.
 - [Quick actions and shortcuts](quick-actions.md): hover menu on the flask, quick windows, user-recorded shortcuts.
-- [App icon](app-icon.md): replaces the blank placeholder icon.
+

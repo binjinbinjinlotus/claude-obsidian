@@ -105,6 +105,47 @@ built; the client UI follows the canvas.
   (`deleteConversation`). **Clear now** = `deleteConversation` on each
   non-pinned conversation.
 
+## macOS client (built)
+
+Code: `clients/macos/Sources/Distill/AskView.swift`, `AskParts.swift`,
+`AskModel.swift`, `QuickAsk.swift`; UI-free rules in
+`Sources/DistillKit/AskLogic.swift` (unit-tested).
+
+- Sidebar **Ask** (with "Recent questions" under the nav while it is open):
+  question bubbles, answers with `[n]` markers that open the cited page,
+  citation cards (title, folder; click opens
+  `obsidian://open?vault=<vault folder name>&file=<page>`, strictly
+  percent-encoded), a **Gap** callout per gap, notices as small info lines
+  (the "Limited to N pages" notice becomes the count at the end of the filter
+  bar), **Save answer to vault** (`addNote`, origin `app`, with a Sources list
+  of wikilinks; it goes through Review) and **Copy**. **New chat** (⌘N).
+- Filter bar: **All notes** by default; **+ Label** (labels from
+  `GET /v1/labels`, or type any label), **+ Limit by source** (groups and
+  sources from `settings.sourceTaxonomy`, else the default taxonomy); chips
+  are removable. **Any label | All labels** appears with two or more labels;
+  **Include unconfirmed** appears once a label is chosen. A new chat starts
+  from `askPreferences` (contract defaults when absent). Filter fields are
+  sent only when they apply.
+- Footer: runner · model menu (runners from `GET /v1/runners` that are
+  enabled and list `ask`), effort segments from the runner's `effortLevels`.
+  Selection order matches the core: chat, then the `ask` task default, then
+  the legacy model.
+- A new chat's first question carries a client-chosen `conversationID`
+  (UUID) so **Stop** works before the first reply; a core that rejects it
+  (404/400) gets the question again without one.
+- Loading: "Reading your notes…" (or the `ask:<id>` progress message) with
+  runner · model · effort · pages and the elapsed time, **Stop**
+  (`POST /v1/conversations/:id/cancel`; the request is cancelled locally too,
+  so an older core without the route still frees the UI), shimmer where the
+  answer and cards land, follow-up input disabled. After 60 s: "Still working
+  · m:ss". Stopped: "Stopped · Your question is kept." with **Ask again**.
+  Errors: the message with **Retry**.
+- **History → Ask chats**: open in Ask, pin/unpin, delete. With Keep history
+  off the client deletes a chat when the user starts a new one, leaves the Ask
+  screen, or closes the main window, never one that is pinned, still
+  answering, or shown in the other window.
+- Quick ask from the flask: see [Quick actions](quick-actions.md).
+
 ## Errors
 
 - Empty question, invalid conversation id → `invalid_request`; unknown

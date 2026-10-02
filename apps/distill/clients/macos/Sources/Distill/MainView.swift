@@ -700,11 +700,11 @@ struct JobDetailView: View {
                 Text("Conversation").font(Theme.body(14, .bold))
                 Spacer()
                 Button {
-                    do { NSWorkspace.shared.open(try engine.terminalScript(for: job)) } catch { engine.lastError = "\(error)" }
+                    engine.openInTerminal(job)
                 } label: { Image(systemName: "terminal") }
                 .buttonStyle(.plain).foregroundStyle(Theme.muted)
                 .help("Open this session in Terminal")
-                .disabled(job.state == .running || job.selection.runnerID != "claude-code")
+                .disabled(job.state == .running)
             }
             Scrolling {
                 VStack(alignment: .leading, spacing: 10) {
