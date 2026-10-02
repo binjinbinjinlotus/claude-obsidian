@@ -113,3 +113,18 @@ Status per part; `built` parts ship in `clients/macos`.
   "no route for" 404) are `isNotAvailable`.
 - The ask source also decodes optional `turnIndex` and `gap` when a core sends
   them (requested from the core; see decisions).
+- **List rules** (built, `ActionsLogic.swift`, tested): the sub-item count is
+  open to-dos plus items of other types in `ready` (drafts ready to copy or
+  create); pending items wait in "To confirm" and are not counted; the
+  collapsed Actions total is the sum over the enabled types. Due dates
+  (`YYYY-MM-DD` or ISO time) fall in Overdue / Today / This week (next 7 days)
+  / Later / No due date; rows show "Today", "5:00 PM", "Sat" or "Sep 30", the
+  detail "Wed, Sep 30 · 2 days late". Group by due, source note, label,
+  person, priority, created or none; sort by due, priority, created or title.
+  Filters combine (one chip each; several values in a chip mean any of them);
+  search covers title, body, why, recipient, person, labels and the quoted
+  excerpt and shows the matched line when it isn't the title. History groups
+  by day (TODAY, YESTERDAY, SEP 30) and words each entry by what happened:
+  Completed, Removed, Sent "to Jira tickets …", Marked as sent, Done "in Jira ·
+  checked …". `CoreClient.findJobActions` is Try again for a failed step
+  (`POST /v1/jobs/:id/actions/find`).

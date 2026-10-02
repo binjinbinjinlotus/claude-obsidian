@@ -340,6 +340,12 @@ public final class CoreClient: Sendable {
         }
     }
 
+    /// `POST /v1/jobs/:id/actions/find`: "Try again" for a batch whose Finding actions step failed.
+    /// Returns the job (actionsFound.status "finding"); progress and action events follow.
+    public func findJobActions(_ jobID: String) async throws -> Job? {
+        try await send("POST", "/v1/jobs/\(Self.segment(jobID))/actions/find", body: JSONValue.object([:]), as: Wrapped<Job?>.self, key: "job").value
+    }
+
     private func itemAction(_ id: String, _ action: String) async throws -> ActionItem {
         try await send("POST", "/v1/actions/\(Self.segment(id))/\(action)", body: JSONValue.object([:]))
     }
