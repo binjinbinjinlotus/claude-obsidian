@@ -10,7 +10,7 @@
 #   core-stop  stop the core server (SIGTERM; refuses while a job is running; --force overrides)
 #   update     back up your data, run tests, rebuild, install to ~/Applications,
 #              check your data is still there, relaunch if it was running
-#   backup     copy settings, job history and Ask history to <state>/backups/<time>
+#   backup [TAG]  copy settings, job history and Ask history to <state>/backups/<time>
 #   backups    list the backups (newest first)
 #   restore NAME  put a backup back (app and core must be stopped; backs up the current data first)
 #   status     show the app, the core, and running / awaiting-approval jobs
@@ -221,7 +221,7 @@ case "$cmd" in
     fi
     if (( was_running )); then do_start; else echo "Not relaunched (was stopped). Run: $SCRIPT start"; fi
     ;;
-  backup)  do_backup ;;
+  backup)  do_backup "${2:-}" ;;
   backups) do_backups ;;
   restore) do_restore "${2:-}" ;;
   status)  do_status ;;
