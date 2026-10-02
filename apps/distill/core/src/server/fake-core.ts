@@ -1,5 +1,8 @@
 import { CoreError } from '../contracts.js';
 import type {
+  ActionItem,
+  ActionTypeInfo,
+  ConnectionInfo,
   AddNoteRequest,
   AddNoteResult,
   AskConversation,
@@ -40,6 +43,47 @@ export interface FakeCore extends DistillCore, EngineExtras {
   runners: RunnerInfo[];
   /** When set, addNote with suggest "wait" returns this as suggestError instead of suggestions. */
   suggestError?: string;
+  /** v3 actions, action types and connections (in memory). */
+  actions: ActionItem[];
+  actionTypes: ActionTypeInfo[];
+  connections: ConnectionInfo[];
+}
+
+export function sampleAction(overrides: Partial<ActionItem> = {}): ActionItem {
+  return {
+    id: 'act-1',
+    type: 'todo',
+    status: 'pending',
+    title: 'Book the tasting room for Saturday',
+    body: null,
+    fields: { due: '2026-10-04' },
+    why: 'You said you would book it',
+    source: { kind: 'note', jobID: 'job-20261001-120000-abcd', notePath: 'wiki/sources/tea.md', pageTitle: 'Tea club planning', quote: 'I’ll book the tasting room' },
+    vaultPath: '/tmp/vault',
+    createdAt: '2026-10-01T12:00:00Z',
+    updatedAt: '2026-10-01T12:00:00Z',
+    events: [{ at: '2026-10-01T12:00:00Z', event: 'found', detail: 'by Sonnet' }],
+    ...overrides,
+  };
+}
+
+function sampleActionTypes(): ActionTypeInfo[] {
+  const base = { enabled: true, draftWhen: 'onFind' as const, improveAfterEdit: true, connectionID: null };
+  return [
+    { ...base, id: 'todo', label: 'To-do', pluralLabel: 'To-dos', improveAfterEdit: false, fields: [{ key: 'due', label: 'Due', kind: 'date' }], handlers: [{ id: 'complete', label: 'Complete', available: true }] },
+    {
+      ...base,
+      id: 'slack',
+      label: 'Slack message',
+      pluralLabel: 'Slack messages',
+      fields: [{ key: 'to', label: 'To', kind: 'person', required: true }],
+      handlers: [
+        { id: 'copy', label: 'Copy', available: true },
+        { id: 'markSent', label: 'Mark as sent', available: true },
+        { id: 'send', label: 'Send in Slack', available: false, reason: 'Later' },
+      ],
+    },
+  ];
 }
 
 /** What the fake suggests for every note: one existing label and one new one. */
@@ -156,6 +200,12 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
     notes: new Map(),
     conversations: [sampleConversation()],
     runners: sampleRunners(),
+    actions: [sampleAction()],
+    actionTypes: sampleActionTypes(),
+    connections: [
+      { id: 'atlassian', label: 'Atlassian (Jira and Confluence)', status: 'not_connected', site: null, account: null, message: null, usedBy: ['jira', 'confluence'] },
+      { id: 'slack', label: 'Slack', status: 'not_connected', site: null, account: null, message: 'Copy works without connecting', usedBy: ['slack'] },
+    ],
     emit(event) {
       for (const l of [...listeners]) l(event);
     },
@@ -346,85 +396,113 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       queue.splice(i, 1);
       return queue;
     },
-    listActionTypes: async (...args: unknown[]) => {
-      record('listActionTypes', ...args);
-      throw new CoreError('not_implemented', 'listActionTypes');
+    async listActionTypes() {
+      record('listActionTypes');
+      return fake.actionTypes;
     },
-    listActions: async (...args: unknown[]) => {
-      record('listActions', ...args);
-      throw new CoreError('not_implemented', 'listActions');
+    async listActions(query) {
+      record('listActions', query);
+      return fake.actions.filter((a) => (!query?.type || a.type === query.type) && (query?.history || !['removed', 'done', 'sent', 'dismissed'].includes(a.status)));
     },
-    getAction: async (...args: unknown[]) => {
-      record('getAction', ...args);
-      throw new CoreError('not_implemented', 'getAction');
+    async getAction(id) {
+      record('getAction', id);
+      return fake.actions.find((a) => a.id === id);
     },
-    createAction: async (...args: unknown[]) => {
-      record('createAction', ...args);
-      throw new CoreError('not_implemented', 'createAction');
+    async createAction(input) {
+      record('createAction', input);
+      const item = sampleAction({ id: `act-${fake.actions.length + 1}`, type: input.type, title: input.title, body: input.body ?? null, fields: input.fields ?? {} });
+      fake.actions.push(item);
+      return item;
     },
-    updateAction: async (...args: unknown[]) => {
-      record('updateAction', ...args);
-      throw new CoreError('not_implemented', 'updateAction');
+    async updateAction(id, patch) {
+      record('updateAction', id, patch);
+      const item = requireAction(id);
+      if (patch.title !== undefined) item.title = patch.title;
+      if (patch.body !== undefined) item.body = patch.body;
+      if (patch.fields) Object.assign(item.fields, patch.fields);
+      if (patch.type) item.type = patch.type;
+      return item;
     },
-    confirmActions: async (...args: unknown[]) => {
-      record('confirmActions', ...args);
-      throw new CoreError('not_implemented', 'confirmActions');
+    async confirmActions(ids) {
+      record('confirmActions', ids);
+      return ids.map((id) => Object.assign(requireAction(id), { status: 'open' as const }));
     },
-    dismissActions: async (...args: unknown[]) => {
-      record('dismissActions', ...args);
-      throw new CoreError('not_implemented', 'dismissActions');
+    async dismissActions(ids) {
+      record('dismissActions', ids);
+      for (const id of ids) requireAction(id).status = 'dismissed';
     },
-    draftAction: async (...args: unknown[]) => {
-      record('draftAction', ...args);
-      throw new CoreError('not_implemented', 'draftAction');
+    async draftAction(id, opts) {
+      record('draftAction', id, opts?.signal ? 'signal' : undefined);
+      return Object.assign(requireAction(id), { status: 'ready' as const, body: 'Drafted.' });
     },
-    improveAction: async (...args: unknown[]) => {
-      record('improveAction', ...args);
-      throw new CoreError('not_implemented', 'improveAction');
+    async improveAction(id, opts) {
+      record('improveAction', id, opts?.signal ? 'signal' : undefined);
+      const item = requireAction(id);
+      return Object.assign(item, { previousBody: item.body ?? null, body: 'Improved.' });
     },
-    undoImprove: async (...args: unknown[]) => {
-      record('undoImprove', ...args);
-      throw new CoreError('not_implemented', 'undoImprove');
+    async undoImprove(id) {
+      record('undoImprove', id);
+      const item = requireAction(id);
+      if (item.previousBody == null) throw new CoreError('invalid_state', 'There is no improve to undo.');
+      return Object.assign(item, { body: item.previousBody, previousBody: null });
     },
-    performAction: async (...args: unknown[]) => {
-      record('performAction', ...args);
-      throw new CoreError('not_implemented', 'performAction');
+    async performAction(id, handlerID) {
+      record('performAction', id, handlerID);
+      const item = requireAction(id);
+      if (handlerID === 'create') item.error = { code: 'not_connected', message: 'Jira isn’t connected.' };
+      if (handlerID === 'complete') item.status = 'done';
+      if (handlerID === 'markSent') item.status = 'sent';
+      return item;
     },
-    sendActionTo: async (...args: unknown[]) => {
-      record('sendActionTo', ...args);
-      throw new CoreError('not_implemented', 'sendActionTo');
+    async sendActionTo(id, type) {
+      record('sendActionTo', id, type);
+      const from = requireAction(id);
+      from.status = 'sent';
+      const next = sampleAction({ id: `act-${fake.actions.length + 1}`, type, title: from.title, fromActionID: id });
+      fake.actions.push(next);
+      return next;
     },
-    removeAction: async (...args: unknown[]) => {
-      record('removeAction', ...args);
-      throw new CoreError('not_implemented', 'removeAction');
+    async removeAction(id) {
+      record('removeAction', id);
+      return Object.assign(requireAction(id), { status: 'removed' as const });
     },
-    restoreAction: async (...args: unknown[]) => {
-      record('restoreAction', ...args);
-      throw new CoreError('not_implemented', 'restoreAction');
+    async restoreAction(id) {
+      record('restoreAction', id);
+      return Object.assign(requireAction(id), { status: 'open' as const });
     },
-    deleteActionForever: async (...args: unknown[]) => {
-      record('deleteActionForever', ...args);
-      throw new CoreError('not_implemented', 'deleteActionForever');
+    async deleteActionForever(id) {
+      record('deleteActionForever', id);
+      const item = requireAction(id);
+      if (!['removed', 'done', 'sent'].includes(item.status)) throw new CoreError('invalid_state', 'Only items in History can be deleted forever.');
+      fake.actions.splice(fake.actions.indexOf(item), 1);
     },
-    detectAskActions: async (...args: unknown[]) => {
-      record('detectAskActions', ...args);
-      throw new CoreError('not_implemented', 'detectAskActions');
+    async detectAskActions(conversationID, turnIndex) {
+      record('detectAskActions', conversationID, turnIndex);
+      if (!fake.conversations.some((c) => c.id === conversationID)) throw new CoreError('not_found', `no conversation with id "${conversationID}"`);
+      return fake.actions.filter((a) => a.source.kind === 'ask' && a.source.conversationID === conversationID);
     },
-    listConnections: async (...args: unknown[]) => {
-      record('listConnections', ...args);
-      throw new CoreError('not_implemented', 'listConnections');
+    async listConnections() {
+      record('listConnections');
+      return fake.connections;
     },
-    connect: async (...args: unknown[]) => {
-      record('connect', ...args);
-      throw new CoreError('not_implemented', 'connect');
+    async connect(id, req) {
+      record('connect', id, { ...req, ...(req.token ? { token: '[set]' } : {}) });
+      const c = fake.connections.find((x) => x.id === id);
+      if (!c) throw new CoreError('not_found', `Unknown connection ${id}.`);
+      if (req.token === 'bad') throw new CoreError('invalid_request', `acme.atlassian.net didn't accept token ${req.token} for ${req.email}.`);
+      Object.assign(c, { status: 'connected', site: req.site ?? c.site ?? null, account: 'Jin Liu' });
+      return c;
     },
-    signInURL: async (...args: unknown[]) => {
-      record('signInURL', ...args);
-      throw new CoreError('not_implemented', 'signInURL');
+    async signInURL(id, site) {
+      record('signInURL', id, site);
+      if (id !== 'atlassian') throw new CoreError('invalid_request', 'Slack isn’t needed yet.');
+      return { url: 'https://id.atlassian.com/manage-profile/security/api-tokens' };
     },
-    disconnect: async (...args: unknown[]) => {
-      record('disconnect', ...args);
-      throw new CoreError('not_implemented', 'disconnect');
+    async disconnect(id) {
+      record('disconnect', id);
+      const c = fake.connections.find((x) => x.id === id);
+      if (!c) throw new CoreError('not_found', `Unknown connection ${id}.`);
+      return Object.assign(c, { status: 'not_connected' as const, account: null });
     },
     extractImageText: async (req: { imagePath: string; vaultPath?: string }) => {
       record('extractImageText', req);
@@ -440,6 +518,12 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       return () => listeners.delete(listener);
     },
   };
+
+  function requireAction(id: string): ActionItem {
+    const item = fake.actions.find((a) => a.id === id);
+    if (!item) throw new CoreError('not_found', `Unknown action ${id}.`);
+    return item;
+  }
 
   function record(method: string, ...args: unknown[]) {
     fake.calls.push({ method, args });
