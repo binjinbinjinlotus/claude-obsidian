@@ -29,7 +29,7 @@ export interface Settings {
   vaults: VaultProfile[];
   activeVaultPath?: string | null;
   batchIntervalMinutes: number; // default 10, min 1
-  settleSeconds: number; // default 10
+  settleSeconds: number; // default 600 (10 min); a file must be unchanged this long before a batch takes it
   model: string; // legacy default model for ingest/ask, default "sonnet"
   claudePath: string; // default ~/.local/bin/claude
   pythonPath: string; // default /usr/bin/python3
