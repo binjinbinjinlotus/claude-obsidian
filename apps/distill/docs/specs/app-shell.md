@@ -107,6 +107,15 @@ using it. `distill.sh core-stop` stops it.
 - `progress` events are kept by key in `AppModel.progress` (also loaded from
   `GET /v1/progress` on connect); finished entries leave after 2 s.
 - Sidebar footer: active vault switcher with model and status.
+- Sidebar sections: Queue, Review, **Actions**, Ask, Labels, History
+  (canvas: Sidebar, SidebarStates). Pages with more than two parts use
+  sidebar **sub-items**, shown only while the parent is open: Actions has To
+  do · Slack messages · Jira tickets · Confluence pages (one per enabled
+  type from the registry; a type turned off has none), History has Jobs ·
+  Ask chats · Actions (replacing the old segmented control). An open parent
+  is not a card; its selected sub-item is (white, shadow, blue count). Each
+  Actions sub-item counts what waits on you; closed, Actions shows the sum in
+  a blue pill. Labels keeps its two tabs on the page.
 - Bottom banner: connecting to the core, core unreachable (Retry), or the last error.
 
 ## Visual language ("clean and joyful")
@@ -120,4 +129,5 @@ using it. `distill.sh core-stop` stops it.
 - Type: SF Rounded heavy for headings (stands in for Bricolage Grotesque),
   system font for body.
 - Shared pieces in `Theme.swift`: `FlaskView`, `PrimaryButton`, `SoftButton`,
-  `Pill`, `Tile`, `card()`.
+  `Pill` (regular 24 pt / small 20 pt, optional SF Symbol, `busy` spinner,
+  `stroke`, `dashed`), `Tile`, `card()`.

@@ -430,11 +430,13 @@ public struct NewActionInput: Codable, Hashable, Sendable {
     public var why: String?
     public var source: ActionSource?
     public var vaultPath: String?
+    /// Labels for the new item (sent only when set; requested from the core).
+    public var labels: [String]?
 
     public init(type: String = "todo", title: String, body: String? = nil, fields: [String: String]? = nil, why: String? = nil,
-                source: ActionSource? = nil, vaultPath: String? = nil) {
+                source: ActionSource? = nil, vaultPath: String? = nil, labels: [String]? = nil) {
         self.type = type; self.title = title; self.body = body; self.fields = fields; self.why = why
-        self.source = source; self.vaultPath = vaultPath
+        self.source = source; self.vaultPath = vaultPath; self.labels = labels
     }
 }
 
@@ -445,12 +447,14 @@ public struct ActionPatch: Encodable, Hashable, Sendable {
     public var body: String??
     public var fields: [String: String?]?
     public var type: String?
+    /// Replaces the item's labels (sent only when set; requested from the core).
+    public var labels: [String]?
 
-    public init(title: String? = nil, body: String?? = nil, fields: [String: String?]? = nil, type: String? = nil) {
-        self.title = title; self.body = body; self.fields = fields; self.type = type
+    public init(title: String? = nil, body: String?? = nil, fields: [String: String?]? = nil, type: String? = nil, labels: [String]? = nil) {
+        self.title = title; self.body = body; self.fields = fields; self.type = type; self.labels = labels
     }
 
-    enum CodingKeys: String, CodingKey { case title, body, fields, type }
+    enum CodingKeys: String, CodingKey { case title, body, fields, type, labels }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encodeIfPresent(title, forKey: .title)
@@ -461,9 +465,10 @@ public struct ActionPatch: Encodable, Hashable, Sendable {
             try c.encode(o, forKey: .fields)
         }
         try c.encodeIfPresent(type, forKey: .type)
+        try c.encodeIfPresent(labels, forKey: .labels)
     }
 
-    public var isEmpty: Bool { title == nil && body == nil && fields == nil && type == nil }
+    public var isEmpty: Bool { title == nil && body == nil && fields == nil && type == nil && labels == nil }
 }
 
 /// `ActionQuery` (GET /v1/actions?type=&status=&history=1&vault=&q=).

@@ -168,6 +168,7 @@ final class AppModel: ObservableObject {
         self.jobs = jobs
         self.status = status
         refreshLiveExtras()
+        actions.load()
     }
 
     private func apply(_ event: CoreEvent) {
@@ -193,8 +194,8 @@ final class AppModel: ObservableObject {
         case .jobDeleted(let id):
             jobs.removeAll { $0.id == id }
             refreshStatusSoon()
-        case .action:
-            break
+        case .action(let item, let deleted):
+            actions.apply(item, deleted: deleted)
         case .unknown:
             break
         }

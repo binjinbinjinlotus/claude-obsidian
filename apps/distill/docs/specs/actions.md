@@ -358,3 +358,59 @@ Status per part; `built` parts ship in `clients/macos`.
   Completed, Removed, Sent "to Jira tickets …", Marked as sent, Done "in Jira ·
   checked …". `CoreClient.findJobActions` is Try again for a failed step
   (`POST /v1/jobs/:id/actions/find`).
+- **Store and navigation** (built, `ActionsStore.swift`): one store per app
+  model mirrors the registry and every item (`GET /v1/action-types`,
+  `GET /v1/actions` on connect, History lazily with `history=1`, then
+  `action` events). An old core turns the screens into a calm "Update the
+  Distill core" state. New note items arriving after load raise one toast per
+  batch ("5 actions to confirm from Tea club planning · Open", or with confirm
+  off "Added 2 to-dos and created 1 draft · Undo", Undo = dismiss). Every other
+  Undo is `restore` (complete, remove, mark as sent, Send to, a dismissed Ask
+  row); Undo improve is `undo-improve`. The sign-in buttons post
+  `distill.openSettingsSection` "connections" and open Settings; "Settings for
+  this type" posts `actions/<type>`.
+- **To do** (built, `ActionsScreen.swift`): header with History and Add
+  to-do; filter chips Status, Due, Person (with search), Label, Note,
+  Priority, More (added by, vault, this batch); group and sort menu (kept in
+  `distill.todo.group` / `distill.todo.sort`, default due); grouped rows with
+  note, person, labels, priority and a due badge; the detail (fields, FROM
+  context with quote, Why and "Found by", "Also from this note", Complete,
+  Send to ▾ with the suggested type first and Email disabled, Remove); edit in
+  place (title, due, priority, people, labels; saved as you type); Add to-do
+  row (↩ adds, Esc cancels, labels you filter by pre-filled); Complete strikes
+  through for 2 s with Undo; ⌘/⇧-click selects for the bulk bar (Complete,
+  Due date, Priority, Label, Send to, Remove, Clear); "To confirm" group with
+  Add / Create draft, ×, Add all, Dismiss all; empty, no-match (names the
+  filters, Clear filters, Show completed), finding strip, first-load shimmer
+  and "Couldn't find actions" with Try again. Menus are drawn panels (not
+  NSMenu) so they render in snapshots.
+- **Slack and other copy types** (built, `ActionsTypes.swift`): message
+  cards with recipient (click to pick from the note's people and labels or
+  type someone else), Ready to paste / Not written / Writing / Editing /
+  Polishing / Copied at …, the body with @mentions and Markdown, Create
+  message, Writing with Sonnet… Cancel, editing in the shared Markdown editor
+  with the compact bar (⌘↩ Done → improve), Improved by … with Undo ⌘Z and
+  Show changes (changed words tinted 4 s), Copy (Slack marks: `*bold*`,
+  `_italic_`, `~strike~`, `<url|text>`) → Copied for 2 s → "Copied. Paste it
+  in Slack." with Mark as sent / Not yet, the disabled dashed "Send in Slack ·
+  Later" slot while the `send` handler is unavailable.
+- **Jira, Confluence and other create types** (built): drafts and created
+  items on the left, the card on the right: fields from `ActionTypeInfo`
+  (the refused field marked), the description as headings, bullets and
+  checkboxes, Write draft, Writing / Improving with Cancel, Create in Jira /
+  Creating in Jira…, Created with key link, status, "Status from Jira at
+  3:52 PM · Refresh", Open in Jira and Mark done; errors: not connected
+  ("Sign in to Jira in your browser" → Settings → Connections), sign-in
+  expired (plus Retry), Signed in → Retry (the create handler became
+  available), refused, unreachable, AI failed. The header shows connected /
+  not connected from the create handler's `available`.
+- **History → Actions** (built, `ActionsHistoryView.swift`): search, What
+  happened and Type filters, rows by day with what happened and when; the
+  selected item read-only with its timeline ("What happened"), Restore (with
+  "Restored to … · Open", the note-gone note, and Restore as a to-do when the
+  type is off), Delete forever (the only confirm); a sent to-do shows where it
+  went with Open in … and no Restore. History → Jobs and Review show the job's
+  line from `Job.actionsFound` (Found N actions to confirm · by type · Review
+  them / Open in Actions, which open To do filtered to that job; finding uses
+  the loading pattern; failed has Try again); Review says before apply that
+  actions are looked for after it.

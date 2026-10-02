@@ -15,6 +15,7 @@ enum StatesSnapshot {
         case labels = "3 · Labels"
         case flask = "4 · Quick access from the flask"
         case app = "5 · Settings and app"
+        case actions = "6 · Actions from your notes"
     }
 
     nonisolated static let mainSize = CGSize(width: 1200, height: 760)
@@ -26,7 +27,8 @@ enum StatesSnapshot {
     private static var manifest: [[String: Any]] = []
     private static var counter = 0
     private static let baseDefaults: [String: Any] = ["distill.addMode": "files", "distill.labelsTab": "toReview",
-                                                      AppModel.suggestAfterQueueKey: true]
+                                                      AppModel.suggestAfterQueueKey: true,
+                                                      "distill.todo.group": "due", "distill.todo.sort": "due"]
 
     static func run(stateDir: URL, outDir: URL) {
         self.stateDir = stateDir
@@ -42,6 +44,7 @@ enum StatesSnapshot {
         quickAskStates()
         quickNoteStates()
         settingsStates()
+        actionsStates()
         writeManifest()
     }
 
@@ -177,10 +180,11 @@ enum StatesSnapshot {
     /// Main window: sidebar plus one screen, at 1200×760, like `MainView` (Ask
     /// environment object, error banner overlay).
     static func main<V: View>(_ file: String, _ flow: Flow, _ screen: String, _ state: String, _ description: String,
-                              _ e: AppModel, section: Section, job: String? = nil, defaults: [String: Any] = [:],
+                              _ e: AppModel, section: Section, job: String? = nil, historyPart: HistoryPart = .jobs,
+                              defaults: [String: Any] = [:],
                               size: CGSize = mainSize, live: Bool = true, @ViewBuilder _ content: () -> V) {
         let view = HStack(spacing: 0) {
-            Sidebar(section: .constant(section), selectedJob: .constant(job), openSettings: {})
+            Sidebar(section: .constant(section), selectedJob: .constant(job), historyPart: .constant(historyPart), openSettings: {})
             content().frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.window)
         }
         .environmentObject(e.ask)
@@ -234,6 +238,8 @@ enum StatesSnapshot {
     /// placeholder. `liveSize` nil = the view's fitting size.
     static func shoot<V: View>(_ file: String, _ flow: Flow, _ screen: String, _ state: String, _ description: String,
                                defaults: [String: Any], live: Bool = false, liveSize: CGSize? = nil, _ view: V) {
+        // DISTILL_STATES_ONLY=prefix renders only the files starting with it (quicker checks of one area).
+        if let only = ProcessInfo.processInfo.environment["DISTILL_STATES_ONLY"], !only.isEmpty, !file.hasPrefix(only) { return }
         counter += 1
         // @AppStorage reads from an in-memory registration domain (never the
         // user's defaults). That domain is shared by the whole process, so every
@@ -688,16 +694,16 @@ extension StatesSnapshot {
         main("ask-chat-load-error", f, "Ask", "Chat couldn't load", "Opening a stored chat failed; a note above the empty state.", e, section: .ask) { AskScreen() }
 
         e = engine()
-        main("history-chats", f, "History · Ask chats", "Chats list · keep history on", "Ask chats with pin and delete; kept N days.", e, section: .history) {
+        main("history-chats", f, "History · Ask chats", "Chats list · keep history on", "Ask chats with pin and delete; kept N days.", e, section: .history, historyPart: .chats) {
             HistorySection(selectedJob: .constant(nil), part: .chats)
         }
-        main("history-chats-900", f, "History · Ask chats", "Chats list · smallest window (900×600)", "Each chat's “N questions · Asked …” stays on one line.", e, section: .history, size: CGSize(width: 900, height: 600)) {
+        main("history-chats-900", f, "History · Ask chats", "Chats list · smallest window (900×600)", "Each chat's “N questions · Asked …” stays on one line.", e, section: .history, historyPart: .chats, size: CGSize(width: 900, height: 600)) {
             HistorySection(selectedJob: .constant(nil), part: .chats)
         }
 
         e = engine { SettingsEdits.setAsk(&$0) { $0.keepHistory = false } }
         e.ask.conversations = []
-        main("history-chats-empty", f, "History · Ask chats", "Empty · keep history off", "No chats; explains that chats are deleted when left.", e, section: .history) {
+        main("history-chats-empty", f, "History · Ask chats", "Empty · keep history off", "No chats; explains that chats are deleted when left.", e, section: .history, historyPart: .chats) {
             HistorySection(selectedJob: .constant(nil), part: .chats)
         }
     }
