@@ -6,7 +6,8 @@ import DistillKit
 /// windows: size, growth and scrolling"). Opened by `distill.openQuickNote`
 /// (hover menu, shortcut). Opens centered like Spotlight, grows with the note,
 /// and after Add to queue turns into the label step in place; it closes once
-/// labels are applied or skipped. × and Esc during the label step are Skip.
+/// labels are applied or skipped. × and Esc during the label step are Skip;
+/// otherwise they throw the unsaved note away.
 @MainActor
 final class QuickNoteController: NSObject {
     static let shared = QuickNoteController()
@@ -31,7 +32,7 @@ final class QuickNoteController: NSObject {
             let panel = QuickNotePanel(width: QuickWindowGeometry.defaultWidth)
             panel.engine = engine
             panel.onCancel = { [weak self] in self?.close() }
-            let sizer = QuickWindowSizer(window: panel, sizeKey: "distill.quickNote.size")
+            let sizer = QuickWindowSizer(window: panel, sizeKey: QuickWindowSizer.quickNoteSizeKey)
             sizer.setContent(QuickNoteView(close: { [weak self] in self?.close() },
                                            onDesiredHeight: { [weak sizer] h in sizer?.contentHeight(h) },
                                            focusText: { [weak panel] in NoteEditorFocus.focus(in: panel) })
@@ -50,15 +51,23 @@ final class QuickNoteController: NSObject {
     }
 
     /// × and Esc: during the label step this is Skip (the note stays queued, unlabeled).
+    /// Otherwise the unsaved draft is thrown away, and the next open is empty and centered
+    /// (canvas: "Close, then open again").
     func close() {
         sizer?.window.orderOut(nil)
-        finishStep()
+        sizer?.forgetPosition()
+        if let engine { Self.closed(engine) }
     }
 
-    private func finishStep() {
-        guard let engine, let step = engine.notes.steps[.quick] else { return }
-        if step.phase == .applying { return }
-        engine.closeLabelStep(.quick)
+    /// What closing does to the quick note's state.
+    static func closed(_ engine: AppModel) {
+        if let step = engine.notes.steps[.quick] {
+            if step.phase != .applying { engine.closeLabelStep(.quick) }
+            return
+        }
+        // Add to queue is in flight: the core is still copying the images, and the label step follows.
+        guard !engine.notes.adding.contains(.quick) else { return }
+        engine.discardDraft(.quick)
     }
 }
 

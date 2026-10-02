@@ -72,9 +72,11 @@ final class AskThread: ObservableObject {
 }
 
 /// A question still being answered after its window moved on (New chat, another
-/// chat opened, Continue in Distill). It is never stopped for that: it finishes,
-/// is saved to History, and can be reopened while it runs.
+/// chat opened, Continue in Distill, the quick ask window closed). It is never
+/// stopped for that: it finishes, is saved to History, and can be reopened while it runs.
 struct BackgroundAsk: Identifiable {
+    enum Origin: Equatable { case main, quick }
+
     /// The conversation id the run uses (client-chosen for a new chat).
     let id: String
     let token: UUID
@@ -82,6 +84,8 @@ struct BackgroundAsk: Identifiable {
     /// The chat has no saved turns yet (its first question is the one running).
     let isNew: Bool
     let task: Task<Void, Never>?
+    /// The window it was asked in: the flask's green ring follows runs from quick ask.
+    var origin: Origin = .main
 }
 
 enum BackgroundAskText {
@@ -107,7 +111,8 @@ final class AskModel: ObservableObject {
     @Published var showAskRequest = 0
     /// The quick ask window is open.
     @Published var quickVisible = false
-    /// The quick ask answer arrived while its window was closed.
+    /// The quick ask answer arrived while its window was closed. Closing detaches the
+    /// run (`closeQuick`), so this no longer drives the flask's ring.
     @Published var quickUnseen = false
 
     /// The Ask screen's chat. "Continue in Distill" hands the quick thread over (a run in flight keeps going).
@@ -146,8 +151,15 @@ final class AskModel: ObservableObject {
     var taxonomy: [SourceGroup] { engine.settings.resolvedSourceTaxonomy }
     var askRunners: [RunnerInfo] { AskSelection.runners(runners) }
 
-    /// The green ring on the flask: a quick answer is coming (or arrived) while its window is closed.
-    var quickInBackground: Bool { !quickVisible && (quick.isRunning || quickUnseen) }
+    /// The green ring on the flask: a question from quick ask is still answering in the
+    /// background after its window closed (also while a fresh quick ask is open).
+    var quickInBackground: Bool { quickBackgroundRun != nil }
+
+    /// The newest question from quick ask still answering in the background.
+    var quickBackgroundRun: BackgroundAsk? {
+        background.values.filter { $0.origin == .quick && $0.pending.status == .running }
+            .max { $0.pending.startedAt < $1.pending.startedAt }
+    }
 
     func selection(for thread: AskThread) -> ModelSelection {
         AskSelection.resolve(current: thread.selection, settings: engine.settings, runners: runners)
@@ -258,7 +270,7 @@ final class AskModel: ObservableObject {
     private func detach(_ thread: AskThread) {
         guard thread.isRunning, let id = thread.inFlightID, let token = thread.runToken, let pending = thread.pending else { return }
         background[id] = BackgroundAsk(id: id, token: token, pending: pending, isNew: thread.conversationID == nil,
-                                       task: thread.task)
+                                       task: thread.task, origin: thread === quick ? .quick : .main)
         thread.task = nil // reset() must not cancel it
         thread.runToken = nil
         thread.inFlightID = nil
@@ -378,12 +390,20 @@ final class AskModel: ObservableObject {
         showAskRequest += 1
     }
 
-    /// Opening the quick ask window: a finished, already seen chat starts over.
-    func prepareQuickAsk() {
-        if !quick.isRunning && !quickUnseen && !quick.isEmpty {
-            leave(quick)
-            quick.reset(filter: AskFilter(preferences: preferences))
-        }
+    /// Opening the quick ask window: always a fresh chat (empty question, Settings
+    /// defaults). Pass `alreadyOpen` when the window is showing (the shortcut fired
+    /// again): the chat on screen stays.
+    func prepareQuickAsk(alreadyOpen: Bool = false) {
+        if !alreadyOpen && !quick.isEmpty { newChat(quick) }
+        quickUnseen = false
+    }
+
+    /// × or Esc on quick ask (canvas: "Close, then open again"): a question still
+    /// answering moves to the background without being stopped, so it finishes and
+    /// lands in History; the quick chat starts over.
+    func closeQuick() {
+        quickVisible = false
+        newChat(quick)
         quickUnseen = false
     }
 

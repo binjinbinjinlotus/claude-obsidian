@@ -22,15 +22,24 @@ Act from the floating flask without opening the main window. Canvas artboards:
 
 ## Quick windows
 
-Canvas: "Quick windows: size, growth and scrolling" (every case) and "Quick
-actions" panels 2–5. Code: `QuickWindow.swift` (window shell, resize corner,
+Canvas: "Quick windows: size, growth and scrolling" (every case, including
+"Default size (a third bigger)", "Close, then open again" and "On the screen
+you are using") and "Quick actions" panels 2–5. Code: `QuickWindow.swift` (window shell, resize corner,
 `QuickWindowSizer`), `QuickShell.swift` (SwiftUI layout), frame math in
 `DistillKit/QuickWindowGeometry.swift` (unit-tested).
 
 - **Opening**: centered horizontally with the top edge 30 % down the visible
   frame (like Spotlight), on the screen with the pointer (shortcuts, Window
-  menu) or the flask's screen (hover menu, flask click). A window the user
-  dragged reopens at that spot until the app quits (not persisted).
+  menu) or the flask's screen (hover menu). Both windows open at 560 × 214
+  (`QuickWindowGeometry.defaultSize`, a third bigger than the old 420 × 160),
+  or at the size the user dragged. A window the user drags elsewhere stays
+  there while it is open; closing it forgets the spot, so it opens centered
+  again every time.
+- **Closing** (× or Esc) always starts fresh: the next open is empty,
+  centered, at the opening size. Quick note throws the unsaved note away
+  (title, text, images; `AppModel.discardDraft(.quick)`), except during the
+  label step, where × is **Skip**, and while Add to queue is still sending.
+  Quick ask: see below.
 - **Close bar**: QUICK NOTE / QUICK ASK and **×**. × does what Esc does.
 - **Editing keys**: the quick windows are non-activating panels, so Distill
   stays inactive and its Edit menu never receives keys. `QuickWindow`
@@ -44,8 +53,12 @@ actions" panels 2–5. Code: `QuickWindow.swift` (window shell, resize corner,
   shrinks back as content shrinks. No scroll-bar strip anywhere: the scroll
   views are forced to the overlay style, also under "Show scroll bars: Always".
 - **Resize**: the bottom-right corner resizes the window with the
-  top-left corner fixed; minimum 360 × 160. The dragged size is a floor saved
-  per window in UserDefaults (`distill.quickNote.size`, `distill.quickAsk.size`).
+  top-left corner fixed; minimum 360 × 160. The dragged size is a floor and
+  the opening size, saved per window in UserDefaults
+  (`distill.quickNote.size.v2`, `distill.quickAsk.size.v2`). The `.v2` keys
+  replaced `distill.quickNote.size` / `distill.quickAsk.size` with the 560 × 214
+  default: sizes saved at the old default were not chosen at the new size, so
+  they are ignored (left in place, never deleted).
   Bigger than the content: the spare height goes to the text area (a click
   there puts the cursor at the end of the note). Smaller than the content: the
   difference stays hidden and the middle scrolls; later typing grows the
@@ -62,10 +75,16 @@ actions" panels 2–5. Code: `QuickWindow.swift` (window shell, resize corner,
   at the bottom right above the footer however big the window is, and more
   chips wrap upward. The answer fills the space between, so there is never a
   gap between the question and the answer. The row hides while answering. **Continue in Distill**
-  hands the chat (even mid-run) to the full Ask screen. Esc closes the window
-  but keeps the run: the flask gets a green ring while the answer is on its way
-  or unseen, and clicking the flask then reopens the window instead of the app.
-  Opening it again after a seen answer starts a new chat.
+  hands the chat (even mid-run) to the full Ask screen. × or Esc closes the
+  window and resets the quick chat (`AskModel.closeQuick`: leave, detach,
+  reset), so every open is a fresh chat with the Settings defaults. A question
+  still answering is not stopped: it moves to the background
+  (`BackgroundAsk`, origin `.quick`), finishes, is saved, and History and the
+  sidebar show it answering until then. The flask's green ring shows while a
+  quick ask question is still answering in the background; clicking the flask
+  then opens that chat on the Ask screen, where the answer arrives. Opening
+  quick ask while its window is already showing (the shortcut again) keeps
+  the chat on screen.
 - **Quick note**: title (wraps to 2 lines, then scrolls in its field), text
   with images inside it (⌘V puts an image at the cursor; hover for **Extract
   content** and ×, same rules as [Write a note](notes-composer.md#images);
@@ -80,7 +99,8 @@ actions" panels 2–5. Code: `QuickWindow.swift` (window shell, resize corner,
   queueing, like the full composer: the window turns into the label step in
   place (chips wrap, the window resizes) and closes once labels are applied.
   × or Esc during the label step is **Skip** (the note stays queued,
-  unlabeled). The flask's count goes up.
+  unlabeled); outside it, × or Esc throws the unsaved note away. The flask's
+  count goes up.
 
 ## Keyboard shortcuts
 

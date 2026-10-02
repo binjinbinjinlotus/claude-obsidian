@@ -222,7 +222,7 @@ enum StatesSnapshot {
         window.contentView = probe
         liveWindows.append(window)
         for _ in 0..<6 { RunLoop.main.run(until: Date().addingTimeInterval(0.04)) }
-        let height = max(QuickWindowGeometry.minSize.height, desired)
+        let height = max(QuickWindowGeometry.defaultSize.height, desired)
         natural(file, flow, screen, state, description, e, padding: padding) {
             content { _ in }.frame(width: width, height: height)
         }
@@ -791,10 +791,14 @@ extension StatesSnapshot {
             e.jobs = [job(e, "job-run", .running, files: ["inbox/a.md"], minutesAgo: 1)]
         }
         flask("flask-needs-review", "Needs review", "A job waits for approval: peach liquid and badge.") { e in e.jobs = [awaiting(e)] }
-        flask("flask-green-ring", "Quick answer waiting", "A quick-ask answer arrived with its window closed: green ring.") { e in
+        flask("flask-green-ring", "Quick answer on its way", "A quick-ask question still answering after its window closed: green ring.") { e in
             e.ask.quickVisible = false
-            AskFixtures.answered(e.ask.quick)
-            e.ask.quickUnseen = true
+            let id = "quick-bg"
+            e.ask.background[id] = BackgroundAsk(
+                id: id, token: UUID(),
+                pending: PendingQuestion(question: "Best water temp for sencha?", startedAt: Date().addingTimeInterval(-6),
+                                         request: AskRequest(question: "Best water temp for sencha?"), status: .running),
+                isNew: true, task: nil, origin: .quick)
         }
         flask("flask-drop-target", "Drop target", "A file is dragged over the flask.", targeted: true) { _ in }
 

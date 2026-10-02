@@ -6,9 +6,9 @@ import DistillKit
 /// The quick ask window (canvas: "Quick actions from the floating flask"
 /// panels 2 and 4, "Quick windows: size, growth and scrolling"). Opens
 /// centered like Spotlight and grows with the answer; past the screen's limit
-/// only the answer scrolls. × and Esc close the window but not the run: the
-/// flask shows a green ring until the answer is seen, and clicking the flask
-/// reopens the window.
+/// only the answer scrolls. × and Esc close the window but not the run: a
+/// question still answering moves to the background and lands in History (the
+/// flask shows a green ring until it does), and the next open is fresh and centered.
 @MainActor
 final class QuickAskController {
     private let sizer: QuickWindowSizer
@@ -19,11 +19,12 @@ final class QuickAskController {
     init(engine: AppModel, onContinue: @escaping () -> Void) {
         self.engine = engine
         let panel = QuickWindow(width: QuickWindowGeometry.defaultWidth)
-        sizer = QuickWindowSizer(window: panel, sizeKey: "distill.quickAsk.size")
+        sizer = QuickWindowSizer(window: panel, sizeKey: QuickWindowSizer.quickAskSizeKey)
         let ask = engine.ask
-        panel.onCancel = { [weak panel, weak engine] in
+        panel.onCancel = { [weak panel, weak sizer, weak engine] in
             panel?.orderOut(nil)
-            engine?.ask.quickVisible = false
+            sizer?.forgetPosition()
+            engine?.ask.closeQuick()
         }
         sizer.setContent(QuickAskView(
             close: { [weak panel] in panel?.cancelOperation(nil) },
@@ -38,7 +39,7 @@ final class QuickAskController {
 
     /// Opens on the screen of `anchor` (the flask's frame, from the hover menu) or of the pointer.
     func show(near anchor: NSRect?) {
-        engine.ask.prepareQuickAsk()
+        engine.ask.prepareQuickAsk(alreadyOpen: sizer.window.isVisible)
         engine.ask.refresh()
         engine.ask.quickVisible = true
         if !sizer.window.isVisible {

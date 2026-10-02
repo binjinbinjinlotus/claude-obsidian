@@ -37,7 +37,7 @@ enum WindowsSnapshot {
         let notes = engine.notes
         notes.steps[.quick] = nil
         notes.addErrors[.quick] = nil
-        let floor = CGSize(width: QuickWindowGeometry.defaultWidth, height: QuickWindowGeometry.minSize.height)
+        let floor = QuickWindowGeometry.defaultSize
         let topLeft = QuickWindowGeometry.openTopLeft(width: floor.width, visible: screen)
         let limit = QuickWindowGeometry.fittedHeight(desired: 10_000, floor: floor.height, top: topLeft.y, visible: screen)
 

@@ -1,7 +1,7 @@
 ---
 title: Floating icon
 status: built
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 
 # Floating icon
@@ -31,8 +31,9 @@ calls `POST /v1/queue/process`.
 | Working | light-blue liquid, bubbles, blue ring |
 | Needs approval | peach liquid, dark-peach count badge |
 | Drag over | light-blue face, blue ring |
-| Quick answer pending | green (lime) ring until the quick ask answer is seen |
+| Quick answer pending | green (lime) ring while a question from quick ask is still answering after its window closed |
 
 **Hover** about 0.3 s opens the quick-actions menu (Ask, Add note, Paste
 clipboard, Open Distill): see [Quick actions and shortcuts](quick-actions.md).
-While the green ring shows, a click reopens the quick ask window.
+While the green ring shows, a click opens that chat on the Ask screen, where
+its answer arrives (quick ask itself always opens fresh).
