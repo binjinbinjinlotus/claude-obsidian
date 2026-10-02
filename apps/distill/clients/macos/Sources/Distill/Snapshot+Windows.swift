@@ -51,14 +51,16 @@ enum WindowsSnapshot {
         // Typing grows it downward; the top edge stays. Long title wraps to 2 lines.
         d.title = "Notes from the Kyoto tea shop visit with Mei and the owner"
         d.text = lines.prefix(6).joined(separator: "\n")
-        d.images = [DraftImage(url: URL(fileURLWithPath: "/nonexistent/brewing-card.png"), mode: .keep)]
+        d.text += "\n![[brewing-card.png]]"
+        d.images = [DraftImage(url: URL(fileURLWithPath: "/nonexistent/brewing-card.png"))]
         notes.drafts[.quick] = d
         render(desk(topLeft: topLeft) { QuickNoteView(close: {}) }.environmentObject(engine), "quicknote-grown.png")
 
         // A long paste with images and an error: at the limit (8 pt above the bottom), the middle scrolls.
         d.title = "Gyokuro at 60 °C"
         d.text = (lines + lines + lines).joined(separator: "\n")
-        d.images = ["card-1.png", "card-2.png", "card-3.png"].map { DraftImage(url: URL(fileURLWithPath: "/nonexistent/\($0)"), mode: .keep) }
+        d.images = ["card-1.png", "card-2.png", "card-3.png"].map { DraftImage(url: URL(fileURLWithPath: "/nonexistent/\($0)")) }
+        d.text += "\n" + d.images.map { ComposeDraft.embed($0.name) }.joined(separator: "\n")
         notes.drafts[.quick] = d
         notes.addErrors[.quick] = "Couldn't queue the note: Distill core is not running."
         render(desk(topLeft: topLeft) {
@@ -120,10 +122,11 @@ enum WindowsSnapshot {
         // Taller window: the note box takes the extra height; source, images and buttons stay at the bottom.
         render(MainScreen(section: .queue) { ComposeScreen(mode: .constant(.note)) }.environmentObject(engine),
                size: CGSize(width: 1120, height: 900), "compose-tall.png")
-        // The minimum window (900 × 600) with images: tiles wrap, the box keeps 4 lines, the card scrolls.
-        d.images = [DraftImage(url: URL(fileURLWithPath: "/nonexistent/brewing-card.png"), mode: .extract),
-                    DraftImage(url: URL(fileURLWithPath: "/nonexistent/tasting-setup.jpg"), mode: .keep),
-                    DraftImage(url: URL(fileURLWithPath: "/nonexistent/tin.jpg"), mode: .keep)]
+        // The minimum window (900 × 600) with images inside the text: the box keeps 4 lines, the card scrolls.
+        d.images = [DraftImage(url: URL(fileURLWithPath: "/nonexistent/brewing-card.png")),
+                    DraftImage(url: URL(fileURLWithPath: "/nonexistent/tasting-setup.jpg")),
+                    DraftImage(url: URL(fileURLWithPath: "/nonexistent/tin.jpg"))]
+        d.text += "\n" + d.images.map { ComposeDraft.embed($0.name) }.joined(separator: "\n")
         notes.drafts[.compose] = d
         render(MainScreen(section: .queue) { ComposeScreen(mode: .constant(.note)) }.environmentObject(engine),
                size: CGSize(width: 900, height: 600), "compose-short.png")

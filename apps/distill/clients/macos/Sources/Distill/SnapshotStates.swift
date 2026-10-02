@@ -282,8 +282,11 @@ enum StatesSnapshot {
         try? data.write(to: outDir.appendingPathComponent("manifest.json"))
     }
 
-    static func image(_ name: String, _ mode: NoteImage.Mode) -> DraftImage {
-        DraftImage(url: URL(fileURLWithPath: "/nonexistent/\(name)"), mode: mode)
+    /// What “Extract content” returns for the brewing card in the fixtures.
+    static let extractedCard = "**Gyokuro brewing card**\n- 60 °C, 2 min first steep\n- Second steep 30 s, third 1 min\n- 6 g leaf for a 180 ml kyusu"
+
+    static func image(_ name: String, bytes: Int = 412_000) -> DraftImage {
+        DraftImage(url: URL(fileURLWithPath: "/nonexistent/\(name)"), byteCount: bytes)
     }
 
     static func problem(_ e: AppModel, _ messages: [String], connection: AppModel.Connection = .offline) {
@@ -388,11 +391,18 @@ extension StatesSnapshot {
         func filled() -> ComposeDraft {
             var d = ComposeDraft()
             d.title = "Kettle settings for the new tea set"
-            d.text = "The gooseneck kettle has presets. 80 °C works for sencha; I set 60 °C for the gyokuro the shop recommended. Photos of the shop's brewing card and my tasting setup below."
+            d.text = "The gooseneck kettle has presets. 80 °C works for sencha; I set 60 °C for the gyokuro the shop recommended.\nTheir card had the steep times:\n![[brewing-card.png]]\nMy tasting setup:\n![[tasting-setup.jpg]]"
             d.group = "discussion"
             d.source = "in-person"
             d.sourceRef = "#tea-club · with Mei"
-            d.images = [image("brewing-card.png", .extract), image("tasting-setup.jpg", .keep)]
+            d.images = [image("brewing-card.png"), image("tasting-setup.jpg", bytes: 1_240_000)]
+            return d
+        }
+        /// Board "Images stay inside the text": one pasted card between two lines.
+        func oneImage() -> ComposeDraft {
+            var d = filled()
+            d.text = "The gooseneck kettle has presets. 80 °C works for sencha; I set 60 °C for the gyokuro the shop recommended.\nTheir card had the steep times:\n![[brewing-card.png]]\nBuy the 50 g tin next time."
+            d.images = [image("brewing-card.png")]
             return d
         }
         func step(_ edit: (inout LabelStep) -> Void = { _ in }) -> LabelStep {
@@ -412,7 +422,31 @@ extension StatesSnapshot {
         shot("compose-text-only", "Text, no images", "A typed note with a source chip and no images.") { n in
             var d = filled(); d.images = []; n.drafts[.compose] = d
         }
-        shot("compose-filled", "Filled · images keep / extract", "Title, text, source, and two images: one read as text, one kept as an attachment.") { _ in }
+        shot("compose-filled", "Filled · images inside the text", "Title, text, source, and two images inside the text where they were pasted; the footer counts them.") { _ in }
+        shot("compose-image-pasted", "Image pasted at the cursor", "⌘V put the image between the lines at its own shape; typing carries on under it.") {
+            $0.drafts[.compose] = oneImage()
+        }
+        shot("compose-image-hover", "Image · hover", "Hovering the image: Extract content and × in its corner, name and size bottom-left.") {
+            $0.drafts[.compose] = oneImage(); $0.imageFixtures[.compose] = InlineImageFixture(hovered: "brewing-card.png")
+        }
+        shot("compose-image-selected", "Image · selected", "A click selects the image (blue ring); Delete removes it.") {
+            $0.drafts[.compose] = oneImage(); $0.imageFixtures[.compose] = InlineImageFixture(selected: "brewing-card.png")
+        }
+        shot("compose-image-reading", "Image · reading", "Extract content clicked: the image dims with a shimmer and “Reading with Haiku…”; Add to queue waits.") {
+            var d = oneImage(); d.imageStates["brewing-card.png"] = .reading(model: "Haiku"); $0.drafts[.compose] = d
+        }
+        shot("compose-image-extracted", "Image · extracted", "The text read from the image replaced it in place, tinted, with Undo ⌘Z.") {
+            var d = oneImage()
+            d.text = d.text.replacingOccurrences(of: "![[brewing-card.png]]", with: extractedCard)
+            $0.drafts[.compose] = d
+            $0.imageFixtures[.compose] = InlineImageFixture(extracted: (extractedCard, "brewing-card.png", "Haiku"))
+        }
+        shot("compose-image-failed", "Image · couldn’t read it", "The reading failed: the image stays, with the reason, Try again and Settings.") {
+            var d = oneImage(); d.imageStates["brewing-card.png"] = .failed("Claude Code isn’t signed in."); $0.drafts[.compose] = d
+        }
+        shot("compose-image-no-text", "Image · no text found", "The model found no text: the image stays as it was.") {
+            var d = oneImage(); d.imageStates["brewing-card.png"] = .noText; $0.drafts[.compose] = d
+        }
         do {
             let e = engine()
             e.notes.drafts[.compose] = filled()
@@ -797,10 +831,11 @@ extension StatesSnapshot {
         func draft(images: Int = 1) -> ComposeDraft {
             var d = ComposeDraft()
             d.title = "Gyokuro at 60 °C"
-            d.text = "Shop recommended 60 °C, 2 min first steep. Card attached."
+            d.text = "Shop recommended 60 °C, 2 min first steep."
             d.group = "discussion"
             d.source = "in-person"
-            d.images = Array([image("brewing-card.png", .extract), image("teapot.jpg", .keep)].prefix(images))
+            d.images = Array([image("brewing-card.png"), image("teapot.jpg", bytes: 860_000)].prefix(images))
+            d.text += d.images.map { "\n" + ComposeDraft.embed($0.name) }.joined()
             return d
         }
         func step(_ edit: (inout LabelStep) -> Void = { _ in }) -> LabelStep {
@@ -808,15 +843,30 @@ extension StatesSnapshot {
             edit(&s)
             return s
         }
-        func shot(_ file: String, _ state: String, _ desc: String, _ setup: (NotesStore) -> Void) {
+        func shot(_ file: String, _ state: String, _ desc: String, height: CGFloat? = nil, _ setup: (NotesStore) -> Void) {
             let e = engine()
             e.notes.drafts[.quick] = draft()
             setup(e.notes)
-            natural(file, f, "Quick note", state, desc, e) { QuickNoteView(close: {}) }
+            // `height`: the window's size for content the live sizer would grow to (images inside the text).
+            natural(file, f, "Quick note", state, desc, e) {
+                QuickNoteView(close: {}).frame(width: height == nil ? nil : 420, height: height)
+            }
         }
         shot("quicknote-empty", "Empty", "Just opened: title, text, + Source.") { $0.drafts[.quick] = ComposeDraft() }
         shot("quicknote-typing", "Typing", "Text and a source; no images.") { $0.drafts[.quick] = draft(images: 0) }
-        shot("quicknote-images", "Images", "Two images: one read as text, one kept.") { $0.drafts[.quick] = draft(images: 2) }
+        shot("quicknote-images", "Images", "Two images inside the text.", height: 560) { $0.drafts[.quick] = draft(images: 2) }
+        shot("quicknote-image-hover", "Image · hover", "Same rules as Write a note: hover for Extract content and ×.", height: 360) {
+            $0.drafts[.quick] = draft(); $0.imageFixtures[.quick] = InlineImageFixture(hovered: "brewing-card.png")
+        }
+        shot("quicknote-image-reading", "Image · reading", "Reading with Haiku…; Add to queue waits.", height: 360) {
+            var d = draft(); d.imageStates["brewing-card.png"] = .reading(model: "Haiku"); $0.drafts[.quick] = d
+        }
+        shot("quicknote-image-extracted", "Image · extracted", "The image's text replaced it in place; the window resizes to the new content.", height: 360) {
+            var d = draft()
+            d.text = d.text.replacingOccurrences(of: "![[brewing-card.png]]", with: extractedCard)
+            $0.drafts[.quick] = d
+            $0.imageFixtures[.quick] = InlineImageFixture(extracted: (extractedCard, "brewing-card.png", "Haiku"))
+        }
         shot("quicknote-adding", "Adding…", "Add to queue pressed.") { $0.adding = [.quick] }
         shot("quicknote-add-error", "Add failed", "The core refused; the draft stays.") { $0.addErrors[.quick] = "Cannot reach the Distill core: connection refused" }
         shot("quicknote-suggesting", "Label step · suggesting", "Queued ✓; suggestions on the way; type a label while you wait.") { $0.steps[.quick] = step() }
