@@ -346,6 +346,10 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       queue.splice(i, 1);
       return queue;
     },
+    searchPages: async (query: string) => {
+      record('searchPages', query);
+      return [{ path: 'wiki/sources/sencha.md', title: 'Sencha basics' }];
+    },
     subscribe(listener) {
       record('subscribe');
       listeners.add(listener);

@@ -302,6 +302,12 @@ export interface QueueEntry {
   modified: string; // ISO-8601
   size: number;
   settled: boolean;
+  /** When the settle wait ends (modified + settleSeconds); absent when already ready. Clients show it as a clock time. */
+  readyAt?: string | null;
+  /** note = written by addNote (complete when queued, skips the wait); file = anything else. */
+  kind?: 'note' | 'file';
+  /** Why the core can't use this file (unreadable, too large, ...). */
+  problem?: string | null;
 }
 
 export interface NoteImage {
@@ -552,6 +558,8 @@ export interface DistillCore {
   deleteJob(id: string): Promise<void>;
   /** argv that reopens the job's session interactively; null when the runner has none. */
   jobResumeCommand(id: string): Promise<string[] | null>;
+  /** Vault pages for the note picker (`[[`), best matches first. */
+  searchPages(query: string, opts?: { vaultPath?: string; limit?: number }): Promise<{ path: string; title: string }[]>;
   /** Move a file in the active queue folder to the Trash (with its note manifest). */
   removeQueueEntry(path: string): Promise<QueueEntry[]>;
 

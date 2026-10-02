@@ -1396,6 +1396,8 @@ export function createEngine(opts: EngineOptions): Engine {
     allow,
     reject,
     cancel,
+    // Owner: mac-editor teammate (note picker).
+    searchPages: async () => notImplemented('searchPages'),
     deleteJob,
     jobResumeCommand,
     removeQueueEntry,
