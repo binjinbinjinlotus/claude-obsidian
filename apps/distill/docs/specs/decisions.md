@@ -17,6 +17,29 @@ supersede it with a new entry.
 
 ## 2026-10-02
 
+- **Actions core (core-actions).** Decided while building:
+  - `historyDays <= 0` keeps action History forever (Settings "Forever"); the
+    decoder does not clamp it.
+  - `dismissActions` doubles as Undo for items added without confirmation,
+    when they are untouched since found (only found / drafted events): they
+    become `dismissed`, with no History entry. No separate method.
+  - Route table as in [actions](actions.md) → API. A failed handler (Jira 400,
+    not connected, offline) returns 200 with the item and `error` set; the
+    draft is never lost to an HTTP error.
+  - The action tasks (`actionFind`, `actionDraft`, `actionImprove`) never
+    block batching; a broken runner shows as a failed "Finding actions" step.
+    Why: actions are optional after the apply; ingest must not stop for them.
+  - A batch is searched once (`processedJobs` in actions.json, recorded before
+    the model runs), so a restart or a repeated job event never finds twice.
+  - A user-edited prompt never loses the item context: it is always appended
+    after the instructions, with the note text wrapped as data.
+  - Atlassian: the email and API token go to the Keychain; the site, display
+    name and account id to `<state>/connections.json` (no secrets).
+    `listConnections` never reaches the network; a 401 marks it expired.
+  - An interrupted `creating` comes back `ready` with an error asking the
+    user to check Jira / Confluence before retrying (it may have been
+    created). Why: never create twice silently.
+  → [actions](actions.md)
 - **Design follow-ups (lead, from the canvas audit):** the flask hover menu
   gets an "Actions N" entry, while the flask badge stays queue-only. Every
   elapsed timer becomes a clock time ("started at 3:12 PM"), including "Still
