@@ -81,12 +81,11 @@ import {
   claimFiles,
   copyIntoQueue,
   inboxDir,
-  moveFile,
+  moveIntoDirNoOverwrite,
   pendingFiles,
   queueIsInbox,
   settledFiles,
   toQueueEntry,
-  uniqueDestination,
   type ScanEntry,
 } from './queue.js';
 import { setupProblems } from './validator.js';
@@ -852,7 +851,7 @@ export function createEngine(opts: EngineOptions): Engine {
       if (m?.isFile() && !taken(path.basename(manifest))) targets.push(manifest);
     }
     fs.mkdirSync(trashDir, { recursive: true });
-    for (const t of targets) moveFile(t, uniqueDestination(path.basename(t), trashDir));
+    for (const t of targets) moveIntoDirNoOverwrite(t, trashDir);
     refreshQueue();
     return queueEntries();
   }

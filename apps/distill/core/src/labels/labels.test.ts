@@ -592,6 +592,21 @@ describe('label jobs (core builds, inspects and applies)', () => {
     assert.equal(labeler.requests.length, 2, 'no page after the stop');
   });
 
+  test('suggestLabelsForPages: every page fails → failed, labelPages finishes with the error', async () => {
+    const vault = realVault();
+    const { engine, events } = setup({ vault, labels: () => ({ isError: true, resultText: 'quota exceeded' }) });
+    const job = await engine.suggestLabelsForPages(['wiki/concepts/b.md']);
+    await engine.whenIdle();
+    assert.equal(engine.getJob(job.id)!.state, 'failed');
+    const progress = events.flatMap((e) => (e.type === 'progress' && e.progress.key === job.id ? [e.progress] : []));
+    const last = progress.at(-1)!;
+    assert.equal(progress.filter((p) => p.finished).length, 1);
+    assert.equal(last.kind, 'labelPages');
+    assert.equal(last.finished, true);
+    assert.match(last.error ?? '', /No labels could be suggested/);
+    assert.match(last.error ?? '', /quota exceeded/);
+  });
+
   test('suggestLabelsForPages: cancel before any page finishes → cancelled', async () => {
     const vault = realVault();
     let release!: () => void;
