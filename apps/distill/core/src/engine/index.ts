@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  DEFAULT_SOURCE_TAXONOMY,
   runnerSupports,
   type AddNoteRequest,
   type AddNoteResult,
@@ -83,11 +84,12 @@ import {
   copyIntoQueue,
   inboxDir,
   moveIntoDirNoOverwrite,
+  noteSetOfMember,
+  noteSets,
   pendingFiles,
   queueIsInbox,
-  noteSetPaths,
+  queueList,
   readyFiles,
-  toQueueEntry,
   type ScanEntry,
 } from './queue.js';
 import { setupProblems } from './validator.js';
@@ -209,6 +211,8 @@ export function createEngine(opts: EngineOptions): Engine {
   let settings: Settings = settingsStore.load();
   let jobs: Job[] = jobStore.load(now());
   let queued: ScanEntry[] = [];
+  /** mtime of each queued path when the core first saw it; a later mtime = "still changing". */
+  const firstSeen = new Map<string, number>();
   let lastQueueKey = '';
   let nextBatchAt: Date | undefined;
   let timer: NodeJS.Timeout | undefined;
@@ -406,10 +410,17 @@ export function createEngine(opts: EngineOptions): Engine {
     nextBatchAt = new Date(from.getTime() + Math.max(1, settings.batchIntervalMinutes) * 60_000);
   }
 
+  /** A manifest's source id as its taxonomy label ("in-person" → "In person"); free text passes through. */
+  function sourceLabel(source: string): string {
+    for (const group of settings.sourceTaxonomy ?? DEFAULT_SOURCE_TAXONOMY) {
+      const hit = group.sources.find((s) => s.id === source);
+      if (hit) return hit.label;
+    }
+    return source;
+  }
+
   function queueEntries(): QueueEntry[] {
-    const t = now();
-    const notes = noteSetPaths(queued);
-    return queued.map((e) => toQueueEntry(e, settings.settleSeconds, t, notes));
+    return queueList(queued, settings.settleSeconds, now(), { firstSeen, sourceLabel });
   }
 
   function refreshQueue(): void {
@@ -425,6 +436,10 @@ export function createEngine(opts: EngineOptions): Engine {
         queued = entries;
       }
     }
+    // Forget paths that left the queue (or another vault became active); remember new ones.
+    const present = new Set(queued.map((e) => e.path));
+    for (const p of firstSeen.keys()) if (!present.has(p)) firstSeen.delete(p);
+    for (const e of queued) if (!firstSeen.has(e.path)) firstSeen.set(e.path, e.modifiedMs);
     const entries = queueEntries();
     const key = JSON.stringify(entries);
     if (key !== lastQueueKey) {
@@ -848,11 +863,24 @@ export function createEngine(opts: EngineOptions): Engine {
     }
     const taken = (n: string) => queueIsInbox(vault) && claimedFiles(vault).has('inbox/' + n);
     if (taken(name)) throw new CoreError('invalid_state', `A batch already took ${name}.`);
+    // Paths as the scanner sees them (the queue folder may be reached through a symlink).
+    refreshQueue();
+    const scanned = path.join(path.resolve(vault.queueDirectory), name);
+    const owner = noteSetOfMember(queued, scanned);
+    if (owner) {
+      // Removing a manifest or image alone would break the note: remove the note instead.
+      throw new CoreError('invalid_request', `${name} belongs to the note ${path.basename(owner.note)}; remove the note instead.`);
+    }
     const targets = [abs];
-    if (name.toLowerCase().endsWith('.md')) {
+    const set = noteSets(queued).find((s) => s.note === scanned);
+    if (set) {
+      // Members first, the .md last: a failure part-way leaves files the queue still lists.
+      const members = [...set.images, set.manifest].filter((p) => !taken(path.basename(p)));
+      targets.unshift(...members.map((p) => path.join(path.dirname(abs), path.basename(p))));
+    } else if (name.toLowerCase().endsWith('.md')) {
       const manifest = abs.slice(0, -'.md'.length) + NOTE_MANIFEST_SUFFIX;
       const m = fs.lstatSync(manifest, { throwIfNoEntry: false });
-      if (m?.isFile() && !taken(path.basename(manifest))) targets.push(manifest);
+      if (m?.isFile() && !taken(path.basename(manifest))) targets.unshift(manifest);
     }
     fs.mkdirSync(trashDir, { recursive: true });
     for (const t of targets) moveIntoDirNoOverwrite(t, trashDir);
@@ -1350,7 +1378,7 @@ export function createEngine(opts: EngineOptions): Engine {
       version,
       activeVault: activeVault(settings) ?? null,
       problems: probs,
-      queueCount: queued.length,
+      queueCount: queueEntries().length,
       pendingApprovals: jobs.filter((j) => j.state === 'awaitingApproval').length,
       runningJobs: jobs.filter((j) => j.state === 'running').length,
       nextBatchAt: nextBatchAt ? isoDate(nextBatchAt) : null,

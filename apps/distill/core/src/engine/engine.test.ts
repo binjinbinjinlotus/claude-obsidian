@@ -425,16 +425,23 @@ describe('engine state machine', () => {
     await h.engine.updateSettings({ settleSeconds: 3600 });
     const img = path.join(tmp, 'card.png');
     fs.writeFileSync(img, 'PNGDATA');
-    await h.engine.addNote({ title: 'Gyokuro at 60 °C', text: 'Shop said 60 °C.', images: [{ path: img, mode: 'keep' }], suggest: 'none' });
+    await h.engine.addNote({
+      title: 'Gyokuro at 60 °C', text: 'Shop said 60 °C.', images: [{ path: img, mode: 'keep' }], suggest: 'none',
+      source: 'in-person', labels: ['tea'],
+    });
     fs.writeFileSync(path.join(h.queue, 'plain.md'), '# Plain\n');
     const entries = h.engine.listQueue();
     const byName = new Map(entries.map((e) => [e.name, e]));
-    for (const name of ['Gyokuro at 60 °C.md', 'Gyokuro at 60 °C.distill.json', 'Gyokuro at 60 °C image 1.png']) {
-      assert.equal(byName.get(name)?.kind, 'note', name);
-      assert.equal(byName.get(name)?.settled, true, name);
-      assert.equal(byName.get(name)?.readyAt, undefined, name);
-    }
+    assert.deepEqual([...byName.keys()].sort(), ['Gyokuro at 60 °C.md', 'plain.md'], 'one row per note: members are not listed');
+    const note = byName.get('Gyokuro at 60 °C.md')!;
+    assert.equal(note.kind, 'note');
+    assert.equal(note.settled, true);
+    assert.equal(note.readyAt, undefined);
+    assert.deepEqual(note.members, [path.join(h.queue, 'Gyokuro at 60 °C.distill.json'), path.join(h.queue, 'Gyokuro at 60 °C image 1.png')]);
+    assert.deepEqual(note.note, { source: 'In person', labelsConfirmed: true, imageCount: 1 }, 'source id shown as its taxonomy label');
+    assert.equal((await h.engine.status()).queueCount, 2, 'queueCount counts rows');
     assert.equal(byName.get('plain.md')?.kind, 'file');
+    assert.equal(byName.get('plain.md')?.members, undefined);
     assert.equal(byName.get('plain.md')?.settled, false);
     assert.ok(byName.get('plain.md')?.readyAt);
 
@@ -445,6 +452,49 @@ describe('engine state machine', () => {
     ]);
     assert.ok(fs.existsSync(path.join(h.queue, 'plain.md')), 'the plain file still waits');
     await h.engine.whenIdle();
+  });
+
+  test('a note row: free-text source passes through; unconfirmed labels; unreadable member carried up', async () => {
+    h = setup([]);
+    const img = path.join(tmp, 'card.png');
+    fs.writeFileSync(img, 'PNGDATA');
+    await h.engine.addNote({ title: 'Cli note', text: 'x', source: 'hallway chat', images: [{ path: img, mode: 'keep' }], suggest: 'none' });
+    const [entry] = h.engine.listQueue();
+    assert.deepEqual(entry!.note, { source: 'hallway chat', labelsConfirmed: false, imageCount: 1 });
+    const image = path.join(h.queue, 'Cli note image 1.png');
+    fs.chmodSync(image, 0o000);
+    try {
+      if (process.getuid?.() !== 0) assert.match(h.engine.listQueue()[0]!.problem ?? '', /^Cli note image 1\.png: Distill can't read/);
+    } finally {
+      fs.chmodSync(image, 0o644);
+    }
+    // An orphan manifest (its .md gone) is an ordinary row again.
+    fs.rmSync(path.join(h.queue, 'Cli note.md'));
+    assert.deepEqual(h.engine.listQueue().map((e) => e.name).sort(), ['Cli note image 1.png', 'Cli note.distill.json']);
+  });
+
+  test('changing: a file whose mtime moves after the core first saw it, until it settles', async () => {
+    h = setup([]);
+    await h.engine.updateSettings({ settleSeconds: 3600 });
+    const file = path.join(h.queue, 'Clipping 0309.md');
+    fs.writeFileSync(file, '# A\n');
+    const first = new Date(Math.floor(Date.now() / 1000) * 1000 - 120_000);
+    fs.utimesSync(file, first, first);
+    const before = h.engine.listQueue()[0]!;
+    assert.equal(before.changing, undefined, 'omitted until the file changes');
+    const later = new Date(first.getTime() + 60_000);
+    fs.utimesSync(file, later, later);
+    const after = h.engine.listQueue()[0]!;
+    assert.equal(after.changing, true);
+    assert.ok(after.readyAt! > before.readyAt!, 'the ready time moved');
+    await h.engine.updateSettings({ settleSeconds: 0 });
+    assert.equal(h.engine.listQueue()[0]!.changing, undefined, 'a settled file is not changing');
+    // Gone, then added again: first seen again, so not changing.
+    await h.engine.updateSettings({ settleSeconds: 3600 });
+    fs.rmSync(file);
+    h.engine.listQueue();
+    fs.writeFileSync(file, '# B\n');
+    assert.equal(h.engine.listQueue()[0]!.changing, undefined);
   });
 
   test('scheduler: tick runs a batch once nextBatchAt passes', async () => {
