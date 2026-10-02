@@ -163,7 +163,9 @@ struct VaultSwitcher: View {
                      fill: chip.0, ink: chip.1, size: 30, display: true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(engine.activeVault?.name ?? "Choose a vault").font(Theme.body(13, .semibold)).lineLimit(1)
-                    Text(statusLine).font(Theme.body(11)).foregroundStyle(Theme.muted).lineLimit(1)
+                    if let statusLine {
+                        Text(statusLine).font(Theme.body(11)).foregroundStyle(Theme.muted).lineLimit(1)
+                    }
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.up.chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.muted)
@@ -176,7 +178,10 @@ struct VaultSwitcher: View {
         .menuIndicator(.hidden)
     }
 
-    private var statusLine: String {
+    /// nil with no vault: the name line already says "Choose a vault".
+    private var statusLine: String? {
+        if engine.activeVault == nil { return nil }
+        if engine.isStarting { return "Starting…" }
         let model = ModelChoice.shortName(engine.settings.model)
         if !engine.runningJobs.isEmpty { return "\(model) · working" }
         if !engine.pendingApprovals.isEmpty { return "\(model) · waiting on you" }
