@@ -17,6 +17,13 @@ supersede it with a new entry.
 
 ## 2026-10-02
 
+- **Settings as built (mac-settings):** search lists results by section and
+  opens them (it does not filter the controls in place); To-do defaults has
+  only the stored settings (group, sort, retention incl. Forever, overdue
+  reminder). The board's extra rows (Show, due filter, what new to-dos get,
+  completed to-dos, reminder time) are deferred until the contract stores
+  them. Connections is one Atlassian card with a pasted API token; field
+  defaults live on each type's page. → [vaults-and-settings](vaults-and-settings.md), [actions](actions.md)
 - **Settings window built with section navigation and search** (mac-settings):
   - Picking a section shows its group's page (General, AI, Actions and
     connections), scrolled to that section. This follows the Settings board,
