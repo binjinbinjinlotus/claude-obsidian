@@ -308,6 +308,12 @@ export interface QueueEntry {
   kind?: 'note' | 'file';
   /** Why the core can't use this file (unreadable, too large, ...). */
   problem?: string | null;
+  /** True when the file changed after the core first saw it (its ready time moved). Shown as "still changing". */
+  changing?: boolean;
+  /** For a note row: the paths of the files that travel with it (its .distill.json and images). Clients show one row; removing the note removes them all. */
+  members?: string[];
+  /** For a note row: its source summary and whether its labels are confirmed, from the manifest. */
+  note?: { source?: string | null; labelsConfirmed?: boolean; imageCount?: number } | null;
 }
 
 export interface NoteImage {
