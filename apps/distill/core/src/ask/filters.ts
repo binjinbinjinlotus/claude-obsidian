@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { LabelMatch } from '../contracts.js';
 import { listValue, parseFrontmatter, scalarValue } from './frontmatter.js';
 import { DEFAULT_SOURCE_TAXONOMY, expandSources, normalizeSourceID, type SourceTaxonomy } from './taxonomy.js';
 
@@ -15,11 +16,17 @@ export interface VaultPage {
   sourceTypes: string[];
   /** Targets of `sources:` wikilinks, lower case, without alias/heading/extension. */
   sourceLinks: string[];
+  /** `labels_reviewed: false`: the page's labels are AI labels not yet confirmed. */
+  labelsUnconfirmed: boolean;
 }
 
 export interface PageFilter {
   labels?: string[];
   sources?: string[];
+  /** any (default) = at least one label; all = every label. */
+  labelMatch?: LabelMatch;
+  /** Default true. false = labels on pages with `labels_reviewed: false` do not count. */
+  includeUnconfirmed?: boolean;
 }
 
 /** Cap on how much of each page is read to find its frontmatter. */
@@ -96,6 +103,7 @@ export async function scanVaultPages(vaultRealPath: string): Promise<VaultPage[]
           sourceLinks: listValue(fm, 'sources')
             .map(wikilinkTarget)
             .filter((s): s is string => s !== undefined),
+          labelsUnconfirmed: scalarValue(fm, 'labels_reviewed')?.trim().toLowerCase() === 'false',
         });
       }
     }
@@ -111,7 +119,10 @@ export function hasFilter(filter: PageFilter): boolean {
 }
 
 /**
- * Pages matching the filter. Within labels: OR. Within sources: OR (groups
+ * Pages matching the filter. Within labels: OR (labelMatch any) or AND
+ * (labelMatch all); a label also matches nested tags (`tea` matches
+ * `tea/green`). With includeUnconfirmed false, a page whose labels are not
+ * confirmed (`labels_reviewed: false`) has no labels for matching. Within sources: OR. Within sources: OR (groups
  * expanded). Labels AND sources. A page matches a source when its own
  * `source_type` does, or when any page it lists under `sources:` does (a
  * synthesized page matches if any of its sources match).
@@ -134,7 +145,13 @@ export function filterPages(pages: VaultPage[], filter: PageFilter, taxonomy: So
       const linked = byName.get(link);
       return linked !== undefined && linked !== page && ownSourceMatch(linked);
     });
-  const labelMatch = (page: VaultPage) => labels.some((label) => page.tags.some((tag) => tagMatches(label, tag)));
+  const includeUnconfirmed = filter.includeUnconfirmed ?? true;
+  const every = filter.labelMatch === 'all';
+  const labelMatch = (page: VaultPage) => {
+    if (!includeUnconfirmed && page.labelsUnconfirmed) return false;
+    const has = (label: string) => page.tags.some((tag) => tagMatches(label, tag));
+    return every ? labels.every(has) : labels.some(has);
+  };
 
   return pages.filter((page) => (labels.length === 0 || labelMatch(page)) && (!wantSources || sourceMatch(page)));
 }

@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import type {
   AgentRunner,
   AITask,
+  CoreEvent,
   RunnerCapability,
   RunRequest,
   RunResult,
@@ -187,7 +188,7 @@ test('follow-up resumes the same session; a model override keeps the session', a
   assert.equal(runner.requests[2]!.selection.model, 'opus');
   assert.equal(second.conversationID, first.conversationID);
   assert.equal(third.selection.model, 'opus');
-  assert.doesNotMatch(third.answer, /new session/);
+  assert.doesNotMatch((third.notices ?? []).join(' '), /new session/);
   const saved = JSON.parse(readFileSync(path.join(fx.stateDir, `${first.conversationID}.json`), 'utf8'));
   assert.equal(saved.turns, 3);
   assert.equal(saved.selection.model, 'opus');
@@ -208,7 +209,8 @@ test('follow-up on another runner starts a new session and says so', async () =>
   assert.equal(b.requests.length, 1);
   assert.ok('start' in b.requests[0]!.session);
   assert.notEqual((b.requests[0]!.session as { start: string }).start, (a.requests[0]!.session as { start: string }).start);
-  assert.match(res.answer, /^> \[!note\] Started a new session: the runner changed from claude-code to other/);
+  assert.match(res.notices?.[0] ?? '', /^Started a new session: the runner changed from claude-code to other/);
+  assert.equal(res.answer, 'plain text');
   assert.equal(res.conversationID, first.conversationID);
 });
 
@@ -383,13 +385,384 @@ test('changing the filter mid-conversation starts a new session; same filter res
   const [a, b, c, d, e] = runner.requests;
   assert.ok('start' in b!.session);
   assert.notEqual((b!.session as { start: string }).start, (a!.session as { start: string }).start);
-  assert.match(second.answer, /filter changed/);
+  assert.match((second.notices ?? []).join(' '), /filter changed/);
   assert.deepEqual(c!.session, { resume: (b!.session as { start: string }).start });
-  assert.doesNotMatch(third.answer, /new session/);
+  assert.doesNotMatch((third.notices ?? []).join(' '), /new session/);
   assert.ok('start' in d!.session);
-  assert.match(fourth.answer, /filter changed/);
+  assert.match((fourth.notices ?? []).join(' '), /filter changed/);
   // The same expanded source set is the same scope.
   assert.deepEqual(e!.session, { resume: (d!.session as { start: string }).start });
-  assert.doesNotMatch(fifth.answer, /new session/);
+  assert.doesNotMatch((fifth.notices ?? []).join(' '), /new session/);
   assert.equal(a!.workingDirectory, e!.workingDirectory);
+});
+
+// ───────────── v2: label match, unconfirmed labels, notices ─────────────
+
+function addPage(fx: Fixture, rel: string, fm: string[]): void {
+  mkdirSync(path.dirname(path.join(fx.vault, rel)), { recursive: true });
+  writeFileSync(path.join(fx.vault, rel), page(fm));
+}
+
+function allowedOf(fx: Fixture, req: RunRequest): string[] {
+  return req.allowedTools.filter((t) => t !== 'Skill').map((t) => path.relative(fx.vault, t.slice(6, -1)));
+}
+
+class Clock {
+  constructor(public t = Date.parse('2026-09-01T00:00:00Z')) {}
+  now = () => new Date(this.t);
+  advance(ms: number) {
+    this.t += ms;
+  }
+}
+
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+
+function svcWith(fx: Fixture, runner: AgentRunner, extra: { now?: () => Date; events?: CoreEvent[] } = {}) {
+  const events = extra.events;
+  return createAskService({
+    getSettings: () => fx.settings,
+    runners: registry(runner),
+    stateDir: fx.stateDir,
+    now: extra.now,
+    emit: events ? (e) => events.push(e) : undefined,
+  });
+}
+
+const hasCode = (code: string) => (e: unknown) => (e as { code?: string }).code === code;
+
+test('labelMatch: any = OR, all = every label (nested tags count); request overrides settings default', async () => {
+  const fx = fixture();
+  addPage(fx, 'wiki/sources/Green Research.md', ['title: Green research', 'tags: [tea/green, research]']);
+  const runner = new FakeRunner('claude-code');
+  const svc = service(fx, runner);
+
+  await svc.ask({ question: 'q', labels: ['tea', 'research'] });
+  assert.deepEqual(allowedOf(fx, runner.requests[0]!), [
+    'wiki/sources/Green Research.md',
+    'wiki/sources/Oolong Paper.md',
+    'wiki/sources/Sencha Slack.md',
+  ]);
+
+  await svc.ask({ question: 'q', labels: ['tea', '#Research'], labelMatch: 'all' });
+  assert.deepEqual(allowedOf(fx, runner.requests[1]!), ['wiki/sources/Green Research.md', 'wiki/sources/Oolong Paper.md']);
+  assert.match(runner.requests[1]!.prompt, /labels \(all of\): tea, #Research/);
+
+  // Labels AND sources still holds with all.
+  await svc.ask({ question: 'q', labels: ['tea', 'research'], labelMatch: 'all', sources: ['paper'] });
+  assert.deepEqual(allowedOf(fx, runner.requests[2]!), ['wiki/sources/Oolong Paper.md']);
+
+  // The settings default applies when the request omits it; the request wins otherwise.
+  fx.settings.askPreferences = { labelMatch: 'all' };
+  const res = await svc.ask({ question: 'q', labels: ['tea', 'research'] });
+  assert.equal(allowedOf(fx, runner.requests[3]!).length, 2);
+  await svc.ask({ question: 'q', labels: ['tea', 'research'], labelMatch: 'any' });
+  assert.equal(allowedOf(fx, runner.requests[4]!).length, 3);
+
+  const stored = await svc.getConversation(res.conversationID);
+  assert.equal(stored?.turns[0]?.request.labelMatch, 'all');
+  assert.equal(stored?.turns[0]?.request.includeUnconfirmed, true);
+});
+
+test('includeUnconfirmed: on counts AI labels and says how many; off leaves them out', async () => {
+  const fx = fixture();
+  addPage(fx, 'wiki/sources/Matcha.md', ['title: Matcha', 'source_type: slack', 'tags: [tea]', 'labels_reviewed: false', 'labels_by: ai']);
+  addPage(fx, 'wiki/sources/Hojicha.md', ['title: Hojicha', 'tags: [tea]', 'labels_reviewed: true']);
+  const runner = new FakeRunner('claude-code');
+  const svc = service(fx, runner);
+
+  const on = await svc.ask({ question: 'q', labels: ['tea'] });
+  assert.deepEqual(allowedOf(fx, runner.requests[0]!), [
+    'wiki/sources/Hojicha.md',
+    'wiki/sources/Matcha.md',
+    'wiki/sources/Oolong Paper.md',
+    'wiki/sources/Sencha Slack.md',
+  ]);
+  assert.deepEqual(on.notices, ['Limited to 4 pages (1 unconfirmed).']);
+  assert.equal(on.answer, 'plain text');
+
+  const off = await svc.ask({ question: 'q', labels: ['tea'], includeUnconfirmed: false });
+  assert.deepEqual(allowedOf(fx, runner.requests[1]!), [
+    'wiki/sources/Hojicha.md',
+    'wiki/sources/Oolong Paper.md',
+    'wiki/sources/Sencha Slack.md',
+  ]);
+  assert.deepEqual(off.notices, ['Limited to 3 pages. Left out 1 page whose labels are not confirmed yet.']);
+
+  // Settings default off; sources are not affected by label confirmation.
+  fx.settings.askPreferences = { includeUnconfirmed: false };
+  await svc.ask({ question: 'q', sources: ['slack'] });
+  assert.ok(allowedOf(fx, runner.requests[2]!).includes('wiki/sources/Matcha.md'));
+  await svc.ask({ question: 'q', labels: ['tea'] });
+  assert.ok(!allowedOf(fx, runner.requests[3]!).includes('wiki/sources/Matcha.md'));
+
+  // Only unconfirmed pages match: no run, and the notice explains why.
+  addPage(fx, 'wiki/sources/Kukicha.md', ['title: Kukicha', 'tags: [twig]', 'labels_reviewed: False']);
+  const none = await svc.ask({ question: 'q', labels: ['twig'] });
+  assert.equal(runner.requests.length, 4);
+  assert.match(none.answer, /No notes in the vault match labels twig/);
+  assert.deepEqual(none.notices, ['1 page would match with unconfirmed labels; Include unconfirmed is off.']);
+
+  // Unfiltered asks have no scope notice.
+  const all = await svc.ask({ question: 'q' });
+  assert.deepEqual(all.notices, []);
+});
+
+test('scope: flipping includeUnconfirmed or labelMatch starts a new session; v1 scope strings are unchanged', async () => {
+  const fx = fixture();
+  const runner = new FakeRunner('claude-code');
+  const svc = service(fx, runner);
+  const first = await svc.ask({ question: 'q', labels: ['tea'] });
+  const saved = JSON.parse(readFileSync(path.join(fx.stateDir, `${first.conversationID}.json`), 'utf8'));
+  assert.equal(saved.scope, JSON.stringify({ labels: ['tea'], sources: [] }));
+
+  // labelMatch all with a single label is the same scope.
+  const same = await svc.ask({ question: 'q', conversationID: first.conversationID, labels: ['tea'], labelMatch: 'all' });
+  assert.ok('resume' in runner.requests[1]!.session);
+  assert.doesNotMatch((same.notices ?? []).join(' '), /new session/);
+
+  const flipped = await svc.ask({ question: 'q', conversationID: first.conversationID, labels: ['tea'], includeUnconfirmed: false });
+  assert.ok('start' in runner.requests[2]!.session);
+  assert.match(flipped.notices?.[0] ?? '', /filter changed/);
+
+  const all = await svc.ask({
+    question: 'q',
+    conversationID: first.conversationID,
+    labels: ['tea', 'research'],
+    labelMatch: 'all',
+    includeUnconfirmed: false,
+  });
+  assert.ok('start' in runner.requests[3]!.session);
+  assert.match(all.notices?.[0] ?? '', /filter changed/);
+});
+
+test('taxonomy comes from settings.sourceTaxonomy', async () => {
+  const fx = fixture();
+  fx.settings.sourceTaxonomy = [{ id: 'chat', label: 'Chat', sources: [{ id: 'slack', label: 'Slack' }] }];
+  const runner = new FakeRunner('claude-code');
+  const svc = service(fx, runner);
+  await svc.ask({ question: 'q', sources: ['chat'] });
+  assert.deepEqual(allowedOf(fx, runner.requests[0]!), ['wiki/concepts/Green tea.md', 'wiki/sources/Sencha Slack.md']);
+  // The default groups are gone, so "discussion" is a literal source type with no matches.
+  const res = await svc.ask({ question: 'q', sources: ['discussion'] });
+  assert.equal(runner.requests.length, 1);
+  assert.match(res.answer, /No notes in the vault match/);
+});
+
+// ───────────── v2: history ─────────────
+
+test('history: turns stored, list newest first, get, title, events', async () => {
+  const fx = fixture();
+  const clock = new Clock();
+  const events: CoreEvent[] = [];
+  const runner = new FakeRunner('claude-code');
+  runner.reply = (req) => ({ structured: structured([{ n: 1, path: 'wiki/sources/Standup.md' }], `A: ${req.prompt.split('\n').at(-1)}`) });
+  const svc = svcWith(fx, runner, { now: clock.now, events });
+
+  const long = 'How should I brew sencha so that it does not get bitter, and what water temperature works best for it overall?';
+  const a = await svc.ask({ question: `  ${long}  ` });
+  clock.advance(HOUR);
+  const b = await svc.ask({ question: 'Second chat' });
+  clock.advance(HOUR);
+  await svc.ask({ question: 'Follow-up', conversationID: a.conversationID, labels: ['work'] });
+
+  const list = await svc.listConversations();
+  assert.deepEqual(
+    list.map((c) => c.id),
+    [a.conversationID, b.conversationID],
+  );
+  const first = list[0]!;
+  assert.ok(first.title.length <= 80);
+  assert.ok(first.title.endsWith('…'));
+  assert.ok(long.startsWith(first.title.slice(0, -1)));
+  assert.equal(list[1]!.title, 'Second chat');
+  assert.equal(first.turnCount, 2);
+  assert.equal(first.pinned, false);
+  assert.equal(first.vaultPath, fx.vault);
+  assert.equal(first.createdAt, '2026-09-01T00:00:00.000Z');
+  assert.equal(first.updatedAt, '2026-09-01T02:00:00.000Z');
+
+  const convo = await svc.getConversation(a.conversationID);
+  assert.equal(convo?.turns.length, 2);
+  assert.equal(convo?.turns[0]?.request.question, long);
+  assert.equal(convo?.turns[0]?.askedAt, '2026-09-01T00:00:00.000Z');
+  assert.deepEqual(convo?.turns[0]?.response, a);
+  assert.deepEqual(convo?.turns[1]?.request.labels, ['work']);
+  assert.deepEqual(convo?.turns[1]?.response.citations, [{ n: 1, path: 'wiki/sources/Standup.md', title: 'Standup' }]);
+  assert.equal(await svc.getConversation('missing'), undefined);
+
+  const saved = events.flatMap((e) => (e.type === 'conversation' ? [e] : []));
+  assert.equal(saved.length, 3);
+  assert.equal(saved[2]!.conversation.turnCount, 2);
+  assert.equal(saved[2]!.deleted, undefined);
+});
+
+test('history: zero-match turns are kept; pin does not touch updatedAt; delete', async () => {
+  const fx = fixture();
+  const clock = new Clock();
+  const events: CoreEvent[] = [];
+  const runner = new FakeRunner('claude-code');
+  const svc = svcWith(fx, runner, { now: clock.now, events });
+
+  const res = await svc.ask({ question: 'nothing', labels: ['nope'] });
+  assert.equal((await svc.getConversation(res.conversationID))?.turnCount, 1);
+
+  clock.advance(DAY);
+  const pinned = await svc.setConversationPinned(res.conversationID, true);
+  assert.equal(pinned.pinned, true);
+  assert.equal(pinned.updatedAt, '2026-09-01T00:00:00.000Z');
+  assert.deepEqual(events.at(-1), { type: 'conversation', conversation: pinned });
+  assert.equal((await svc.listConversations())[0]?.pinned, true);
+
+  await svc.deleteConversation(res.conversationID);
+  const last = events.at(-1);
+  assert.ok(last?.type === 'conversation' && last.deleted === true && last.conversation.id === res.conversationID);
+  assert.deepEqual(await svc.listConversations(), []);
+  await assert.rejects(svc.deleteConversation(res.conversationID), hasCode('not_found'));
+  await assert.rejects(svc.setConversationPinned(res.conversationID, true), hasCode('not_found'));
+  await assert.rejects(svc.deleteConversation('../x'), hasCode('invalid_request'));
+  await assert.rejects(svc.ask({ question: 'q', conversationID: res.conversationID }), hasCode('not_found'));
+  await assert.rejects(svc.ask({ question: '  ' }), hasCode('invalid_request'));
+});
+
+test('retention: sweeps old non-pinned chats on creation and at most hourly; never when Keep history is off', async () => {
+  const fx = fixture();
+  const clock = new Clock();
+  const runner = new FakeRunner('claude-code');
+  const svc = svcWith(fx, runner, { now: clock.now });
+  const old = await svc.ask({ question: 'old' });
+  const pinned = await svc.ask({ question: 'pinned' });
+  await svc.setConversationPinned(pinned.conversationID, true);
+  const unpinned = await svc.ask({ question: 'unpinned later' });
+  await svc.setConversationPinned(unpinned.conversationID, true);
+  clock.advance(5 * DAY);
+  const recent = await svc.ask({ question: 'recent' });
+
+  // Day 11: chats from day 0 are past 10 days. Unpinning does not refresh them.
+  clock.advance(6 * DAY);
+  await svc.setConversationPinned(unpinned.conversationID, false);
+  const ids = (await svc.listConversations()).map((c) => c.id).sort();
+  assert.deepEqual(ids, [pinned.conversationID, recent.conversationID].sort());
+  assert.ok(!existsSync(path.join(fx.stateDir, `${old.conversationID}.json`)));
+  assert.ok(!existsSync(path.join(fx.stateDir, `${unpinned.conversationID}.json`)));
+
+  // A shorter window makes `recent` (6 days) old, but the last sweep was under an hour ago.
+  fx.settings.askPreferences = { historyDays: 3 };
+  clock.advance(30 * 60 * 1000);
+  assert.equal((await svc.listConversations()).length, 2);
+
+  // Keep history off: nothing is swept by age, even after the hour.
+  fx.settings.askPreferences = { keepHistory: false, historyDays: 3 };
+  clock.advance(HOUR);
+  assert.equal((await svc.listConversations()).length, 2);
+
+  // Back on: a new service sweeps on creation and emits the deletion.
+  fx.settings.askPreferences = { keepHistory: true, historyDays: 3 };
+  const events: CoreEvent[] = [];
+  const fresh = svcWith(fx, runner, { now: clock.now, events });
+  assert.deepEqual(
+    (await fresh.listConversations()).map((c) => c.id),
+    [pinned.conversationID],
+  );
+  assert.ok(events.some((e) => e.type === 'conversation' && e.deleted === true && e.conversation.id === recent.conversationID));
+});
+
+test('retention: an invalid historyDays falls back to the default', async () => {
+  const fx = fixture();
+  const clock = new Clock();
+  const svc = svcWith(fx, new FakeRunner('claude-code'), { now: clock.now });
+  await svc.ask({ question: 'q' });
+  fx.settings.askPreferences = { historyDays: 0 };
+  clock.advance(9 * DAY);
+  await svc.sweepHistory();
+  assert.equal((await svc.listConversations()).length, 1);
+  clock.advance(2 * DAY);
+  await svc.sweepHistory();
+  assert.equal((await svc.listConversations()).length, 0);
+});
+
+test('legacy v1 records load, list and continue; corrupt and temp files are skipped', async () => {
+  const fx = fixture();
+  const events: CoreEvent[] = [];
+  const runner = new FakeRunner('claude-code');
+  const clock = new Clock(Date.parse('2026-09-30T00:00:00Z'));
+  const workspace = path.join(fx.stateDir, 'workspace');
+  mkdirSync(workspace, { recursive: true });
+  const legacy = {
+    conversationID: 'legacy-1',
+    sessionID: 'sess-legacy',
+    selection: { runnerID: 'claude-code', model: 'haiku' },
+    vaultPath: fx.vault,
+    workingDirectory: realpathSync(workspace),
+    scope: '',
+    createdAt: '2026-09-29T00:00:00.000Z',
+    updatedAt: '2026-09-29T01:00:00.000Z',
+    turns: 2,
+    costUSD: 0.5,
+  };
+  writeFileSync(path.join(fx.stateDir, 'legacy-1.json'), JSON.stringify(legacy));
+  writeFileSync(path.join(fx.stateDir, 'broken.json'), '{nope');
+  writeFileSync(path.join(fx.stateDir, 'legacy-1.json.123.abc.tmp'), '{}');
+  const svc = svcWith(fx, runner, { now: clock.now, events });
+
+  assert.deepEqual(await svc.listConversations(), [
+    {
+      id: 'legacy-1',
+      title: 'Earlier conversation',
+      vaultPath: fx.vault,
+      createdAt: legacy.createdAt,
+      updatedAt: legacy.updatedAt,
+      pinned: false,
+      turnCount: 2,
+    },
+  ]);
+  assert.ok(events.some((e) => e.type === 'log' && e.level === 'warn' && /broken/.test(e.message)));
+  assert.deepEqual((await svc.getConversation('legacy-1'))?.turns, []);
+
+  await svc.ask({ question: 'Continue please', conversationID: 'legacy-1' });
+  assert.deepEqual(runner.requests[0]!.session, { resume: 'sess-legacy' });
+  const after = await svc.getConversation('legacy-1');
+  assert.equal(after?.title, 'Continue please');
+  assert.equal(after?.turnCount, 1);
+  assert.equal(after?.createdAt, legacy.createdAt);
+  const saved = JSON.parse(readFileSync(path.join(fx.stateDir, 'legacy-1.json'), 'utf8'));
+  assert.equal(saved.turns, 3);
+  assert.ok(Math.abs(saved.costUSD - 0.5123) < 1e-9);
+});
+
+test('retention: a sweep skips a chat with a turn in flight instead of waiting for it', async () => {
+  const fx = fixture();
+  const clock = new Clock();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  class SlowRunner extends FakeRunner {
+    slow = false;
+    override async run(request: RunRequest): Promise<RunResult> {
+      if (this.slow) await gate;
+      return super.run(request);
+    }
+  }
+  const runner = new SlowRunner('claude-code');
+  const svc = svcWith(fx, runner, { now: clock.now });
+  const x = await svc.ask({ question: 'x' });
+  const other = await svc.ask({ question: 'other' });
+
+  runner.slow = true;
+  const followUp = svc.ask({ question: 'x2', conversationID: x.conversationID });
+  await new Promise((r) => setTimeout(r, 20)); // let the follow-up take the lock
+  clock.advance(11 * DAY); // both chats are old; a sweep is due
+  const listed = await Promise.race([
+    svc.listConversations(),
+    new Promise<'timeout'>((r) => setTimeout(() => r('timeout'), 500)),
+  ]);
+  assert.notEqual(listed, 'timeout');
+  // `other` was swept; X was skipped because its turn is running.
+  assert.deepEqual(
+    (listed as { id: string }[]).map((c) => c.id),
+    [x.conversationID],
+  );
+  assert.ok(!existsSync(path.join(fx.stateDir, `${other.conversationID}.json`)));
+  release();
+  await followUp;
+  assert.equal((await svc.getConversation(x.conversationID))?.turnCount, 2);
 });
