@@ -135,6 +135,12 @@ export interface RunRequest {
   selection: ModelSelection;
   /** Claude Code permission-rule syntax: Read, Bash(cmd:*), Edit(//abs/**). */
   allowedTools: string[];
+  /**
+   * The complete set of tools the run may see (Claude Code `--tools`). Runners
+   * also ignore the user's own settings and MCP servers, so personal allow
+   * rules never widen a Distill permission gate. Omit to keep the runner default.
+   */
+  availableTools?: string[];
   readableDirectories: string[];
   pluginDirectory?: string;
   outputSchema?: string; // JSON Schema text

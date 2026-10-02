@@ -140,6 +140,7 @@ export function createAskService(deps: AskDeps): AskService {
       prompt: buildAskPrompt(question, { vaultPath, labels, sources, allowedPages }),
       session: isNewSession ? { start: runSessionID } : { resume: runSessionID },
       selection,
+      availableTools: allowedPages ? ['Skill', 'Read'] : [...ASK_READ_ONLY_TOOLS],
       allowedTools: allowedPages ? ['Skill', ...allowedPages.map((p) => readRule(p.absPath))] : [...ASK_READ_ONLY_TOOLS],
       readableDirectories: allowedPages
         ? isInside(vaultPath, await realOr(productRoot))

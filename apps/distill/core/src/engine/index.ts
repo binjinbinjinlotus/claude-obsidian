@@ -56,6 +56,12 @@ import {
 } from './queue.js';
 import { setupProblems } from './validator.js';
 
+/**
+ * Tools an ingest turn can see. Allow rules still gate them; tools outside the
+ * rules stay visible so a blocked call becomes an approval the user can grant.
+ */
+const INGEST_AVAILABLE_TOOLS = ['Skill', 'Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash', 'WebFetch'] as const;
+
 /** Everything in DistillCore except `ask`, plus what Ask needs from the engine. */
 export type Engine = Omit<DistillCore, 'ask'> & {
   readonly runners: RunnerRegistry;
@@ -313,6 +319,7 @@ export function createEngine(opts: EngineOptions): Engine {
       session: extra.first ? { start: job.sessionID } : { resume: job.sessionID },
       selection: { runnerID, model: job.model, effort: job.effort ?? null },
       allowedTools: [...kind.allowedTools(ctx), ...(extra.extraTools ?? [])],
+      availableTools: [...INGEST_AVAILABLE_TOOLS],
       readableDirectories: [settings.productRoot],
       pluginDirectory: settings.productRoot,
       outputSchema: WorkerProtocol.schema,

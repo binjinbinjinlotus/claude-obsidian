@@ -23,6 +23,7 @@ export interface ClaudeInvocation {
   model: string;
   effort?: string | null;
   allowedTools: string[];
+  availableTools?: string[];
   addDirectories: string[];
   pluginDirectory?: string;
   outputSchema?: string;
@@ -43,6 +44,10 @@ export function claudeArguments(inv: ClaudeInvocation): string[] {
   for (const dir of inv.addDirectories) args.push('--add-dir', dir);
   if (inv.outputSchema !== undefined) args.push('--json-schema', inv.outputSchema);
   if (inv.appendSystemPrompt !== undefined) args.push('--append-system-prompt', inv.appendSystemPrompt);
+  // Isolation: never load user/project/local settings or MCP servers, whose allow
+  // rules would otherwise merge into Distill's gate.
+  args.push('--setting-sources', '', '--strict-mcp-config');
+  if (inv.availableTools !== undefined) args.push('--tools', inv.availableTools.join(','));
   if (inv.allowedTools.length > 0) args.push('--allowedTools', ...inv.allowedTools);
   return args;
 }
@@ -129,6 +134,7 @@ export class ClaudeCodeRunner implements AgentRunner {
       model: request.selection.model,
       effort: request.selection.effort ?? null,
       allowedTools: request.allowedTools,
+      ...(request.availableTools !== undefined ? { availableTools: request.availableTools } : {}),
       addDirectories: request.readableDirectories,
       environment: request.environment ?? {},
     };

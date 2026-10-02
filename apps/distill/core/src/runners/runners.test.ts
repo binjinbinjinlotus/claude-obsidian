@@ -72,6 +72,7 @@ describe('ClaudeCodeRunner.run', () => {
     assert.deepEqual(seen.args, [
       '-p', '--output-format', 'json', '--model', 'haiku', '--session-id', 'sid',
       '--plugin-dir', '/p', '--add-dir', '/p', '--json-schema', '{}', '--append-system-prompt', 'SYS',
+      '--setting-sources', '', '--strict-mcp-config',
       '--allowedTools', 'Read', 'Bash(python3 /p/x.py transaction inspect:*)', 'Edit(//a,b/**)',
     ]);
     assert.equal(result.sessionID, 's1');
