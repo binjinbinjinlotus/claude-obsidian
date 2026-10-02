@@ -176,10 +176,11 @@ final class AskModel: ObservableObject {
 
     func refresh() {
         guard let client = engine.client else { return }
-        Task {
-            if let list = try? await client.conversations() { conversations = AskHistoryPolicy.sorted(list) }
-            if let list = try? await client.runners() { runners = list }
-            await refreshLabels()
+        // Weak: `engine` is unowned, and this can outlive the AppModel (tests make one per case).
+        Task { [weak self] in
+            if let list = try? await client.conversations() { self?.conversations = AskHistoryPolicy.sorted(list) }
+            if let list = try? await client.runners() { self?.runners = list }
+            await self?.refreshLabels()
         }
     }
 
