@@ -37,7 +37,7 @@ unknown keys.
 | `nodePath` | unset: the app looks for node itself (see [App shell](app-shell.md#finding-the-core)) |
 | `productRoot` | the checkout the core runs from |
 | `extraAllowedTools` | empty |
-| `enabledRunners`, `taskDefaults`, v2 keys | see `contracts.ts` (the app decodes them and does not edit them yet) |
+| `enabledRunners`, `taskDefaults`, v2 keys | see `contracts.ts`; Settings edits them (Sources, Labels, Ask history, Keyboard shortcuts, AI runners, Default model for each task) |
 
 The core keeps jobs in `jobs.json` next to settings (newest first, capped at 300).
 

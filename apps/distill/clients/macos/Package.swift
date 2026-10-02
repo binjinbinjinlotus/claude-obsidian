@@ -15,5 +15,7 @@ let package = Package(
         // AppKit/SwiftUI shell: windows, floating icon, paste/drop intake.
         .executableTarget(name: "Distill", dependencies: ["DistillKit"]),
         .testTarget(name: "DistillKitTests", dependencies: ["DistillKit"]),
+        // UI-free logic of the app target (labels, shortcuts, settings edits).
+        .testTarget(name: "DistillTests", dependencies: ["Distill", "DistillKit"]),
     ]
 )

@@ -7,8 +7,17 @@ import DistillKit
 enum PasteboardIntake {
     static let dragTypes: [NSPasteboard.PasteboardType] = [.fileURL, .png, .tiff, .string]
 
+    /// Set while the Write a note composer is on screen: a paste goes into the
+    /// note (images get Keep / Extract) instead of becoming a queue file. It
+    /// returns false when the composer's window is not key, so the queue
+    /// behavior is unchanged everywhere else.
+    static var composeTarget: ((NSPasteboard) -> Bool)?
+
+    /// Paste (⌘V, Paste into Queue) and drops. Drops pass `allowCompose: false`:
+    /// dropping on the queue panel or the flask always queues the files.
     @discardableResult
-    static func ingest(_ pb: NSPasteboard, engine: AppModel) -> Bool {
+    static func ingest(_ pb: NSPasteboard, engine: AppModel, allowCompose: Bool = true) -> Bool {
+        if allowCompose, let target = composeTarget, target(pb) { return true }
         if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
            !urls.isEmpty {
             engine.enqueue(files: urls)
@@ -55,7 +64,7 @@ class DropTargetView: NSView {
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         onTargetChange?(false)
         guard let engine else { return false }
-        return PasteboardIntake.ingest(sender.draggingPasteboard, engine: engine)
+        return PasteboardIntake.ingest(sender.draggingPasteboard, engine: engine, allowCompose: false)
     }
 }
 

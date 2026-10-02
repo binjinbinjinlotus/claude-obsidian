@@ -1,6 +1,6 @@
 ---
 title: Labels and sources
-status: built (core labels; app UI, Notes screen and Ask filters designed)
+status: built (core labels; Mac Labels screen and Settings → Sources/Labels; Ask filters designed)
 updated: 2026-10-02
 ---
 
@@ -37,8 +37,11 @@ about** (labels). Canvas artboards: "Write a note", "Ask", "Settings", "Notes".
   `dashboard.md`, `wiki/meta/**`, `type: meta`) are not notes and are skipped.
 - The suggestions appear on the queued item in the Queue screen as dashed chips
   (green = existing, peach = new) with accept ✓ / dismiss ×, plus "Accept all".
-  The user can also type any label. (App UI: designed.)
-- Settings → Labels (model, on/off, rename/merge) is designed, not built.
+  The user can also type any label. In the Mac app this is the label step
+  after Add to queue (composer and quick note), not the Queue rows.
+- Settings → Labels (Mac app, built): counts, the app-local "suggest after a
+  note is queued" switch (`suggest: none` when off; no core key), Ask defaults
+  (`askPreferences`) and the `labeling` switches. Rename/merge: designed.
 
 ### Suggestions (`core/src/labels/suggest.ts`)
 

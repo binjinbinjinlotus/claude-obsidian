@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = buildMenu()
         engine.connect()
+        engine.installNotesFeatures() // quick note window, global shortcuts, Labels count (AppModel+Notes.swift)
         floatingIcon = FloatingIconController(engine: engine, onOpen: { [weak self] in self?.showMainWindow() })
         if UserDefaults.standard.object(forKey: "showFloatingIcon") as? Bool ?? true {
             floatingIcon?.show()
