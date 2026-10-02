@@ -8,7 +8,7 @@ import type {
   TransactionPlan,
   TurnRecord,
 } from '../contracts.js';
-import { encodeJSON, isObject, isoDate, normalizeDate, num, readJSON, str, strArray, writeFileAtomic, type JSONObject } from './json.js';
+import { encodeJSON, isObject, isoDate, normalizeDate, num, preserveUnreadable, readJSON, str, strArray, writeFileAtomic, type JSONObject } from './json.js';
 import { DEFAULT_RUNNER_ID } from './settings.js';
 
 export const MAX_STORED_JOBS = 300;
@@ -243,20 +243,32 @@ export class JobStore {
   /** Last-seen raw object per job id, so unknown keys written by other builds survive. */
   private raw = new Map<string, JSONObject>();
 
+  /** Path of the copy kept by the last load, when jobs.json had something this build couldn't read. */
+  preserved?: string;
+
   constructor(readonly file: string) {}
 
   /** Newest first, capped, with interrupted jobs recovered. */
   load(now = new Date()): Job[] {
     const raw = readJSON(this.file);
     this.raw.clear();
-    if (!Array.isArray(raw)) return [];
+    if (!Array.isArray(raw)) {
+      this.preserved = preserveUnreadable(this.file) ?? this.preserved;
+      return [];
+    }
     const jobs: Job[] = [];
+    let undecodable = 0;
     for (const item of raw) {
       const job = decodeJob(item, now);
-      if (!job) continue;
+      if (!job) {
+        undecodable++;
+        continue;
+      }
       if (isObject(item)) this.raw.set(job.id, item);
       jobs.push(recoverInterrupted(job));
     }
+    // A job this build can't decode would be dropped by the next save: keep the file first.
+    if (undecodable > 0) this.preserved = preserveUnreadable(this.file) ?? this.preserved;
     return jobs.slice(0, MAX_STORED_JOBS);
   }
 

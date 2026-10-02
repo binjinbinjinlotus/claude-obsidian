@@ -16,7 +16,7 @@ import {
   type SourceGroup,
   type VaultProfile,
 } from '../contracts.js';
-import { bool, encodeJSON, isObject, num, readJSON, str, strArray, writeFileAtomic, type JSONObject } from './json.js';
+import { bool, encodeJSON, isObject, num, preserveUnreadable, readJSON, str, strArray, writeFileAtomic, type JSONObject } from './json.js';
 
 export const DEFAULT_RUNNER_ID = 'claude-code';
 export const AI_TASKS: AITask[] = ['ingest', 'ask', 'labelSuggest', 'imageText'];
@@ -247,8 +247,12 @@ export class SettingsStore {
 
   constructor(readonly file: string) {}
 
+  /** Path of the copy kept by the last load, when settings.json couldn't be read. */
+  preserved?: string;
+
   load(): Settings {
     const raw = readJSON(this.file);
+    if (!isObject(raw)) this.preserved = preserveUnreadable(this.file) ?? this.preserved;
     this.raw = isObject(raw) ? raw : {};
     return decodeSettings(raw);
   }

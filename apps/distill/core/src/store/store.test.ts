@@ -327,3 +327,69 @@ describe('JobStore', () => {
     assert.deepEqual(jobs[0]!.turns, []);
   });
 });
+
+describe('user data survives builds that cannot read it', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'distill-keep-'));
+  });
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const copies = (base: string) => fs.readdirSync(dir).filter((n) => n.startsWith(`${base}.unreadable-`));
+
+  test('an unparseable settings.json is copied before a save replaces it', () => {
+    const file = path.join(dir, 'settings.json');
+    fs.writeFileSync(file, '{ "vaults": [ broken');
+    const store = new SettingsStore(file);
+    const s = store.load();
+    assert.equal(s.vaults.length, 0);
+    store.save(s);
+    const kept = copies('settings.json');
+    assert.equal(kept.length, 1);
+    assert.equal(fs.readFileSync(path.join(dir, kept[0]), 'utf8'), '{ "vaults": [ broken');
+    assert.equal(store.preserved, path.join(dir, kept[0]));
+    store.load();
+    assert.equal(copies('settings.json').length, 1, 'the same bytes are copied once');
+  });
+
+  test('settings keys from a newer build survive load and save', () => {
+    const file = path.join(dir, 'settings.json');
+    fs.writeFileSync(file, JSON.stringify({ settleSeconds: 120, futureFeature: { on: true } }));
+    const store = new SettingsStore(file);
+    const s = store.load();
+    store.save({ ...s, settleSeconds: 300 });
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.deepEqual(saved.futureFeature, { on: true });
+    assert.equal(saved.settleSeconds, 300);
+    assert.equal(copies('settings.json').length, 0);
+  });
+
+  test('a missing settings.json is not an error and makes no copy', () => {
+    const store = new SettingsStore(path.join(dir, 'settings.json'));
+    store.load();
+    assert.equal(store.preserved, undefined);
+    assert.equal(fs.readdirSync(dir).length, 0);
+  });
+
+  test('jobs.json with a job this build cannot decode is copied before it is dropped', () => {
+    const file = path.join(dir, 'jobs.json');
+    const good = encodeJob(newJob({ id: 'job-1', kind: 'ingest', files: ['a.md'], vaultPath: '/v', model: 'sonnet', now: new Date('2026-10-02T10:00:00Z') }));
+    const original = JSON.stringify([good, { id: 42, nonsense: true }]);
+    fs.writeFileSync(file, original);
+    const store = new JobStore(file);
+    const jobs = store.load();
+    assert.equal(jobs.length, 1);
+    store.save(jobs);
+    const kept = copies('jobs.json');
+    assert.equal(kept.length, 1);
+    assert.equal(fs.readFileSync(path.join(dir, kept[0]), 'utf8'), original);
+  });
+
+  test('an unparseable jobs.json is copied', () => {
+    const file = path.join(dir, 'jobs.json');
+    fs.writeFileSync(file, 'not json');
+    const store = new JobStore(file);
+    assert.deepEqual(store.load(), []);
+    assert.equal(copies('jobs.json').length, 1);
+  });
+});

@@ -24,6 +24,8 @@ apps/distill/clients/macos/scripts/distill.sh <command>
 | "is it running?", "Distill status" | `status` |
 | "test the wrapper" | `test` |
 | "restart the core", "stop the Distill server", after core (TypeScript) changes | `core-stop` (the app or CLI starts the new core on next use) |
+| "back up my Distill data", "list backups" | `backup`, `backups` |
+| "restore my settings / history" | `restore NAME` (stop the app and core first) |
 
 With no argument, run `toggle`. If the request is ambiguous, run `status` first and say what you found.
 
@@ -39,6 +41,8 @@ With no argument, run `toggle`. If the request is ambiguous, run `status` first 
 - The app is a client of the Node core (`apps/distill/core`). Quitting the app leaves the core running; `update` reinstalls the app but not the core, so after core changes run `core-stop` too.
 - `update` runs the app's unit tests first and does not install if they
   fail. Show the failing lines it printed, and fix them only if the user asks.
+- `update` backs up settings, job history and Ask history first, then reports
+  "Your data is intact: …" or a WARNING with how to restore. Quote that line.
 - `update` relaunches the app only if it was running before. Otherwise it says how to start it.
 - After any command, report its output in one or two lines: the app state and job counts.
   Do not paste the build log.

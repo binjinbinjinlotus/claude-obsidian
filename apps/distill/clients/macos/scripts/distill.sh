@@ -8,7 +8,11 @@
 #              The core keeps running: the CLI and agents may be using it.
 #   restart    stop, then start
 #   core-stop  stop the core server (SIGTERM; refuses while a job is running; --force overrides)
-#   update     run tests, rebuild, install to ~/Applications, relaunch if it was running
+#   update     back up your data, run tests, rebuild, install to ~/Applications,
+#              check your data is still there, relaunch if it was running
+#   backup     copy settings, job history and Ask history to <state>/backups/<time>
+#   backups    list the backups (newest first)
+#   restore NAME  put a backup back (app and core must be stopped; backs up the current data first)
 #   status     show the app, the core, and running / awaiting-approval jobs
 #   test       run the DistillKit unit tests
 set -euo pipefail
@@ -120,6 +124,73 @@ do_status() {
   echo "Jobs running: $running · awaiting approval: $awaiting (from $source)"
 }
 
+# ───────────── user data: settings, job history, Ask history ─────────────
+# Updates replace only the app bundle; this data lives in $STATE_DIR and must
+# survive every update. `update` backs it up first and checks it afterwards.
+BACKUPS="$STATE_DIR/backups"
+KEEP_BACKUPS=10
+
+# Prints one line: "<settings 0|1> <jobs> <chats>".
+data_summary() {
+  local settings=0 jobs=0 chats
+  [[ -f "$STATE_DIR/settings.json" ]] && settings=1
+  if [[ -f "$JOBS" ]]; then
+    jobs=$(python3 -c 'import json,sys
+try: print(len(json.load(open(sys.argv[1]))))
+except Exception: print(-1)' "$JOBS")
+  fi
+  chats=$(print -l "$STATE_DIR"/ask/*.json(N) | grep -c . || true)
+  echo "$settings $jobs $chats"
+}
+
+describe_data() {
+  local settings jobs chats
+  read settings jobs chats <<< "$1"
+  echo "settings $( (( settings )) && echo kept || echo none) · $jobs jobs · $chats Ask chats"
+}
+
+do_backup() {
+  local name dest
+  name="$(date +%Y%m%d-%H%M%S)${1:+-$1}"
+  dest="$BACKUPS/$name"
+  local i=2
+  while [[ -e "$dest" ]]; do dest="$BACKUPS/$name-$(printf %02d $i)"; (( i++ )); done
+  mkdir -p "$dest/ask"
+  [[ -f "$STATE_DIR/settings.json" ]] && cp -p "$STATE_DIR/settings.json" "$dest/"
+  [[ -f "$JOBS" ]] && cp -p "$JOBS" "$dest/jobs.json"
+  for f in "$STATE_DIR"/*.unreadable-*(N); do cp -p "$f" "$dest/"; done
+  for f in "$STATE_DIR"/ask/*.json(N); do cp -p "$f" "$dest/ask/"; done
+  chmod 700 "$BACKUPS" "$dest"
+  local old=( "$BACKUPS"/*(N/On[$((KEEP_BACKUPS + 1)),-1]) )
+  (( ${#old} )) && rm -rf -- "${old[@]}"
+  echo "Backed up your data ($(describe_data "$(data_summary)")) to $dest"
+}
+
+do_backups() {
+  local dirs=( "$BACKUPS"/*(N/On) )
+  if (( ! ${#dirs} )); then echo "No backups in $BACKUPS"; return; fi
+  for d in "${dirs[@]}"; do
+    local n=$(print -l "$d"/ask/*.json(N) | grep -c . || true)
+    echo "${d:t}  ($([[ -f $d/settings.json ]] && echo settings || echo 'no settings'), $n Ask chats)"
+  done
+}
+
+do_restore() {
+  local name="${1:-}" src
+  [[ -n "$name" ]] || { echo "Usage: $SCRIPT restore NAME (see: $SCRIPT backups)"; exit 1; }
+  src="$BACKUPS/$name"
+  [[ -d "$src" ]] || { echo "No backup named $name in $BACKUPS"; exit 1; }
+  if is_running; then echo "Quit the app first: $SCRIPT stop"; exit 1; fi
+  read live pid port version running awaiting source <<< "$(core_info)"
+  if (( live )); then echo "Stop the core first: $SCRIPT core-stop"; exit 1; fi
+  do_backup before-restore
+  [[ -f "$src/settings.json" ]] && cp -p "$src/settings.json" "$STATE_DIR/settings.json"
+  [[ -f "$src/jobs.json" ]] && cp -p "$src/jobs.json" "$JOBS"
+  mkdir -p "$STATE_DIR/ask"
+  for f in "$src"/ask/*.json(N); do cp -p "$f" "$STATE_DIR/ask/"; done
+  echo "Restored $name ($(describe_data "$(data_summary)")). Start with: $SCRIPT start"
+}
+
 case "$cmd" in
   toggle)  if is_running; then do_stop; else do_start; fi ;;
   start)   do_start ;;
@@ -135,10 +206,24 @@ case "$cmd" in
       exit 1
     fi
     grep -E "Executed .* tests" /tmp/distill-test.log | tail -1
+    before="$(data_summary)"
+    do_backup update
     do_stop
     "$APP_DIR/scripts/build-app.sh" --install
+    after="$(data_summary)"
+    read b_settings b_jobs b_chats <<< "$before"
+    read a_settings a_jobs a_chats <<< "$after"
+    if (( a_settings < b_settings || a_jobs < b_jobs || a_chats < b_chats )); then
+      echo "WARNING: data changed during the update: before $(describe_data "$before"), now $(describe_data "$after")."
+      echo "Your backup: $SCRIPT backups, then $SCRIPT restore NAME"
+    else
+      echo "Your data is intact: $(describe_data "$after")"
+    fi
     if (( was_running )); then do_start; else echo "Not relaunched (was stopped). Run: $SCRIPT start"; fi
     ;;
+  backup)  do_backup ;;
+  backups) do_backups ;;
+  restore) do_restore "${2:-}" ;;
   status)  do_status ;;
   test)    swift test --package-path "$APP_DIR" ;;
   *)

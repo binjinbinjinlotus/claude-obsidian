@@ -44,6 +44,33 @@ export function readJSON(file: string): unknown {
   }
 }
 
+/**
+ * Keep a byte-for-byte copy of a state file this build can't fully read
+ * (`<file>.unreadable-<stamp>`), before anything saves over it. User data must
+ * survive every update: a newer or damaged file is set aside, never lost.
+ * Returns the copy's path, or undefined when the file is missing or was already copied.
+ */
+export function preserveUnreadable(file: string, now = new Date()): string | undefined {
+  let bytes: Buffer;
+  try {
+    bytes = fs.readFileSync(file);
+  } catch {
+    return undefined;
+  }
+  const dir = path.dirname(file);
+  const base = path.basename(file);
+  try {
+    for (const name of fs.readdirSync(dir)) {
+      if (name.startsWith(`${base}.unreadable-`) && fs.readFileSync(path.join(dir, name)).equals(bytes)) return undefined;
+    }
+  } catch {
+    // fall through and write a copy
+  }
+  const copy = path.join(dir, `${base}.unreadable-${isoDate(now).replace(/[:]/g, '')}`);
+  fs.writeFileSync(copy, bytes, { mode: 0o600 });
+  return copy;
+}
+
 /** Recursively sort object keys (Swift writes `.sortedKeys`). */
 function sortKeys(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortKeys);

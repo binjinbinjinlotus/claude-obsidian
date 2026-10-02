@@ -57,6 +57,23 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 - `clients/macos/Tests/`: DistillKitTests and DistillTests.
 - `clients/macos/scripts/`: `build-app.sh`, `distill.sh`, `make-icon.sh`.
 
+## User data is permanent
+
+Settings, job history and Ask history live in `~/Library/Application Support/Distill`
+(`settings.json`, `jobs.json`, `ask/*.json`; API keys in the Keychain). The user keeps
+updating the app, so no build, update or schema change may lose them.
+
+- Updates replace only the app bundle. `distill.sh update` backs the data up to
+  `<state>/backups/<time>` first (newest 10 kept) and checks it afterwards;
+  `distill.sh backups` / `restore NAME` put a backup back.
+- Schema changes are additive. Decode leniently: a missing or wrong-typed field
+  takes its default; unknown keys survive a save (`encodeSettings`, `encodeJob`).
+  Never rename or repurpose a stored field; add a new one and read the old one.
+- A file this build can't read is set aside first (`preserveUnreadable` →
+  `<file>.unreadable-<time>`), never overwritten silently. Ask chat files that
+  can't be read are skipped, never deleted.
+- Tests and agents use a temp `DISTILL_STATE_DIR`; never the real state dir.
+
 ## Rules
 
 - Keep the approval gate intact: phase-1 tools never include
