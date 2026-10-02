@@ -2,7 +2,20 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AITask, ModelSelection, Settings, VaultProfile } from '../contracts.js';
+import {
+  DEFAULT_ASK_PREFERENCES,
+  DEFAULT_LABELING_PREFERENCES,
+  DEFAULT_SOURCE_TAXONOMY,
+  type AITask,
+  type AskPreferences,
+  type LabelingPreferences,
+  type LabelMatch,
+  type ModelSelection,
+  type Settings,
+  type SourceDefinition,
+  type SourceGroup,
+  type VaultProfile,
+} from '../contracts.js';
 import { bool, encodeJSON, isObject, num, readJSON, str, strArray, writeFileAtomic, type JSONObject } from './json.js';
 
 export const DEFAULT_RUNNER_ID = 'claude-code';
@@ -23,6 +36,11 @@ const KNOWN_KEYS = [
   'enabledRunners',
   'taskDefaults',
   'nodePath',
+  'sourceTaxonomy',
+  'askPreferences',
+  'labeling',
+  'shortcuts',
+  'runnerOptions',
 ] as const;
 
 /**
@@ -44,7 +62,7 @@ export function defaultSettings(): Settings {
   return {
     vaults: [],
     batchIntervalMinutes: 10,
-    settleSeconds: 10,
+    settleSeconds: 600,
     model: 'sonnet',
     claudePath: path.join(os.homedir(), '.local', 'bin', 'claude'),
     pythonPath: '/usr/bin/python3',
@@ -70,6 +88,74 @@ function decodeSelection(v: unknown): ModelSelection | undefined {
   if (runnerID === undefined || model === undefined) return undefined;
   const effort = str(v.effort);
   return effort === undefined ? { runnerID, model } : { runnerID, model, effort };
+}
+
+function decodeSource(v: unknown): SourceDefinition | undefined {
+  if (!isObject(v)) return undefined;
+  const id = str(v.id);
+  const label = str(v.label);
+  return id !== undefined && label !== undefined ? { id, label } : undefined;
+}
+
+function decodeSourceGroup(v: unknown): SourceGroup | undefined {
+  if (!isObject(v)) return undefined;
+  const id = str(v.id);
+  const label = str(v.label);
+  if (id === undefined || label === undefined) return undefined;
+  const sources = Array.isArray(v.sources)
+    ? v.sources.map(decodeSource).filter((x): x is SourceDefinition => x !== undefined)
+    : [];
+  return { id, label, sources };
+}
+
+function decodeAskPreferences(v: unknown): Partial<AskPreferences> | undefined {
+  if (!isObject(v)) return undefined;
+  const out: Partial<AskPreferences> = {};
+  if (v.labelMatch === 'any' || v.labelMatch === 'all') out.labelMatch = v.labelMatch as LabelMatch;
+  const includeUnconfirmed = bool(v.includeUnconfirmed);
+  if (includeUnconfirmed !== undefined) out.includeUnconfirmed = includeUnconfirmed;
+  const keepHistory = bool(v.keepHistory);
+  if (keepHistory !== undefined) out.keepHistory = keepHistory;
+  const historyDays = num(v.historyDays);
+  if (historyDays !== undefined) out.historyDays = Math.max(1, Math.trunc(historyDays));
+  return out;
+}
+
+function decodeLabeling(v: unknown): Partial<LabelingPreferences> | undefined {
+  if (!isObject(v)) return undefined;
+  const out: Partial<LabelingPreferences> = {};
+  const autoLabelQueueFolder = bool(v.autoLabelQueueFolder);
+  if (autoLabelQueueFolder !== undefined) out.autoLabelQueueFolder = autoLabelQueueFolder;
+  const cliFallbackToAI = bool(v.cliFallbackToAI);
+  if (cliFallbackToAI !== undefined) out.cliFallbackToAI = cliFallbackToAI;
+  return out;
+}
+
+function decodeShortcuts(v: unknown): NonNullable<Settings['shortcuts']> | undefined {
+  if (!isObject(v)) return undefined;
+  const out: NonNullable<Settings['shortcuts']> = {};
+  for (const key of ['ask', 'addNote'] as const) {
+    if (v[key] === null) out[key] = null;
+    else {
+      const value = str(v[key]);
+      if (value !== undefined) out[key] = value;
+    }
+  }
+  return out;
+}
+
+function decodeRunnerOptions(v: unknown): Record<string, Record<string, string>> | undefined {
+  if (!isObject(v)) return undefined;
+  const out: Record<string, Record<string, string>> = {};
+  for (const [runnerID, options] of Object.entries(v)) {
+    if (!isObject(options)) continue;
+    const kept: Record<string, string> = {};
+    for (const [name, value] of Object.entries(options)) {
+      if (typeof value === 'string') kept[name] = value;
+    }
+    out[runnerID] = kept;
+  }
+  return out;
 }
 
 /** Tolerant decode: missing or mistyped keys fall back to defaults (Swift `init(from:)`). */
@@ -101,6 +187,18 @@ export function decodeSettings(raw: unknown): Settings {
   }
   const nodePath = str(raw.nodePath);
   if (nodePath !== undefined) s.nodePath = nodePath;
+  // v2: absent (or mistyped) stays absent, so encode does not invent keys.
+  if (Array.isArray(raw.sourceTaxonomy)) {
+    s.sourceTaxonomy = raw.sourceTaxonomy.map(decodeSourceGroup).filter((g): g is SourceGroup => g !== undefined);
+  }
+  const askPreferences = decodeAskPreferences(raw.askPreferences);
+  if (askPreferences) s.askPreferences = askPreferences;
+  const labeling = decodeLabeling(raw.labeling);
+  if (labeling) s.labeling = labeling;
+  const shortcuts = decodeShortcuts(raw.shortcuts);
+  if (shortcuts) s.shortcuts = shortcuts;
+  const runnerOptions = decodeRunnerOptions(raw.runnerOptions);
+  if (runnerOptions) s.runnerOptions = runnerOptions;
   return s;
 }
 
@@ -126,6 +224,21 @@ export function encodeSettings(s: Settings, raw: JSONObject = {}): JSONObject {
   }
   out.taskDefaults = td;
   if (s.nodePath != null) out.nodePath = s.nodePath;
+  if (s.sourceTaxonomy != null) {
+    out.sourceTaxonomy = s.sourceTaxonomy.map((g) => ({
+      id: g.id,
+      label: g.label,
+      sources: g.sources.map((src) => ({ id: src.id, label: src.label })),
+    }));
+  }
+  if (s.askPreferences != null) out.askPreferences = { ...s.askPreferences };
+  if (s.labeling != null) out.labeling = { ...s.labeling };
+  if (s.shortcuts != null) out.shortcuts = { ...s.shortcuts };
+  if (s.runnerOptions != null) {
+    const ro: JSONObject = {};
+    for (const [id, options] of Object.entries(s.runnerOptions)) ro[id] = { ...options };
+    out.runnerOptions = ro;
+  }
   return out;
 }
 
@@ -162,6 +275,19 @@ export function defaultSelection(s: Settings, task: AITask): ModelSelection {
 
 export function selectionFor(s: Settings, task: AITask): ModelSelection {
   return s.taskDefaults[task] ?? defaultSelection(s, task);
+}
+
+/** v2 preferences with the contract defaults filled in (settings.json keeps only what the user set). */
+export function labelingPreferences(s: Settings): LabelingPreferences {
+  return { ...DEFAULT_LABELING_PREFERENCES, ...(s.labeling ?? {}) };
+}
+
+export function askPreferences(s: Settings): AskPreferences {
+  return { ...DEFAULT_ASK_PREFERENCES, ...(s.askPreferences ?? {}) };
+}
+
+export function sourceTaxonomy(s: Settings): SourceGroup[] {
+  return s.sourceTaxonomy ?? DEFAULT_SOURCE_TAXONOMY;
 }
 
 export function activeVault(s: Settings): VaultProfile | undefined {

@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AddNoteRequest, AddNoteResult, NoteImage, VaultProfile } from '../contracts.js';
-import { encodeJSON } from '../store/json.js';
+import type { AddNoteRequest, AddNoteResult, LabelSuggestion, NoteImage, VaultProfile } from '../contracts.js';
+import { encodeJSON, isObject, readJSON, str, strArray, writeFileAtomic } from '../store/json.js';
+import { yamlScalar } from '../labels/frontmatter.js';
 import { CoreError } from './errors.js';
 import { NOTE_MANIFEST_SUFFIX } from './job-kinds.js';
 import { inboxDir } from './queue.js';
@@ -12,6 +13,68 @@ export interface NoteManifest {
   source?: string;
   sourceRef?: string;
   images: { file: string; mode: NoteImage['mode'] }[];
+  /** Handle for labelNote(); absent in manifests written before labels existed. */
+  requestID?: string;
+  /** Who added the note (decides the fallback when nothing is confirmed). Absent = app. */
+  origin?: 'app' | 'cli';
+  /** Labels the user confirmed (present, even empty, = confirmed). */
+  labels?: string[];
+  /** AI suggestions, once known. Never applied unless the origin's fallback says so. */
+  suggestedLabels?: LabelSuggestion[];
+  suggestError?: string;
+}
+
+/** Label state recorded at write time. */
+export interface NoteLabelState {
+  requestID: string;
+  origin: 'app' | 'cli';
+  labels?: string[];
+  suggestedLabels?: LabelSuggestion[];
+  suggestError?: string;
+}
+
+export function decodeManifest(raw: unknown): NoteManifest | undefined {
+  if (!isObject(raw)) return undefined;
+  const title = str(raw.title);
+  if (title === undefined) return undefined;
+  const m: NoteManifest = {
+    title,
+    images: Array.isArray(raw.images)
+      ? raw.images.flatMap((i) =>
+          isObject(i) && typeof i.file === 'string' ? [{ file: i.file, mode: i.mode === 'extract' ? 'extract' : 'keep' } as const] : [],
+        )
+      : [],
+  };
+  const source = str(raw.source);
+  if (source !== undefined) m.source = source;
+  const sourceRef = str(raw.sourceRef);
+  if (sourceRef !== undefined) m.sourceRef = sourceRef;
+  const requestID = str(raw.requestID);
+  if (requestID !== undefined) m.requestID = requestID;
+  if (raw.origin === 'app' || raw.origin === 'cli') m.origin = raw.origin;
+  const labels = strArray(raw.labels);
+  if (labels) m.labels = labels;
+  if (Array.isArray(raw.suggestedLabels)) {
+    m.suggestedLabels = raw.suggestedLabels.flatMap((l) =>
+      isObject(l) && typeof l.name === 'string' ? [{ name: l.name, existing: l.existing === true }] : [],
+    );
+  }
+  const suggestError = str(raw.suggestError);
+  if (suggestError !== undefined) m.suggestError = suggestError;
+  return m;
+}
+
+export function readManifest(file: string): NoteManifest | undefined {
+  return decodeManifest(readJSON(file));
+}
+
+export function writeManifest(file: string, manifest: NoteManifest): void {
+  writeFileAtomic(file, encodeJSON(manifest));
+}
+
+/** `<stem>.distill.json` → `<stem>.md` */
+export function noteFileFor(manifestPath: string): string {
+  return manifestPath.slice(0, -NOTE_MANIFEST_SUFFIX.length) + '.md';
 }
 
 const MAX_STEM = 120;
@@ -46,7 +109,9 @@ export function noteMarkdown(req: AddNoteRequest, now: Date): string {
   const lines = ['---', `title: ${yamlString(req.title.trim())}`];
   if (req.source) lines.push(`source_type: ${yamlString(req.source)}`);
   if (req.sourceRef) lines.push(`source_ref: ${yamlString(req.sourceRef)}`);
-  lines.push(`created: ${localDate(now)}`, '---');
+  lines.push(`created: ${localDate(now)}`);
+  if (req.labels && req.labels.length > 0) lines.push('tags:', ...req.labels.map((l) => `  - ${yamlScalar(l)}`));
+  lines.push('---');
   const body = req.text.replace(/\s+$/, '');
   return lines.join('\n') + '\n' + (body ? '\n' + body + '\n' : '');
 }
@@ -57,9 +122,10 @@ export function noteMarkdown(req: AddNoteRequest, now: Date): string {
  * the mover never renames one file of the set and breaks the manifest's links.
  * Synchronous on purpose: a batch can never claim half a note.
  */
-export function writeNote(req: AddNoteRequest, vault: VaultProfile, now: Date): AddNoteResult {
-  const title = req.title.trim();
+export function validateNote(req: AddNoteRequest): { title: string; images: NoteImage[] } {
+  const title = (req.title ?? '').trim();
   if (!title) throw new CoreError('invalid_request', 'A note needs a title.');
+  if (typeof req.text !== 'string') throw new CoreError('invalid_request', 'A note needs text (may be empty with images).');
   const images = (req.images ?? []).map((img) => ({ path: path.resolve(img.path), mode: img.mode === 'extract' ? 'extract' : 'keep' }) as NoteImage);
   if (!req.text.trim() && images.length === 0) throw new CoreError('invalid_request', 'A note needs text or at least one image.');
   for (const img of images) {
@@ -71,6 +137,11 @@ export function writeNote(req: AddNoteRequest, vault: VaultProfile, now: Date): 
     }
     if (!st.isFile()) throw new CoreError('invalid_request', `Image is not a file: ${img.path}`);
   }
+  return { title, images };
+}
+
+export function writeNote(req: AddNoteRequest, vault: VaultProfile, now: Date, labels?: NoteLabelState): AddNoteResult {
+  const { title, images } = validateNote(req);
 
   const queue = path.resolve(vault.queueDirectory);
   const inbox = inboxDir(vault);
@@ -103,12 +174,21 @@ export function writeNote(req: AddNoteRequest, vault: VaultProfile, now: Date): 
   };
   if (req.source) manifest.source = req.source;
   if (req.sourceRef) manifest.sourceRef = req.sourceRef;
+  if (labels) {
+    manifest.requestID = labels.requestID;
+    manifest.origin = labels.origin;
+    if (labels.labels) manifest.labels = labels.labels;
+    if (labels.suggestedLabels) manifest.suggestedLabels = labels.suggestedLabels;
+    if (labels.suggestError) manifest.suggestError = labels.suggestError;
+  }
   const manifestPath = path.join(queue, names.manifest);
   fs.writeFileSync(manifestPath, encodeJSON(manifest), { flag: 'wx' });
   queued.push(manifestPath);
 
   const notePath = path.join(queue, names.note);
-  fs.writeFileSync(notePath, noteMarkdown({ ...req, title }, now), { flag: 'wx' });
+  const confirmed = labels?.labels;
+  const { labels: _ignored, ...rest } = req;
+  fs.writeFileSync(notePath, noteMarkdown({ ...rest, title, ...(confirmed ? { labels: confirmed } : {}) }, now), { flag: 'wx' });
   queued.unshift(notePath);
-  return { queued, notePath, requestID: '' };
+  return { queued, notePath, requestID: labels?.requestID ?? '' };
 }

@@ -29,6 +29,17 @@ reject, cost tracking, Open Session in Terminal, and recovery.
   `claude-obsidian.transaction.v1` bundle in the job directory, inspects it,
   and stops at `needs_approval`.
 
+- **Labels** (`labels`, task `labelSuggest`, TS core only): created by
+  `confirmLabels` / `suggestLabelsForPages`. No agent turn: the core writes the
+  bundle, inspects it and, on approval, applies it itself. `sessionID` is an
+  unused UUID; `model` is `none` for confirm jobs.
+
+In the TS core (`core/src/engine/job-kinds.ts`) a kind may set
+`appliesInCore: true`: approval runs the exact apply in the core instead of
+resuming a session, and reply/allow are refused. The same apply path is used
+for any job whose runner lacks `toolPermissions`
+([Approval and review](approval-and-review.md)).
+
 ## Rules for new kinds
 
 - Start from `ctx.planningTools`; never add `transaction apply` to phase 1.
