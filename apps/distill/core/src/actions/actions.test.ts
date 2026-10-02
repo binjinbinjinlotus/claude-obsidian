@@ -964,3 +964,13 @@ describe('Jira and Confluence handlers (fake HTTP)', () => {
     assert.equal(r.error!.field, 'space');
   });
 });
+
+describe('ask source details', () => {
+  test('fromGap matches a found item to the answer gap it restates', async () => {
+    const { fromGap } = await import('./index.js');
+    const gaps = ['Your notes do not say which water temperature the shop uses for gyokuro.'];
+    assert.equal(fromGap({ title: 'Ask the shop for the gyokuro water temperature' }, gaps), true);
+    assert.equal(fromGap({ title: 'Book the tasting room for Saturday' }, gaps), false);
+    assert.equal(fromGap({ title: 'Anything' }, undefined), false);
+  });
+});

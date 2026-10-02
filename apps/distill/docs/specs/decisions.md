@@ -17,6 +17,11 @@ supersede it with a new entry.
 
 ## 2026-10-02
 
+- **Action sources say more:** an item from Ask records its turn
+  (`turnIndex`) and whether it restates the answer's gap (`gap`; the Ask Gap
+  callout then hides). A manual item records who added it (`by: 'agent'` for
+  the CLI/API, absent = the user), so the "added by" filter can tell them
+  apart. → [actions](actions.md)
 - **Fresh quick note has no source** (shows "+ Source"), even though Write a
   note remembers the last source. Clicking the flask while its green ring
   shows (a quick ask still answering) opens that chat on the Ask screen.

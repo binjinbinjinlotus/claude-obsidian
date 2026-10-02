@@ -655,7 +655,7 @@ async function actions(args: string[], io: CliIO, api: ApiFactory): Promise<numb
     const due = str(values.due);
     if (due !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(due)) throw usageError('--due must be a date like 2026-10-05');
     const out = new Output(io, values.json === true);
-    const body: Record<string, unknown> = { type: str(values.type) ?? 'todo', title: title.trim() };
+    const body: Record<string, unknown> = { type: str(values.type) ?? 'todo', title: title.trim(), source: { kind: 'manual', by: 'agent' } };
     if (str(values.body) !== undefined) body.body = str(values.body);
     if (str(values.why) !== undefined) body.why = str(values.why);
     if (due) body.fields = { due };

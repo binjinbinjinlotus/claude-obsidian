@@ -418,7 +418,7 @@ describe('distill CLI', () => {
       assert.equal(r.code, 0, r.stderr);
       const item = JSON.parse(r.stdout);
       assert.equal(item.title, 'Order tasting cups');
-      assert.deepEqual(lastCall('createAction')?.args[0], { type: 'todo', title: 'Order tasting cups', why: 'Club on Saturday', fields: { due: '2026-10-09' } });
+      assert.deepEqual(lastCall('createAction')?.args[0], { type: 'todo', title: 'Order tasting cups', source: { kind: 'manual', by: 'agent' }, why: 'Club on Saturday', fields: { due: '2026-10-09' } });
       const human = await cli(['actions', 'add', 'Ping Mei', '--type', 'slack']);
       assert.match(human.stdout, /^Added slack act-\d+: Ping Mei\n/);
       assert.equal((await cli(['actions', 'add'])).code, 2);

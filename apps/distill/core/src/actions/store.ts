@@ -48,10 +48,12 @@ function decodeSource(v: unknown): ActionSource {
       }
       const cited = strArray(v.citedPaths);
       if (cited) s.citedPaths = cited;
+      if (typeof v.turnIndex === 'number' && Number.isInteger(v.turnIndex) && v.turnIndex >= 0) s.turnIndex = v.turnIndex;
+      if (v.gap === true) s.gap = true;
       return s;
     }
   }
-  return { kind: 'manual' };
+  return v.by === 'agent' ? { kind: 'manual', by: 'agent' } : { kind: 'manual' };
 }
 
 function decodeEvent(v: unknown, fallback: Date): ActionEvent | undefined {

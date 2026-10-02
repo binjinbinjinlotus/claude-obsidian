@@ -315,7 +315,10 @@ function parseActionSource(v: unknown): ActionSource | undefined {
   if (v === undefined || v === null) return undefined;
   const o = asObject(v, false);
   const kind = optEnum(o, 'kind', ['note', 'ask', 'manual'] as const);
-  if (kind === 'manual' || kind === undefined) return { kind: 'manual' };
+  if (kind === 'manual' || kind === undefined) {
+    const by = optEnum(o, 'by', ['user', 'agent'] as const);
+    return by === 'agent' ? { kind: 'manual', by: 'agent' } : { kind: 'manual' };
+  }
   if (kind === 'ask') {
     const src: ActionSource = { kind: 'ask', conversationID: reqString(o, 'conversationID') };
     const question = optString(o, 'question');
@@ -324,6 +327,8 @@ function parseActionSource(v: unknown): ActionSource | undefined {
     if (question) src.question = question;
     if (quote) src.quote = quote;
     if (citedPaths) src.citedPaths = citedPaths;
+    if (typeof o.turnIndex === 'number' && Number.isInteger(o.turnIndex) && o.turnIndex >= 0) src.turnIndex = o.turnIndex;
+    if (o.gap === true) src.gap = true;
     return src;
   }
   const src: ActionSource = { kind: 'note' };

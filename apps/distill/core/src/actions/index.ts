@@ -769,7 +769,10 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         scratchRoot,
       });
       const { added, existing } = addFound(parseFound(out.value), {
-        source: (f) => ({ kind: 'ask', conversationID, question: turn.request.question, quote: f.quote || null, citedPaths: cited }),
+        source: (f) => ({
+          kind: 'ask', conversationID, question: turn.request.question, quote: f.quote || null, citedPaths: cited,
+          turnIndex: index, gap: fromGap(f, turn.response?.gaps),
+        }),
         vaultPath: conv.vaultPath,
         model: out.model,
         todos: types.todos,
@@ -1185,4 +1188,19 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     },
   };
   return service;
+}
+
+/** True when a found item restates one of the answer's gaps (so clients drop that Gap callout). */
+export function fromGap(f: { title?: string | null; quote?: string | null }, gaps: unknown): boolean {
+  if (!Array.isArray(gaps)) return false;
+  const norm = (t: unknown) => (typeof t === 'string' ? t.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim() : '');
+  const words = (t: string) => new Set(t.split(' ').filter((w) => w.length > 3));
+  const mine = words(`${norm(f.title)} ${norm(f.quote)}`);
+  return gaps.some((g) => {
+    const gw = words(norm(g));
+    if (gw.size === 0) return false;
+    let shared = 0;
+    for (const w of gw) if (mine.has(w)) shared++;
+    return shared / gw.size >= 0.5;
+  });
 }
