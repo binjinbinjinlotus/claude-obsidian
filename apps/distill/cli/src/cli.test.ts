@@ -162,7 +162,7 @@ describe('distill CLI', () => {
       ]);
       assert.equal(r.code, 0, r.stderr);
       const res = JSON.parse(r.stdout);
-      assert.deepEqual(Object.keys(res).sort(), ['notePath', 'queued']);
+      assert.deepEqual(Object.keys(res).sort(), ['notePath', 'queued', 'requestID']);
       assert.deepEqual(lastCall('addNote')?.args[0], {
         title: 'Gyokuro at 60 °C',
         text: 'Steep 2 min.',
