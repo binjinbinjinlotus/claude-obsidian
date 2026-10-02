@@ -348,7 +348,7 @@ extension AppModel {
     // MARK: Obsidian
 
     /// `obsidian://open?vault=<folder name>&file=<vault-relative path>`.
-    static func obsidianURL(vaultPath: String, page: String) -> URL? {
+    nonisolated static func obsidianURL(vaultPath: String, page: String) -> URL? {
         var c = URLComponents()
         c.scheme = "obsidian"
         c.host = "open"
