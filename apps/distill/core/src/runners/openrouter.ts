@@ -33,7 +33,8 @@ export function chatCompletionsBody(request: RunRequest, schema: PreparedSchema 
       content: [{ type: 'text', text: request.prompt }, ...images.map((img) => ({ type: 'image_url', image_url: { url: img.dataURL } }))],
     });
   }
-  const body: Record<string, unknown> = { model: request.selection.model, messages };
+  // usage.include asks OpenRouter to report the charge (usage.cost).
+  const body: Record<string, unknown> = { model: request.selection.model, messages, usage: { include: true } };
   if (schema) body.response_format = { type: 'json_schema', json_schema: { name: 'output', strict: schema.strict, schema: schema.wire } };
   return body;
 }

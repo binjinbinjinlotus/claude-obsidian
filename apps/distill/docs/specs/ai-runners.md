@@ -15,7 +15,7 @@ Status:
 | Runner (`id`) | Kind | Status | Verified how |
 | --- | --- | --- | --- |
 | Claude Code (`claude-code`) | agent | **built** | argv tests and real runs (see [Claude runner](claude-runner.md)) |
-| Codex (`codex`) | agent | **built**, partly verified | flags from `codex exec --help` / `codex exec resume --help` (codex-cli 0.155.0-alpha); one real `codex exec` accepted the full argv and emitted `thread.started` / `turn.started` / `error` / `turn.failed` events, but the login had expired, so no model turn ran. Schema acceptance and sandbox confinement at runtime are **unverified** |
+| Codex (`codex`) | agent | **built**, partly verified | Flags come from `codex exec --help` and `codex exec resume --help` (codex-cli 0.155.0-alpha). Real `codex exec` and `codex exec resume` calls accepted the full argv. The start call emitted `thread.started`, `turn.started`, `error` and `turn.failed`; the resume call reached the auth step. `--strict-config` accepted every `-c` key and rejected a bogus one. The login had expired, so no model turn ran: schema acceptance and runtime sandbox confinement are **unverified** |
 | OpenAI API (`openai`) | modelAPI | **built**, unverified live | request/response tests with a fake fetch; no API key on the dev machine |
 | OpenRouter (`openrouter`) | modelAPI | **built**, unverified live | same as OpenAI |
 | Vercel AI SDK (`ai-sdk`) | modelAPI | **built**, unverified live | the real bridge runs in tests against stub `ai` / `@ai-sdk/openai` modules |
@@ -42,13 +42,17 @@ Every runner except Claude Code is off until its id is in
 - A task only runs on a runner whose capabilities cover it
   (`runner.supports(task)`); pickers only list such runners
   (`Runners.candidates(for:settings:)`). The engine re-checks before every turn.
-- `ingest` needs `agentTools + toolPermissions + sessionResume +
-  structuredOutput`: the approval gate depends on enforceable allow-lists and on
-  resuming the same session. Plain model APIs cannot run it; they are meant for
-  `labelSuggest` and `imageText`, and for Ask only once the app supplies the
-  page text itself.
-- A runner that cannot enforce a permission rule it is given must refuse the
-  turn rather than ignore the rule.
+- `ingest` needs `agentTools + sessionResume + structuredOutput` plus either
+  `toolPermissions` (enforceable allow-lists, Claude Code) or
+  `sandboxedWrites` (write confinement, Codex; see the gate below). Plain
+  model APIs cannot run it; they are meant for `labelSuggest` and `imageText`,
+  and for Ask only once the app supplies the page text itself.
+- A `toolPermissions` runner that cannot enforce a permission rule it is given
+  must refuse the turn rather than ignore the rule. A `sandboxedWrites` runner
+  is the exception: directory-wide `Edit(//abs/**)` rules become its writable
+  folders, file-level Edit grants are dropped (stricter), and command rules
+  (`Bash(...)`) are superseded by write confinement. The core, never the agent,
+  runs `transaction apply`.
 - Each job stores its `runnerID`, `model` and `effort`, so resumes use the same
   backend even if defaults change later. Jobs saved before runners existed have
   no `runnerID` and are treated as Claude Code.
@@ -92,9 +96,11 @@ Invocation (flags verified in `--help` output of codex-cli 0.155.0-alpha):
   `sandbox_workspace_write.writable_roots=[…]`, `…network_access=false`,
   `…exclude_slash_tmp=true`, `…exclude_tmpdir_env_var=true`, and
   `model_reasoning_effort` when an effort is chosen. The CLI accepted all of
-  them in a real run. Whether they confine writes at runtime is **unverified**:
-  `codex sandbox` in this version needs a permission profile, so it could not
-  be tested without a model turn.
+  them in a real run, and `--strict-config` (which rejects unknown override
+  keys) accepted them all, so they are recognized config fields. Whether they
+  confine writes at runtime is **unverified**: `codex sandbox` in this version
+  needs a permission profile, so it could not be tested without a model turn.
+  This matters most on resume, where the `-c` keys are the only confinement.
 - `--ignore-user-config` / `--ignore-rules` keep the user's own
   `config.toml` (MCP servers, model, approvals) and exec-policy rules out of the
   run, mirroring Claude's `--setting-sources ''`. Auth still comes from
@@ -106,8 +112,9 @@ Invocation (flags verified in `--help` output of codex-cli 0.155.0-alpha):
   (the job directory for ingest). File-level Edit grants are skipped, which is
   stricter. With no such rule the sandbox is `read-only`. The process cwd (the
   Codex workspace) is the job directory under `<vault>/.vault-meta/worker/`,
-  never the vault, so start and resume use the same workspace. Reading is not
-  restricted: the vault and product root stay readable.
+  never the vault, so start and resume use the same workspace. Reading is
+  expected to stay unrestricted (vault and product root readable): that is
+  workspace-write's documented default, **unverified** on this alpha.
 - Output: JSONL events. `thread.started.thread_id` becomes the session id (the
   engine stores it; Codex cannot take an app-chosen id). The last
   `item.completed` `agent_message` is the result text, parsed as JSON when an
@@ -118,8 +125,9 @@ Invocation (flags verified in `--help` output of codex-cli 0.155.0-alpha):
   (every property required; optional ones nullable; nulls stripped after
   parsing), because OpenAI structured output rejects optional properties.
   Whether Codex needs that rewrite is unverified.
-- Effort levels `minimal|low|medium|high|xhigh`. `model_reasoning_effort` is a
-  real config key, but which levels a model accepts is unverified.
+- Effort levels `low|medium|high|xhigh`: the set every model in
+  `codex debug models` accepts (some also take `max`/`ultra`). Models come from
+  the same catalog (`gpt-5.5` default).
 - `resumeCommand`: `codex resume <id> -m <model>`.
 
 ## Model API runners
@@ -143,7 +151,8 @@ dependencies. They serve `labelSuggest` (`structuredOutput`) and `imageText`
   false`), and those nulls are stripped from the parsed result. Otherwise it is
   sent with `strict: false`. A ```` ```json ```` fence around the answer is
   tolerated. A non-JSON answer is `malformedOutput`.
-- Cost: OpenRouter's `usage.cost`; OpenAI returns none (0).
+- Cost: OpenRouter's `usage.cost` (requested with `usage: {include: true}`);
+  OpenAI returns none (0).
 - Errors: HTTP failures become `RunnerError('apiError')` with a hint (401/403
   key rejected, 429 rate limit or credits, 5xx provider error) plus the
   provider's message. A refusal, an `incomplete` response or a cut-off

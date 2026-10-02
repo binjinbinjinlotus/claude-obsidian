@@ -177,13 +177,18 @@ export class CodexRunner implements AgentRunner {
     'structuredOutput',
     'effort',
   ]);
+  /** From `codex debug models` (codex-cli 0.155.0-alpha). */
   readonly models: ModelOption[] = [
     { id: 'gpt-5.5', label: 'GPT-5.5', note: 'Codex default' },
-    { id: 'gpt-5-codex', label: 'GPT-5 Codex' },
-    { id: 'gpt-5-mini', label: 'GPT-5 mini', note: 'Any model id your Codex account can use works.' },
+    { id: 'gpt-5.4', label: 'GPT-5.4' },
+    { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
+    { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', note: 'Any model id your Codex account can use works.' },
   ];
-  /** Passed as `-c model_reasoning_effort=…`; available levels depend on the model. */
-  readonly effortLevels = ['minimal', 'low', 'medium', 'high', 'xhigh'];
+  /**
+   * Passed as `-c model_reasoning_effort=…`. The levels every catalog model
+   * accepts (`codex debug models`); some models also take max/ultra.
+   */
+  readonly effortLevels = ['low', 'medium', 'high', 'xhigh'];
   readonly defaultModel = 'gpt-5.5';
 
   constructor(private readonly launch: ProcessLauncher = runProcess) {}

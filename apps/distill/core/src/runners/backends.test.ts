@@ -214,6 +214,7 @@ describe('OpenRouterRunner', () => {
     const ok = fakeFetch(200, { choices: [{ message: { content: 'hi' } }] });
     await new OpenRouterRunner(await storeWith('openrouter'), ok.impl).run(request(), defaultSettings());
     assert.deepEqual(ok.seen[0]!.body.messages, [{ role: 'user', content: 'PROMPT' }]);
+    assert.deepEqual(ok.seen[0]!.body.usage, { include: true });
     const limited = fakeFetch(429, { error: { message: 'Rate limit exceeded', code: 429 } });
     await assert.rejects(new OpenRouterRunner(await storeWith('openrouter'), limited.impl).run(request(), defaultSettings()), /OpenRouter 429: rate limited/);
   });
