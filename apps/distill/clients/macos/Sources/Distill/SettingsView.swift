@@ -3,9 +3,12 @@ import DistillKit
 
 struct SettingsView: View {
     @EnvironmentObject var engine: AppModel
-    @State private var showAdvanced = false
+    @State private var showAdvanced: Bool
     @State private var extraTools = ""
     @State private var editingVault: VaultProfile?
+
+    /// `showAdvanced` starts expanded only in snapshots.
+    init(showAdvanced: Bool = false) { _showAdvanced = State(initialValue: showAdvanced) }
 
     private let presets: [(String, Int)] = [("5 min", 5), ("15 min", 15), ("1 hour", 60), ("Daily", 1440)]
 

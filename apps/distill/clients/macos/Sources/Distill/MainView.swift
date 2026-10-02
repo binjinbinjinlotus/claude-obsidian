@@ -198,8 +198,11 @@ enum VaultChip {
 struct QueueView: View {
     @EnvironmentObject var engine: AppModel
     @Environment(\.snapshotMode) private var snapshot
-    @State private var targeted = false
+    @State private var targeted: Bool
     @AppStorage("distill.addMode") private var addMode: AddMode = .files
+
+    /// `targeted` starts true only in snapshots (the drop hover state).
+    init(targeted: Bool = false) { _targeted = State(initialValue: targeted) }
 
     var body: some View {
         if addMode == .note {
@@ -372,9 +375,16 @@ struct HistorySection: View {
     @EnvironmentObject var engine: AppModel
     @Binding var selectedJob: String?
     var openAsk: () -> Void = {}
-    @State private var part: HistoryPart = .jobs
+    @State private var part: HistoryPart
 
     enum HistoryPart: Hashable { case jobs, chats }
+
+    /// `part` other than .jobs only in snapshots.
+    init(selectedJob: Binding<String?>, openAsk: @escaping () -> Void = {}, part: HistoryPart = .jobs) {
+        _selectedJob = selectedJob
+        self.openAsk = openAsk
+        _part = State(initialValue: part)
+    }
 
     var body: some View {
         let jobs = engine.jobs.filter { $0.state != .awaitingApproval }
@@ -566,8 +576,15 @@ struct EmptyState: View {
 struct JobDetailView: View {
     @EnvironmentObject var engine: AppModel
     let jobID: String
-    @State private var reply = ""
-    @State private var allowed: Set<String> = []
+    @State private var reply: String
+    @State private var allowed: Set<String>
+
+    /// `reply` / `allowed` start non-empty only in snapshots.
+    init(jobID: String, reply: String = "", allowed: Set<String> = []) {
+        self.jobID = jobID
+        _reply = State(initialValue: reply)
+        _allowed = State(initialValue: allowed)
+    }
 
     var body: some View {
         if let job = engine.job(jobID) {

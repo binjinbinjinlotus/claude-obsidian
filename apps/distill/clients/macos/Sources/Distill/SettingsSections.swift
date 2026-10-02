@@ -285,9 +285,17 @@ struct ShortcutsSettingsSection: View {
 struct ShortcutRecorder: View {
     @Binding var shortcut: KeyShortcut?
     let label: String
-    @State private var recording = false
+    @State private var recording: Bool
     @State private var monitor: Any?
     @State private var hint: String?
+
+    /// `recording` / `hint` start set only in snapshots (no key monitor is installed).
+    init(shortcut: Binding<KeyShortcut?>, label: String, recording: Bool = false, hint: String? = nil) {
+        _shortcut = shortcut
+        self.label = label
+        _recording = State(initialValue: recording)
+        _hint = State(initialValue: hint)
+    }
 
     var body: some View {
         HStack(spacing: 4) {
@@ -468,8 +476,16 @@ struct RunnerSetupSheet: View {
     let runnerID: String
     let done: () -> Void
     @State private var values: [String: String] = [:]
-    @State private var errors: [String: String] = [:]
+    @State private var errors: [String: String]
     @State private var saving: String?
+
+    /// `saving` / `errors` start set only in snapshots.
+    init(runnerID: String, done: @escaping () -> Void, saving: String? = nil, errors: [String: String] = [:]) {
+        self.runnerID = runnerID
+        self.done = done
+        _saving = State(initialValue: saving)
+        _errors = State(initialValue: errors)
+    }
 
     private var runner: RunnerInfo? { engine.notes.runners.first { $0.id == runnerID } }
 
