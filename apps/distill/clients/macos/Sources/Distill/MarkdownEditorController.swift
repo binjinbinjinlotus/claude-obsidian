@@ -55,6 +55,7 @@ final class MarkdownEditorController: NSObject, ObservableObject, NSTextViewDele
     private var queryWatch: AnyCancellable?
     private var boundsWatch: NSObjectProtocol?
     private var keyWatch: NSObjectProtocol?
+    private var menuDismissedAt = Date.distantPast
 
     // MARK: Lifecycle
 
@@ -227,7 +228,9 @@ final class MarkdownEditorController: NSObject, ObservableObject, NSTextViewDele
             if anchored { closePicker(); return true }
             if bubble.isShown { hideBubble(); return true }
             if menu.isShown { menu.close(); return true }
-            return false
+            // Not NSTextView's default (word completion): let the window or screen handle Esc (quick windows close).
+            if let next = tv.nextResponder { _ = next.tryToPerform(#selector(NSResponder.cancelOperation(_:)), with: nil) }
+            return true
         default:
             return false
         }
@@ -364,11 +367,24 @@ final class MarkdownEditorController: NSObject, ObservableObject, NSTextViewDele
         bubble.close()
     }
 
+    /// Below the anchor (screen rect) when it fits in the window and on screen, else above it.
+    /// `reserve`: room kept for content that arrives later (search results).
+    private func placeBelow(_ anchor: NSRect, size: CGSize, gap: CGFloat, window: NSWindow, x: CGFloat,
+                            reserve: CGFloat = 0, panel: MarkdownFloatingPanel? = nil) -> CGPoint {
+        let floor = max(window.frame.minY, (window.screen ?? NSScreen.main)?.visibleFrame.minY ?? -.greatestFiniteMagnitude)
+        let below = anchor.minY - gap - size.height
+        let fits = below - reserve >= floor
+        panel?.growsUp = !fits
+        return CGPoint(x: x, y: fits ? below : anchor.maxY + gap)
+    }
+
     // MARK: Heading menu
 
     private func showHeadingMenu(below frame: CGRect) {
         guard let tv = textView, let window = tv.window else { return }
         if menu.isShown { menu.close(); return }
+        // A click on H while the menu was open dismissed it on mouse-down; don't reopen on mouse-up.
+        if Date().timeIntervalSince(menuDismissedAt) < 0.4 { return }
         hideBubble()
         let current = active.heading
         let view = MarkdownHeadingMenu(current: current) { [weak self] level in
@@ -379,9 +395,9 @@ final class MarkdownEditorController: NSObject, ObservableObject, NSTextViewDele
         let contentHeight = window.contentView?.frame.height ?? window.frame.height
         let local = NSRect(x: frame.minX, y: contentHeight - frame.maxY, width: frame.width, height: frame.height)
         let screen = window.convertToScreen(local)
-        menu.show(view, parent: window, key: false) { size in
-            CGPoint(x: screen.minX, y: screen.minY - 6 - size.height)
-        }
+        menu.show(view, parent: window, key: false, place: { [unowned self] size in
+            self.placeBelow(screen, size: size, gap: 6, window: window, x: screen.minX)
+        }, onDismiss: { [weak self] in self?.menuDismissedAt = Date() })
     }
 
     // MARK: Link popover (⌘K) and note picker ([[)
@@ -404,8 +420,8 @@ final class MarkdownEditorController: NSObject, ObservableObject, NSTextViewDele
         let view = MarkdownLinkPopover(picker: picker, showsField: true,
                                        commit: { [weak self] in self?.commitLink() },
                                        cancel: { [weak self] in self?.closePicker(refocus: true) })
-        pickerPanel.show(view, parent: window, key: true, place: { size in
-            CGPoint(x: rect.minX - 2, y: rect.minY - 8 - size.height)
+        pickerPanel.show(view, parent: window, key: true, place: { [unowned self] size in
+            self.placeBelow(rect, size: size, gap: 8, window: window, x: rect.minX - 2, reserve: 160, panel: self.pickerPanel)
         }, onDismiss: { [weak self] in self?.closePicker(refocus: false) })
         linkWindow = pickerPanel.window
     }
@@ -440,8 +456,8 @@ final class MarkdownEditorController: NSObject, ObservableObject, NSTextViewDele
         let view = MarkdownLinkPopover(picker: picker, showsField: false,
                                        commit: { [weak self] in self?.commitAnchoredPicker() },
                                        cancel: { [weak self] in self?.closePicker() })
-        pickerPanel.show(view, parent: window, key: false, place: { size in
-            CGPoint(x: rect.minX - 2, y: rect.minY - 6 - size.height)
+        pickerPanel.show(view, parent: window, key: false, place: { [unowned self] size in
+            self.placeBelow(rect, size: size, gap: 6, window: window, x: rect.minX - 2, reserve: 160, panel: self.pickerPanel)
         }, onDismiss: { [weak self] in self?.pickerAnchor = nil })
     }
 

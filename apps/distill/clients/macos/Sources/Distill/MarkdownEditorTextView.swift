@@ -114,6 +114,10 @@ final class MarkdownScrollView: NSScrollView {
 
     override func layout() {
         super.layout()
+        // The text is exactly as wide as the visible area (autoresizing alone drifts from the initial size).
+        if let doc = documentView, abs(doc.frame.width - contentSize.width) > 0.5 {
+            doc.setFrameSize(NSSize(width: contentSize.width, height: doc.frame.height))
+        }
         onLayout?()
     }
 }
@@ -228,11 +232,14 @@ final class MarkdownFloatingPanel {
     private var onDismiss: (() -> Void)?
 
     var isShown: Bool { panel != nil }
+    /// Placed above its anchor: grow upward when the content changes.
+    var growsUp = false
     var window: NSWindow? { panel }
 
     /// `place` gets the content size and returns the content's bottom-left in screen coordinates.
     func show<V: View>(_ view: V, parent: NSWindow, key: Bool, place: (CGSize) -> CGPoint, onDismiss: (() -> Void)? = nil) {
         close()
+        growsUp = false
         let host = Host(rootView: AnyView(view.padding(Self.pad).environment(\.colorScheme, .light)))
         let fitting = host.fittingSize
         let p = Panel(contentRect: NSRect(origin: .zero, size: fitting), styleMask: [.borderless, .nonactivatingPanel],
@@ -264,7 +271,8 @@ final class MarkdownFloatingPanel {
         guard let p = panel, let host = p.contentView as? Host else { return }
         let size = host.fittingSize
         guard abs(size.height - p.frame.height) > 0.5 || abs(size.width - p.frame.width) > 0.5 else { return }
-        p.setFrame(NSRect(x: p.frame.minX, y: p.frame.maxY - size.height, width: size.width, height: size.height), display: true)
+        let y = growsUp ? p.frame.minY : p.frame.maxY - size.height
+        p.setFrame(NSRect(x: p.frame.minX, y: y, width: size.width, height: size.height), display: true)
     }
 
     func dismiss() {

@@ -68,6 +68,24 @@ final class MarkdownEditorViewTests: XCTestCase {
         tv.window?.childWindows?.forEach { $0.orderOut(nil) }
     }
 
+    func testEscapeGoesToTheWindowNotCompletion() {
+        final class EscWindow: NSWindow {
+            var cancelled = 0
+            override func cancelOperation(_ sender: Any?) { cancelled += 1 }
+        }
+        let controller = MarkdownEditorController()
+        var text = "tea"
+        let area = MarkdownTextArea(text: Binding(get: { text }, set: { text = $0 }), controller: controller, size: 13,
+                                    placeholder: "", editable: true, scrolls: false, autoFocus: false)
+        let window = EscWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 100), styleMask: [.titled], backing: .buffered, defer: true)
+        window.contentView = NSHostingView(rootView: area.frame(width: 300, height: 100))
+        window.contentView?.layoutSubtreeIfNeeded()
+        let tv = controller.textView!
+        window.makeFirstResponder(tv)
+        XCTAssertTrue(controller.textView(tv, doCommandBy: #selector(NSResponder.cancelOperation(_:))))
+        XCTAssertEqual(window.cancelled, 1, "Esc reaches the window (quick windows close)")
+    }
+
     func testHeightGrowsWithLines() async throws {
         let (controller, tv, _, _) = makeEditor("one")
         try await Task.sleep(nanoseconds: 50_000_000)
