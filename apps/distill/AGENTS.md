@@ -57,6 +57,15 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 - `clients/macos/Tests/`: DistillKitTests and DistillTests.
 - `clients/macos/scripts/`: `build-app.sh`, `distill.sh`, `make-icon.sh`.
 
+## Specs and decisions
+
+Every change that builds, alters or removes a feature updates its spec in
+`docs/specs/` in the same commit (status `designed` → `built` when it
+ships), and every product or technical decision gets a dated entry in
+`docs/specs/decisions.md` (newest first; supersede, never rewrite). New specs
+are listed in `docs/specs/index.md`. Visible changes go to the design canvas
+first (`docs/specs/design-process.md`).
+
 ## User data is permanent
 
 Settings, job history and Ask history live in `~/Library/Application Support/Distill`

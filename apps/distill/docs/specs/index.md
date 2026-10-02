@@ -3,7 +3,7 @@ type: meta
 title: Distill Spec Index
 status: developing
 created: 2026-10-01
-updated: 2026-10-01
+updated: 2026-10-02
 tags:
   - meta
   - index
@@ -37,7 +37,8 @@ https://claude.ai/artifact/VSqHFPZjcqY2bMqFEnPqpG
 ## Features
 
 - [Ask](ask.md): answers from the vault with citations; label/source filters (Any/All, unconfirmed), history, Stop.
-- [Write a note](notes-composer.md): text notes with images (keep vs. extract text), source, and the label step.
+- [Write a note](notes-composer.md): text notes with images inside the text (hover → Extract content), source, and the label step.
+- [Actions](actions.md): to-dos and action types (Slack, Jira, Confluence, …) found in processed notes and Ask answers; confirm, draft, improve, handlers, History, connections.
 - [Markdown editing](markdown-editing.md): Markdown in note, question and reply inputs; style bar, selection bubble, links and the `[[` note picker, shortcuts, paste.
 - [Labels and sources](labels-and-sources.md): taxonomy, AI suggestions, confirmation through Review, the Labels screen.
 - [Intake: paste and drop](intake-paste-drop.md): how dropped files and pasted screenshots/text enter the queue.
@@ -50,3 +51,9 @@ https://claude.ai/artifact/VSqHFPZjcqY2bMqFEnPqpG
 - [App icon](app-icon.md): the generated .icns.
 - [Headless and snapshot modes](headless-and-snapshot.md): `--snapshot` renders; headless runs moved to the CLI.
 - [Tooling](tooling.md): build, install, control script, `/distill` skill, tests.
+
+## Data and process
+
+- [User data](user-data.md): where settings and history live, why updates never lose them, backups and restore.
+- [Design process and design system](design-process.md): canvas first, shared components, one-to-one mapping to the Swift views.
+- [Decisions](decisions.md): dated log of product and technical decisions and why.

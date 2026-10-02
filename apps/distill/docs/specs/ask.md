@@ -166,6 +166,18 @@ Code: `clients/macos/Sources/Distill/AskView.swift`, `AskParts.swift`,
   answer and cards land, follow-up input disabled. After 60 s: "Still working
   · m:ss". Stopped: "Stopped · Your question is kept." with **Ask again**.
   Errors: the message with **Retry**.
+- **A question keeps going when you move on.** New chat, opening another
+  chat (History, Recent questions) and Continue in Distill never stop a
+  question that is still answering (only **Stop** does). The run moves to the
+  background (`AskModel.background`, `BackgroundAsk`), finishes, and is saved
+  by the core as usual. While it runs, History → Ask chats and the sidebar's
+  Recent questions show it at the top with a spinner and "Asked today at
+  1:45 PM · answering…" (a fixed time, never a counter) and a **Stop**
+  button; a failure shows "couldn't answer: <reason>" with a dismiss ×.
+  Opening it shows the answer arriving in the Ask screen. The core never
+  cancels a turn because a client disconnected; only `cancelAsk` does.
+  Known gap: a new chat's first question is saved when its answer lands, so
+  it is lost if the app or core quits mid-answer.
 - **History → Ask chats**: open in Ask, pin/unpin, delete. With Keep history
   off the client deletes a chat when the user starts a new one, leaves the Ask
   screen, or closes the main window, never one that is pinned, still

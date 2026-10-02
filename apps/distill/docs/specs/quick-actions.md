@@ -32,6 +32,10 @@ actions" panels 2–5. Code: `QuickWindow.swift` (window shell, resize corner,
   menu) or the flask's screen (hover menu, flask click). A window the user
   dragged reopens at that spot until the app quits (not persisted).
 - **Close bar**: QUICK NOTE / QUICK ASK and **×**. × does what Esc does.
+- **Editing keys**: the quick windows are non-activating panels, so Distill
+  stays inactive and its Edit menu never receives keys. `QuickWindow`
+  sends ⌘X, ⌘C, ⌘V, ⌘A, ⌘Z and ⇧⌘Z to the focused field itself
+  (`QuickWindow.editAction(for:)`).
 - **Growth**: the window fits its content and grows downward; the top edge
   never moves. It stops 8 pt above the bottom of the visible frame; past that
   only the middle scrolls (quick note: title, text with its images and errors;
