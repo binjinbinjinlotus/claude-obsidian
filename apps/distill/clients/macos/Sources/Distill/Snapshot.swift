@@ -12,6 +12,11 @@ enum Snapshot {
             guard let i = arguments.firstIndex(of: flag), i + 1 < arguments.count else { return nil }
             return arguments[i + 1]
         }
+        // `--snapshot OUT.iconset --app-icon`: the app icon PNGs for iconutil (scripts/make-icon.sh).
+        if arguments.contains("--app-icon"), let out = value("--snapshot") {
+            renderAppIconSet(to: URL(fileURLWithPath: out))
+            exit(0)
+        }
         guard let out = value("--snapshot"), let state = value("--state-dir") else {
             FileHandle.standardError.write(Data("usage: --snapshot OUT --state-dir DIR\n".utf8))
             exit(2)

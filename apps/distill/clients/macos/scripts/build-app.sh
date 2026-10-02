@@ -32,6 +32,8 @@ BIN="$(swift build --package-path "$APP_DIR" -c release --show-bin-path)/Distill
 rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 cp "$BIN" "$BUNDLE/Contents/MacOS/Distill"
+# App icon (regenerate with scripts/make-icon.sh).
+cp "$APP_DIR/Resources/AppIcon.icns" "$BUNDLE/Contents/Resources/AppIcon.icns"
 
 VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$PRODUCT_ROOT/.claude-plugin/plugin.json" 2>/dev/null || echo 0.1.0)"
 
@@ -45,6 +47,7 @@ cat > "$BUNDLE/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>com.claude-obsidian.distill</string>
   <key>CFBundleExecutable</key><string>Distill</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundleVersion</key><string>${VERSION}</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
