@@ -1,9 +1,28 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
-import type { AddNoteRequest, AskRequest, CoreEvent, DistillCore, LabelMatch, ModelSelection, NoteImage, Settings } from '../contracts.js';
+import type { AddNoteRequest, AskRequest, CoreEvent, DistillCore, Job, LabelMatch, ModelSelection, NoteImage, PermissionDenial, Settings } from '../contracts.js';
+import type { EngineExtras } from '../engine/index.js';
+import { suggestedRule } from '../runners/permissions.js';
+
+/** The core the server exposes: the contract plus the proposed extras (501 when a core lacks them). */
+export type ServerCore = DistillCore & Partial<EngineExtras>;
+
+/** A permission denial as the API returns it: with the exact rule that would allow it (null = none). */
+export type ApiPermissionDenial = PermissionDenial & { suggestedRule: string | null };
+
+/** A job as the API returns it (also in `job` events): denials carry `suggestedRule`. */
+export function apiJob(job: Job): Job {
+  if (!job.approval) return job;
+  const denials: ApiPermissionDenial[] = job.approval.denials.map((d) => ({ ...d, suggestedRule: suggestedRule(d) ?? null }));
+  return { ...job, approval: { ...job.approval, denials } };
+}
+
+function apiEvent(event: CoreEvent): CoreEvent {
+  return event.type === 'job' ? { ...event, job: apiJob(event.job) } : event;
+}
 
 export interface ServerOptions {
-  core: DistillCore;
+  core: ServerCore;
   host?: string; // must stay 127.0.0.1
   port?: number; // 0 = pick a free port
   token: string;
@@ -313,11 +332,16 @@ interface Route {
 
 const JOB_ACTIONS = ['approve', 'reply', 'allow', 'reject', 'cancel'] as const;
 
-function buildRoutes(core: DistillCore, opts: { keepAliveMs: number; trackStream: (end: () => void) => () => void }): Route[] {
+function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream: (end: () => void) => () => void }): Route[] {
   const requireJob = (id: string) => {
     const job = core.getJob(id);
     if (!job) throw new HttpError(404, 'job_not_found', `no job with id "${id}"`);
     return job;
+  };
+  const extra = <K extends keyof EngineExtras>(name: K): EngineExtras[K] => {
+    const fn = core[name];
+    if (typeof fn !== 'function') throw new HttpError(501, 'not_implemented', `${name}: not implemented by this core`);
+    return fn.bind(core) as EngineExtras[K];
   };
   const vaultParam = (query: URLSearchParams) => {
     const v = query.get('vault');
@@ -344,12 +368,23 @@ function buildRoutes(core: DistillCore, opts: { keepAliveMs: number; trackStream
       },
     },
     {
+      method: 'DELETE',
+      pattern: /^\/v1\/queue\/entries$/,
+      untyped: { status: 400, code: 'invalid_request' },
+      handler: async ({ body }) => {
+        const removeQueueEntry = extra('removeQueueEntry');
+        const file = reqString(asObject(await body(), false), 'path');
+        return { entries: await removeQueueEntry(file) };
+      },
+    },
+    {
       method: 'POST',
       pattern: /^\/v1\/queue\/process$/,
       handler: async ({ body }) => {
         const o = asObject(await body());
         if (o.force !== undefined && typeof o.force !== 'boolean') throw bad('"force" must be a boolean');
-        return { job: (await core.processQueue({ force: o.force === true })) ?? null };
+        const job = await core.processQueue({ force: o.force === true });
+        return { job: job ? apiJob(job) : null };
       },
     },
     {
@@ -379,7 +414,7 @@ function buildRoutes(core: DistillCore, opts: { keepAliveMs: number; trackStream
         const opts: { vaultPath?: string; selection?: ModelSelection } = {};
         if (vaultPath) opts.vaultPath = vaultPath;
         if (selection) opts.selection = selection;
-        return { job: await core.suggestLabelsForPages(paths, opts) };
+        return { job: apiJob(await core.suggestLabelsForPages(paths, opts)) };
       },
     },
     {
@@ -390,7 +425,7 @@ function buildRoutes(core: DistillCore, opts: { keepAliveMs: number; trackStream
         const o = asObject(await body(), false);
         const items = parseConfirmItems(o);
         const vaultPath = optString(o, 'vaultPath');
-        return { job: await (vaultPath ? core.confirmLabels(items, vaultPath) : core.confirmLabels(items)) };
+        return { job: apiJob(await (vaultPath ? core.confirmLabels(items, vaultPath) : core.confirmLabels(items))) };
       },
     },
     { method: 'GET', pattern: /^\/v1\/conversations$/, handler: async () => ({ conversations: await core.listConversations() }) },
@@ -437,8 +472,30 @@ function buildRoutes(core: DistillCore, opts: { keepAliveMs: number; trackStream
         return { runnerID: params[0]!, name: params[1]!, isSet: value !== null };
       },
     },
-    { method: 'GET', pattern: /^\/v1\/jobs$/, handler: async () => ({ jobs: core.listJobs() }) },
-    { method: 'GET', pattern: /^\/v1\/jobs\/([^/]+)$/, handler: async ({ params }) => requireJob(params[0]!) },
+    { method: 'GET', pattern: /^\/v1\/jobs$/, handler: async () => ({ jobs: core.listJobs().map(apiJob) }) },
+    { method: 'GET', pattern: /^\/v1\/jobs\/([^/]+)$/, handler: async ({ params }) => apiJob(requireJob(params[0]!)) },
+    {
+      method: 'DELETE',
+      pattern: /^\/v1\/jobs\/([^/]+)$/,
+      untyped: { status: 409, code: 'invalid_state' },
+      handler: async ({ params }) => {
+        const deleteJob = extra('deleteJob');
+        requireJob(params[0]!);
+        await deleteJob(params[0]!);
+        return { id: params[0]!, deleted: true };
+      },
+    },
+    {
+      method: 'GET',
+      pattern: /^\/v1\/jobs\/([^/]+)\/resume$/,
+      handler: async ({ params }) => {
+        const jobResumeCommand = extra('jobResumeCommand');
+        requireJob(params[0]!);
+        const argv = await jobResumeCommand(params[0]!);
+        if (!argv || argv.length === 0) throw new HttpError(404, 'no_resume_command', `job "${params[0]}" has no session to resume`);
+        return { argv };
+      },
+    },
     {
       method: 'POST',
       pattern: new RegExp(`^/v1/jobs/([^/]+)/(${JOB_ACTIONS.join('|')})$`),
@@ -468,10 +525,20 @@ function buildRoutes(core: DistillCore, opts: { keepAliveMs: number; trackStream
             await core.cancel(id);
             break;
         }
-        return { job: core.getJob(id) ?? null };
+        const job = core.getJob(id);
+        return { job: job ? apiJob(job) : null };
       },
     },
     { method: 'POST', pattern: /^\/v1\/ask$/, handler: async ({ body }) => core.ask(parseAsk(await body())) },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/conversations\/([^/]+)\/cancel$/,
+      handler: async ({ params }) => {
+        await core.cancelAsk(params[0]!);
+        return { id: params[0]!, cancelled: true };
+      },
+    },
+    { method: 'GET', pattern: /^\/v1\/progress$/, handler: async () => ({ progress: await core.listProgress() }) },
     {
       method: 'GET',
       pattern: /^\/v1\/events$/,
@@ -485,7 +552,7 @@ function buildRoutes(core: DistillCore, opts: { keepAliveMs: number; trackStream
         });
         res.write('retry: 2000\n: connected\n\n');
         const send = (event: CoreEvent) => {
-          res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+          res.write(`event: ${event.type}\ndata: ${JSON.stringify(apiEvent(event))}\n\n`);
         };
         const unsubscribe = core.subscribe(send);
         const timer = setInterval(() => res.write(': keep-alive\n\n'), opts.keepAliveMs);

@@ -309,7 +309,7 @@ struct QueueView: View {
                             .font(Theme.body(12)).foregroundStyle(Theme.muted)
                     }
                     Spacer()
-                    Text(engine.runningBatch != nil ? "Next batch" : (entry.settled ? "Ready" : "Still copying…"))
+                    Text(engine.runningBatch != nil ? "Next batch" : (entry.settled ? "Ready" : "Settling…"))
                         .font(Theme.body(12)).foregroundStyle(Theme.muted)
                     Button { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) } label: {
                         Image(systemName: "magnifyingglass").foregroundStyle(Theme.faint)

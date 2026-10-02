@@ -135,7 +135,8 @@ public struct Settings: Codable, Equatable, Sendable {
     public var vaults: [VaultProfile] = []
     public var activeVaultPath: String?
     public var batchIntervalMinutes: Int = 10
-    public var settleSeconds: Int = 10
+    /// Default 600 (10 minutes), as in the core. Process now ignores it.
+    public var settleSeconds: Int = 600
     public var model: String = "sonnet"
     public var claudePath: String = ""
     public var pythonPath: String = "/usr/bin/python3"
@@ -880,6 +881,8 @@ public struct RunnerInfo: Codable, Equatable, Identifiable, Sendable {
 public enum CoreEvent: Equatable, Sendable {
     case queue([QueueEntry])
     case job(Job)
+    /// A job removed from the list (`DELETE /v1/jobs/:id`; job event with `deleted: true`).
+    case jobDeleted(id: String)
     case settings(Settings)
     case log(level: String, message: String)
     case labelSuggestions(requestID: String, notePath: String, labels: [LabelSuggestion], error: String?)
@@ -903,7 +906,9 @@ public enum CoreEvent: Equatable, Sendable {
             let type = try c.decode(String.self, forKey: .type)
             switch type {
             case "queue": event = .queue(c.lossyArray(QueueEntry.self, .entries))
-            case "job": event = .job(try c.decode(Job.self, forKey: .job))
+            case "job":
+                let job = try c.decode(Job.self, forKey: .job)
+                event = (c.lossy(Bool.self, .deleted) ?? false) ? .jobDeleted(id: job.id) : .job(job)
             case "settings": event = .settings(try c.decode(Settings.self, forKey: .settings))
             case "log": event = .log(level: c.lossy(String.self, .level) ?? "info", message: c.lossy(String.self, .message) ?? "")
             case "labelSuggestions":

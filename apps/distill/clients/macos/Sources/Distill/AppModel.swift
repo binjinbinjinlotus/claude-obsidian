@@ -179,6 +179,9 @@ final class AppModel: ObservableObject {
             ask.apply(conversation, deleted: deleted)
         case .progress(let p):
             applyProgress(p)
+        case .jobDeleted(let id):
+            jobs.removeAll { $0.id == id }
+            refreshStatusSoon()
         case .unknown:
             break
         }

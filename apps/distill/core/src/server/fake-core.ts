@@ -11,23 +11,29 @@ import type {
   LabelSuggestion,
   DistillCore,
   Job,
+  Progress,
   QueueEntry,
   RunnerInfo,
   Settings,
   StatusResponse,
 } from '../contracts.js';
+import type { EngineExtras } from '../engine/index.js';
 
 /**
  * In-memory DistillCore for server/CLI tests and client development. Records
  * every call; `emit` pushes a CoreEvent to subscribers. Never touches disk.
  */
-export interface FakeCore extends DistillCore {
+export interface FakeCore extends DistillCore, EngineExtras {
   calls: { method: string; args: unknown[] }[];
   jobs: Job[];
   emit(event: CoreEvent): void;
   listenerCount(): number;
   /** Make the next call of `method` throw this error. */
-  failNext(method: keyof DistillCore, error: Error): void;
+  failNext(method: keyof DistillCore | keyof EngineExtras, error: Error): void;
+  /** What listProgress returns. */
+  progress: Progress[];
+  /** Queue entries (removeQueueEntry removes by path). */
+  queue: QueueEntry[];
   /** Queued notes by request ID (labels = confirmed labels, if any). */
   notes: Map<string, { notePath: string; labels?: string[] }>;
   conversations: AskConversation[];
@@ -144,6 +150,8 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
   let nextRequest = 1;
   const fake: FakeCore = {
     calls: [],
+    progress: [],
+    queue,
     jobs: init.jobs ?? [sampleJob()],
     notes: new Map(),
     conversations: [sampleConversation()],
@@ -308,13 +316,35 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       if (!secret) throw new CoreError('not_found', `runner "${runnerID}" has no secret "${name}"`);
       secret.isSet = value !== null;
     },
-    // v3 stubs: filled by the core-v3 teammate.
-    cancelAsk: async (id: string) => {
+    async cancelAsk(id: string) {
       record('cancelAsk', id);
     },
-    listProgress: async () => {
+    async listProgress() {
       record('listProgress');
-      return [];
+      return fake.progress;
+    },
+    async deleteJob(id) {
+      record('deleteJob', id);
+      const i = fake.jobs.findIndex((j) => j.id === id);
+      if (i === -1) throw new CoreError('not_found', `Unknown job ${id}.`);
+      const state = fake.jobs[i]!.state;
+      if (state === 'running' || state === 'awaitingApproval') {
+        throw new CoreError('invalid_state', `Job ${id} is ${state}; only finished jobs can be deleted.`);
+      }
+      fake.jobs.splice(i, 1);
+    },
+    async jobResumeCommand(id) {
+      record('jobResumeCommand', id);
+      const job = fake.jobs.find((j) => j.id === id);
+      if (!job) throw new CoreError('not_found', `Unknown job ${id}.`);
+      return job.kind === 'labels' ? null : ['claude', '--resume', job.sessionID, '--model', job.model];
+    },
+    async removeQueueEntry(p) {
+      record('removeQueueEntry', p);
+      const i = queue.findIndex((e) => e.path === p);
+      if (i === -1) throw new CoreError('invalid_request', `${p} is not in the active queue folder.`);
+      queue.splice(i, 1);
+      return queue;
     },
     subscribe(listener) {
       record('subscribe');

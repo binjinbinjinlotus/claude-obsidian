@@ -54,3 +54,22 @@ public struct BatchInterval: Equatable, Sendable, CustomStringConvertible {
         return parts.joined(separator: " ")
     }
 }
+
+/// `settleSeconds` split into minutes and seconds (0–59 each) for editing.
+/// Settings keep storing total seconds; the core applies the wait.
+public struct SettleWait: Equatable, Sendable {
+    public static let range: ClosedRange<Int> = 0...59
+
+    public var minutes: Int { didSet { minutes = Self.clamp(minutes) } }
+    public var seconds: Int { didSet { seconds = Self.clamp(seconds) } }
+
+    public init(totalSeconds: Int) {
+        let total = min(max(0, totalSeconds), 59 * 60 + 59)
+        minutes = total / 60
+        seconds = total % 60
+    }
+
+    public var totalSeconds: Int { minutes * 60 + seconds }
+
+    private static func clamp(_ v: Int) -> Int { min(max(v, range.lowerBound), range.upperBound) }
+}

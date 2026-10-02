@@ -23,6 +23,7 @@ apps/distill/clients/macos/scripts/distill.sh <command>
 | "I changed the wrapper", "update / rebuild / reinstall" | `update` |
 | "is it running?", "Distill status" | `status` |
 | "test the wrapper" | `test` |
+| "restart the core", "stop the Distill server", after core (TypeScript) changes | `core-stop` (the app or CLI starts the new core on next use) |
 
 With no argument, run `toggle`. If the request is ambiguous, run `status` first and say what you found.
 
@@ -35,7 +36,8 @@ With no argument, run `toggle`. If the request is ambiguous, run `status` first 
   `python3 scripts/claude-obsidian.py transaction recover --vault <vault>`.
 - Jobs **awaiting approval** survive a stop or update. Mention how many there are;
   they are not a reason to block.
-- `update` runs the WorkerCore unit tests first and does not install if they
+- The app is a client of the Node core (`apps/distill/core`). Quitting the app leaves the core running; `update` reinstalls the app but not the core, so after core changes run `core-stop` too.
+- `update` runs the app's unit tests first and does not install if they
   fail. Show the failing lines it printed, and fix them only if the user asks.
 - `update` relaunches the app only if it was running before. Otherwise it says how to start it.
 - After any command, report its output in one or two lines: the app state and job counts.

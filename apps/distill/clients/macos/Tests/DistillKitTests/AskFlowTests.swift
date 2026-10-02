@@ -41,6 +41,21 @@ final class AskFlowTests: XCTestCase {
         XCTAssertEqual(CoreProgress.askKey("c1"), "ask:c1")
     }
 
+    func testJobDeletedEventAndCoreSuggestedRule() throws {
+        let job = #"{"id":"job-1","kind":"ingest","vaultPath":"/v","files":[],"sessionID":"s","model":"sonnet","state":"completed","createdAt":"2026-10-01T12:00:00Z","updatedAt":"2026-10-01T12:00:00Z","turns":[],"grantedTools":[],"changedPaths":[]}"#
+        XCTAssertEqual(try CoreEvent.decode(Data(#"{"type":"job","deleted":true,"job":\#(job)}"#.utf8)), .jobDeleted(id: "job-1"))
+        guard case .job = try CoreEvent.decode(Data(#"{"type":"job","job":\#(job)}"#.utf8)) else { return XCTFail() }
+
+        let withRule = try JSONDecoder.core.decode(PermissionDenial.self, from: Data(#"{"toolName":"Bash","input":{"command":"ls"},"suggestedRule":"Bash(ls:*)"}"#.utf8))
+        XCTAssertEqual(withRule.suggestedRule, "Bash(ls:*)")
+        let noRule = try JSONDecoder.core.decode(PermissionDenial.self, from: Data(#"{"toolName":"Bash","input":{"command":"ls"},"suggestedRule":null}"#.utf8))
+        XCTAssertNil(noRule.suggestedRule)
+        let older = try JSONDecoder.core.decode(PermissionDenial.self, from: Data(#"{"toolName":"Bash","input":{"command":"ls"}}"#.utf8))
+        XCTAssertEqual(older.suggestedRule, "Bash(ls)")
+        XCTAssertEqual(try JSONDecoder.core.decode(PermissionDenial.self, from: JSONEncoder.core.encode(withRule)), withRule)
+        XCTAssertEqual(try JSONDecoder.core.decode(PermissionDenial.self, from: JSONEncoder.core.encode(noRule)), noRule)
+    }
+
     func testProgressRoundTrips() throws {
         let p = CoreProgress(key: "job-2", kind: "apply", message: "Applying 4 changes", done: 1, total: 4,
                              startedAt: CoreDate.parse("2026-10-01T12:00:00Z")!, finished: true)
@@ -64,7 +79,7 @@ final class AskFlowTests: XCTestCase {
     }
 
     func testCancelAsk() async throws {
-        respond("{}")
+        respond(#"{"id":"c 1","cancelled":true}"#)
         try await client.cancelAsk(conversationID: "c 1")
         XCTAssertEqual(last.method, "POST")
         XCTAssertEqual(last.path, "/v1/conversations/c 1/cancel")

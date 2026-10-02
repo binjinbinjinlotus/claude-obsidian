@@ -103,6 +103,7 @@ extension AppModel {
         guard let client else { return }
         let ids = jobs.filter { $0.state.isFinished }.map(\.id)
         Task {
+            var kept = 0
             for id in ids {
                 do {
                     try await client.deleteJob(id)
@@ -110,10 +111,16 @@ extension AppModel {
                 } catch let e as CoreClientError where e.isNotAvailable {
                     lastError = "This Distill core can't clear jobs yet. Update the core and try again."
                     return
+                } catch let e as CoreClientError where e.status == 409 {
+                    kept += 1 // e.g. its files are still in inbox/ (inbox-queue mode)
                 } catch {
                     report(error)
                     return
                 }
+            }
+            if kept > 0 {
+                lastError = kept == 1 ? "1 job was kept: the core can't clear it yet (its files may still be in inbox/)."
+                    : "\(kept) jobs were kept: the core can't clear them yet (their files may still be in inbox/)."
             }
         }
     }

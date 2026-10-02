@@ -1,7 +1,7 @@
 ---
 title: Ask
 status: built
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 
 # Ask
@@ -9,7 +9,7 @@ updated: 2026-10-01
 Ask questions answered only from the active vault, with citations. Canvas
 artboards: "Ask", "Quick actions from the floating flask". Core:
 `core/src/ask/` (`ask`, `listConversations`, `getConversation`,
-`deleteConversation`, `setConversationPinned` on `DistillCore`). The core is
+`deleteConversation`, `setConversationPinned`, `cancelAsk` on `DistillCore`). The core is
 built; the client UI follows the canvas.
 
 ## Behavior
@@ -19,6 +19,11 @@ built; the client UI follows the canvas.
 - Each question runs one runner turn with the `claude-obsidian:wiki-query`
   skill and read-only tools only. Follow-ups (`conversationID`) resume the same
   runner session; **New chat** starts a new one.
+- **New chat ids.** A client may send its own `conversationID` for a new chat
+  (`[A-Za-z0-9][A-Za-z0-9_-]{0,127}`, e.g. a UUID): an unknown, well-formed id
+  starts a new conversation under that id. Clients that want a Stop button pick
+  the id before the request, so they can cancel and match progress events
+  while the answer is still running. Without an id the core makes a UUID.
 - The turn ends with structured output `{answer, citations, gaps}`. Citations
   are kept only when they point at an existing page inside the vault (and inside
   the filter, when filtered); paths come back vault-relative.
@@ -38,6 +43,22 @@ built; the client UI follows the canvas.
   Selection order: request, then the conversation's last selection, then the
   `ask` task default, then the legacy `model` setting. The runner must be
   enabled and support the `ask` task.
+
+## Loading and Stop
+
+- While the runner turn runs the core emits `progress` with key
+  `ask:<conversationID>`, kind `ask`, message `Reading your notes`, the runner
+  and model, and `startedAt`; then one `finished: true` event (with `error`
+  when the turn failed). A zero-match answer runs no runner and emits none.
+- **Stop**: `cancelAsk(conversationID)` (`POST /v1/conversations/:id/cancel`)
+  aborts the in-flight turn through `RunRequest.signal` (also a turn still
+  waiting behind another turn of the same chat). The `ask` call fails with
+  `CoreError` `invalid_state`, message `Stopped` (HTTP 409); the question is
+  not stored, no `conversation` event is sent, and the progress ends with
+  message and error `Stopped`. A Stop for a conversation with nothing in
+  flight does nothing. A Stop sent right after the request is not lost: the
+  turn is registered before any await. Earlier turns of the chat are kept; the
+  runner's own session may still hold the partial question.
 
 ## Scope and filters
 
@@ -148,6 +169,7 @@ Code: `clients/macos/Sources/Distill/AskView.swift`, `AskParts.swift`,
 
 ## Errors
 
-- Empty question, invalid conversation id → `invalid_request`; unknown
-  conversation → `not_found`. Runner failures (`is_error`) throw and save
-  nothing.
+- Empty question, invalid conversation id → `invalid_request`. An unknown,
+  well-formed conversation id starts a new chat (it used to be `not_found`).
+  Runner failures (`is_error`) throw and save nothing. A stopped turn →
+  `invalid_state` "Stopped", nothing saved.

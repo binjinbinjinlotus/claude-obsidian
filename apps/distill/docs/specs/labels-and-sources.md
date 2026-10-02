@@ -1,7 +1,7 @@
 ---
 title: Labels and sources
 status: built (core labels; app UI, Notes screen and Ask filters designed)
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 
 # Labels and sources
@@ -55,11 +55,16 @@ about** (labels). Canvas artboards: "Write a note", "Ask", "Settings", "Notes".
 
 | Where the note comes from | Labels |
 | --- | --- |
-| Distill app (`addNote`, origin `app`, suggest `background`) | The note is queued, then a `labelSuggestions` event carries the suggestions. The user confirms with `labelNote(requestID, labels)`. Never confirmed = no labels (no fallback). |
-| CLI (origin `cli`, suggest `wait`) | `addNote` returns `requestID` + `suggestedLabels`. The caller may `labelNote` until the batch picks the note up (then `invalid_state`). Nothing confirmed and `labeling.cliFallbackToAI` (default on) → the AI labels apply unconfirmed, `labels_origin: cli`. |
+| Distill app (`addNote`, origin `app`, suggest `background`) | The note is queued, then a `labelSuggestions` event carries the suggestions (and `costUSD` when a call ran). The user confirms with `labelNote(requestID, labels)`. Never confirmed = no labels (no fallback). |
+| CLI (origin `cli`, suggest `wait`) | `addNote` returns `requestID` + `suggestedLabels` (+ `costUSD`). The caller may `labelNote` until the batch picks the note up (then `invalid_state`). Nothing confirmed and `labeling.cliFallbackToAI` (default on) → the AI labels apply unconfirmed, `labels_origin: cli`. |
 | `labels` on addNote | Confirmed (`labels_by: user`); no suggestion is made. |
 | `labelNote(requestID, [])` | Confirmed: no labels. No AI fallback, no flags. |
 | Any other file in the queue folder | `labeling.autoLabelQueueFolder` (default on): the batch suggests labels for text files (`.md .txt .html .csv .json` ...) before the first turn, applied unconfirmed with `labels_origin: queue-folder`. A dropped `.md` that already has `tags` keeps them as the user's choice (no AI call). Binary files (PDF, images) and failed suggestions stay unlabeled. |
+
+While a note's suggestion runs (wait or background) the core emits
+`labelSuggest` progress keyed `note:<requestID>` (runner and model of the
+`labelSuggest` task), ended by one `finished` event (with `error` when the
+suggestion failed).
 
 The batch passes each input's labels to the ingest turn (see
 [Queue and batching](queue-and-batching.md)); the agent writes them on the
@@ -70,9 +75,23 @@ source page built from that input.
 - `labelReview()`: `toReview` = pages with `labels_reviewed: false` (with
   origin); `unlabeled` = note pages under `wiki/` with no tags.
 - `listLabels()`: every label with `count` and `unconfirmed`.
-- `suggestLabelsForPages(paths)`: AI labels for existing pages. The page's
-  current tags are kept and the suggestions added, written with
-  `labels_by: ai`, `labels_reviewed: false`, `labels_origin: suggest`.
+- `suggestLabelsForPages(paths)`: AI labels for existing **unlabeled** pages,
+  written with `labels_by: ai`, `labels_reviewed: false`,
+  `labels_origin: suggest`.
+  - Pages that already have tags are skipped before the job starts; the first
+    turn says how many (`Suggest labels for 2 pages. Skipped 1 page that
+    already has labels.`) and the review lists them under skipped. When every
+    page has tags: `invalid_request`, no job.
+  - It returns the job at once in `running`. Suggestions run one page at a
+    time with `labelPages` progress (key = job id, `done`/`total`), then
+    "Preparing the change for Review" while the bundle is built and inspected;
+    the job moves to `awaitingApproval` (a `job` event) and the progress
+    finishes.
+  - `cancel(id)` while suggesting keeps the pages that finished: with at least
+    one, the bundle is built from them (the rest are listed as `not done
+    (stopped)`) and the job awaits approval; with none it is `cancelled`.
+  - A job interrupted by a quit while suggesting has no plan yet; after
+    recovery it can only be rejected (run it again).
 - `confirmLabels(items)`: writes exactly the given tags with `labels_by: user`
   and removes `labels_reviewed` / `labels_origin` (empty list = no labels).
 - Both return a `labels` job awaiting approval; the core builds, inspects and

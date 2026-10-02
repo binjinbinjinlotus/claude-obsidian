@@ -136,7 +136,8 @@ export function uniqueDestination(name: string, dir: string): string {
   return candidate;
 }
 
-function moveFile(from: string, to: string): void {
+/** Rename, or copy then unlink across volumes. */
+export function moveFile(from: string, to: string): void {
   try {
     fs.renameSync(from, to);
   } catch (err) {
@@ -144,6 +145,36 @@ function moveFile(from: string, to: string): void {
     fs.copyFileSync(from, to, fs.constants.COPYFILE_EXCL);
     fs.unlinkSync(from);
   }
+}
+
+/**
+ * Moves a file into `dir` as `name.ext`, `name 2.ext`, ... without ever replacing an existing file,
+ * even where the directory cannot be listed (macOS privacy rules on ~/.Trash): hard link then
+ * unlink, or an exclusive copy across volumes; a taken name moves on to the next. Returns the destination.
+ */
+export function moveIntoDirNoOverwrite(from: string, dir: string): string {
+  const name = path.basename(from);
+  const ext = path.extname(name);
+  const base = ext ? name.slice(0, -ext.length) : name;
+  for (let n = 1; n < 10_000; n++) {
+    const dest = path.join(dir, n === 1 ? name : `${base} ${n}${ext}`);
+    try {
+      fs.linkSync(from, dest);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EEXIST') continue;
+      if (code !== 'EXDEV' && code !== 'EPERM' && code !== 'ENOTSUP') throw err;
+      try {
+        fs.copyFileSync(from, dest, fs.constants.COPYFILE_EXCL);
+      } catch (copyErr) {
+        if ((copyErr as NodeJS.ErrnoException).code === 'EEXIST') continue;
+        throw copyErr;
+      }
+    }
+    fs.unlinkSync(from);
+    return dest;
+  }
+  throw new Error(`No free name for ${name} in ${dir}.`);
 }
 
 /**

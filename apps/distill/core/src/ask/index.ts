@@ -1,4 +1,3 @@
-import { notImplemented } from '../contracts.js';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { AskOwned } from '../engine/index.js';
@@ -17,11 +16,13 @@ import {
   type DistillCore,
   type LabelMatch,
   type ModelSelection,
+  type Progress,
   type RunRequest,
+  type RunResult,
   type RunnerRegistry,
   type Settings,
 } from '../contracts.js';
-import { ConversationStore, KeyedMutex, conversationOf, summaryOf, titleFrom, type ConversationRecord } from './conversations.js';
+import { ConversationStore, KeyedMutex, conversationOf, isValidConversationID, summaryOf, titleFrom, type ConversationRecord } from './conversations.js';
 import { filterPages, hasFilter, normalizeTag, readRule, scanVaultPages, type VaultPage } from './filters.js';
 import { ASK_OUTPUT_SCHEMA_TEXT, ASK_READ_ONLY_TOOLS, ASK_SYSTEM_PROMPT, buildAskPrompt } from './prompt.js';
 import { expandSources, taxonomyFrom, type SourceTaxonomy } from './taxonomy.js';
@@ -31,7 +32,7 @@ export interface AskDeps {
   runners: RunnerRegistry;
   /** Directory for Ask conversation state (sessions, history), e.g. <stateDir>/ask. */
   stateDir: string;
-  /** Receives `conversation` events (saved, pinned, deleted) and `log` warnings. */
+  /** Receives `conversation` events (saved, pinned, deleted), `progress` events and `log` warnings. */
   emit?: (event: CoreEvent) => void;
   /** Clock, for tests. */
   now?: () => Date;
@@ -181,21 +182,45 @@ export function createAskService(deps: AskDeps): AskService {
 
   // ── ask ──
 
+  /** Stop buttons: the in-flight (and queued) turns of each conversation. */
+  const inflight = new Map<string, Set<AbortController>>();
+
+  async function cancelAsk(conversationID: string): Promise<void> {
+    for (const controller of inflight.get(conversationID) ?? []) controller.abort();
+  }
+
+  const stopped = () => new CoreError('invalid_state', 'Stopped');
+
   async function ask(req: AskRequest): Promise<AskResponse> {
     const question = (req.question ?? '').trim();
     if (!question) throw new CoreError('invalid_request', 'ask: question is empty');
-    await maybeSweep();
+    if (req.conversationID !== undefined && !isValidConversationID(req.conversationID)) {
+      throw new CoreError('invalid_request', `ask: invalid conversation id "${req.conversationID}"`);
+    }
     const conversationID = req.conversationID ?? store.newID();
-    return mutex.run(conversationID, () => askLocked(req, question, conversationID));
+    // Registered before the first await, so a Stop sent right after the request is never lost.
+    const controller = new AbortController();
+    const set = inflight.get(conversationID) ?? new Set<AbortController>();
+    set.add(controller);
+    inflight.set(conversationID, set);
+    try {
+      await maybeSweep();
+      if (controller.signal.aborted) throw stopped();
+      return await mutex.run(conversationID, () => askLocked(req, question, conversationID, controller.signal));
+    } finally {
+      set.delete(controller);
+      if (set.size === 0 && inflight.get(conversationID) === set) inflight.delete(conversationID);
+    }
   }
 
-  async function askLocked(req: AskRequest, question: string, conversationID: string): Promise<AskResponse> {
+  async function askLocked(req: AskRequest, question: string, conversationID: string, signal: AbortSignal): Promise<AskResponse> {
+    if (signal.aborted) throw stopped();
     const askedAt = now();
     const settings = deps.getSettings();
     const prefs = askPreferences(settings);
     const taxonomy = taxonomyFrom(settings);
+    // An unknown, well-formed id starts a new chat: clients pick the id up front so they can Stop it.
     const record = req.conversationID ? await store.load(conversationID) : undefined;
-    if (req.conversationID && !record) throw new CoreError('not_found', `ask: unknown conversation ${conversationID}`);
 
     const vaultPath = await resolveVault(req, record, settings);
     const notices: string[] = [];
@@ -338,7 +363,7 @@ export function createAskService(deps: AskDeps): AskService {
       environment: { CLAUDE_OBSIDIAN_VAULT: vaultPath },
     };
 
-    const result = await runner.run(request, settings);
+    const result = await runWithProgress(runner, request, settings, conversationID, signal);
     if (result.isError) {
       throw new Error(`ask: ${runner.displayName} failed: ${result.resultText || 'no result text'}`);
     }
@@ -386,7 +411,49 @@ export function createAskService(deps: AskDeps): AskService {
     emit({ type: 'conversation', conversation: summaryOf(record) });
   }
 
-  return { ask, listConversations, getConversation, deleteConversation, setConversationPinned, sweepHistory, cancelAsk: async () => notImplemented('cancelAsk') };
+  /**
+   * One runner turn with `ask` progress (key `ask:<conversationID>`), always closed by a finished
+   * event. A Stop (cancelAsk) aborts the run and throws CoreError invalid_state "Stopped".
+   */
+  async function runWithProgress(
+    runner: { displayName: string; run: (r: RunRequest, s: Settings) => Promise<RunResult> },
+    request: RunRequest,
+    settings: Settings,
+    conversationID: string,
+    signal: AbortSignal,
+  ): Promise<RunResult> {
+    const progress: Progress = {
+      key: `ask:${conversationID}`,
+      kind: 'ask',
+      message: 'Reading your notes',
+      startedAt: now(),
+      runnerID: request.selection.runnerID,
+      model: request.selection.model,
+    };
+    emit({ type: 'progress', progress });
+    let error: string | undefined;
+    try {
+      if (signal.aborted) throw stopped();
+      const result = await runner.run({ ...request, signal }, settings);
+      if (signal.aborted) throw stopped(); // a runner that finished anyway: the turn is still dropped
+      if (result.isError) error = result.resultText || 'no result text';
+      return result;
+    } catch (err) {
+      if (signal.aborted) {
+        error = 'Stopped';
+        throw stopped();
+      }
+      error = err instanceof Error ? err.message : String(err);
+      throw err;
+    } finally {
+      emit({
+        type: 'progress',
+        progress: { ...progress, ...(error === 'Stopped' ? { message: 'Stopped' } : {}), finished: true, ...(error ? { error } : {}) },
+      });
+    }
+  }
+
+  return { ask, listConversations, getConversation, deleteConversation, setConversationPinned, sweepHistory, cancelAsk };
 }
 
 function countPages(n: number): string {
