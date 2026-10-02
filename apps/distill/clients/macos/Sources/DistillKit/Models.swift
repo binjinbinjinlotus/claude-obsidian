@@ -946,3 +946,27 @@ public struct ModelChoice: Hashable, Sendable {
         return id
     }
 }
+
+/// A vault page for the note picker (`GET /v1/pages`).
+public struct PageRef: Codable, Hashable, Sendable, Identifiable {
+    public var path: String
+    public var title: String
+    public var id: String { path }
+
+    public init(path: String, title: String) {
+        self.path = path
+        self.title = title
+    }
+
+    /// The file name without `.md`: what Obsidian resolves `[[...]]` by.
+    public var linkTarget: String {
+        let name = (path as NSString).lastPathComponent
+        return name.lowercased().hasSuffix(".md") ? String(name.dropLast(3)) : name
+    }
+
+    /// `[[Name]]`, or `[[Name|Title]]` when the title differs from the file name.
+    public var wikilink: String {
+        let target = linkTarget
+        return target.caseInsensitiveCompare(title) == .orderedSame || title.isEmpty ? "[[\(target)]]" : "[[\(target)|\(title)]]"
+    }
+}

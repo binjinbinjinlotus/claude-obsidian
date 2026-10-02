@@ -222,6 +222,19 @@ public final class CoreClient: Sendable {
                               as: Wrapped<Job>.self, key: "job").value
     }
 
+    // MARK: Pages
+
+    /// `GET /v1/pages?q=&vault=&limit=`: vault pages for the note picker, best matches first.
+    public func searchPages(_ query: String, vaultPath: String? = nil, limit: Int? = nil) async throws -> [PageRef] {
+        var c = URLComponents()
+        var items = [URLQueryItem(name: "q", value: query)]
+        if let vaultPath { items.append(URLQueryItem(name: "vault", value: vaultPath)) }
+        if let limit { items.append(URLQueryItem(name: "limit", value: String(limit))) }
+        c.queryItems = items
+        let q = (c.percentEncodedQuery ?? "").replacingOccurrences(of: "+", with: "%2B")
+        return try await get("/v1/pages?" + q, as: Wrapped<LossyList<PageRef>>.self, key: "pages").value.items
+    }
+
     // MARK: Runners
 
     public func runners() async throws -> [RunnerInfo] {

@@ -62,7 +62,8 @@ import {
   type ParsedStatus,
   type SourceLabels,
 } from './job-kinds.js';
-import { CoreError, notImplemented } from './errors.js';
+import { CoreError } from './errors.js';
+import { searchVaultPages } from './pages.js';
 import { noteFileFor, readManifest, validateNote, writeManifest, writeNote, type NoteLabelState } from './notes.js';
 import { draftBatchLabels } from '../labels/batch.js';
 import { bodyOf, parseFrontmatter, scalarValue, setLabelProperties } from '../labels/frontmatter.js';
@@ -1396,8 +1397,9 @@ export function createEngine(opts: EngineOptions): Engine {
     allow,
     reject,
     cancel,
-    // Owner: mac-editor teammate (note picker).
-    searchPages: async () => notImplemented('searchPages'),
+    async searchPages(query, opts) {
+      return searchVaultPages(resolveVault(opts?.vaultPath).path, query, opts?.limit);
+    },
     deleteJob,
     jobResumeCommand,
     removeQueueEntry,
