@@ -3,6 +3,7 @@ import type { CoreEvent, DistillCore, Progress, StatePaths } from './contracts.j
 import { createEngine, type EngineOptions } from './engine/index.js';
 import { createAskService } from './ask/index.js';
 import { createRunnerAdmin } from './runners/admin.js';
+import { createActionsService } from './actions/index.js';
 import { statePaths } from './store/paths.js';
 
 export * from './contracts.js';
@@ -37,8 +38,16 @@ export function createCore(opts: CoreOptions = {}): DistillCore {
     stateDir: path.join(paths.dir, 'ask'),
   });
   const admin = createRunnerAdmin({ runners: engine.runners, getSettings: () => engine.getSettings() });
+  const actions = createActionsService({
+    emit,
+    getSettings: () => engine.getSettings(),
+    runners: engine.runners,
+    file: paths.actions ?? path.join(paths.dir, 'actions.json'),
+    stateDir: paths.dir,
+  });
   return {
     ...engine,
+    ...actions,
     ask: (req) => ask.ask(req),
     listConversations: () => ask.listConversations(),
     getConversation: (id) => ask.getConversation(id),

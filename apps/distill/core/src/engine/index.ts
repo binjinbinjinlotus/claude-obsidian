@@ -103,7 +103,13 @@ const INGEST_AVAILABLE_TOOLS = ['Skill', 'Read', 'Glob', 'Grep', 'Edit', 'Write'
 
 /** Everything in DistillCore except `ask`, plus what Ask needs from the engine. */
 /** Ask (ask/) and runner admin (runners/admin.ts) are composed in index.ts. */
-export type EngineOwned = Exclude<keyof DistillCore, AskOwned | RunnerAdminOwned | CompositionOwned>;
+export type EngineOwned = Exclude<keyof DistillCore, AskOwned | RunnerAdminOwned | CompositionOwned | ActionsOwned>;
+/** Actions and connections: core/src/actions (createActionsService). */
+export type ActionsOwned =
+  | 'listActionTypes' | 'listActions' | 'getAction' | 'createAction' | 'updateAction' | 'confirmActions'
+  | 'dismissActions' | 'draftAction' | 'improveAction' | 'undoImprove' | 'performAction' | 'sendActionTo'
+  | 'removeAction' | 'restoreAction' | 'deleteActionForever' | 'detectAskActions'
+  | 'listConnections' | 'connect' | 'signInURL' | 'disconnect';
 export type AskOwned = 'ask' | 'listConversations' | 'getConversation' | 'deleteConversation' | 'setConversationPinned' | 'cancelAsk';
 /** Implemented in index.ts from the merged event stream. */
 export type CompositionOwned = 'listProgress';

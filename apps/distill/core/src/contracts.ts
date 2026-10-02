@@ -15,7 +15,7 @@ export interface VaultProfile {
   queueDirectory: string;
 }
 
-export type AITask = 'ingest' | 'ask' | 'labelSuggest' | 'imageText';
+export type AITask = 'ingest' | 'ask' | 'labelSuggest' | 'imageText' | 'actionFind' | 'actionDraft' | 'actionImprove';
 
 export interface ModelSelection {
   runnerID: string;
@@ -52,6 +52,8 @@ export interface Settings {
   shortcuts?: { ask?: string | null; addNote?: string | null };
   /** Non-secret per-runner options, e.g. {"openrouter": {"baseURL": "..."}}. Secrets live in the Keychain. */
   runnerOptions?: Record<string, Record<string, string>>;
+  /** v3: Actions (to-dos and action types). Absent = DEFAULT_ACTION_PREFERENCES. */
+  actionPreferences?: Partial<ActionPreferences>;
 }
 
 export interface SourceDefinition {
@@ -292,6 +294,9 @@ export const TASK_REQUIREMENTS: Record<AITask, RunnerCapability[][]> = {
   ask: [['agentTools', 'toolPermissions', 'sessionResume']],
   labelSuggest: [['structuredOutput']],
   imageText: [['vision']],
+  actionFind: [['structuredOutput']],
+  actionDraft: [['structuredOutput']],
+  actionImprove: [['structuredOutput']],
 };
 
 // ───────────────────────────── Queue & notes ─────────────────────────────
@@ -528,6 +533,211 @@ export function notImplemented(what: string): never {
   throw new CoreError('not_implemented', `${what}: not implemented`);
 }
 
+
+// ───────────────────────────── Actions (actions.json) ─────────────────────────────
+//
+// Things to do that Distill finds in processed notes and Ask answers. Every item
+// has a TYPE. "todo" is the catch-all; other types (slack, jira, confluence, later
+// email, …) are things Distill can do for you through HANDLERS (copy, mark sent,
+// create in Jira, send, …). Types and handlers are data in a registry
+// (core/src/actions/registry.ts): adding one never changes this contract.
+
+/** Built-in action types. Others may appear later; clients must render unknown ids generically. */
+export const BUILTIN_ACTION_TYPES = ['todo', 'slack', 'jira', 'confluence'] as const;
+export type ActionTypeID = string;
+
+/**
+ * pending   – found, waiting for you to confirm (Ask me to confirm is on)
+ * open      – in its list (a to-do, or a type item whose draft isn't written yet)
+ * drafting  – AI is writing the draft (or improving it after your edit)
+ * ready     – draft written; ready to copy / create
+ * creating  – a handler is running (e.g. creating in Jira)
+ * created   – exists outside Distill (external key/url/status); stays listed until done
+ * done      – completed (to-do checked, or Jira says Done / you marked it done)
+ * sent      – you marked a message as sent (or a future Send handler sent it)
+ * removed   – you removed it; in History until historyDays, restorable
+ * dismissed – you dismissed a found item before it was added (not shown in lists)
+ */
+export type ActionStatus = 'pending' | 'open' | 'drafting' | 'ready' | 'creating' | 'created' | 'done' | 'sent' | 'removed' | 'dismissed';
+
+export type ActionSource =
+  | { kind: 'note'; jobID?: string | null; notePath?: string | null; pageTitle?: string | null; quote?: string | null }
+  | { kind: 'ask'; conversationID: string; question?: string | null; quote?: string | null; citedPaths?: string[] }
+  | { kind: 'manual' };
+
+export interface ActionError {
+  /** not_connected / auth_expired → show "Sign in"; refused → `field` is the bad field; unreachable; ai_failed. */
+  code: 'not_connected' | 'auth_expired' | 'refused' | 'unreachable' | 'ai_failed' | 'other';
+  message: string;
+  field?: string | null;
+}
+
+export interface ActionEvent {
+  at: string; // ISO-8601
+  /** e.g. found, confirmed, drafted, edited, improved, improve-undone, copied, sent-to:<type>, created, status, done, removed, restored */
+  event: string;
+  detail?: string | null;
+}
+
+export interface ActionItem {
+  id: string;
+  type: ActionTypeID;
+  status: ActionStatus;
+  /** One line: the to-do, the message's purpose, the ticket summary, the page title. */
+  title: string;
+  /** Markdown: to-do notes, the Slack message, the ticket description, the page body. */
+  body?: string | null;
+  /** Type-specific fields by key (see ActionTypeInfo.fields), e.g. to, due, priority, person, project, issueType, space, parent. */
+  fields: Record<string, string | null>;
+  /** Why it needs doing (shown as "Why:"). */
+  why?: string | null;
+  source: ActionSource;
+  vaultPath?: string | null;
+  labels?: string[];
+  createdAt: string;
+  updatedAt: string;
+  /** Model label that wrote / last improved the draft, e.g. "Sonnet". */
+  draftModel?: string | null;
+  /** The text before the last AI improve, for Undo. Cleared on the next edit. */
+  previousBody?: string | null;
+  /** Created outside Distill (Jira key, Confluence page). */
+  external?: { key?: string | null; url?: string | null; status?: string | null; checkedAt?: string | null } | null;
+  error?: ActionError | null;
+  /** The item this one came from (a to-do sent to Slack keeps the to-do's id here). */
+  fromActionID?: string | null;
+  /** Timeline, oldest first. */
+  events: ActionEvent[];
+}
+
+export interface ActionFieldSpec {
+  key: string;
+  label: string;
+  kind: 'text' | 'person' | 'date' | 'choice' | 'markdown';
+  choices?: string[];
+  required?: boolean;
+}
+
+export interface ActionHandlerInfo {
+  /** copy | markSent | create | complete | refresh | send … */
+  id: string;
+  label: string;
+  /** false = shown disabled (reserved for later, or a connection is missing). */
+  available: boolean;
+  reason?: string | null;
+}
+
+export interface ActionTypeInfo {
+  id: ActionTypeID;
+  label: string; // "Slack message"
+  pluralLabel: string; // "Slack messages"
+  /** Off in Settings: no tab, and its items fall back to to-dos. Reserved types (email) are listed but disabled. */
+  enabled: boolean;
+  reserved?: boolean;
+  fields: ActionFieldSpec[];
+  handlers: ActionHandlerInfo[];
+  /** Connection this type needs (e.g. "atlassian"), if any. */
+  connectionID?: string | null;
+  /** When the draft is written: on note processing / Ask detection, or only when you click. */
+  draftWhen: 'onFind' | 'onRequest';
+  /** Run the improve prompt after you finish editing. */
+  improveAfterEdit: boolean;
+}
+
+export interface ActionSourcePreferences {
+  detectTodos: boolean; // default true
+  detectTypes: boolean; // default true (Slack, Jira, Confluence…)
+  /** Types not detected from this source even though detectTypes is on. */
+  disabledTypes?: string[];
+  /** Ask me to confirm before adding. Default true. */
+  confirm: boolean;
+}
+
+export interface ActionTypePreferences {
+  enabled: boolean;
+  draftWhen: 'onFind' | 'onRequest';
+  improveAfterEdit: boolean;
+  /** Model for writing the draft; default Claude Code · Sonnet. */
+  draftSelection?: ModelSelection | null;
+  /** Model for improving after your edit; default Claude Code · Sonnet. */
+  improveSelection?: ModelSelection | null;
+  /** null/absent = the built-in default prompt (Reset to default sets null). */
+  draftPrompt?: string | null;
+  improvePrompt?: string | null;
+  /** Default field values, e.g. {project: "PX", issueType: "Task"} or {space: "ENG"}. */
+  fieldDefaults?: Record<string, string>;
+}
+
+export interface ActionPreferences {
+  sources: { notes: ActionSourcePreferences; ask: ActionSourcePreferences };
+  /** By type id. Missing keys use each type's built-in defaults. */
+  types: Record<string, Partial<ActionTypePreferences>>;
+  /** Model that finds actions in notes and answers; default Claude Code · Sonnet. */
+  findSelection?: ModelSelection | null;
+  /** Prompt for finding actions; null = default. */
+  findPrompt?: string | null;
+  todo: { defaultSort: 'due' | 'created' | 'priority' | 'note'; defaultGroup: 'due' | 'note' | 'none'; remindOverdue: boolean };
+  /** Removed / done / sent items stay in History this many days. Default 90. */
+  historyDays: number;
+}
+
+export const DEFAULT_ACTION_PREFERENCES: ActionPreferences = {
+  sources: {
+    notes: { detectTodos: true, detectTypes: true, confirm: true },
+    ask: { detectTodos: true, detectTypes: true, confirm: true },
+  },
+  types: {},
+  todo: { defaultSort: 'due', defaultGroup: 'due', remindOverdue: false },
+  historyDays: 90,
+};
+
+export interface ActionQuery {
+  type?: ActionTypeID;
+  status?: ActionStatus[];
+  /** Include removed/done/sent (History). Default false. */
+  history?: boolean;
+  vaultPath?: string;
+  text?: string;
+}
+
+export interface NewActionInput {
+  type: ActionTypeID;
+  title: string;
+  body?: string | null;
+  fields?: Record<string, string | null>;
+  why?: string | null;
+  source?: ActionSource; // default manual
+  vaultPath?: string | null;
+}
+
+export interface ActionPatch {
+  title?: string;
+  body?: string | null;
+  fields?: Record<string, string | null>;
+  /** Change where it goes (only while pending/open/ready). */
+  type?: ActionTypeID;
+}
+
+// ───────────────────────────── Connections ─────────────────────────────
+
+export interface ConnectionInfo {
+  /** "atlassian" (Jira + Confluence on one site), later "slack", … */
+  id: string;
+  label: string;
+  status: 'connected' | 'not_connected' | 'expired' | 'signing_in' | 'error';
+  site?: string | null;
+  account?: string | null;
+  message?: string | null;
+  /** Types that use this connection. */
+  usedBy: ActionTypeID[];
+}
+
+/** Credentials go to the Keychain; never to settings.json or logs. */
+export interface ConnectRequest {
+  site?: string; // e.g. https://acme.atlassian.net
+  email?: string;
+  token?: string;
+}
+
 // ───────────────────────────── Events ─────────────────────────────
 
 export type CoreEvent =
@@ -537,7 +747,9 @@ export type CoreEvent =
   | { type: 'log'; level: 'info' | 'warn' | 'error'; message: string }
   | { type: 'labelSuggestions'; requestID: string; notePath: string; labels: LabelSuggestion[]; error?: string; costUSD?: number }
   | { type: 'progress'; progress: Progress }
-  | { type: 'conversation'; conversation: AskConversationSummary; deleted?: boolean };
+  | { type: 'conversation'; conversation: AskConversationSummary; deleted?: boolean }
+  | { type: 'action'; action: ActionItem; deleted?: true }
+  | { type: 'connection'; connection: ConnectionInfo };
 
 // ───────────────────────────── The core facade ─────────────────────────────
 
@@ -622,6 +834,42 @@ export interface DistillCore {
   /** null clears the secret. */
   setRunnerSecret(runnerID: string, name: string, value: string | null): Promise<void>;
 
+  // ── v3: actions (owner: core-actions) ──
+  listActionTypes(): Promise<ActionTypeInfo[]>;
+  listActions(query?: ActionQuery): Promise<ActionItem[]>;
+  getAction(id: string): Promise<ActionItem | undefined>;
+  /** Add by hand (or from a selection in Ask). Lands as open (to-do) or ready/open (type). */
+  createAction(input: NewActionInput): Promise<ActionItem>;
+  /** Edit. A body edit on a type with improveAfterEdit does NOT improve by itself: the client calls improveAction when you click Done. */
+  updateAction(id: string, patch: ActionPatch): Promise<ActionItem>;
+  /** Confirm found items (pending → open/ready, writing drafts if draftWhen is onFind). */
+  confirmActions(ids: string[]): Promise<ActionItem[]>;
+  /** Dismiss found items (pending → dismissed). */
+  dismissActions(ids: string[]): Promise<void>;
+  /** Write the draft now ("Create message"). progress key: action:<id>. */
+  draftAction(id: string, opts?: { signal?: AbortSignal }): Promise<ActionItem>;
+  /** Improve the draft after your edit (improve prompt + model); keeps previousBody for Undo. */
+  improveAction(id: string, opts?: { signal?: AbortSignal }): Promise<ActionItem>;
+  /** Put previousBody back. */
+  undoImprove(id: string): Promise<ActionItem>;
+  /** Run a handler: copy (records the event), markSent, create, complete, refresh, … */
+  performAction(id: string, handlerID: string): Promise<ActionItem>;
+  /** A to-do (or an item of another type) goes to a type's list; the new item keeps fromActionID; the old one leaves its list. */
+  sendActionTo(id: string, type: ActionTypeID): Promise<ActionItem>;
+  removeAction(id: string): Promise<ActionItem>;
+  restoreAction(id: string): Promise<ActionItem>;
+  /** From History only; cannot be undone. */
+  deleteActionForever(id: string): Promise<void>;
+  /** Find actions in one Ask turn (also runs by itself after each answer when Settings say so). Returns the found items. */
+  detectAskActions(conversationID: string, turnIndex?: number): Promise<ActionItem[]>;
+
+  // ── v3: connections (owner: core-actions) ──
+  listConnections(): Promise<ConnectionInfo[]>;
+  connect(id: string, req: ConnectRequest): Promise<ConnectionInfo>;
+  /** URL to open in the browser to sign in or create a token for this connection. */
+  signInURL(id: string, site?: string): Promise<{ url: string }>;
+  disconnect(id: string): Promise<ConnectionInfo>;
+
   subscribe(listener: (event: CoreEvent) => void): () => void;
 }
 
@@ -634,4 +882,5 @@ export interface StatePaths {
   jobs: string; // <dir>/jobs.json
   serverLock: string; // <dir>/server.json  {pid, port, startedAt}
   token: string; // <dir>/token  (mode 0600)
+  actions?: string; // <dir>/actions.json (v3)
 }

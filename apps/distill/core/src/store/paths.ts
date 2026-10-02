@@ -11,5 +11,6 @@ export function statePaths(dir = process.env.DISTILL_STATE_DIR): StatePaths {
     jobs: path.join(root, 'jobs.json'),
     serverLock: path.join(root, 'server.json'),
     token: path.join(root, 'token'),
+    actions: path.join(root, 'actions.json'),
   };
 }

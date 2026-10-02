@@ -346,6 +346,86 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       queue.splice(i, 1);
       return queue;
     },
+    listActionTypes: async (...args: unknown[]) => {
+      record('listActionTypes', ...args);
+      throw new CoreError('not_implemented', 'listActionTypes');
+    },
+    listActions: async (...args: unknown[]) => {
+      record('listActions', ...args);
+      throw new CoreError('not_implemented', 'listActions');
+    },
+    getAction: async (...args: unknown[]) => {
+      record('getAction', ...args);
+      throw new CoreError('not_implemented', 'getAction');
+    },
+    createAction: async (...args: unknown[]) => {
+      record('createAction', ...args);
+      throw new CoreError('not_implemented', 'createAction');
+    },
+    updateAction: async (...args: unknown[]) => {
+      record('updateAction', ...args);
+      throw new CoreError('not_implemented', 'updateAction');
+    },
+    confirmActions: async (...args: unknown[]) => {
+      record('confirmActions', ...args);
+      throw new CoreError('not_implemented', 'confirmActions');
+    },
+    dismissActions: async (...args: unknown[]) => {
+      record('dismissActions', ...args);
+      throw new CoreError('not_implemented', 'dismissActions');
+    },
+    draftAction: async (...args: unknown[]) => {
+      record('draftAction', ...args);
+      throw new CoreError('not_implemented', 'draftAction');
+    },
+    improveAction: async (...args: unknown[]) => {
+      record('improveAction', ...args);
+      throw new CoreError('not_implemented', 'improveAction');
+    },
+    undoImprove: async (...args: unknown[]) => {
+      record('undoImprove', ...args);
+      throw new CoreError('not_implemented', 'undoImprove');
+    },
+    performAction: async (...args: unknown[]) => {
+      record('performAction', ...args);
+      throw new CoreError('not_implemented', 'performAction');
+    },
+    sendActionTo: async (...args: unknown[]) => {
+      record('sendActionTo', ...args);
+      throw new CoreError('not_implemented', 'sendActionTo');
+    },
+    removeAction: async (...args: unknown[]) => {
+      record('removeAction', ...args);
+      throw new CoreError('not_implemented', 'removeAction');
+    },
+    restoreAction: async (...args: unknown[]) => {
+      record('restoreAction', ...args);
+      throw new CoreError('not_implemented', 'restoreAction');
+    },
+    deleteActionForever: async (...args: unknown[]) => {
+      record('deleteActionForever', ...args);
+      throw new CoreError('not_implemented', 'deleteActionForever');
+    },
+    detectAskActions: async (...args: unknown[]) => {
+      record('detectAskActions', ...args);
+      throw new CoreError('not_implemented', 'detectAskActions');
+    },
+    listConnections: async (...args: unknown[]) => {
+      record('listConnections', ...args);
+      throw new CoreError('not_implemented', 'listConnections');
+    },
+    connect: async (...args: unknown[]) => {
+      record('connect', ...args);
+      throw new CoreError('not_implemented', 'connect');
+    },
+    signInURL: async (...args: unknown[]) => {
+      record('signInURL', ...args);
+      throw new CoreError('not_implemented', 'signInURL');
+    },
+    disconnect: async (...args: unknown[]) => {
+      record('disconnect', ...args);
+      throw new CoreError('not_implemented', 'disconnect');
+    },
     extractImageText: async (req: { imagePath: string; vaultPath?: string }) => {
       record('extractImageText', req);
       return { text: '', model: 'Haiku' };
