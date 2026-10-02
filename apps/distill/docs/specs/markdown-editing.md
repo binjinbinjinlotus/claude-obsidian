@@ -131,8 +131,26 @@ Paste:
   quotes. This includes Slack and Google Docs CSS spans.
 - HTML with no formatting falls back to the plain text, and RTF is used when
   there is no HTML.
-- Copy writes plain Markdown only.
-- An image-only clipboard is left to Write a note's image intake.
+- Copy writes plain Markdown only (an image is its `![[name]]`).
+- In editors that take images (Write a note, quick note) an image clipboard
+  (image files, or picture data with no text) inserts the images at the
+  cursor; pasted or dropped Markdown that embeds one of the note's images
+  shows it as an image again. Other editors leave an image-only clipboard
+  alone.
+
+## Images inside the text
+
+Write a note and the quick note pass an `InlineImageHost`
+(`MarkdownEditorImages.swift`). In the text view an image is one U+FFFC
+character with an `InlineImageAttachment` (TextKit 1 cell sized to the image's
+aspect, at most the box width and 320 pt tall); the binding and the draft keep
+`![[name]]`. Conversion happens only where text enters (`load`, paste, drop)
+or leaves (`setText`, copy) the view, styling keeps the attachments, and a
+command over a range that holds an image re-attaches it. Hover chrome,
+selection ring, reading shimmer and failure strip are SwiftUI views placed
+over each image; the extracted text is tinted and gets an "Extracted from …
+· Undo ⌘Z" line for a few seconds. Insert, remove and extract are single undo
+steps. Behavior: [Write a note](notes-composer.md#images).
 
 ## Snapshots
 

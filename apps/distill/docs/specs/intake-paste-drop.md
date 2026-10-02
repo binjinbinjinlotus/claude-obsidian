@@ -28,8 +28,10 @@ Code: `clients/macos/Sources/Distill/Intake.swift` (`PasteboardIntake`, `DropTar
   everything else (the core's copy gets a fresh modification time, so this is
   the drop time). See [Queue and batching](queue-and-batching.md).
 
-Image handling beyond "a file in the queue" (keep vs. extract text) is part of
-[Write a note](notes-composer.md) (`POST /v1/notes`). While the composer is on
-screen and its window is key, ⌘V adds images (and text) to the note instead
-of the queue (`PasteboardIntake.composeTarget`); drops on the Queue panel or
-the flask always queue files.
+Images inside a note (placed at the cursor, kept as attachments or read with
+Extract content) are part of [Write a note](notes-composer.md#images)
+(`POST /v1/notes`, `POST /v1/images/extract`). While the composer is on
+screen and its window is key, ⌘V adds images at the editor's cursor (and text)
+to the note instead of the queue (`PasteboardIntake.composeTarget`, or the
+text view's own paste when it has focus); a drop on the composer card does
+the same. Drops on the Queue panel or the flask always queue files.
