@@ -66,7 +66,7 @@ extension AppModel {
     /// Opens Settings at a section ("connections", "models", "actions/jira", …).
     /// Posts "distill.openSettingsSection"; AppDelegate selects it and shows the window.
     func openSettings(section: String) {
-        NotificationCenter.default.post(name: Notification.Name("distill.openSettingsSection"), object: section)
+        NotificationCenter.default.post(name: .distillOpenSettingsSection, object: section)
     }
 
     // MARK: Action types
@@ -188,4 +188,9 @@ extension AppModel {
         }
         return "\(prefix)."
     }
+}
+
+extension Notification.Name {
+    /// Object: the Settings section id (see SettingsCatalog).
+    static let distillOpenSettingsSection = Notification.Name("distill.openSettingsSection")
 }

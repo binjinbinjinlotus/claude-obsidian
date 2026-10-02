@@ -32,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             MainActor.assumeIsolated { self?.showQuickAsk() }
         }
         // Other screens open a Settings section ("connections", "models", "actions/jira").
-        NotificationCenter.default.addObserver(forName: Notification.Name("distill.openSettingsSection"), object: nil, queue: .main) { [weak self] note in
+        NotificationCenter.default.addObserver(forName: .distillOpenSettingsSection, object: nil, queue: .main) { [weak self] note in
             let id = note.object as? String
             MainActor.assumeIsolated {
                 if let id { self?.engine.settingsUI.open(id) }
