@@ -58,8 +58,6 @@ final class ActionsStore: ObservableObject {
     @Published var showRequest = 0
     /// Bumped to show History → Actions.
     @Published var historyRequest = 0
-    /// Settings section to open ("connections", "actions/jira"); MainView opens Settings.
-    @Published var settingsRequest: String?
     /// Ask: ids that detection said are already in Actions, per conversation.
     @Published var already: [String: Set<String>] = [:]
     /// Ask: conversations whose "Show" (confirmation off) is expanded.
@@ -211,7 +209,8 @@ final class ActionsStore: ObservableObject {
         open(tab: "todo")
     }
 
-    func openSettings(_ section: String) { settingsRequest = section }
+    /// Settings at a section ("connections", "actions/jira"); the Settings window selects it.
+    func openSettings(_ section: String) { engine?.openSettings(section: section) }
 
     // MARK: Toast
 

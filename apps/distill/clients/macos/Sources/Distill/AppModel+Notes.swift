@@ -154,7 +154,7 @@ extension AppModel {
             },
             setState: { [weak self] name, state in self?.updateDraft(owner) { $0.imageStates[name] = state } },
             readingModel: { [weak self] in self.map { LabelsModelName.imageText($0) } ?? "AI" },
-            openSettings: { (NSApp.delegate as? AppDelegate)?.showSettings() },
+            openSettings: { [weak self] in self?.openSettings(section: "models") },
             fixture: notes.imageFixtures[owner])
     }
 

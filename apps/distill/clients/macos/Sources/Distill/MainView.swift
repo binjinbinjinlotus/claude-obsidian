@@ -48,12 +48,6 @@ struct MainView: View {
         .onReceive(engine.ask.$showAskRequest.dropFirst()) { _ in section = .ask }
         .onReceive(engine.actions.$showRequest.dropFirst()) { _ in section = .actions }
         .onReceive(engine.actions.$historyRequest.dropFirst()) { _ in section = .history; historyPart = .actions }
-        .onReceive(engine.actions.$settingsRequest.compactMap { $0 }) { id in
-            engine.actions.settingsRequest = nil
-            openSettings()
-            // Settings' section nav (mac-settings) observes this and selects the section.
-            NotificationCenter.default.post(name: Notification.Name("distill.openSettingsSection"), object: id)
-        }
         .onChange(of: section) { old, _ in
             // Keep history off: leaving the Ask screen deletes its finished chat.
             if old == .ask { engine.ask.leave(engine.ask.main) }

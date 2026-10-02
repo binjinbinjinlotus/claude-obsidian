@@ -55,8 +55,8 @@ enum NotesSnapshot {
         notes.suggestJobID = nil
         notes.confirmJobID = nil
 
-        // Settings (every section)
-        render(SettingsView().environmentObject(engine), size: CGSize(width: 760, height: 2280),
+        // Settings (the General page, every section of it)
+        render(SettingsView().environmentObject(engine), size: CGSize(width: StatesSnapshot.settingsSize.width, height: 2280),
                to: outDir.appendingPathComponent("settings.png"))
     }
 

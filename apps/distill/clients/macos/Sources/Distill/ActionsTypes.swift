@@ -466,6 +466,7 @@ struct ExternalTypeScreen: View {
                 connectionLine
             }
             .padding(.horizontal, 32).padding(.top, 14).padding(.bottom, 8)
+            .onAppear { store.engine?.loadConnections() }
             if store.phase != .loaded {
                 ActionShimmerRows(count: 3).padding(.horizontal, 20)
                 Spacer()
@@ -504,14 +505,17 @@ struct ExternalTypeScreen: View {
         }
     }
 
-    /// "acme.atlassian.net · connected" from the Create handler (the connection's site arrives with Settings → Connections).
+    /// "acme.atlassian.net · connected": the connection's site (Settings → Connections), and
+    /// connected from the Create handler, which the core turns off without a connection.
     private var connectionLine: some View {
         let create = type.handler("create")
         let connected = create?.available ?? false
+        let site = type.connectionID.flatMap { store.engine?.settingsUI.connection($0)?.site }
+            .map { $0.replacingOccurrences(of: "https://", with: "") + (type.id == "confluence" ? "/wiki" : "") }
         return HStack(spacing: 5) {
             Image(systemName: connected ? "checkmark.circle.fill" : "xmark.circle").font(.system(size: 11))
                 .foregroundStyle(connected ? Theme.limeInk : Theme.peachInk)
-            Text(type.connectionID == "atlassian" ? "Atlassian" : service)
+            Text(site ?? (type.connectionID == "atlassian" ? "Atlassian" : service))
             Text(connected ? "· connected" : "· not connected").foregroundStyle(connected ? Theme.muted : Theme.peachInk)
         }
         .font(Theme.body(12)).foregroundStyle(Theme.muted)
@@ -650,7 +654,8 @@ struct ExternalCard: View {
     // MARK: Errors
 
     @ViewBuilder private func errorCallout(_ error: ActionError) -> some View {
-        let site = type.connectionID == "atlassian" ? "your Atlassian site" : service
+        let site = type.connectionID.flatMap { store.engine?.settingsUI.connection($0)?.site }?.replacingOccurrences(of: "https://", with: "")
+            ?? (type.connectionID == "atlassian" ? "your Atlassian site" : service)
         let connectedNow = type.handler("create")?.available ?? false
         if error.needsSignIn && connectedNow {
             ActionCallout(icon: "checkmark.circle.fill", tint: Theme.limeInk, fill: ActionsTheme.doneFill, title: "Signed in to \(service)",

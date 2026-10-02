@@ -147,6 +147,8 @@ enum SettingsEdits {
         switch task {
         case .ingest, .ask: return ModelSelection(runnerID: "claude-code", model: settings.model)
         case .labelSuggest, .imageText: return ModelSelection(runnerID: "claude-code", model: "haiku", effort: "low")
+        case .actionFind: return ModelSelection(runnerID: "claude-code", model: "sonnet", effort: "medium")
+        case .actionDraft, .actionImprove: return ModelSelection(runnerID: "claude-code", model: "sonnet")
         }
     }
 
@@ -156,13 +158,19 @@ enum SettingsEdits {
 
     /// Changing the runner resets the model to that runner's default and drops
     /// an effort it does not offer.
-    static func setTaskRunner(_ task: AITask, runner: RunnerInfo, in s: inout Settings) {
-        var sel = selection(task, settings: s)
-        guard sel.runnerID != runner.id else { return }
+    static func withRunner(_ selection: ModelSelection, _ runner: RunnerInfo) -> ModelSelection {
+        var sel = selection
+        guard sel.runnerID != runner.id else { return sel }
         sel.runnerID = runner.id
         sel.model = runner.defaultModel.isEmpty ? (runner.models.first?.id ?? sel.model) : runner.defaultModel
         if let effort = sel.effort, !runner.effortLevels.contains(effort) { sel.effort = nil }
-        s.taskDefaults[task.rawValue] = sel
+        return sel
+    }
+
+    static func setTaskRunner(_ task: AITask, runner: RunnerInfo, in s: inout Settings) {
+        let sel = selection(task, settings: s)
+        guard sel.runnerID != runner.id else { return }
+        s.taskDefaults[task.rawValue] = withRunner(sel, runner)
     }
 
     static func setTaskModel(_ task: AITask, model: String, in s: inout Settings) {
@@ -179,9 +187,64 @@ enum SettingsEdits {
     }
 
     /// Runners that are on and can do `task`; the current one stays listed.
-    static func candidates(for task: AITask, runners: [RunnerInfo], settings: Settings) -> [RunnerInfo] {
-        let current = selection(task, settings: settings).runnerID
-        return runners.filter { ($0.enabled || settings.enabledRunners.contains($0.id) || $0.id == current) && $0.tasks.contains(task) }
+    /// Action tasks need only structured output, so a runner from a core that
+    /// doesn't list them yet still qualifies by its capabilities.
+    static func candidates(for task: AITask, runners: [RunnerInfo], settings: Settings, current: String? = nil) -> [RunnerInfo] {
+        let current = current ?? selection(task, settings: settings).runnerID
+        let isAction = task == .actionFind || task == .actionDraft || task == .actionImprove
+        return runners.filter { r in
+            (r.enabled || settings.enabledRunners.contains(r.id) || r.id == current)
+                && (r.tasks.contains(task) || (isAction && r.capabilities.contains("structuredOutput")))
+        }
+    }
+
+    // MARK: Actions (actionPreferences)
+
+    static func actions(_ s: Settings) -> ActionPreferences { s.actionPreferences ?? ActionPreferences() }
+
+    static func setActions(_ s: inout Settings, _ edit: (inout ActionPreferences) -> Void) {
+        var p = actions(s)
+        edit(&p)
+        s.actionPreferences = p
+    }
+
+    /// The finding model as the core reads it: findSelection, then taskDefaults.actionFind, then Sonnet.
+    static func findSelection(_ s: Settings) -> ModelSelection {
+        actions(s).findSelection ?? selection(.actionFind, settings: s)
+    }
+
+    static func draftSelection(_ typeID: String, _ s: Settings) -> ModelSelection {
+        actions(s).draftSelection(typeID) ?? selection(.actionDraft, settings: s)
+    }
+
+    static func improveSelection(_ typeID: String, _ s: Settings) -> ModelSelection {
+        actions(s).improveSelection(typeID) ?? selection(.actionImprove, settings: s)
+    }
+
+    static func typeEnabled(_ t: SettingsActionType, _ s: Settings) -> Bool {
+        if t.reserved { return false }
+        if t.id == "todo" { return true }
+        return actions(s).enabled(t.id) ?? t.enabled
+    }
+
+    static func draftWhen(_ t: SettingsActionType, _ s: Settings) -> String { actions(s).draftWhen(t.id) ?? t.draftWhen }
+    static func improveAfterEdit(_ t: SettingsActionType, _ s: Settings) -> Bool { actions(s).improveAfterEdit(t.id) ?? t.improveAfterEdit }
+
+    /// The prompt in use: the user's, or the type's default.
+    static func prompt(_ t: SettingsActionType, improve: Bool, _ s: Settings) -> String {
+        (improve ? actions(s).improvePrompt(t.id) : actions(s).draftPrompt(t.id)) ?? ((improve ? t.defaultImprovePrompt : t.defaultDraftPrompt) ?? "")
+    }
+
+    static func promptEdited(_ t: SettingsActionType, improve: Bool, _ s: Settings) -> Bool {
+        let stored = improve ? actions(s).improvePrompt(t.id) : actions(s).draftPrompt(t.id)
+        return stored != nil && stored != ((improve ? t.defaultImprovePrompt : t.defaultDraftPrompt) ?? "")
+    }
+
+    /// Text equal to the default (or nil) removes the key, so the core uses its built-in prompt.
+    static func setPrompt(_ t: SettingsActionType, improve: Bool, text: String?, in s: inout Settings) {
+        let defaultText = (improve ? t.defaultImprovePrompt : t.defaultDraftPrompt) ?? ""
+        let value: JSONValue? = text.flatMap { $0 == defaultText ? nil : .string($0) }
+        setActions(&s) { $0.setTypeValue(t.id, improve ? "improvePrompt" : "draftPrompt", value) }
     }
 
     static func taskTitle(_ task: AITask) -> (String, String) {
@@ -190,6 +253,9 @@ enum SettingsEdits {
         case .ask: return ("Ask a question", "Answers from your vault")
         case .labelSuggest: return ("Label suggestions", "After a note is queued")
         case .imageText: return ("Text from images", "When you click Extract content on an image")
+        case .actionFind: return ("Finding actions", "After a batch is applied, and on Ask answers")
+        case .actionDraft: return ("Action drafts", "Writing drafts, set per type in Actions")
+        case .actionImprove: return ("Improving drafts", "After you edit, set per type in Actions")
         }
     }
 

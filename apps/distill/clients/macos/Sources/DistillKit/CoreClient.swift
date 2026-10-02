@@ -359,6 +359,37 @@ public final class CoreClient: Sendable {
         }
     }
 
+    // MARK: Connections (v3)
+
+    public func connections() async throws -> [ConnectionInfo] {
+        try await get("/v1/connections", as: Wrapped<LossyList<ConnectionInfo>>.self, key: "connections").value.items
+    }
+
+    /// Credentials go to the Keychain through the core; the request is never logged.
+    public func connect(_ id: String, _ request: ConnectRequest) async throws -> ConnectionInfo {
+        try await send("POST", "/v1/connections/\(Self.segment(id))/connect", body: request)
+    }
+
+    /// The page to open in the browser to sign in or create an API token.
+    public func signInURL(_ id: String, site: String? = nil) async throws -> URL {
+        var path = "/v1/connections/\(Self.segment(id))/sign-in-url"
+        if let site, !site.isEmpty { path += "?site=" + Self.segment(site) }
+        let answer: SignInURL = try await get(path)
+        guard let url = URL(string: answer.url), let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http" else {
+            throw CoreClientError.badResponse("not a web address: \(answer.url)")
+        }
+        return url
+    }
+
+    public func disconnect(_ id: String) async throws -> ConnectionInfo {
+        try await send("POST", "/v1/connections/\(Self.segment(id))/disconnect", body: JSONValue.object([:]))
+    }
+
+    /// `GET /v1/action-types` as raw JSON (Settings decodes what it needs).
+    public func actionTypesJSON() async throws -> [JSONValue] {
+        try await get("/v1/action-types", as: Wrapped<[JSONValue]>.self, key: "types").value
+    }
+
     // MARK: Events
 
     /// One connection to `GET /v1/events`. The stream ends (or throws) when the

@@ -111,24 +111,44 @@ struct FlaskView: View {
 
 // MARK: Reusable pieces
 
+/// Button sizes from the canvas (PrimaryButton / SoftButton components):
+/// height 40 / 30 / 26, font 14 / 13 / 12, horizontal padding 20 / 14 / 11
+/// (SoftButton regular 18). Only regular PrimaryButtons cast a shadow.
+enum ButtonSize {
+    case regular, small, mini
+
+    var height: CGFloat { switch self { case .regular: return 40; case .small: return 30; case .mini: return 26 } }
+    var fontSize: CGFloat { switch self { case .regular: return 14; case .small: return 13; case .mini: return 12 } }
+    var iconSize: CGFloat { self == .regular ? 12 : 10 }
+    func padding(primary: Bool) -> CGFloat {
+        switch self { case .regular: return primary ? 20 : 18; case .small: return 14; case .mini: return 11 }
+    }
+}
+
 struct PrimaryButton: View {
     let title: String
     var systemImage: String?
+    var size: ButtonSize = .regular
+    /// Off: drawn at 45% and not clickable.
+    var enabled = true
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 7) {
-                if let systemImage { Image(systemName: systemImage).font(.system(size: 12, weight: .bold)) }
-                Text(title).font(Theme.body(14, .semibold))
+                if let systemImage { Image(systemName: systemImage).font(.system(size: size.iconSize, weight: .bold)) }
+                Text(title).font(Theme.body(size.fontSize, .semibold))
             }
-            .padding(.horizontal, 20)
-            .frame(height: 40)
+            .padding(.horizontal, size.padding(primary: true))
+            .frame(height: size.height)
             .foregroundStyle(.white)
             .background(Capsule().fill(Theme.primary))
-            .shadow(color: Theme.primary.opacity(0.28), radius: 8, y: 4)
+            .shadow(color: Theme.primary.opacity(size == .regular ? 0.28 : 0), radius: 8, y: 4)
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.45)
     }
 }
 
@@ -136,16 +156,24 @@ struct SoftButton: View {
     let title: String
     var tint: Color = Theme.ink
     var fill: Color = Theme.panel
+    var size: ButtonSize = .regular
+    /// A 1 pt ring, for white buttons on white surfaces.
+    var stroke = false
+    var systemImage: String? = nil
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(Theme.body(14, .semibold))
-                .padding(.horizontal, 18)
-                .frame(height: 40)
-                .foregroundStyle(tint)
-                .background(Capsule().fill(fill))
+            HStack(spacing: 7) {
+                if let systemImage { Image(systemName: systemImage).font(.system(size: size.iconSize, weight: .bold)) }
+                Text(title).font(Theme.body(size.fontSize, .semibold))
+            }
+            .padding(.horizontal, size.padding(primary: false))
+            .frame(height: size.height)
+            .foregroundStyle(tint)
+            .background(Capsule().fill(fill))
+            .overlay { if stroke { Capsule().strokeBorder(Theme.border) } }
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
     }
