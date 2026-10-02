@@ -174,7 +174,7 @@ struct LabelsSettings: View {
                                          set: { v in SettingsEdits.setAsk(&engine.settings) { $0.includeUnconfirmed = v } }),
                            label: "Include unconfirmed labels by default")
             }
-            VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 SettingsRow(title: "In Distill: ask me to confirm",
                             note: "Notes written here show suggestions after Add to queue. Nothing is applied until you accept.", bold: true) {
                     Pill(text: "Always", fill: Theme.primaryTint, ink: Theme.primary)
@@ -255,7 +255,7 @@ struct ShortcutsSettingsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             SettingsHeading(title: "Keyboard shortcuts", note: "Off until you record one. They work from any app.")
-            VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 row(.ask, "Ask a question", "Opens the quick-ask window by the flask", "bubble.left", Theme.primaryTint, Theme.primary)
                 Divider().overlay(Theme.border)
                 row(.addNote, "Add a note", "Opens the quick-note window by the flask", "plus", Theme.limeTint, Theme.limeInk)
@@ -542,7 +542,7 @@ struct TaskDefaultsSettings: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             SettingsHeading(title: "Default model for each task", note: "Runner, model and effort. You can still change them per question in Ask.")
-            VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(AITask.allCases.enumerated()), id: \.element) { index, task in
                     if index > 0 { Divider().overlay(Theme.border) }
                     row(task)
@@ -569,7 +569,7 @@ struct TaskDefaultsSettings: View {
                 Text(note).font(Theme.body(11)).foregroundStyle(Theme.muted)
             }
             .frame(width: 170, alignment: .leading)
-            DropdownButton(title: runner?.displayName ?? (sel.runnerID == "claude-code" ? "Claude Code" : sel.runnerID)) {
+            DropdownButton(title: runner?.displayName ?? (sel.runnerID == "claude-code" ? "Claude Code" : sel.runnerID), width: 180) {
                 ForEach(candidates) { r in
                     Button(r.displayName) { SettingsEdits.setTaskRunner(task, runner: r, in: &engine.settings) }
                 }
@@ -589,7 +589,9 @@ struct TaskDefaultsSettings: View {
             }
             .disabled(runner.map { $0.effortLevels.isEmpty } ?? false)
             .accessibilityLabel("Effort for \(name)")
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
