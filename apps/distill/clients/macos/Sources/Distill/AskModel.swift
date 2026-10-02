@@ -152,10 +152,8 @@ final class AskModel: ObservableObject {
     var askRunners: [RunnerInfo] { AskSelection.runners(runners) }
 
     /// The green ring on the flask: a question from quick ask is still answering in the
-    /// background after its window closed.
-    var quickInBackground: Bool {
-        !quickVisible && quickBackgroundRun != nil
-    }
+    /// background after its window closed (also while a fresh quick ask is open).
+    var quickInBackground: Bool { quickBackgroundRun != nil }
 
     /// The newest question from quick ask still answering in the background.
     var quickBackgroundRun: BackgroundAsk? {

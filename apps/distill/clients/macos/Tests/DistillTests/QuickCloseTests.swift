@@ -97,6 +97,7 @@ final class QuickCloseTests: XCTestCase {
         ask.quickVisible = true
         XCTAssertTrue(ask.quick.isEmpty)
         XCTAssertNotNil(ask.quickBackgroundRun)
+        XCTAssertTrue(ask.quickInBackground, "the ring stays while the earlier question answers")
         ask.quickVisible = false
 
         await waitUntil { ask.background.isEmpty }
@@ -125,7 +126,7 @@ final class QuickCloseTests: XCTestCase {
         XCTAssertTrue(ask.background.isEmpty, "nothing was running")
     }
 
-    func testMainWindowRunsDoNotLightTheRing() {
+    func testMainWindowRunsDoNotLightTheRing() async {
         let app = model()
         let ask = app.ask
         ask.main.draft = "Best water temp for sencha?"
@@ -133,6 +134,7 @@ final class QuickCloseTests: XCTestCase {
         ask.newChat(ask.main)
         XCTAssertEqual(ask.background.values.first?.origin, .main)
         XCTAssertFalse(ask.quickInBackground)
+        await waitUntil { ask.background.isEmpty }
     }
 
     // MARK: Size
