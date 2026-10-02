@@ -12,6 +12,7 @@ import {
   type CoreEvent,
   type DistillCore,
   type Job,
+  type JobActionsSummary,
   type LabelCount,
   type LabelReview,
   type LabelSuggestion,
@@ -126,6 +127,14 @@ export interface EngineExtras {
   jobResumeCommand(id: string): Promise<string[] | null>;
   /** Move a file in the active queue folder to the Trash; returns the queue afterwards. */
   removeQueueEntry(path: string): Promise<QueueEntry[]>;
+  /** v3: record what "Finding actions" found for a job (actions service). */
+  setJobActions?(id: string, summary: JobActionsSummary): void;
+  /**
+   * v3: run "Finding actions" again for an applied batch (Try again after a failure).
+   * Returns the job at once (actionsFound.status "finding"); progress and action events follow.
+   * Composed in index.ts.
+   */
+  findJobActions?(id: string): Promise<Job>;
 }
 
 /** Steps of a batch, in order (`Progress.steps`); "Suggesting labels" only when the batch has a label pre-step. */
@@ -149,6 +158,8 @@ export interface EngineOptions {
   launch?: (opts: RunProcessOptions) => Promise<ProcessOutput>;
   /** Where removeQueueEntry moves files (default ~/.Trash). */
   trashDir?: string;
+  /** v3: a batch (queue-consumer job) was applied: completed with changed paths. Runs once per transition. */
+  onJobApplied?: (job: Job) => void | Promise<void>;
 }
 
 export type { Settings };
@@ -389,11 +400,17 @@ export function createEngine(opts: EngineOptions): Engine {
   function mutate(id: string, change: (job: Job) => void): void {
     const job = findJob(id);
     if (!job) return;
+    const wasCompleted = job.state === 'completed';
     change(job);
     job.updatedAt = isoDate(now());
     persistJobs();
     emit({ type: 'job', job: clone(job) });
     if (job.state !== 'running') finishJobProgress(job);
+    if (!wasCompleted && job.state === 'completed' && job.kind === queueConsumer().id && job.changedPaths.length > 0 && opts.onJobApplied) {
+      const hook = opts.onJobApplied;
+      const applied = clone(job);
+      track(Promise.resolve().then(() => hook(applied)).catch((err: unknown) => log('warn', `After apply: ${(err as Error).message}`)));
+    }
   }
 
   function insert(job: Job): void {
@@ -1452,6 +1469,11 @@ export function createEngine(opts: EngineOptions): Engine {
     deleteJob,
     jobResumeCommand,
     removeQueueEntry,
+    setJobActions(id: string, summary: JobActionsSummary) {
+      mutate(id, (j) => {
+        j.actionsFound = { ...summary, byType: { ...summary.byType } };
+      });
+    },
 
     labelNote,
     listLabels,

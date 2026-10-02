@@ -1,6 +1,25 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
-import type { AddNoteRequest, AskRequest, CoreEvent, DistillCore, ExtractImageTextRequest, Job, LabelMatch, ModelSelection, NoteImage, PermissionDenial, Settings } from '../contracts.js';
+import type {
+  ActionPatch,
+  ActionQuery,
+  ActionSource,
+  ActionStatus,
+  AddNoteRequest,
+  AskRequest,
+  ConnectRequest,
+  CoreEvent,
+  DistillCore,
+  ExtractImageTextRequest,
+  Job,
+  LabelMatch,
+  ModelSelection,
+  NewActionInput,
+  NoteImage,
+  PermissionDenial,
+  Settings,
+} from '../contracts.js';
+import { ACTION_STATUSES } from '../actions/store.js';
 import type { EngineExtras } from '../engine/index.js';
 import { suggestedRule } from '../runners/permissions.js';
 
@@ -279,6 +298,118 @@ function parseConfirmItems(o: Record<string, unknown>): { path: string; labels: 
   });
 }
 
+// ───────────────────────────── actions ─────────────────────────────
+
+function parseFields(v: unknown, key = 'fields'): Record<string, string | null> | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== 'object' || Array.isArray(v)) throw bad(`"${key}" must be an object of strings`);
+  const out: Record<string, string | null> = {};
+  for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+    if (x !== null && typeof x !== 'string') throw bad(`"${key}.${k}" must be a string or null`);
+    out[k] = x;
+  }
+  return out;
+}
+
+function parseActionSource(v: unknown): ActionSource | undefined {
+  if (v === undefined || v === null) return undefined;
+  const o = asObject(v, false);
+  const kind = optEnum(o, 'kind', ['note', 'ask', 'manual'] as const);
+  if (kind === 'manual' || kind === undefined) return { kind: 'manual' };
+  if (kind === 'ask') {
+    const src: ActionSource = { kind: 'ask', conversationID: reqString(o, 'conversationID') };
+    const question = optString(o, 'question');
+    const quote = optString(o, 'quote');
+    const citedPaths = optStringArray(o, 'citedPaths');
+    if (question) src.question = question;
+    if (quote) src.quote = quote;
+    if (citedPaths) src.citedPaths = citedPaths;
+    return src;
+  }
+  const src: ActionSource = { kind: 'note' };
+  for (const k of ['jobID', 'notePath', 'pageTitle', 'quote'] as const) {
+    const x = optString(o, k);
+    if (x) src[k] = x;
+  }
+  return src;
+}
+
+function parseNewAction(body: unknown): NewActionInput {
+  const o = asObject(body, false);
+  const input: NewActionInput = { type: optString(o, 'type') ?? 'todo', title: reqString(o, 'title') };
+  if (o.body !== undefined) {
+    if (o.body !== null && typeof o.body !== 'string') throw bad('"body" must be a string or null');
+    input.body = o.body as string | null;
+  }
+  const fields = parseFields(o.fields);
+  if (fields) input.fields = fields;
+  const why = optString(o, 'why');
+  if (why) input.why = why;
+  const source = parseActionSource(o.source);
+  if (source) input.source = source;
+  const vaultPath = optString(o, 'vaultPath');
+  if (vaultPath) input.vaultPath = vaultPath;
+  return input;
+}
+
+function parsePatch(body: unknown): ActionPatch {
+  const o = asObject(body, false);
+  const patch: ActionPatch = {};
+  const title = optString(o, 'title');
+  if (title !== undefined) patch.title = title;
+  if (o.body !== undefined) {
+    if (o.body !== null && typeof o.body !== 'string') throw bad('"body" must be a string or null');
+    patch.body = o.body as string | null;
+  }
+  const fields = parseFields(o.fields);
+  if (fields) patch.fields = fields;
+  const type = optString(o, 'type');
+  if (type) patch.type = type;
+  return patch;
+}
+
+function parseIDs(o: Record<string, unknown>): string[] {
+  const ids = optStringArray(o, 'ids');
+  if (!ids || ids.length === 0 || ids.some((id) => id.trim() === '')) throw bad('"ids" must be a non-empty array of action ids');
+  return ids;
+}
+
+function parseActionQuery(query: URLSearchParams): ActionQuery {
+  const q: ActionQuery = {};
+  const type = query.get('type');
+  if (type) q.type = type;
+  const status = query.get('status');
+  if (status) {
+    const list = status
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const s of list) if (!(ACTION_STATUSES as string[]).includes(s)) throw bad(`unknown status "${s}"`);
+    q.status = list as ActionStatus[];
+  }
+  const history = query.get('history');
+  if (history !== null) q.history = history === '1' || history === 'true';
+  const vault = query.get('vault');
+  if (vault && vault.trim()) q.vaultPath = vault;
+  const text = query.get('q');
+  if (text && text.trim()) q.text = text;
+  return q;
+}
+
+/** Abort the signal when the client closes the request (Cancel). */
+async function abortOnClose<T>(res: http.ServerResponse, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  const onClose = () => {
+    if (!res.writableFinished) controller.abort();
+  };
+  res.on('close', onClose);
+  try {
+    return await run(controller.signal);
+  } finally {
+    res.off('close', onClose);
+  }
+}
+
 /** Replace every occurrence of a secret in an error message. */
 function redact(message: string, secret: string | null | undefined): string {
   return secret ? message.split(secret).join('[redacted]') : message;
@@ -338,10 +469,10 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
     if (!job) throw new HttpError(404, 'job_not_found', `no job with id "${id}"`);
     return job;
   };
-  const extra = <K extends keyof EngineExtras>(name: K): EngineExtras[K] => {
+  const extra = <K extends keyof EngineExtras>(name: K): NonNullable<EngineExtras[K]> => {
     const fn = core[name];
     if (typeof fn !== 'function') throw new HttpError(501, 'not_implemented', `${name}: not implemented by this core`);
-    return fn.bind(core) as EngineExtras[K];
+    return fn.bind(core) as NonNullable<EngineExtras[K]>;
   };
   const vaultParam = (query: URLSearchParams) => {
     const v = query.get('vault');
@@ -565,6 +696,16 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
         return { job: job ? apiJob(job) : null };
       },
     },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/jobs\/([^/]+)\/actions\/find$/,
+      untyped: { status: 409, code: 'invalid_state' },
+      handler: async ({ params }) => {
+        const findJobActions = extra('findJobActions');
+        requireJob(params[0]!);
+        return { job: apiJob(await findJobActions(params[0]!)) };
+      },
+    },
     { method: 'POST', pattern: /^\/v1\/ask$/, handler: async ({ body }) => core.ask(parseAsk(await body())) },
     {
       method: 'POST',
@@ -575,6 +716,108 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
       },
     },
     { method: 'GET', pattern: /^\/v1\/progress$/, handler: async () => ({ progress: await core.listProgress() }) },
+
+    // ── v3: actions (docs/specs/actions.md → API) ──
+    { method: 'GET', pattern: /^\/v1\/action-types$/, handler: async () => ({ types: await core.listActionTypes() }) },
+    { method: 'GET', pattern: /^\/v1\/actions$/, handler: async ({ query }) => ({ actions: await core.listActions(parseActionQuery(query)) }) },
+    { method: 'POST', pattern: /^\/v1\/actions$/, status: 201, handler: async ({ body }) => core.createAction(parseNewAction(await body())) },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/actions\/confirm$/,
+      handler: async ({ body }) => ({ actions: await core.confirmActions(parseIDs(asObject(await body(), false))) }),
+    },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/actions\/dismiss$/,
+      handler: async ({ body }) => {
+        const ids = parseIDs(asObject(await body(), false));
+        await core.dismissActions(ids);
+        return { ids, dismissed: true };
+      },
+    },
+    {
+      method: 'GET',
+      pattern: /^\/v1\/actions\/([^/]+)$/,
+      handler: async ({ params }) => {
+        const item = await core.getAction(params[0]!);
+        if (!item) throw new HttpError(404, 'action_not_found', `no action with id "${params[0]}"`);
+        return item;
+      },
+    },
+    { method: 'PATCH', pattern: /^\/v1\/actions\/([^/]+)$/, handler: async ({ params, body }) => core.updateAction(params[0]!, parsePatch(await body())) },
+    {
+      method: 'DELETE',
+      pattern: /^\/v1\/actions\/([^/]+)$/,
+      handler: async ({ params }) => {
+        await core.deleteActionForever(params[0]!);
+        return { id: params[0]!, deleted: true };
+      },
+    },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/actions\/([^/]+)\/draft$/,
+      handler: async ({ params, res }) => abortOnClose(res, (signal) => core.draftAction(params[0]!, { signal })),
+    },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/actions\/([^/]+)\/improve$/,
+      handler: async ({ params, res }) => abortOnClose(res, (signal) => core.improveAction(params[0]!, { signal })),
+    },
+    { method: 'POST', pattern: /^\/v1\/actions\/([^/]+)\/undo-improve$/, handler: async ({ params }) => core.undoImprove(params[0]!) },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/actions\/([^/]+)\/perform$/,
+      handler: async ({ params, body }) => core.performAction(params[0]!, reqString(asObject(await body(), false), 'handler')),
+    },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/actions\/([^/]+)\/send$/,
+      handler: async ({ params, body }) => core.sendActionTo(params[0]!, reqString(asObject(await body(), false), 'type')),
+    },
+    { method: 'POST', pattern: /^\/v1\/actions\/([^/]+)\/remove$/, handler: async ({ params }) => core.removeAction(params[0]!) },
+    { method: 'POST', pattern: /^\/v1\/actions\/([^/]+)\/restore$/, handler: async ({ params }) => core.restoreAction(params[0]!) },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/conversations\/([^/]+)\/actions\/detect$/,
+      handler: async ({ params, body }) => {
+        const turnIndex = asObject(await body()).turnIndex;
+        if (turnIndex !== undefined && turnIndex !== null && (typeof turnIndex !== 'number' || !Number.isInteger(turnIndex) || turnIndex < 0)) {
+          throw bad('"turnIndex" must be a non-negative integer');
+        }
+        const actions = typeof turnIndex === 'number' ? await core.detectAskActions(params[0]!, turnIndex) : await core.detectAskActions(params[0]!);
+        return { actions };
+      },
+    },
+
+    // ── v3: connections ──
+    { method: 'GET', pattern: /^\/v1\/connections$/, handler: async () => ({ connections: await core.listConnections() }) },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/connections\/([^/]+)\/connect$/,
+      handler: async ({ params, body, secrets }) => {
+        // The token and email are never echoed or logged; they are scrubbed from error messages.
+        const o = asObject(await body(), false);
+        const req: ConnectRequest = {};
+        const site = optString(o, 'site');
+        const email = optString(o, 'email');
+        const token = optString(o, 'token');
+        if (token) secrets.push(token);
+        if (email) secrets.push(email);
+        if (site) req.site = site;
+        if (email) req.email = email;
+        if (token) req.token = token;
+        return core.connect(params[0]!, req);
+      },
+    },
+    {
+      method: 'GET',
+      pattern: /^\/v1\/connections\/([^/]+)\/sign-in-url$/,
+      handler: async ({ params, query }) => {
+        const site = query.get('site');
+        return site ? core.signInURL(params[0]!, site) : core.signInURL(params[0]!);
+      },
+    },
+    { method: 'POST', pattern: /^\/v1\/connections\/([^/]+)\/disconnect$/, handler: async ({ params }) => core.disconnect(params[0]!) },
     {
       method: 'GET',
       pattern: /^\/v1\/events$/,

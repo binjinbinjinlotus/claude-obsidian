@@ -126,6 +126,15 @@ A batch emits `batch` progress keyed by its job id (see
 | `Drafting page changes` | the core inspects the bundle the turn wrote | `Checking the page changes` |
 | `Ready for review` | finished: the job awaits approval or completed | `Ready for review` / `Done` |
 
+After Approve, once the changes are applied (job `completed` with changed
+paths), the batch gets a last step, **Finding actions** ([Actions](actions.md)):
+a new run of the same key with steps `Moved to inbox · Read sources · Applied
+changes · Finding actions · Done`, message `Finding actions in N notes`, and a
+finished message such as `Found 5 actions to confirm: 3 to-dos, 1 Slack
+message, 1 Jira ticket`. The job records the result in `actionsFound`
+(`finding` → `done` | `failed` | `skipped`), which Review and History → Jobs
+show. It runs once per job and never blocks the next batch.
+
 `Moved to inbox` is done once the job exists. The runner gives no signal
 inside a turn, so reading and drafting are not told apart while the turn
 runs. Reply and Allow turns start a new run of the same key at `Drafting page

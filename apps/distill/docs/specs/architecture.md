@@ -99,6 +99,7 @@ application/json`, at most 1 MiB). Every error is `{"error": {"code",
 | GET | `/v1/runners` | | `{runners: RunnerInfo[]}` |
 | PUT | `/v1/runners/:id/secrets/:name` | `{value: string}` or `{value: null}` to clear | `{runnerID, name, isSet}` |
 | GET | `/v1/events` | | server-sent events, below |
+| … | `/v1/actions…`, `/v1/action-types`, `/v1/connections…`, `/v1/conversations/:id/actions/detect` | | v3 Actions and connections: the table in [Actions](actions.md) → API |
 
 Label names in bodies are trimmed, lose a leading `#`, are de-duplicated and
 may not contain whitespace. Omitted `labelMatch`/`includeUnconfirmed` take the
@@ -116,7 +117,8 @@ shell commands. Stored jobs do not change.
 
 **Events.** `GET /v1/events` is `text/event-stream`: `retry: 2000`, then one
 `event: <type>\ndata: <CoreEvent JSON>\n\n` per event (`queue`, `job`,
-`settings`, `log`, `labelSuggestions`, `conversation`, `progress`), and a
+`settings`, `log`, `labelSuggestions`, `conversation`, `progress`, `action`,
+`connection`), and a
 `: keep-alive` comment every 15 s. A deleted job is a `job` event with
 `deleted: true` (proposed contract addition).
 
@@ -132,6 +134,9 @@ for the run, so clients can show an elapsed timer.
 | `labelSuggest` | `note:<requestID>` | the suggestion around `addNote` (wait and background) | `runnerID`, `model` |
 | `labelPages` | job id | `suggestLabelsForPages` | `done`/`total` pages, then "Preparing the change for Review" |
 | `ask` | `ask:<conversationID>` | one Ask runner turn | message `Reading your notes`; `runnerID`, `model`; "Stopped" after a cancel |
+| `batch` | job id | "Finding actions" after the apply (a new run of the key) | steps `… Applied changes · Finding actions · Done`; "Found 5 actions to confirm: …" |
+| `actions` | `actions:<conversationID>` | finding actions in an Ask answer (background) | "Looking for actions in this answer…"; `runnerID`, `model` |
+| `actions` | `action:<id>` | writing or improving one draft | "Writing the draft with Sonnet" / "Improving with Sonnet" |
 
 Batch steps are `Moved to inbox`, `Suggesting labels` (only with a label
 pre-step), `Read sources`, `Drafting page changes`, `Ready for review`;
@@ -155,6 +160,8 @@ distill history [--json]          # list Ask conversations
 distill history show <id> [--json]
 distill history rm <id> [--json]
 distill status [--json]           # server, vault, queue, pending reviews
+distill actions list [--type T] [--history] [--json]
+distill actions add "<title>" [--type todo] [--due YYYY-MM-DD] [--json]   # no confirm command
 distill serve [--port N]          # run the core server in the foreground
 distill plugin install --target claude|codex [--dry-run] [--copy] [--force] [--json]
 ```
@@ -236,6 +243,11 @@ item can use the same `distill serve` entry point later.
   and `distill serve: received SIGTERM, shutting down`. When a started server
   exits before it is ready, the CLI reports the log path and the new lines.
   Secret values are never logged.
+
+- `<state dir>/actions.json` (v3): action items and the ids of batches
+  already searched for actions; `<state dir>/connections.json` (mode `0600`):
+  non-secret connection details (Atlassian site, display name). Connection
+  tokens live in the Keychain. See [Actions](actions.md).
 
 ## Runtime and secrets
 
