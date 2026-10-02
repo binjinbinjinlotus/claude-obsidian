@@ -144,6 +144,14 @@ private struct LabelsScreen: View {
                 }
                 SmallButton(title: "Stop", fill: .white, height: 34) { engine.stopSuggesting() }
                     .disabled(notes.suggestJobID == "pending")
+            } else if let job = suggestJob, job.state == .failed {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Couldn't suggest labels").font(Theme.body(14, .bold))
+                    Text("\(job.error ?? "The run stopped.") Your notes were not changed.")
+                        .font(Theme.body(12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                SmallButton(title: "OK", fill: .white, height: 34) { notes.suggestJobID = nil }
             } else if let job = suggestJob, job.state == .awaitingApproval {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("AI labels are ready in Review").font(Theme.body(14, .bold))

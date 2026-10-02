@@ -215,6 +215,7 @@ extension AppModel {
                 let (review, counts) = try await (r, c)
                 store.review = review
                 store.labelCounts = counts
+                self.objectWillChange.send() // the sidebar's Labels count reads this through AppModel
                 store.reviewError = nil
                 // Edits for pages that left the list are dropped.
                 let paths = Set(review.toReview.map(\.path) + review.unlabeled.map(\.path))
