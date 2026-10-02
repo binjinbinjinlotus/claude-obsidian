@@ -1,7 +1,7 @@
 ---
 title: Approval and review
 status: built
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 
 # Approval and review
@@ -41,6 +41,20 @@ User actions:
   part); Bash and out-of-job-dir Edit grants show a warning that they bypass
   review.
 - **Reject**: ends the job. Inbox files are kept.
+
+API clients get `suggestedRule` (string or `null`) on every denial of a job
+the server returns, so Allow can show and send the exact rule without
+re-deriving it. While Approve applies, the core emits `apply` progress
+(key = job id, `Applying N changes`) until the job leaves `running`; clients
+keep Approve and Reject disabled meanwhile.
+
+Finished jobs (completed, failed, rejected, cancelled) can be removed from the
+list with `deleteJob` (`DELETE /v1/jobs/:id`); a job still running or waiting
+for review cannot (409). The job directory in the vault is kept. When the
+queue folder is the vault's `inbox/`, a job whose files are still in `inbox/`
+cannot be deleted either: its files would go back into the next batch.
+`GET /v1/jobs/:id/resume` returns the argv that reopens the job's AI session
+in a terminal (the runner's `resumeCommand`; none for label jobs).
 
 On exit 75 (stale hashes) Claude is told to rebuild, re-inspect, and ask again.
 

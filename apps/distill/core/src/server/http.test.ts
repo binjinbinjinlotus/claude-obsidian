@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { after, before, describe, it } from 'node:test';
 import { CoreError, type CoreEvent } from '../contracts.js';
-import { createFakeCore, sampleConversation, type FakeCore } from './fake-core.js';
+import { createFakeCore, sampleConversation, sampleJob, type FakeCore } from './fake-core.js';
 import { startServer, type RunningServer } from './http.js';
 
 const TOKEN = 'a'.repeat(64);
@@ -24,6 +24,10 @@ function request(
     const headers: Record<string, string> = { ...(opts.headers ?? {}) };
     if (opts.auth !== false && !('authorization' in headers)) headers.authorization = `Bearer ${TOKEN}`;
     if (payload !== undefined && !('content-type' in headers)) headers['content-type'] = 'application/json';
+    // Node sends a GET/DELETE body unframed unless the length is given.
+    if (payload !== undefined && (method === 'DELETE' || method === 'GET') && !('content-length' in headers)) {
+      headers['content-length'] = String(Buffer.byteLength(payload));
+    }
     const req = http.request({ host: '127.0.0.1', port, method, path, headers }, (res) => {
       const chunks: Buffer[] = [];
       res.on('data', (c: Buffer) => chunks.push(c));
@@ -440,6 +444,155 @@ describe('HTTP API', () => {
       const r = await request(port, 'PUT', '/v1/runners/openrouter/secrets/apiKey', { auth: false, body: { value: 'sk-x' } });
       assert.equal(r.status, 401);
       assert.equal(core.calls.length, before);
+    });
+  });
+
+  describe('v3 routes', () => {
+    const denials = [
+      { toolName: 'Bash', input: { command: 'ls /tmp' } },
+      { toolName: 'Bash', input: { command: 'cd /x && rm -rf y' } },
+      { toolName: 'Read', input: { file_path: '/Users/me/notes/a.md' } },
+    ];
+    const withDenials = () =>
+      sampleJob({
+        id: 'job-denied',
+        approval: { summary: 's', questions: [], denials: denials.map((d) => ({ ...d })), skipped: [] },
+      });
+    const rules = (list: { suggestedRule: unknown }[]) => list.map((d) => d.suggestedRule);
+    const EXPECTED = ['Bash(ls /tmp)', null, 'Read(//Users/me/notes/a.md)'];
+
+    it('job responses carry suggestedRule on each denial (null when none), without touching the core job', async () => {
+      core.jobs.push(withDenials());
+      const one = await request(port, 'GET', '/v1/jobs/job-denied');
+      assert.equal(one.status, 200);
+      assert.deepEqual(rules(one.body.approval.denials), EXPECTED);
+      assert.deepEqual(one.body.approval.denials[0].input, { command: 'ls /tmp' });
+      const list = await request(port, 'GET', '/v1/jobs');
+      const listed = list.body.jobs.find((j: { id: string }) => j.id === 'job-denied');
+      assert.deepEqual(rules(listed.approval.denials), EXPECTED);
+      const acted = await request(port, 'POST', '/v1/jobs/job-denied/reject');
+      assert.deepEqual(rules(acted.body.job.approval.denials), EXPECTED);
+      assert.ok(!('suggestedRule' in core.jobs.find((j) => j.id === 'job-denied')!.approval!.denials[0]!), 'core job unchanged');
+      core.jobs = core.jobs.filter((j) => j.id !== 'job-denied');
+    });
+
+    it('POST /v1/conversations/:id/cancel calls cancelAsk', async () => {
+      const res = await request(port, 'POST', '/v1/conversations/conv-9/cancel');
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body, { id: 'conv-9', cancelled: true });
+      assert.deepEqual(lastCall(), { method: 'cancelAsk', args: ['conv-9'] });
+    });
+
+    it('POST /v1/ask passes a client-chosen conversationID; a Stopped turn is 409', async () => {
+      const ok = await request(port, 'POST', '/v1/ask', { body: { question: 'q', conversationID: 'new-chat-1' } });
+      assert.equal(ok.status, 200);
+      assert.equal(ok.body.conversationID, 'new-chat-1');
+      core.failNext('ask', new CoreError('invalid_state', 'Stopped'));
+      const stopped = await request(port, 'POST', '/v1/ask', { body: { question: 'q', conversationID: 'new-chat-1' } });
+      assert.equal(stopped.status, 409);
+      assert.deepEqual(stopped.body, { error: { code: 'invalid_state', message: 'Stopped' } });
+    });
+
+    it('GET /v1/progress lists in-flight progress', async () => {
+      core.progress = [
+        { key: 'ask:c1', kind: 'ask', message: 'Reading your notes', startedAt: '2026-10-01T12:00:00Z', runnerID: 'claude-code', model: 'haiku' },
+      ];
+      const res = await request(port, 'GET', '/v1/progress');
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body, { progress: core.progress });
+      core.progress = [];
+    });
+
+    it('DELETE /v1/jobs/:id deletes finished jobs; 409 otherwise; 404 unknown', async () => {
+      core.jobs.push(sampleJob({ id: 'job-done', state: 'completed' }), sampleJob({ id: 'job-busy', state: 'running' }));
+      const ok = await request(port, 'DELETE', '/v1/jobs/job-done');
+      assert.equal(ok.status, 200);
+      assert.deepEqual(ok.body, { id: 'job-done', deleted: true });
+      assert.equal(core.getJob('job-done'), undefined);
+      const busy = await request(port, 'DELETE', '/v1/jobs/job-busy');
+      assert.equal(busy.status, 409);
+      assert.equal(busy.body.error.code, 'invalid_state');
+      const missing = await request(port, 'DELETE', '/v1/jobs/job-nope');
+      assert.equal(missing.status, 404);
+      core.jobs = core.jobs.filter((j) => j.id !== 'job-busy');
+    });
+
+    it('GET /v1/jobs/:id/resume returns argv, 404 when the job has no session', async () => {
+      core.jobs.push(sampleJob({ id: 'job-labels', kind: 'labels', state: 'completed' }));
+      const ok = await request(port, 'GET', '/v1/jobs/job-20261001-120000-abcd/resume');
+      assert.equal(ok.status, 200);
+      assert.deepEqual(ok.body, { argv: ['claude', '--resume', '00000000-0000-0000-0000-000000000001', '--model', 'sonnet'] });
+      const none = await request(port, 'GET', '/v1/jobs/job-labels/resume');
+      assert.equal(none.status, 404);
+      assert.equal(none.body.error.code, 'no_resume_command');
+      assert.equal((await request(port, 'GET', '/v1/jobs/job-nope/resume')).status, 404);
+      core.jobs = core.jobs.filter((j) => j.id !== 'job-labels');
+    });
+
+    it('DELETE /v1/queue/entries trashes an entry; path is required; outside the queue is 400', async () => {
+      const target = '/tmp/vault/queue/remove-me.md';
+      core.queue.push({ path: target, name: 'remove-me.md', modified: '2026-10-01T12:00:00Z', size: 1, settled: true });
+      const ok = await request(port, 'DELETE', '/v1/queue/entries', { body: { path: target } });
+      assert.equal(ok.status, 200, JSON.stringify(ok.body));
+      assert.ok(Array.isArray(ok.body.entries));
+      assert.ok(!ok.body.entries.some((e: { path: string }) => e.path === target));
+      assert.deepEqual(lastCall(), { method: 'removeQueueEntry', args: [target] });
+      assert.equal((await request(port, 'DELETE', '/v1/queue/entries', { body: {} })).status, 400);
+      const outside = await request(port, 'DELETE', '/v1/queue/entries', { body: { path: '/etc/hosts' } });
+      assert.equal(outside.status, 400);
+      assert.equal(outside.body.error.code, 'invalid_request');
+    });
+
+    it('extras missing from a core are 501', async () => {
+      const bare = createFakeCore();
+      const { deleteJob: _d, jobResumeCommand: _j, removeQueueEntry: _r, ...rest } = bare;
+      const s = await startServer({ core: rest, token: TOKEN });
+      try {
+        const res = await request(s.port, 'DELETE', '/v1/jobs/job-20261001-120000-abcd');
+        assert.equal(res.status, 501);
+        assert.equal(res.body.error.code, 'not_implemented');
+      } finally {
+        await s.close();
+      }
+    });
+
+    it('GET /v1/events forwards progress, and job events carry suggestedRule', async () => {
+      const progress: CoreEvent = {
+        type: 'progress',
+        progress: {
+          key: 'job-1',
+          kind: 'batch',
+          message: 'Reading 3 sources into vault',
+          steps: ['Moved to inbox', 'Read sources'],
+          stepIndex: 1,
+          startedAt: '2026-10-01T12:00:00Z',
+        },
+      };
+      const job: CoreEvent = { type: 'job', job: withDenials() };
+      const received = await new Promise<string>((resolve, reject) => {
+        const req = http.request({ host: '127.0.0.1', port, path: '/v1/events', headers: { authorization: `Bearer ${TOKEN}` } }, (res) => {
+          let text = '';
+          let emitted = false;
+          res.on('data', (c: Buffer) => {
+            text += c.toString('utf8');
+            if (!emitted && text.includes(': connected')) {
+              emitted = true;
+              core.emit(progress);
+              core.emit(job);
+            }
+            if (text.includes('event: progress') && text.includes('event: job')) {
+              req.destroy();
+              resolve(text);
+            }
+          });
+        });
+        req.on('error', (e) => ((e as NodeJS.ErrnoException).code === 'ECONNRESET' ? undefined : reject(e)));
+        req.end();
+      });
+      assert.ok(received.includes(`event: progress\ndata: ${JSON.stringify(progress)}\n\n`));
+      const line = received.split('\n').find((l) => l.startsWith('data: {"type":"job"'))!;
+      const sent = JSON.parse(line.slice('data: '.length));
+      assert.deepEqual(rules(sent.job.approval.denials), EXPECTED);
     });
   });
 

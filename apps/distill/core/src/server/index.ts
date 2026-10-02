@@ -11,7 +11,7 @@ import {
   type ServerLock,
 } from './lifecycle.js';
 
-export { startServer, HttpError, type ServerOptions, type RunningServer } from './http.js';
+export { startServer, HttpError, apiJob, type ServerOptions, type RunningServer, type ServerCore, type ApiPermissionDenial } from './http.js';
 export * from './lifecycle.js';
 export { statePaths } from '../store/paths.js';
 /** In-memory DistillCore for tests and client development. */

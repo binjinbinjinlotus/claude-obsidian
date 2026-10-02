@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { StatePaths } from '@distill/core/contracts';
+import type { CoreEvent, StatePaths } from '@distill/core/contracts';
 import { isPidAlive, liveServer, readToken, type ServerLock } from '@distill/core/server';
 
 /** Error with a CLI exit code (1 = runtime error, 2 = usage) and a stable machine code. */
@@ -89,6 +89,12 @@ function tail(file: string, offset = 0, lines = 15): string {
 export interface ApiClient {
   lock: ServerLock;
   request<T>(method: string, path: string, body?: unknown): Promise<T>;
+  /** Subscribe to /v1/events; resolves once the stream is connected. */
+  events(onEvent: (event: CoreEvent) => void): Promise<EventStream>;
+}
+
+export interface EventStream {
+  close(): void;
 }
 
 export interface ConnectOptions {
@@ -134,7 +140,62 @@ export async function connect(opts: ConnectOptions): Promise<ApiClient> {
   return {
     lock: found,
     request: (method, p, body) => apiRequest(found, token, method, p, body),
+    events: (onEvent) => openEvents(found, token, onEvent),
   };
+}
+
+/** Server-sent events from /v1/events, parsed into CoreEvents. Unknown or malformed frames are skipped. */
+export function openEvents(lock: ServerLock, token: string, onEvent: (event: CoreEvent) => void): Promise<EventStream> {
+  return new Promise<EventStream>((resolve, reject) => {
+    let buffer = '';
+    let connected = false;
+    const req = http.request(
+      {
+        host: '127.0.0.1',
+        port: lock.port,
+        method: 'GET',
+        path: '/v1/events',
+        headers: { authorization: `Bearer ${token}`, accept: 'text/event-stream' },
+      },
+      (res) => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          reject(new CliError(`event stream refused (HTTP ${res.statusCode})`, `http_${res.statusCode}`));
+          return;
+        }
+        res.setEncoding('utf8');
+        res.on('data', (chunk: string) => {
+          buffer += chunk;
+          let end: number;
+          while ((end = buffer.indexOf('\n\n')) !== -1) {
+            const frame = buffer.slice(0, end);
+            buffer = buffer.slice(end + 2);
+            if (!connected && frame.includes(': connected')) {
+              connected = true;
+              resolve(stream);
+            }
+            const data = frame
+              .split('\n')
+              .filter((l) => l.startsWith('data: '))
+              .map((l) => l.slice('data: '.length))
+              .join('\n');
+            if (!data) continue;
+            try {
+              onEvent(JSON.parse(data) as CoreEvent);
+            } catch {
+              /* a bad frame or a throwing listener must not end the stream */
+            }
+          }
+        });
+        res.on('error', () => undefined);
+      },
+    );
+    const stream: EventStream = { close: () => req.destroy() };
+    req.on('error', (e) => {
+      if (!connected) reject(new CliError(`cannot open the event stream: ${e.message}`, 'server_unreachable'));
+    });
+    req.end();
+  });
 }
 
 /** One JSON request over node:http (no client-side timeout: Ask can take minutes). */
