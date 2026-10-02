@@ -63,9 +63,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     static let openQuickAsk = Notification.Name("distill.openQuickAsk")
     static let openQuickNote = Notification.Name("distill.openQuickNote")
 
-    /// Click on the flask: reopens a quick answer still on its way (green ring), else the app.
+    /// Click on the flask: a quick ask question still answering (green ring) opens on
+    /// the Ask screen, where its answer arrives; otherwise the app.
     private func flaskClicked() {
-        if engine.ask.quickInBackground { quickAsk?.show(near: flaskFrame) } else { showMainWindow() }
+        if engine.ask.quickInBackground, let run = engine.ask.quickBackgroundRun { engine.ask.open(conversationID: run.id) }
+        showMainWindow()
     }
 
     private func hoverMenu(_ action: HoverMenuController.Action) {
