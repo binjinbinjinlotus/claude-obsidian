@@ -729,3 +729,40 @@ test('legacy v1 records load, list and continue; corrupt and temp files are skip
   assert.equal(saved.turns, 3);
   assert.ok(Math.abs(saved.costUSD - 0.5123) < 1e-9);
 });
+
+test('retention: a sweep skips a chat with a turn in flight instead of waiting for it', async () => {
+  const fx = fixture();
+  const clock = new Clock();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  class SlowRunner extends FakeRunner {
+    slow = false;
+    override async run(request: RunRequest): Promise<RunResult> {
+      if (this.slow) await gate;
+      return super.run(request);
+    }
+  }
+  const runner = new SlowRunner('claude-code');
+  const svc = svcWith(fx, runner, { now: clock.now });
+  const x = await svc.ask({ question: 'x' });
+  const other = await svc.ask({ question: 'other' });
+
+  runner.slow = true;
+  const followUp = svc.ask({ question: 'x2', conversationID: x.conversationID });
+  await new Promise((r) => setTimeout(r, 20)); // let the follow-up take the lock
+  clock.advance(11 * DAY); // both chats are old; a sweep is due
+  const listed = await Promise.race([
+    svc.listConversations(),
+    new Promise<'timeout'>((r) => setTimeout(() => r('timeout'), 500)),
+  ]);
+  assert.notEqual(listed, 'timeout');
+  // `other` was swept; X was skipped because its turn is running.
+  assert.deepEqual(
+    (listed as { id: string }[]).map((c) => c.id),
+    [x.conversationID],
+  );
+  assert.ok(!existsSync(path.join(fx.stateDir, `${other.conversationID}.json`)));
+  release();
+  await followUp;
+  assert.equal((await svc.getConversation(x.conversationID))?.turnCount, 2);
+});

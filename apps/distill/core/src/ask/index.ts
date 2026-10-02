@@ -123,6 +123,9 @@ export function createAskService(deps: AskDeps): AskService {
     if (!prefs.keepHistory) return; // clients delete each chat when it is closed
     const cutoff = clock().getTime() - prefs.historyDays * DAY_MS;
     for (const id of await store.ids()) {
+      // A chat with a turn in flight is about to get a fresh updatedAt; waiting
+      // for it would stall History and every other Ask behind a runner turn.
+      if (mutex.busy(id)) continue;
       // Under the conversation's lock, re-read: a follow-up may just have landed.
       await mutex.run(id, async () => {
         const record = await loadQuietly(id);

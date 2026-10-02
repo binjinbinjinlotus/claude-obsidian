@@ -127,6 +127,11 @@ export class ConversationStore {
 export class KeyedMutex {
   private readonly tails = new Map<string, Promise<unknown>>();
 
+  /** true while work for the key is running or queued. */
+  busy(key: string): boolean {
+    return this.tails.has(key);
+  }
+
   async run<T>(key: string, work: () => Promise<T>): Promise<T> {
     const previous = this.tails.get(key) ?? Promise.resolve();
     const next = previous.catch(() => undefined).then(work);
