@@ -235,8 +235,9 @@ fields}`; improve: `{body}`); a JSON object in the text is the fallback.
   two actions ("I'll book the room and tell Mei": a to-do and a message).
 - Confirm on → `pending`. Confirm off → `open` (to-do), or `open` and a
   background draft → `ready` (types with `draftWhen: onFind`). Undo for those:
-  `dismissActions` on items untouched since found (only found / drafted
-  events) → `dismissed`, no History entry.
+  `dismissActions` on items untouched since found (only found / drafted /
+  confirmed events, plus confirm's to-do fallback) → `dismissed`, no History
+  entry. The same call is the Undo of "Add all" in the Ask block.
 
 ### Lifecycle rules
 
@@ -416,7 +417,8 @@ Status per part; `built` parts ship in `clients/macos`.
   `action` events). An old core turns the screens into a calm "Update the
   Distill core" state. New note items arriving after load raise one toast per
   batch ("5 actions to confirm from Tea club planning · Open", or with confirm
-  off "Added 2 to-dos and created 1 draft · Undo", Undo = dismiss). Every other
+  off "Added 2 to-dos and created 1 draft · Undo", Undo = dismiss; the same
+  for Undo after Add all in Ask; a 409, the item was edited meanwhile, removes it instead). Every other
   Undo is `restore` (complete, remove, mark as sent, Send to, a dismissed Ask
   row); Undo improve is `undo-improve`. The sign-in buttons post
   `distill.openSettingsSection` "connections" and open Settings; "Settings for

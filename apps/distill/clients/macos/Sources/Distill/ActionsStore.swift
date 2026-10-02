@@ -319,7 +319,7 @@ final class ActionsStore: ObservableObject {
     }
 
     /// Undo of an add from Ask (Add all, or an automatic add): dismissed, no History entry.
-    /// A core that counts the confirm as an edit refuses; then the items are removed (History).
+    /// 409 means an item was edited meanwhile; then the items are removed instead (History).
     func undoAdd(_ ids: [String]) {
         guard let client, !ids.isEmpty else { return }
         Task {

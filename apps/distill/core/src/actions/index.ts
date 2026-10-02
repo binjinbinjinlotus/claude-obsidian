@@ -933,7 +933,12 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         const item = require(id);
         const untouched =
           (['open', 'ready', 'drafting'] as ActionStatus[]).includes(item.status) &&
-          item.events.every((e) => ['found', 'drafted', 'interrupted'].includes(e.event));
+          item.events.every(
+            (e, n, all) =>
+              ['found', 'drafted', 'interrupted', 'confirmed'].includes(e.event) ||
+              // confirm's to-do fallback for a type turned off since it was found
+              (e.event === 'type' && all[n + 1]?.event === 'confirmed'),
+          );
         if (item.status !== 'pending' && item.status !== 'dismissed' && !untouched) {
           throw new CoreError('invalid_state', `Only found items can be dismissed; remove this one instead.`);
         }

@@ -17,6 +17,17 @@ supersede it with a new entry.
 
 ## 2026-10-02
 
+- **Undo of "Add all" dismisses:** confirmed items still untouched since they
+  were found count as untouched, so `dismissActions` drops them with no
+  History entry (ActionsAsk frame 7) instead of the client falling back to
+  remove. → [actions](actions.md)
+- **Settings as built (mac-settings):** search lists results by section and
+  opens them (it does not filter the controls in place); To-do defaults has
+  only the stored settings (group, sort, retention incl. Forever, overdue
+  reminder). The board's extra rows (Show, due filter, what new to-dos get,
+  completed to-dos, reminder time) are deferred until the contract stores
+  them. Connections is one Atlassian card with a pasted API token; field
+  defaults live on each type's page. → [vaults-and-settings](vaults-and-settings.md), [actions](actions.md)
 - **Actions client (mac-actions):** the sidebar badge counts open to-dos and
   drafts in `ready`; pending items wait in "To confirm" and are not counted
   (matches the SidebarStates numbers). Every Undo is `restore` (complete,
