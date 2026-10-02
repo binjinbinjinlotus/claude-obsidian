@@ -422,8 +422,8 @@ struct HistorySection: View {
                     }
                 }
             }
-            .padding(24)
-            .frame(width: 300)
+            .padding(.vertical, 24).padding(.horizontal, 18)
+            .frame(width: 320)
             .background(Theme.window)
             Divider().overlay(Theme.border)
             if part == .jobs, let id = selectedJob, jobs.contains(where: { $0.id == id }) {
@@ -449,35 +449,36 @@ struct AskChatList: View {
             Text("No Ask chats yet.").font(Theme.body(13)).foregroundStyle(Theme.faint).padding(.top, 8)
         }
         ForEach(ask.conversations) { c in
-            HStack(spacing: 10) {
-                Button {
-                    ask.open(conversationID: c.id)
-                    openAsk()
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "bubble.left.fill").font(.system(size: 11)).foregroundStyle(Theme.primary)
-                            .frame(width: 24, height: 24).background(Circle().fill(Theme.primaryTint))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(c.title.isEmpty ? "Untitled chat" : c.title).font(Theme.body(13, .semibold)).lineLimit(1)
-                            Text("\(c.turnCount == 1 ? "1 question" : "\(c.turnCount) questions") · \(Text(c.updatedAt, style: .relative)) ago")
-                                .font(Theme.body(11)).foregroundStyle(Theme.muted)
+            // Pin and delete sit beside the title so the meta line gets the full width.
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "bubble.left.fill").font(.system(size: 11)).foregroundStyle(Theme.primary)
+                    .frame(width: 24, height: 24).background(Circle().fill(Theme.primaryTint))
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(c.title.isEmpty ? "Untitled chat" : c.title).font(Theme.body(13, .semibold))
+                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button { ask.setPinned(c.id, !c.pinned) } label: {
+                            Image(systemName: c.pinned ? "pin.fill" : "pin").font(.system(size: 11))
+                                .foregroundStyle(c.pinned ? Theme.primary : Theme.faint)
                         }
-                        Spacer(minLength: 0)
+                        .buttonStyle(.plain).help(c.pinned ? "Unpin (it can then expire)" : "Pin (kept until you delete it)")
+                        Button { ask.delete(c.id) } label: {
+                            Image(systemName: "trash").font(.system(size: 11)).foregroundStyle(Theme.faint)
+                        }
+                        .buttonStyle(.plain).help("Delete this chat")
                     }
-                    .contentShape(Rectangle())
+                    Text("\(c.turnCount == 1 ? "1 question" : "\(c.turnCount) questions") · \(HistoryTime.asked(c.updatedAt))")
+                        .font(Theme.body(11)).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.tail)
                 }
-                .buttonStyle(.plain)
-                .help("Open in Ask")
-                Button { ask.setPinned(c.id, !c.pinned) } label: {
-                    Image(systemName: c.pinned ? "pin.fill" : "pin").font(.system(size: 11))
-                        .foregroundStyle(c.pinned ? Theme.primary : Theme.faint)
-                }
-                .buttonStyle(.plain).help(c.pinned ? "Unpin (it can then expire)" : "Pin (kept until you delete it)")
-                Button { ask.delete(c.id) } label: {
-                    Image(systemName: "trash").font(.system(size: 11)).foregroundStyle(Theme.faint)
-                }
-                .buttonStyle(.plain).help("Delete this chat")
             }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                ask.open(conversationID: c.id)
+                openAsk()
+            }
+            .help("Open in Ask")
+            .accessibilityAddTraits(.isButton)
             .padding(.horizontal, 12).padding(.vertical, 9)
             .background(RoundedRectangle(cornerRadius: 12).fill(c.id == ask.main.conversationID ? Theme.panel : .clear))
         }
@@ -516,8 +517,8 @@ struct JobRow: View {
             Circle().fill(StateStyle.of(job.state).dot).frame(width: 9, height: 9)
             VStack(alignment: .leading, spacing: 2) {
                 Text(job.displayTitle).font(Theme.body(13, .semibold)).lineLimit(1)
-                Text("\(StateStyle.of(job.state).label) · \(Text(job.createdAt, style: .relative)) ago")
-                    .font(Theme.body(11)).foregroundStyle(Theme.muted)
+                Text("\(StateStyle.of(job.state).label) · \(job.historyTime)")
+                    .font(Theme.body(11)).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.tail)
             }
             Spacer(minLength: 0)
         }
@@ -546,6 +547,15 @@ struct StateStyle {
 }
 
 extension Job {
+    /// "Started today at 3:04 AM" while open, "Finished …" / "Ended …" after.
+    var historyTime: String {
+        switch state {
+        case .running, .awaitingApproval: return "Started \(HistoryTime.phrase(createdAt))"
+        case .completed: return "Finished \(HistoryTime.phrase(updatedAt))"
+        case .failed, .rejected, .cancelled: return "Ended \(HistoryTime.phrase(updatedAt))"
+        }
+    }
+
     /// "Tea brewing session"-style title from the first input file.
     var displayTitle: String {
         guard let first = files.first else { return kind.prefix(1).uppercased() + kind.dropFirst() }
@@ -589,25 +599,34 @@ struct JobDetailView: View {
     var body: some View {
         if let job = engine.job(jobID) {
             VStack(spacing: 0) {
-                HStack(alignment: .top, spacing: 32) {
-                    Scrolling {
-                        VStack(alignment: .leading, spacing: 22) {
-                            heading(job)
-                            content(job)
+                GeometryReader { geo in
+                    // The details keep at least ~360 pt; the conversation takes
+                    // what is left, between 220 and 300 pt.
+                    let inner = geo.size.width - 2 * Self.sidePadding - Self.gap
+                    let talk = min(300, max(220, inner - 360))
+                    HStack(alignment: .top, spacing: Self.gap) {
+                        Scrolling {
+                            VStack(alignment: .leading, spacing: 22) {
+                                heading(job)
+                                content(job)
+                            }
+                            .padding(.top, 34).padding(.bottom, 24)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .padding(.top, 34).padding(.bottom, 24)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        conversation(job)
+                            .frame(width: talk)
+                            .padding(.top, 34).padding(.bottom, 20)
                     }
-                    conversation(job)
-                        .frame(width: 290)
-                        .padding(.top, 34).padding(.bottom, 20)
+                    .padding(.horizontal, Self.sidePadding)
                 }
-                .padding(.horizontal, 44)
                 footer(job)
             }
             .onChange(of: jobID) { reply = ""; allowed = [] }
         }
     }
+
+    private static let sidePadding: CGFloat = 32
+    private static let gap: CGFloat = 24
 
     private func heading(_ job: Job) -> some View {
         let style = StateStyle.of(job.state)
@@ -616,7 +635,8 @@ struct JobDetailView: View {
                 Pill(text: style.label, fill: style.fill, ink: style.ink)
                 if job.state == .running { Spinner(size: 14) }
             }
-            Text(job.displayTitle).font(Theme.display(30)).lineLimit(2)
+            Text(job.displayTitle).font(Theme.display(28)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            Text(job.historyTime).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
             if engine.isApplying(job.id) {
                 ApplyingLine(vault: URL(fileURLWithPath: job.vaultPath).lastPathComponent, start: engine.applyingSince(job.id) ?? Date())
             }
@@ -633,7 +653,7 @@ struct JobDetailView: View {
     private func content(_ job: Job) -> some View {
         let changes = changeList(job)
         if !changes.isEmpty {
-            HStack(spacing: 10) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 165), spacing: 10)], alignment: .leading, spacing: 10) {
                 StatTile(n: changes.filter(\.isNew).count, label: plural(changes.filter(\.isNew).count, "new page", "new pages"), fill: Theme.limeTint, ink: Theme.limeInk)
                 StatTile(n: changes.filter { !$0.isNew }.count, label: plural(changes.filter { !$0.isNew }.count, "file updated", "files updated"), fill: Theme.primaryTint, ink: Theme.primary)
                 if let attention = attentionCount(job), attention > 0 {
@@ -792,7 +812,7 @@ struct JobDetailView: View {
                 Spacer()
             }
         }
-        .padding(.horizontal, 44).padding(.vertical, 18)
+        .padding(.horizontal, Self.sidePadding).padding(.vertical, 18)
         .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
     }
 
@@ -856,7 +876,7 @@ struct StatTile: View {
     var body: some View {
         HStack(spacing: 12) {
             Text("\(n)").font(Theme.display(28)).foregroundStyle(ink)
-            Text(label).font(Theme.body(13, .semibold))
+            Text(label).font(Theme.body(13, .semibold)).lineLimit(1).fixedSize()
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 16).padding(.vertical, 14)
