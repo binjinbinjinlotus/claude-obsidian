@@ -84,17 +84,24 @@ struct QuickAskCard: View {
     var body: some View {
         QuickShell(title: "Quick ask", close: close, onDesiredHeight: onDesiredHeight, snapshotHeight: snapshotHeight,
                    snapshotWidth: snapshotWidth) {
-            VStack(alignment: .leading, spacing: 12) {
-                questionRow
-                if !thread.isRunning { chips }
-                if thread.filter.showsUnconfirmedToggle && !thread.isRunning { scopeBox }
-            }
+            questionRow
         } top: {
             VStack(alignment: .leading, spacing: 12) { content }
         } bottom: {
             EmptyView()
         } footer: {
-            footer
+            // The model and filter row (and the Any/All panel) sit at the bottom,
+            // right above the footer, however big the window is; more chips wrap
+            // upward (canvas: "Quick actions" 2 and 4, "Quick windows" quick ask).
+            VStack(alignment: .leading, spacing: 12) {
+                if !thread.isRunning {
+                    VStack(alignment: .leading, spacing: 8) {
+                        chips
+                        if thread.filter.showsUnconfirmedToggle { scopeBox }
+                    }
+                }
+                footer
+            }
         }
         .onExitCommand(perform: close)
     }

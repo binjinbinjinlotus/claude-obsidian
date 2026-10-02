@@ -801,6 +801,17 @@ extension StatesSnapshot {
             t.entries = [AskEntry(question: "What did we decide about retries?", askedAt: Date(),
                                   request: AskRequest(question: "What did we decide about retries?"), response: r)]
         }
+        do {
+            let e = engine()
+            let t = e.ask.quick
+            t.reset(filter: AskFilter())
+            let r = AskResponse(conversationID: "q3", answer: "70–80 °C for sencha. Boiling water pulls out bitter catechins [1].",
+                                citations: [AskCitation(n: 1, path: "wiki/sources/Brewing Green Tea.md", title: "Brewing Green Tea")])
+            t.entries = [AskEntry(question: "Best water temp for sencha?", askedAt: Date(), request: AskRequest(question: "Best water temp for sencha?"), response: r)]
+            natural("quickask-resized", f, "Quick ask", "Dragged taller", "The answer takes the extra height; the model and filter row stays right above the footer.", e, padding: 8) {
+                QuickAskView().frame(width: QuickWindowGeometry.defaultWidth, height: 440)
+            }
+        }
         quick("quickask-loading", "Answering", "Spinner, the question, shimmer, elapsed time and Stop.") { t in
             AskFixtures.loading(t, question: "Best water temp for sencha?", model: "haiku", effort: "low", seconds: 6)
             t.filter = AskFilter()
