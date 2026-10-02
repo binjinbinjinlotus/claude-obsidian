@@ -431,12 +431,15 @@ struct RunnersSettings: View {
                 .frame(width: 34, height: 34).background(RoundedRectangle(cornerRadius: 10).fill(tint.0))
             VStack(alignment: .leading, spacing: 2) {
                 Text(r.displayName).font(Theme.body(13, .bold))
-                Text(note(r)).font(Theme.body(11)).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.middle)
+                Text(note(r)).font(Theme.body(11)).foregroundStyle(Theme.muted)
+                    .lineLimit(2).truncationMode(.tail).fixedSize(horizontal: false, vertical: true)
+                    .help(note(r))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(-1)
             if hasSetup(r) && !needsSetup(r) {
                 Button { setup = r } label: { Image(systemName: "gearshape").foregroundStyle(Theme.faint) }
-                    .buttonStyle(.plain).help("Set up \(r.displayName)")
+                    .buttonStyle(.plain).fixedSize().help("Set up \(r.displayName)")
             }
             Button {
                 if busy != nil { return }
@@ -445,7 +448,9 @@ struct RunnersSettings: View {
                 HStack(spacing: 5) {
                     if busy != nil { Spinner(color: Theme.muted, size: 10) }
                     Text(busy ?? (on ? "On" : needsSetup(r) ? "Set up" : "Turn on")).font(Theme.body(12, .bold))
+                        .lineLimit(1).fixedSize()
                 }
+                .fixedSize()
                 .padding(.horizontal, 11).frame(height: 28)
                 .foregroundStyle(on && busy == nil ? Color.white : Theme.ink)
                 .background(Capsule().fill(on && busy == nil ? Theme.primary : Theme.panel))

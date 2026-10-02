@@ -545,7 +545,9 @@ extension StatesSnapshot {
             e = engine()
             e.jobs = historyJobs(e)
             if id == "job-run" {
-                e.progress[id] = CoreProgress(key: id, kind: "batch", message: "Drafting page changes", startedAt: Date().addingTimeInterval(-120))
+                e.progress[id] = CoreProgress(key: id, kind: "batch", message: "Drafting page changes",
+                                              steps: ["Moved to inbox", "Read sources", "Drafting page changes", "Ready for review"],
+                                              stepIndex: 2, startedAt: Date().addingTimeInterval(-120))
             }
             main(file, f, "History · Jobs", state, desc, e, section: .history, job: id) { HistorySection(selectedJob: .constant(id)) }
         }

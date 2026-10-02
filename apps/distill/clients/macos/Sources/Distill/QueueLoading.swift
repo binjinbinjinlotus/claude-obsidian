@@ -9,6 +9,8 @@ import DistillKit
 struct BatchBanner: View {
     @EnvironmentObject var engine: AppModel
     let job: Job
+    /// History's job detail has its own Cancel in the footer.
+    var showsCancel = true
     /// Batches normally take minutes (the canvas shows 1:52 as normal), so
     /// "Still working" comes later than for Ask.
     static let slowAfter = 600
@@ -28,12 +30,14 @@ struct BatchBanner: View {
                             .lineLimit(2)
                     }
                     Spacer(minLength: 8)
-                    Button { engine.cancel(job.id) } label: {
-                        Text("Cancel").font(Theme.body(13, .semibold)).foregroundStyle(Theme.ink)
-                            .padding(.horizontal, 14).frame(height: 32)
-                            .background(Capsule().fill(Color.white))
+                    if showsCancel {
+                        Button { engine.cancel(job.id) } label: {
+                            Text("Cancel").font(Theme.body(13, .semibold)).foregroundStyle(Theme.ink)
+                                .padding(.horizontal, 14).frame(height: 32)
+                                .background(Capsule().fill(Color.white))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
                 if let progress, !progress.steps.isEmpty {
                     StepRow(steps: progress.steps, index: progress.stepIndex ?? 0)
@@ -69,18 +73,24 @@ struct StepRow: View {
     let index: Int
 
     var body: some View {
-        HStack(spacing: 14) {
-            ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
-                HStack(spacing: 3) {
-                    if i < index {
-                        Text("✓").font(Theme.body(12, .bold)).foregroundStyle(Theme.limeInk)
-                    } else if i == index {
-                        Text("…").font(Theme.body(12, .bold)).foregroundStyle(Theme.primary)
-                    }
-                    Text(step).font(Theme.body(12)).foregroundStyle(i > index ? Theme.faint : Theme.softInk)
+        // One line when it fits (Queue); a column in narrow panes (History).
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) { items }
+            VStack(alignment: .leading, spacing: 4) { items }
+        }
+    }
+
+    @ViewBuilder private var items: some View {
+        ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
+            HStack(spacing: 3) {
+                if i < index {
+                    Text("✓").font(Theme.body(12, .bold)).foregroundStyle(Theme.limeInk)
+                } else if i == index {
+                    Text("…").font(Theme.body(12, .bold)).foregroundStyle(Theme.primary)
                 }
-                .lineLimit(1).fixedSize()
+                Text(step).font(Theme.body(12)).foregroundStyle(i > index ? Theme.faint : Theme.softInk)
             }
+            .lineLimit(1).fixedSize()
         }
     }
 }
