@@ -6,6 +6,7 @@ import { NOTE_MANIFEST_SUFFIX } from '../engine/job-kinds.js';
 import { readManifest } from '../engine/notes.js';
 import { bodyOf } from './frontmatter.js';
 import type { SuggestInput } from './suggest.js';
+import { pageTags } from './vault.js';
 
 /** Inputs whose text a tool-less labelSuggest run can read. Others (PDF, images, ...) stay unlabeled. */
 const TEXT_EXTENSIONS = new Set([
@@ -96,6 +97,13 @@ export function draftBatchLabels(vaultPath: string, files: string[], prefs: Labe
     if (!prefs.autoLabelQueueFolder || !isTextInput(rel)) continue;
     const text = readText(path.join(vaultPath, rel));
     if (text === undefined || text.trim() === '') continue;
+    const own = rel.toLowerCase().endsWith('.md') ? pageTags(text) : [];
+    if (own.length > 0) {
+      // Tags the user wrote in the file count as their choice: keep them, no AI call.
+      entry.labels = own;
+      entry.by = 'user';
+      continue;
+    }
     entry.origin = 'queue-folder';
     pending.push({ entry, input: { title: path.posix.basename(rel), text: rel.toLowerCase().endsWith('.md') ? bodyOf(text) : text } });
   }

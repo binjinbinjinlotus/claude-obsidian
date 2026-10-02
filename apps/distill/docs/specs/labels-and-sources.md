@@ -59,7 +59,7 @@ about** (labels). Canvas artboards: "Write a note", "Ask", "Settings", "Notes".
 | CLI (origin `cli`, suggest `wait`) | `addNote` returns `requestID` + `suggestedLabels`. The caller may `labelNote` until the batch picks the note up (then `invalid_state`). Nothing confirmed and `labeling.cliFallbackToAI` (default on) → the AI labels apply unconfirmed, `labels_origin: cli`. |
 | `labels` on addNote | Confirmed (`labels_by: user`); no suggestion is made. |
 | `labelNote(requestID, [])` | Confirmed: no labels. No AI fallback, no flags. |
-| Any other file in the queue folder | `labeling.autoLabelQueueFolder` (default on): the batch suggests labels for text files (`.md .txt .html .csv .json` ...) before the first turn, applied unconfirmed with `labels_origin: queue-folder`. Binary files (PDF, images) and failed suggestions stay unlabeled. |
+| Any other file in the queue folder | `labeling.autoLabelQueueFolder` (default on): the batch suggests labels for text files (`.md .txt .html .csv .json` ...) before the first turn, applied unconfirmed with `labels_origin: queue-folder`. A dropped `.md` that already has `tags` keeps them as the user's choice (no AI call). Binary files (PDF, images) and failed suggestions stay unlabeled. |
 
 The batch passes each input's labels to the ingest turn (see
 [Queue and batching](queue-and-batching.md)); the agent writes them on the

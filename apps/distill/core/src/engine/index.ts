@@ -688,10 +688,11 @@ export function createEngine(opts: EngineOptions): Engine {
   async function suggestFor(
     vault: VaultProfile,
     input: SuggestInput,
-    o: { signal?: AbortSignal; selection?: ModelSelection } = {},
+    o: { signal?: AbortSignal; selection?: ModelSelection; existing?: string[] } = {},
   ): Promise<SuggestOutcome> {
-    const existing = await existingLabels(vault.path);
-    return suggestLabels(input, { runners, settings: clone(settings), existing, scratchDir: labelScratch, ...o });
+    const { existing: known, ...rest } = o;
+    const existing = known ?? (await existingLabels(vault.path));
+    return suggestLabels(input, { runners, settings: clone(settings), existing, scratchDir: labelScratch, ...rest });
   }
 
   // ───────────── labels: queued notes ─────────────
@@ -928,6 +929,7 @@ export function createEngine(opts: EngineOptions): Engine {
       const skipped: string[] = [];
       let cost = 0;
       try {
+        const existing = await existingLabels(vault.path); // once, not per page
         for (const rel of files) {
           if (controller.signal.aborted) break;
           const page = readPage(vault.path, rel);
@@ -937,7 +939,7 @@ export function createEngine(opts: EngineOptions): Engine {
           }
           const title = scalarValue(parseFrontmatter(page.text), 'title') ?? path.posix.basename(rel, '.md');
           try {
-            const out = await suggestFor(vault, { title, text: bodyOf(page.text) }, { signal: controller.signal, selection });
+            const out = await suggestFor(vault, { title, text: bodyOf(page.text) }, { signal: controller.signal, selection, existing });
             cost += out.costUSD;
             // Keep the page's current labels; the AI ones are added (all unconfirmed until reviewed).
             const labels = normalizeLabels([...pageTags(page.text), ...out.labels.map((l) => l.name)]);

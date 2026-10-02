@@ -372,6 +372,7 @@ describe('batch labels in the ingest prompt', () => {
     await engine.labelNote(empty.requestID, []);
     fs.writeFileSync(path.join(queue, 'dropped.md'), '---\ntitle: D\n---\nDropped text about queues\n');
     fs.writeFileSync(path.join(queue, 'scan.pdf'), '%PDF-1.4');
+    fs.writeFileSync(path.join(queue, 'tagged.md'), '---\ntags: [Mine]\n---\nOwn tags\n');
     await engine.whenIdle();
     labeler.requests.length = 0;
 
@@ -397,6 +398,7 @@ describe('batch labels in the ingest prompt', () => {
     assert.ok(section.includes('labels_origin: queue-folder'));
     assert.ok(section.includes('- inbox/dropped.md: AI labels'));
     assert.ok(section.includes('- inbox/scan.pdf: no labels.'));
+    assert.ok(section.includes('- inbox/tagged.md: labels the user confirmed:\n    tags:\n      - mine\n'), 'own tags kept, no AI call');
     assert.ok(!section.includes('distill.json:'), 'manifests are not sources');
     assert.ok(prompt.includes('only the Labels section of this prompt decides labels'));
     const final = engine.getJob(job.id)!;
