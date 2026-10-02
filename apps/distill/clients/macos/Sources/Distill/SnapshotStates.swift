@@ -204,6 +204,30 @@ enum StatesSnapshot {
         shoot(file, flow, screen, state, description, defaults: defaults, live: true, view)
     }
 
+    /// A quick window at the height it asks for (`onDesiredHeight`), like the app's
+    /// QuickWindowSizer: a natural render alone collapses the scrolling middle.
+    static func quickWindow<V: View>(_ file: String, _ flow: Flow, _ screen: String, _ state: String, _ description: String,
+                                     _ e: AppModel, width: CGFloat = QuickWindowGeometry.defaultWidth, padding: CGFloat = 24,
+                                     @ViewBuilder _ content: (@escaping (CGFloat) -> Void) -> V) {
+        let store = UserDefaults(suiteName: "distill.snapshot.states") ?? .standard
+        store.register(defaults: baseDefaults)
+        var desired: CGFloat = 0
+        let probe = NSHostingView(rootView: content { desired = $0 }
+            .environmentObject(e.ask).environmentObject(e)
+            .environment(\.colorScheme, .light).environment(\.snapshotMode, false).defaultAppStorage(store)
+            .frame(width: width, height: 600))
+        let window = NSWindow(contentRect: CGRect(x: -30000, y: -30000, width: width, height: 600),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = probe
+        liveWindows.append(window)
+        for _ in 0..<6 { RunLoop.main.run(until: Date().addingTimeInterval(0.04)) }
+        let height = max(QuickWindowGeometry.minSize.height, desired)
+        natural(file, flow, screen, state, description, e, padding: padding) {
+            content { _ in }.frame(width: width, height: height)
+        }
+    }
+
     /// `live`: draw through an offscreen NSHostingView with snapshot mode off,
     /// so AppKit-backed controls (checkboxes, switches, text fields, pickers,
     /// scroll views) render as in the app. ImageRenderer draws those as a
@@ -752,7 +776,7 @@ extension StatesSnapshot {
         func quick(_ file: String, _ state: String, _ desc: String, _ setup: (AskThread) -> Void) {
             let e = engine()
             setup(e.ask.quick)
-            natural(file, f, "Quick ask", state, desc, e, padding: 8) { QuickAskView() }
+            quickWindow(file, f, "Quick ask", state, desc, e, padding: 8) { QuickAskView(onDesiredHeight: $0) }
         }
         quick("quickask-empty", "Empty", "Just opened: all notes, model chip, + Limit.") { $0.reset(filter: AskFilter()) }
         quick("quickask-limited", "Limited by labels", "Two labels and a source: Any/All, Include unconfirmed, page count.") { t in
@@ -812,11 +836,18 @@ extension StatesSnapshot {
             let e = engine()
             e.notes.drafts[.quick] = draft()
             setup(e.notes)
-            natural(file, f, "Quick note", state, desc, e) { QuickNoteView(close: {}) }
+            quickWindow(file, f, "Quick note", state, desc, e) { QuickNoteView(close: {}, onDesiredHeight: $0) }
         }
         shot("quicknote-empty", "Empty", "Just opened: title, text, + Source.") { $0.drafts[.quick] = ComposeDraft() }
         shot("quicknote-typing", "Typing", "Text and a source; no images.") { $0.drafts[.quick] = draft(images: 0) }
         shot("quicknote-images", "Images", "Two images: one read as text, one kept.") { $0.drafts[.quick] = draft(images: 2) }
+        do {
+            let e = engine()
+            e.notes.drafts[.quick] = draft(images: 0)
+            natural("quicknote-resized", f, "Quick note", "Dragged taller", "The text area takes the extra height; the source and footer stay at the bottom.", e) {
+                QuickNoteView(close: {}).frame(width: QuickWindowGeometry.defaultWidth, height: 420)
+            }
+        }
         shot("quicknote-adding", "Adding…", "Add to queue pressed.") { $0.adding = [.quick] }
         shot("quicknote-add-error", "Add failed", "The core refused; the draft stays.") { $0.addErrors[.quick] = "Cannot reach the Distill core: connection refused" }
         shot("quicknote-suggesting", "Label step · suggesting", "Queued ✓; suggestions on the way; type a label while you wait.") { $0.steps[.quick] = step() }

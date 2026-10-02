@@ -34,7 +34,7 @@ actions" panels 2–5. Code: `QuickWindow.swift` (window shell, resize corner,
 - **Close bar**: QUICK NOTE / QUICK ASK and **×**. × does what Esc does.
 - **Growth**: the window fits its content and grows downward; the top edge
   never moves. It stops 8 pt above the bottom of the visible frame; past that
-  only the middle scrolls (quick note: title, text, source, images and errors;
+  only the middle scrolls (quick note: title, text, images and errors;
   quick ask: the answer), with an overlay scroller and a soft fade at the cut
   edge. The close bar, the question (quick ask) and the footer stay put. It
   shrinks back as content shrinks. No scroll-bar strip anywhere: the scroll
@@ -59,8 +59,14 @@ actions" panels 2–5. Code: `QuickWindow.swift` (window shell, resize corner,
   or unseen, and clicking the flask then reopens the window instead of the app.
   Opening it again after a seen answer starts a new chat.
 - **Quick note**: title (wraps to 2 lines, then scrolls in its field), text,
-  source, images with Keep / Extract text, **Add to queue** (⌘↩; **Try again**
-  after an error, shown above the footer). Labels are suggested after
+  images with Keep / Extract text, and the footer **Aa · + Source · ⌘↩ saves ·
+  Add to queue** (**Try again** after an error, shown above the footer).
+  **+ Source** opens a menu of the Settings sources by group; once one is
+  picked the button becomes that source's blue chip (truncated, never widens
+  the window; the same menu changes it or picks **No source**) and a **Link,
+  channel or person** field appears on its own row just above the footer
+  buttons. Both stay pinned at the bottom however tall the window is dragged;
+  the text area takes the extra height. Labels are suggested after
   queueing, like the full composer: the window turns into the label step in
   place (chips wrap, the window resizes) and closes once labels are applied.
   × or Esc during the label step is **Skip** (the note stays queued,

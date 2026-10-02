@@ -93,7 +93,7 @@ private struct ComposeScreenBody: View {
         } bottom: {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 10) {
-                    SourcePickerRow(draft: binding(\.self), compact: false)
+                    SourcePickerRow(draft: binding(\.self))
                         .disabled(step != nil)
                     labelsRow
                 }
@@ -272,9 +272,6 @@ private struct ComposeScreenBody: View {
 struct SourcePickerRow: View {
     @EnvironmentObject var engine: AppModel
     @Binding var draft: ComposeDraft
-    /// Quick note: only the chosen source chip plus a menu.
-    var compact: Bool
-
     private var groups: [SourceGroup] { SettingsEdits.taxonomy(engine.settings) }
 
     private var group: SourceGroup? {
@@ -284,10 +281,6 @@ struct SourcePickerRow: View {
     }
 
     var body: some View {
-        if compact { compactBody } else { fullBody }
-    }
-
-    private var fullBody: some View {
         HStack(alignment: .top, spacing: 10) {
             Text("Source").font(Theme.body(12, .bold)).foregroundStyle(Theme.muted).frame(width: 58, height: 28, alignment: .leading)
             FlowRow(spacing: 8) {
@@ -298,34 +291,6 @@ struct SourcePickerRow: View {
                 refField.frame(width: 210)
             }
         }
-    }
-
-    private var compactBody: some View {
-        HStack(spacing: 6) {
-            if let id = draft.source, let label = label(of: id) {
-                Button { draft.source = nil } label: {
-                    Text(label).font(Theme.body(11, .bold)).padding(.horizontal, 9).frame(height: 24)
-                        .foregroundStyle(.white).background(Capsule().fill(Theme.primary))
-                }
-                .buttonStyle(.plain).help("Remove source")
-            }
-            DropdownButton(title: draft.source == nil ? "+ Source" : "Change", height: 24, radius: 12, font: Theme.body(11, .bold)) {
-                sourceMenuItems
-            }
-            .fixedSize()
-            refField.frame(maxWidth: .infinity)
-        }
-    }
-
-    @ViewBuilder private var sourceMenuItems: some View {
-        ForEach(groups, id: \.id) { g in
-            SwiftUI.Section(g.label) {
-                ForEach(g.sources, id: \.id) { s in
-                    Button(s.label) { draft.source = s.id; draft.group = g.id }
-                }
-            }
-        }
-        if draft.source != nil { Divider(); Button("No source") { draft.source = nil } }
     }
 
     private var groupMenu: some View {
@@ -361,13 +326,9 @@ struct SourcePickerRow: View {
             Image(systemName: "link").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.faint)
             BareTextField(placeholder: "Link, channel or person", text: $draft.sourceRef, font: Theme.body(12))
         }
-        .padding(.horizontal, 10).frame(height: compact ? 24 : 28)
+        .padding(.horizontal, 10).frame(height: 28)
         .background(Capsule().fill(Color.white))
         .overlay(Capsule().strokeBorder(Theme.border))
-    }
-
-    private func label(of id: String) -> String? {
-        groups.lazy.flatMap(\.sources).first { $0.id == id }?.label ?? id
     }
 }
 
