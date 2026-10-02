@@ -179,6 +179,55 @@ struct SoftButton: View {
     }
 }
 
+/// The canvas IconButton: a round, icon-only button (⋯, edit, remove, close,
+/// stop). Square frame, the SF Symbol centred, a hover fill, and `help` as
+/// both the tooltip and the VoiceOver label. `iconSize`/`weight` keep a call
+/// site's glyph exactly as it was; `label` overrides the VoiceOver label.
+struct IconButton: View {
+    let systemImage: String
+    var size: CGFloat
+    var tint: Color
+    var fill: Color?
+    var iconSize: CGFloat?
+    var weight: Font.Weight
+    let help: String
+    var label: String?
+    let action: () -> Void
+    @State private var hovered = false
+
+    init(systemImage: String, size: CGFloat = 26, tint: Color = Theme.muted, fill: Color? = nil,
+         iconSize: CGFloat? = nil, weight: Font.Weight = .semibold,
+         help: String, label: String? = nil, action: @escaping () -> Void) {
+        self.systemImage = systemImage
+        self.size = size
+        self.tint = tint
+        self.fill = fill
+        self.iconSize = iconSize
+        self.weight = weight
+        self.help = help
+        self.label = label
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage).font(.system(size: iconSize ?? size * 0.42, weight: weight)).foregroundStyle(tint)
+                .frame(width: size, height: size)
+                .background {
+                    ZStack {
+                        if let fill { Circle().fill(fill) }
+                        if hovered { Circle().fill(Theme.ink.opacity(0.06)) }
+                    }
+                }
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 }
+        .help(help)
+        .accessibilityLabel(label ?? help)
+    }
+}
+
 /// The canvas Pill: regular (24 pt) or small (20 pt), an optional SF Symbol,
 /// `busy` (a spinner before the text: Writing, Creating), `stroke` (an outline,
 /// "Coming later") and `dashed` (a reserved slot, "Send in Slack · later").

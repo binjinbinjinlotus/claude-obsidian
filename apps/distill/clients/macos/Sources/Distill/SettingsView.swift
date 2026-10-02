@@ -242,10 +242,8 @@ struct VaultsSettings: View {
                     Button("Remove", role: .destructive) { engine.settings.removeVault(vault.path) }
                 }
                 .overlay(alignment: .topTrailing) {
-                    Button { editingVault = vault } label: {
-                        Image(systemName: "ellipsis").foregroundStyle(Theme.muted).frame(width: 28, height: 28)
-                    }
-                    .buttonStyle(.plain).padding(8).help("Edit vault")
+                    IconButton(systemImage: "ellipsis", size: 28, iconSize: 13, weight: .regular, help: "Edit vault") { editingVault = vault }
+                        .padding(8)
                 }
             }
             Button { VaultPicker.addVault(engine: engine) } label: {

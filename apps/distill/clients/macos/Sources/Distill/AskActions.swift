@@ -268,7 +268,7 @@ struct AskFoundBlock: View {
             Button("Cancel") { editing = nil }.buttonStyle(.plain).font(Theme.body(12, .semibold)).foregroundStyle(Theme.muted)
         } else if item.status == .pending {
             ActionButton(title: item.type == "todo" ? "Add" : "Create draft", icon: "plus", kind: .soft, height: 26) { store.confirm([item.id]) }
-            IconButton(icon: "xmark", help: "Dismiss", size: 26) { store.dismiss([item.id]) }
+            IconButton(systemImage: "xmark", size: 26, help: "Dismiss") { store.dismiss([item.id]) }
         } else if item.status == .drafting || store.running[item.id] != nil {
             HStack(spacing: 6) { Spinner(size: 11); Text("Writing draft…").font(Theme.body(12, .semibold)).foregroundStyle(Theme.muted) }
         } else {

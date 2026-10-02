@@ -594,15 +594,11 @@ struct AskChatList: View {
                             .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         if case .failed = run.pending.status {
-                            Button { ask.dismissBackground(run.id) } label: {
-                                Image(systemName: "xmark").font(.system(size: 10)).foregroundStyle(Theme.faint)
-                            }
-                            .buttonStyle(.plain).help("Dismiss")
+                            IconButton(systemImage: "xmark", size: 14, tint: Theme.faint, iconSize: 10, weight: .regular,
+                                       help: "Dismiss") { ask.dismissBackground(run.id) }
                         } else {
-                            Button { ask.stopBackground(run.id) } label: {
-                                Image(systemName: "stop.fill").font(.system(size: 10)).foregroundStyle(Theme.faint)
-                            }
-                            .buttonStyle(.plain).help("Stop this question")
+                            IconButton(systemImage: "stop.fill", size: 14, tint: Theme.faint, iconSize: 10, weight: .regular,
+                                       help: "Stop this question") { ask.stopBackground(run.id) }
                         }
                     }
                     Text(BackgroundAskText.meta(run))
@@ -628,15 +624,11 @@ struct AskChatList: View {
                         Text(c.title.isEmpty ? "Untitled chat" : c.title).font(Theme.body(13, .semibold))
                             .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        Button { ask.setPinned(c.id, !c.pinned) } label: {
-                            Image(systemName: c.pinned ? "pin.fill" : "pin").font(.system(size: 11))
-                                .foregroundStyle(c.pinned ? Theme.primary : Theme.faint)
-                        }
-                        .buttonStyle(.plain).help(c.pinned ? "Unpin (it can then expire)" : "Pin (kept until you delete it)")
-                        Button { ask.delete(c.id) } label: {
-                            Image(systemName: "trash").font(.system(size: 11)).foregroundStyle(Theme.faint)
-                        }
-                        .buttonStyle(.plain).help("Delete this chat")
+                        IconButton(systemImage: c.pinned ? "pin.fill" : "pin", size: 13, tint: c.pinned ? Theme.primary : Theme.faint,
+                                   iconSize: 11, weight: .regular,
+                                   help: c.pinned ? "Unpin (it can then expire)" : "Pin (kept until you delete it)") { ask.setPinned(c.id, !c.pinned) }
+                        IconButton(systemImage: "trash", size: 13, tint: Theme.faint, iconSize: 11, weight: .regular,
+                                   help: "Delete this chat") { ask.delete(c.id) }
                     }
                     Text("\(c.turnCount == 1 ? "1 question" : "\(c.turnCount) questions") · \(HistoryTime.asked(c.updatedAt))\(ask.background[c.id]?.pending.status == .running ? " · answering…" : "")")
                         .font(Theme.body(11)).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.tail)
@@ -930,12 +922,9 @@ struct JobDetailView: View {
             HStack {
                 Text("Conversation").font(Theme.body(14, .bold))
                 Spacer()
-                Button {
-                    engine.openInTerminal(job)
-                } label: { Image(systemName: "terminal") }
-                .buttonStyle(.plain).foregroundStyle(Theme.muted)
-                .help("Open this session in Terminal")
-                .disabled(job.state == .running)
+                IconButton(systemImage: "terminal", size: 16, iconSize: 13, weight: .regular,
+                           help: "Open this session in Terminal") { engine.openInTerminal(job) }
+                    .disabled(job.state == .running)
             }
             ChatScrolling {
                 VStack(alignment: .leading, spacing: 10) {

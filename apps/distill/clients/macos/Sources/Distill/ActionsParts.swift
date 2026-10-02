@@ -101,23 +101,6 @@ struct LaterSlot: View {
     }
 }
 
-struct IconButton: View {
-    let icon: String
-    var help: String = ""
-    var size: CGFloat = 30
-    var tint: Color = Theme.muted
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: icon).font(.system(size: size * 0.42, weight: .semibold)).foregroundStyle(tint)
-                .frame(width: size, height: size).contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
-    }
-}
-
 // MARK: Small labels
 
 /// Status pills on the Actions boards: the shared Pill, small.

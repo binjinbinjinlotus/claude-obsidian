@@ -17,6 +17,13 @@ supersede it with a new entry.
 
 ## 2026-10-02
 
+- **One Swift view per canvas component (IconButton, Segmented):**
+  `IconButton(systemImage, size, tint, fill, help)` in Theme.swift replaces
+  every hand-drawn icon-only button (⋯, pencil, trash, xmark, pin, stop,
+  gear, terminal); call sites pass size/tint/iconSize so nothing moves.
+  `Segmented` and `SegmentedPills` were the same view, so `Segmented` keeps
+  the superset (font, track, help) and `SegmentedPills` is a typealias; the
+  canvas keeps both names. → [design-process](design-process.md)
 - **Undo of "Add all" dismisses:** confirmed items still untouched since they
   were found count as untouched, so `dismissActions` drops them with no
   History entry (ActionsAsk frame 7) instead of the client falling back to

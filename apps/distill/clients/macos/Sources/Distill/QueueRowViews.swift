@@ -25,13 +25,8 @@ struct QueueRowView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             QueueStatusPill(status: status).help(help ?? "")
             if status.removable, let onRemove {
-                Button(action: onRemove) {
-                    Image(systemName: "xmark").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.faint)
-                        .frame(width: 30, height: 30).contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .help("Remove from queue (moves to Trash)")
-                .accessibilityLabel("Remove \(title) from the queue")
+                IconButton(systemImage: "xmark", size: 30, tint: Theme.faint, iconSize: 12,
+                           help: "Remove from queue (moves to Trash)", label: "Remove \(title) from the queue", action: onRemove)
             } else {
                 Color.clear.frame(width: 30, height: 30) // keeps pills aligned on locked rows
             }

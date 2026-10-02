@@ -60,19 +60,24 @@ struct LinkButton: View {
     }
 }
 
-/// White pill group with one blue selected segment (Any/All, effort).
+/// White pill group with one blue selected segment (Any/All, effort, draft
+/// timing, retention). The canvas Segmented and SegmentedPills are both this
+/// view; `SegmentedPills` is a typealias (ComposeComponents.swift).
 struct Segmented<Value: Hashable>: View {
     let options: [(Value, String)]
     @Binding var selection: Value
     var height: CGFloat = 24
     var help: [Value: String] = [:]
+    var font: Font = Theme.body(12, .bold)
+    /// The track behind the segments: white, or panel on white surfaces.
+    var track: Color = .white
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(options, id: \.0) { value, label in
                 let on = value == selection
                 Button { selection = value } label: {
-                    Text(label).font(Theme.body(12, .bold)).lineLimit(1).fixedSize()
+                    Text(label).font(font).lineLimit(1).fixedSize()
                         .foregroundStyle(on ? Color.white : Theme.muted)
                         .padding(.horizontal, 10).frame(height: height)
                         .background(Capsule().fill(on ? Theme.primary : .clear))
@@ -84,7 +89,7 @@ struct Segmented<Value: Hashable>: View {
             }
         }
         .padding(2)
-        .background(Capsule().fill(Color.white))
+        .background(Capsule().fill(track))
         .overlay(Capsule().strokeBorder(Theme.border))
     }
 }

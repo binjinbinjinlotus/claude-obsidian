@@ -29,33 +29,8 @@ struct PillSwitch: View {
     }
 }
 
-/// Two or more options in a white rounded track; the chosen one is filled blue.
-struct SegmentedPills<T: Hashable>: View {
-    let options: [(T, String)]
-    @Binding var selection: T
-    var height: CGFloat = 24
-    var font: Font = Theme.body(12, .bold)
-    var track: Color = .white
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(options, id: \.0) { option in
-                let on = option.0 == selection
-                Button { selection = option.0 } label: {
-                    Text(option.1).font(font).lineLimit(1)
-                        .padding(.horizontal, 10).frame(height: height)
-                        .foregroundStyle(on ? Color.white : Theme.muted)
-                        .background(RoundedRectangle(cornerRadius: height / 2).fill(on ? Theme.primary : .clear))
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(2)
-        .background(RoundedRectangle(cornerRadius: height / 2 + 2).fill(track))
-        .overlay(RoundedRectangle(cornerRadius: height / 2 + 2).strokeBorder(Theme.border))
-    }
-}
+/// The canvas SegmentedPills is the same component as Segmented (AskParts.swift).
+typealias SegmentedPills<T: Hashable> = Segmented<T>
 
 /// A white field-looking button with a ▾ that opens a menu. In snapshots the
 /// menu is replaced by its label.
