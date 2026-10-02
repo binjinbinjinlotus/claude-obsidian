@@ -46,10 +46,23 @@ public enum QueueRowOrigin: Equatable, Sendable {
 public enum QueueRows {
     public static let manifestSuffix = ".distill.json"
 
-    /// Rows to show: a note's `.distill.json` sidecar is hidden (removing the
-    /// note's `.md` takes it along).
+    /// Rows to show. A current core already lists a note as one row (its
+    /// `members` ride along); an older core lists every file, so a
+    /// `.distill.json` sidecar is hidden here (removing the `.md` takes it along).
     public static func visible(_ entries: [QueueEntry]) -> [QueueEntry] {
-        entries.filter { !$0.name.hasSuffix(manifestSuffix) }
+        let members = Set(entries.flatMap { $0.members ?? [] })
+        return entries.filter { !$0.name.hasSuffix(manifestSuffix) && !members.contains($0.path) }
+    }
+
+    /// The number of rows the Queue screen shows: the sidebar badge and the
+    /// floating icon both use this, so they always agree with the screen.
+    public static func count(_ entries: [QueueEntry]) -> Int {
+        visible(entries).count
+    }
+
+    /// Every path removing this row takes out of the queue (a note's members too).
+    public static func paths(removing entry: QueueEntry) -> Set<String> {
+        Set([entry.path] + (entry.members ?? []))
     }
 
     public static func status(_ entry: QueueEntry, batchRunning: Bool) -> QueueRowStatus {
@@ -96,15 +109,27 @@ public enum QueueRows {
         return entry.name
     }
 
-    /// "Pasted at 3:04 AM · 36 KB", "Written note · Added at 3:04 AM".
+    /// "Pasted at 3:04 AM · 36 KB", "Pasted at 3:09 AM · 4 KB · still changing",
+    /// "Written note · In person · labels confirmed · 1 image". A note from an
+    /// older core (no summary), or one with nothing to summarize, shows
+    /// "Written note · Added at 3:04 AM".
     public static func meta(_ entry: QueueEntry, now: Date = Date(),
                             locale: Locale = .current, timeZone: TimeZone = .current) -> String {
         let origin = origin(entry)
         let when = "\(origin.verb) \(at(entry.modified, now: now, locale: locale, timeZone: timeZone))"
-        if origin == .note, entry.name.hasSuffix(".md") { return "Written note · " + when }
-        guard entry.size > 0 else { return when }
-        let size = ByteCountFormatter.string(fromByteCount: Int64(entry.size), countStyle: .file)
-        return "\(when) · \(size)"
+        if origin == .note, entry.name.hasSuffix(".md") {
+            var parts: [String] = []
+            if let note = entry.note {
+                if let source = note.source { parts.append(source) }
+                if note.labelsConfirmed { parts.append("labels confirmed") }
+                if note.imageCount > 0 { parts.append(note.imageCount == 1 ? "1 image" : "\(note.imageCount) images") }
+            }
+            return (["Written note"] + (parts.isEmpty ? [when] : parts)).joined(separator: " · ")
+        }
+        var parts = [when]
+        if entry.size > 0 { parts.append(ByteCountFormatter.string(fromByteCount: Int64(entry.size), countStyle: .file)) }
+        if entry.changing { parts.append("still changing") }
+        return parts.joined(separator: " · ")
     }
 
     /// "3:04 AM" today; "Sep 3, 3:04 AM" on another day.

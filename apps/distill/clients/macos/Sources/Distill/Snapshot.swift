@@ -69,7 +69,7 @@ enum Snapshot {
             .sorted { $0.modified < $1.modified }
         }
         let status = StatusResponse(
-            activeVault: settings.activeVault, queueCount: queue.count,
+            activeVault: settings.activeVault, queueCount: QueueRows.count(queue),
             pendingApprovals: jobs.filter { $0.state == .awaitingApproval }.count,
             runningJobs: jobs.filter { $0.state == .running }.count,
             nextBatchAt: Date().addingTimeInterval(Double(max(1, settings.batchIntervalMinutes) * 60)))

@@ -66,7 +66,7 @@ struct Sidebar: View {
             .padding(.horizontal, 6)
 
             VStack(spacing: 2) {
-                navItem(.queue, "Queue", "tray", count: QueueRows.visible(engine.queued).count, highlight: false)
+                navItem(.queue, "Queue", "tray", count: QueueRows.count(engine.queued), highlight: false)
                 navItem(.review, "Review", "checkmark.square", count: engine.pendingApprovals.count, highlight: true)
                 navItem(.ask, "Ask", "questionmark.bubble", count: 0, highlight: false)
                 navItem(.labels, "Labels", "tag", count: engine.labelsToReviewCount, highlight: false)

@@ -84,7 +84,7 @@ struct FloatingFace: View {
     var body: some View {
         let pending = engine.pendingApprovals.count
         let working = !engine.runningJobs.isEmpty
-        let queued = engine.queued.count
+        let queued = QueueRows.count(engine.queued) // the rows the Queue screen shows
         let targeted = dropState.targeted
 
         let liquid: Color = pending > 0 ? Theme.peach : (working ? Theme.working : Theme.lime)
