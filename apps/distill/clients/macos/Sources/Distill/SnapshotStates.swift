@@ -17,7 +17,7 @@ enum StatesSnapshot {
         case app = "5 · Settings and app"
     }
 
-    static let mainSize = CGSize(width: 1200, height: 760)
+    nonisolated static let mainSize = CGSize(width: 1200, height: 760)
     private static var stateDir = URL(fileURLWithPath: "/")
     private static var outDir = URL(fileURLWithPath: "/")
     /// Every fixture model stays alive for the whole run: `NotesStore` is keyed
@@ -178,7 +178,7 @@ enum StatesSnapshot {
     /// environment object, error banner overlay).
     static func main<V: View>(_ file: String, _ flow: Flow, _ screen: String, _ state: String, _ description: String,
                               _ e: AppModel, section: Section, job: String? = nil, defaults: [String: Any] = [:],
-                              live: Bool = true, @ViewBuilder _ content: () -> V) {
+                              size: CGSize = mainSize, live: Bool = true, @ViewBuilder _ content: () -> V) {
         let view = HStack(spacing: 0) {
             Sidebar(section: .constant(section), selectedJob: .constant(job), openSettings: {})
             content().frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.window)
@@ -187,8 +187,8 @@ enum StatesSnapshot {
         .overlay(alignment: .bottom) { ErrorBanner() }
         .foregroundStyle(Theme.ink)
         .environmentObject(e)
-        .frame(width: mainSize.width, height: mainSize.height)
-        shoot(file, flow, screen, state, description, defaults: defaults, live: live, liveSize: mainSize, view)
+        .frame(width: size.width, height: size.height)
+        shoot(file, flow, screen, state, description, defaults: defaults, live: live, liveSize: size, view)
     }
 
     /// A floating or quick window (or a sheet / section) at its natural size on a light gray backdrop.
@@ -219,7 +219,8 @@ enum StatesSnapshot {
         let content = view.environment(\.colorScheme, .light).defaultAppStorage(store)
         let result: (Data, CGSize)?
         if live {
-            result = liveImage(content.environment(\.snapshotMode, false), size: liveSize)
+            result = liveImage(content.environment(\.snapshotMode, false), size: liveSize,
+                               backdrop: liveSize == nil ? NSColor(red: 0xEA / 255, green: 0xE8 / 255, blue: 0xE3 / 255, alpha: 1) : nil)
         } else {
             let renderer = ImageRenderer(content: content.environment(\.snapshotMode, true))
             renderer.scale = 2
@@ -243,10 +244,12 @@ enum StatesSnapshot {
 
     private static var liveWindows: [NSWindow] = []
 
-    static func liveImage<V: View>(_ view: V, size: CGSize?) -> (Data, CGSize)? {
+    static func liveImage<V: View>(_ view: V, size: CGSize?, backdrop: NSColor? = nil) -> (Data, CGSize)? {
         _ = NSApplication.shared
         let host = NSHostingView(rootView: view)
-        let fitted = size ?? host.fittingSize
+        // Whole points: a fractional size leaves a transparent row at the edge.
+        let raw = size ?? host.fittingSize
+        let fitted = CGSize(width: raw.width.rounded(.up), height: raw.height.rounded(.up))
         let window = NSWindow(contentRect: CGRect(x: -30000, y: -30000, width: fitted.width, height: fitted.height),
                               styleMask: [.borderless], backing: .buffered, defer: false)
         window.appearance = NSAppearance(named: .aqua)
@@ -260,6 +263,15 @@ enum StatesSnapshot {
                                          bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                                          colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
         rep.size = fitted
+        // Natural-size renders sit on the gray desk: fill it first so a rounding
+        // row SwiftUI leaves uncovered is gray, not transparent.
+        if let backdrop, let context = NSGraphicsContext(bitmapImageRep: rep) {
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = context
+            backdrop.setFill()
+            CGRect(origin: .zero, size: fitted).fill()
+            NSGraphicsContext.restoreGraphicsState()
+        }
         host.cacheDisplay(in: host.bounds, to: rep)
         guard let png = rep.representation(using: .png, properties: [:]) else { return nil }
         return (png, fitted)
@@ -313,6 +325,14 @@ extension StatesSnapshot {
                                             steps: ["Moved to inbox", "Read sources", "Drafting page changes", "Ready for review"],
                                             stepIndex: 2, startedAt: started, runnerID: "claude-code", model: "sonnet")
         main("queue-batch-running", f, "Queue", "Batch running (with steps)", "Batch banner with steps, In batch rows and Next batch rows.", e, section: .queue) { QueueView() }
+
+        e = engine()
+        e.jobs = [batch]
+        e.queued = Array(e.queued.suffix(2))
+        e.progress[batch.id] = CoreProgress(key: batch.id, kind: "batch", message: "Reading 3 sources",
+                                            steps: ["Moved to inbox", "Read sources", "Drafting page changes", "Ready for review"],
+                                            stepIndex: 2, startedAt: started, runnerID: "claude-code", model: "sonnet")
+        main("queue-batch-running-900", f, "Queue", "Batch running · smallest window (900×600)", "The widest Queue header (running batch, Processing…) at the window's minimum size.", e, section: .queue, size: CGSize(width: 900, height: 600)) { QueueView() }
 
         e = engine()
         e.jobs = [batch]
@@ -393,6 +413,11 @@ extension StatesSnapshot {
             var d = filled(); d.images = []; n.drafts[.compose] = d
         }
         shot("compose-filled", "Filled · images keep / extract", "Title, text, source, and two images: one read as text, one kept as an attachment.") { _ in }
+        do {
+            let e = engine()
+            e.notes.drafts[.compose] = filled()
+            main("compose-filled-900", f, "Write a note", "Filled · smallest window (900×600)", "Write a note at the window's minimum size.", e, section: .queue, defaults: note, size: CGSize(width: 900, height: 600)) { QueueView() }
+        }
         shot("compose-adding", "Adding…", "Add to queue pressed; waiting for the core.") { $0.adding = [.compose] }
         shot("compose-add-error", "Add failed", "The core refused or could not be reached; the draft stays.") {
             $0.addErrors[.compose] = "Cannot reach the Distill core: connection refused"
@@ -473,6 +498,12 @@ extension StatesSnapshot {
                            worker: "The plan could not be verified.")]
         main("review-needs-input", f, "Review", "Needs input · plan can't apply", "The plan failed verification: no Approve button, reply to continue.", e, section: .review, job: e.jobs[0].id) {
             ReviewSection(selectedJob: .constant(e.jobs[0].id))
+        }
+
+        e = engine()
+        e.jobs = [awaiting(e)]
+        main("review-reply-typed", f, "Review", "Reply typed", "A reply is typed to Claude: Send reply is enabled.", e, section: .review, job: e.jobs[0].id) {
+            JobDetailView(jobID: e.jobs[0].id, reply: "Put the tasting notes on the Green tea page instead of a new page.")
         }
 
         e = engine()
@@ -818,7 +849,7 @@ extension StatesSnapshot {
             // live window that tall so its scroll view shows everything.
             let measure = ImageRenderer(content: SettingsView(showAdvanced: advanced).environmentObject(e)
                 .environment(\.snapshotMode, true).frame(width: 720).fixedSize(horizontal: false, vertical: true))
-            let height = (measure.nsImage?.size.height ?? 2400) + (advanced ? 120 : 24)
+            let height = ((measure.nsImage?.size.height ?? 2400) + (advanced ? 120 : 24)).rounded(.up)
             let view = SettingsView(showAdvanced: advanced).environmentObject(e).frame(width: 720, height: height)
             shoot(file, f, "Settings", state, desc, defaults: defaults, live: true, liveSize: CGSize(width: 720, height: height), view)
         }
@@ -840,7 +871,7 @@ extension StatesSnapshot {
         e.notes.runners = []
         e.notes.labelCounts = []
         problem(e, [], connection: .unreachable(coreDown))
-        settings("settings-disconnected", "Core not running", "No runners or labels until the core is connected; Retry at the end.", defaults: [AppModel.suggestAfterQueueKey: false], e)
+        settings("settings-disconnected", "Core not running", "No runners or labels until the core is connected; Retry at the end. Also shows “Suggest labels after a note is queued” switched off.", defaults: [AppModel.suggestAfterQueueKey: false], e)
 
         // Sections in their other states.
         e = engine { $0.enabledRunners = ["claude-code", "codex"] }
