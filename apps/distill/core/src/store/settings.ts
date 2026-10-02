@@ -405,6 +405,8 @@ export function fallbackModel(task: AITask): string {
 export function defaultSelection(s: Settings, task: AITask): ModelSelection {
   // Text from images: fast and cheap for reading screenshots (Swift `SettingsEdits.fallbackSelection`).
   if (task === 'imageText') return { runnerID: DEFAULT_RUNNER_ID, model: 'haiku', effort: 'low' };
+  // Finding actions: Sonnet at medium effort (lead decision 2026-10-02).
+  if (task === 'actionFind') return { runnerID: DEFAULT_RUNNER_ID, model: 'sonnet', effort: 'medium' };
   const legacy = task === 'ingest' || task === 'ask' ? s.model : fallbackModel(task);
   return { runnerID: DEFAULT_RUNNER_ID, model: legacy, effort: null };
 }

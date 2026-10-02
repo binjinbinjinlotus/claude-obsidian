@@ -16,6 +16,7 @@ import {
   type ActionStatus,
   type ActionTypeInfo,
   type AskConversation,
+  type AskResponse,
   type ConnectionInfo,
   type ConnectRequest,
   type CoreEvent,
@@ -70,10 +71,10 @@ export interface ActionsServiceOptions {
 }
 
 export type ActionsService = Pick<DistillCore, ActionsOwned> & {
-  /** After a batch is applied: the "Finding actions" step. Never throws. */
-  findInJob(job: Job): Promise<void>;
+  /** After a batch is applied: the "Finding actions" step. Never throws. `retry` runs it again (Try again). */
+  findInJob(job: Job, opts?: { retry?: boolean }): Promise<void>;
   /** After an Ask answer: background detection when Settings say so. Never throws. */
-  afterAsk(conversationID: string): Promise<void>;
+  afterAsk(conversationID: string, response?: AskResponse): Promise<void>;
   /** Drop History items older than historyDays (also runs on load and at most hourly). */
   sweepHistory(): void;
   /** Resolves when no background draft or find is running (tests). */
@@ -109,15 +110,27 @@ function sourceQuote(s: ActionSource): string | null {
   return s.kind === 'manual' ? null : (s.quote ?? null);
 }
 
-/** Same source note + quote, or same normalized title and type. */
-export function isDuplicate(a: Pick<ActionItem, 'type' | 'title' | 'source'>, b: Pick<ActionItem, 'type' | 'title' | 'source'>): boolean {
+type DedupeKey = Pick<ActionItem, 'type' | 'title' | 'source'>;
+
+/** Same source (note path, or Ask chat) and the same normalized quote. */
+export function sameSourceQuote(a: DedupeKey, b: DedupeKey): boolean {
   const qa = normalizeText(sourceQuote(a.source));
-  const qb = normalizeText(sourceQuote(b.source));
-  if (qa && qa === qb) {
-    if (a.source.kind === 'note' && b.source.kind === 'note' && sourceNotePath(a.source) === sourceNotePath(b.source)) return true;
-    if (a.source.kind === 'ask' && b.source.kind === 'ask' && a.source.conversationID === b.source.conversationID) return true;
-  }
+  if (!qa || qa !== normalizeText(sourceQuote(b.source))) return false;
+  // A long quote is the same line even when it was found through another page
+  // (the source note in one batch, the wiki page that kept it in the next).
+  if (a.source.kind === 'note' && b.source.kind === 'note') return sourceNotePath(a.source) === sourceNotePath(b.source) || qa.length >= 24;
+  if (a.source.kind === 'ask' && b.source.kind === 'ask') return a.source.conversationID === b.source.conversationID;
+  return false;
+}
+
+/** Same type and the same normalized title. */
+export function sameTitle(a: DedupeKey, b: DedupeKey): boolean {
   return a.type === b.type && normalizeText(a.title) !== '' && normalizeText(a.title) === normalizeText(b.title);
+}
+
+/** Same source note + quote, or same normalized title and type. */
+export function isDuplicate(a: DedupeKey, b: DedupeKey): boolean {
+  return sameSourceQuote(a, b) || sameTitle(a, b);
 }
 
 function plural(n: number, one: string, many = `${one}s`): string {
@@ -538,14 +551,19 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       // Earlier items: same quote or same title. Items from this same run share
       // quotes ("book the room and tell Mei" is a to-do and a message), so only
       // the title rule applies among them.
+      // Lines already handled (in any status: done, removed, sent, dismissed)
+      // are never suggested again when a later batch rewrites the same page.
+      // The title rule only counts live items (a recurring to-do may come back),
+      // and items dismissed in this same Ask chat.
       const dup = before.find(
         (i) =>
-          (LIVE_STATUSES.includes(i.status) ||
+          sameSourceQuote(i, candidate) ||
+          ((LIVE_STATUSES.includes(i.status) ||
             (i.status === 'dismissed' && o.conversationID && i.source.kind === 'ask' && i.source.conversationID === o.conversationID)) &&
-          isDuplicate(i, candidate),
+            sameTitle(i, candidate)),
       );
       if (dup) {
-        if (!existing.includes(dup)) existing.push(dup);
+        if (LIVE_STATUSES.includes(dup.status) && !existing.includes(dup)) existing.push(dup);
         continue;
       }
       if (added.some((a) => a.type === type && normalizeText(a.title) === normalizeText(f.title))) continue;
@@ -589,9 +607,10 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
 
   function documentsForJob(job: Job): FindDocument[] {
     const vault = path.resolve(job.vaultPath);
+    // The batch's own notes first (the new text), then the pages it changed.
     const rels = [
-      ...job.changedPaths.filter((p) => p.endsWith('.md') && !SKIP_PAGES.some((re) => re.test(p))),
       ...job.files.filter((p) => /\.(md|txt|markdown)$/i.test(p)),
+      ...job.changedPaths.filter((p) => p.endsWith('.md') && !SKIP_PAGES.some((re) => re.test(p))),
     ];
     const docs: FindDocument[] = [];
     let total = 0;
@@ -600,14 +619,15 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       if (!abs.startsWith(vault + path.sep)) continue;
       const text = readText(abs, MAX_DOC_CHARS);
       if (!text?.trim()) continue;
-      if (total + text.length > MAX_TOTAL_CHARS) break;
+      if (total + text.length > MAX_TOTAL_CHARS) continue; // a big page doesn't push out the smaller ones
       total += text.length;
       docs.push({ path: rel, title: titleOf(text, rel), text });
     }
     return docs;
   }
 
-  async function findInJob(job: Job): Promise<void> {
+  async function findInJob(job: Job, o: { retry?: boolean } = {}): Promise<void> {
+    if (o.retry) store.processedJobs = store.processedJobs.filter((id) => id !== job.id);
     if (store.processedJobs.includes(job.id)) return;
     const setSummary = (s: JobActionsSummary) => {
       try {
@@ -697,11 +717,20 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     });
   }
 
-  async function detectAsk(conversationID: string, turnIndex: number | undefined, force: boolean): Promise<ActionItem[]> {
+  async function detectAsk(conversationID: string, turnIndex: number | undefined, force: boolean, response?: AskResponse): Promise<ActionItem[]> {
     if (!opts.getConversation) throw new CoreError('not_implemented', 'detectAskActions: no Ask history');
     const conv = await opts.getConversation(conversationID);
     if (!conv) throw new CoreError('not_found', `Unknown conversation ${conversationID}.`);
-    const index = turnIndex ?? conv.turns.length - 1;
+    // The turn of this answer, even when a quick follow-up was saved meanwhile.
+    let index = turnIndex ?? conv.turns.length - 1;
+    if (turnIndex === undefined && response) {
+      for (let k = conv.turns.length - 1; k >= 0; k--) {
+        if (conv.turns[k]!.response.answer === response.answer) {
+          index = k;
+          break;
+        }
+      }
+    }
     const turn = conv.turns[index];
     if (!turn) throw new CoreError('invalid_request', `Conversation ${conversationID} has no turn ${index}.`);
     const types = findTypes('ask', force);
@@ -904,9 +933,11 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       for (const id of ids) {
         if (require(id).status === 'dismissed') continue;
         controllers.get(id)?.abort();
+        const prior = require(id).status;
         mutate(id, (i) => {
           i.status = 'dismissed';
-          i.events.push(event(now(), 'dismissed'));
+          // Where it was, for Undo (restoreAction).
+          i.events.push(event(now(), 'dismissed', prior === 'drafting' ? (i.body?.trim() ? 'ready' : 'open') : prior));
         });
       }
     },
@@ -1038,19 +1069,54 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
 
     async restoreAction(id: string): Promise<ActionItem> {
       const item = require(id);
-      if (item.status !== 'removed' && item.status !== 'done') {
-        throw new CoreError('invalid_state', item.status === 'sent' ? 'A sent item lives on where it was sent; it can’t be restored.' : 'Only removed or completed items can be restored.');
-      }
-      const lastRemoved = [...item.events].reverse().find((e) => e.event === 'removed');
+      const back = (x: string | null | undefined, fallback: ActionStatus): ActionStatus =>
+        (['pending', 'open', 'ready', 'created'] as ActionStatus[]).includes(x as ActionStatus) ? (x as ActionStatus) : fallback;
+      const lastEvent = (pred: (name: string) => boolean) => [...item.events].reverse().find((e) => pred(e.event));
       let status: ActionStatus;
-      if (item.status === 'removed') {
-        const prior = (lastRemoved?.detail ?? '') as ActionStatus;
-        status = (['pending', 'open', 'ready', 'created'] as ActionStatus[]).includes(prior) ? prior : 'open';
-      } else {
-        status = item.external?.key ? 'created' : initialStatus(item.type, item.body);
+      /** Undo of "Send to": the untouched item it became goes away. */
+      let dropID: string | undefined;
+      switch (item.status) {
+        case 'removed':
+          status = back(lastEvent((n) => n === 'removed')?.detail, 'open');
+          break;
+        case 'done':
+          status = item.external?.key ? 'created' : initialStatus(item.type, item.body);
+          break;
+        case 'dismissed':
+          // Undo of Dismiss: back to "to confirm" (or where an auto-added item was).
+          status = back(lastEvent((n) => n === 'dismissed')?.detail, 'pending');
+          break;
+        case 'sent': {
+          const last = lastEvent((n) => n === 'sent' || n.startsWith('sent-to:'));
+          if (last?.event.startsWith('sent-to:')) {
+            const next = last.detail ? find(last.detail) : undefined;
+            if (next) {
+              const untouched =
+                (['pending', 'open', 'ready', 'drafting'] as ActionStatus[]).includes(next.status) &&
+                next.events.every((e) => ['added', 'drafted', 'interrupted'].includes(e.event));
+              if (!untouched) {
+                const where = actionTypeDef(next.type)?.pluralLabel ?? next.type;
+                throw new CoreError('invalid_state', `It lives on in ${where}; remove it there instead.`);
+              }
+              dropID = next.id;
+            }
+          }
+          // Undo of Mark as sent / Send to.
+          status = item.type === TODO_TYPE ? 'open' : initialStatus(item.type, item.body);
+          break;
+        }
+        default:
+          throw new CoreError('invalid_state', 'Only removed, completed, sent or dismissed items can be restored.');
       }
       const type = resolveTypeID(item.type, prefs());
       const changedType = type !== item.type;
+      if (dropID) {
+        controllers.get(dropID)?.abort();
+        const dropped = find(dropID)!;
+        items = items.filter((i) => i.id !== dropID);
+        persist();
+        emit({ type: 'action', action: clone(dropped), deleted: true });
+      }
       return mutate(id, (i) => {
         if (changedType) {
           i.events.push(event(now(), 'type', `${i.type} → ${type}`));
@@ -1100,15 +1166,15 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       return connectionInfo(id);
     },
 
-    findInJob: (job) =>
-      track(findInJob(job).catch((err: unknown) => log('warn', `Finding actions for ${job.id} failed: ${(err as Error).message}`))),
+    findInJob: (job, o) =>
+      track(findInJob(job, o).catch((err: unknown) => log('warn', `Finding actions for ${job.id} failed: ${(err as Error).message}`))),
 
-    afterAsk: (conversationID) =>
+    afterAsk: (conversationID, response) =>
       track(
         (async () => {
           const sp = prefs().sources.ask;
           if (!sp.detectTodos && !sp.detectTypes) return;
-          await detectAsk(conversationID, undefined, false);
+          await detectAsk(conversationID, undefined, false, response);
         })().catch((err: unknown) => log('warn', `Finding actions in an answer failed: ${(err as Error).message}`)),
       ),
 

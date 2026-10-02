@@ -1,6 +1,6 @@
 import path from 'node:path';
-import type { CoreEvent, DistillCore, Progress, StatePaths } from './contracts.js';
-import { createEngine, type EngineOptions } from './engine/index.js';
+import { CoreError, type CoreEvent, type DistillCore, type Progress, type StatePaths } from './contracts.js';
+import { createEngine, type EngineExtras, type EngineOptions } from './engine/index.js';
 import { createAskService } from './ask/index.js';
 import { createRunnerAdmin } from './runners/admin.js';
 import { createActionsService, type ActionsService } from './actions/index.js';
@@ -20,7 +20,7 @@ export interface CoreOptions extends Partial<Omit<EngineOptions, 'paths'>> {
 }
 
 /** Compose the engine and Ask into the single DistillCore the server exposes. */
-export function createCore(opts: CoreOptions = {}): DistillCore {
+export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras {
   const paths = opts.paths ?? statePaths();
   // The actions service is created after the engine; the hook binds late.
   let actions: ActionsService | undefined;
@@ -76,10 +76,20 @@ export function createCore(opts: CoreOptions = {}): DistillCore {
   return {
     ...engine,
     ...actionMethods,
+    async findJobActions(id: string) {
+      const job = engine.getJob(id);
+      if (!job) throw new CoreError('not_found', `Unknown job ${id}.`);
+      if (job.state !== 'completed' || job.changedPaths.length === 0 || job.kind === 'labels') {
+        throw new CoreError('invalid_state', `Job ${id} has no applied changes to find actions in.`);
+      }
+      engine.setJobActions?.(id, { status: 'finding', found: 0, pending: 0, added: 0, byType: {} });
+      void service.findInJob(job, { retry: true });
+      return engine.getJob(id) ?? job;
+    },
     async ask(req) {
       const response = await ask.ask(req);
       // Finding actions in the answer runs in the background; it never delays the answer.
-      void service.afterAsk(response.conversationID);
+      void service.afterAsk(response.conversationID, response);
       return response;
     },
     listConversations: () => ask.listConversations(),

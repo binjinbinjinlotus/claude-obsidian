@@ -101,6 +101,16 @@ describe('HTTP API: actions and connections', () => {
     assert.equal((await request(port, 'POST', `/v1/actions/${t.id}/restore`)).body.status, 'open');
   });
 
+  it('POST /v1/jobs/:id/actions/find (Try again)', async () => {
+    const id = core.jobs[0]!.id;
+    assert.equal((await request(port, 'POST', `/v1/jobs/${id}/actions/find`)).status, 409, 'not applied yet');
+    core.jobs[0]!.state = 'completed';
+    const res = await request(port, 'POST', `/v1/jobs/${id}/actions/find`);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.job.actionsFound.status, 'finding');
+    assert.equal((await request(port, 'POST', '/v1/jobs/nope/actions/find')).status, 404);
+  });
+
   it('POST /v1/conversations/:id/actions/detect', async () => {
     const res = await request(port, 'POST', '/v1/conversations/conv-1/actions/detect', { turnIndex: 0 });
     assert.equal(res.status, 200);

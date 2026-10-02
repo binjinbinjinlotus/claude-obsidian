@@ -389,6 +389,14 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       if (!job) throw new CoreError('not_found', `Unknown job ${id}.`);
       return job.kind === 'labels' ? null : ['claude', '--resume', job.sessionID, '--model', job.model];
     },
+    async findJobActions(id) {
+      record('findJobActions', id);
+      const job = fake.jobs.find((j) => j.id === id);
+      if (!job) throw new CoreError('not_found', `Unknown job ${id}.`);
+      if (job.state !== 'completed') throw new CoreError('invalid_state', `Job ${id} has no applied changes to find actions in.`);
+      job.actionsFound = { status: 'finding', found: 0, pending: 0, added: 0, byType: {} };
+      return job;
+    },
     async removeQueueEntry(p) {
       record('removeQueueEntry', p);
       const i = queue.findIndex((e) => e.path === p);

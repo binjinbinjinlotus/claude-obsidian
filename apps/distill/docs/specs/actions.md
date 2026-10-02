@@ -134,7 +134,8 @@ on; reserved types stay off), `draftWhen`, `improveAfterEdit`, prompts (null
 or empty = the default), `fieldDefaults` (filled into new items' empty
 fields). Model precedence: per type `draftSelection` / `improveSelection`
 (finding: `findSelection`) → `taskDefaults.actionDraft | actionImprove |
-actionFind` → Claude Code · Sonnet. The action tasks never block batching
+actionFind` → Claude Code · Sonnet (finding at medium effort). Settings
+writes only the `actionPreferences` keys for these. The action tasks never block batching
 (they are left out of the setup problems); a broken runner shows as a failed
 step instead.
 
@@ -154,9 +155,10 @@ fields}`; improve: `{body}`); a JSON object in the text is the fallback.
 - **Notes** (`findInJob`): the engine calls `onJobApplied` when a
   queue-consumer (ingest) job turns `completed` with changed paths (both the
   agent-applied and the core-applied path; label jobs never). Documents: the
-  changed `.md` pages minus `wiki/log.md`, `wiki/hot.md`, `wiki/index.md`,
-  `wiki/meta/**`, `.raw/**`, `_index.md`, plus the job's source files;
-  12 000 characters each, 60 000 in all. Progress: key = job id, kind
+  job's source files first (the new text), then the changed `.md` pages minus
+  `wiki/log.md`, `wiki/hot.md`, `wiki/index.md`, `wiki/meta/**`, `.raw/**`,
+  `_index.md`; 12 000 characters each, 60 000 in all (a page that doesn't
+  fit is skipped, smaller ones after it still go in). Progress: key = job id, kind
   `batch`, steps `Moved to inbox · Read sources · Applied changes · Finding
   actions · Done`, "Finding actions in 2 notes", finished with "Found 5
   actions to confirm: 3 to-dos, 1 Slack message, 1 Jira ticket" / "Added …" /
@@ -171,9 +173,12 @@ fields}`; improve: `{body}`); a JSON object in the text is the fallback.
 - Type resolution: a type that is unknown, off, reserved, turned off for the
   source (`disabledTypes`), or any type with `detectTypes` off becomes `todo`;
   a to-do with `detectTodos` off is dropped. With both off nothing runs.
-- Duplicates: a live item (pending … created) with the same source note (or
-  Ask chat) and normalized quote, or the same normalized title and type, is
-  not added again; for Ask, dismissed items of the same chat count too.
+- Duplicates: an item in any status (also done, removed, sent, dismissed)
+  with the same source note (or Ask chat) and normalized quote, or with the
+  same quote of 24+ characters from any page, is not added again, so a later
+  batch that rewrites the page never brings handled lines back. A live item
+  (pending … created) with the same normalized title and type also counts;
+  for Ask, so do dismissed items of the same chat.
   Within one run only the title rule applies, since one sentence can hold
   two actions ("I'll book the room and tell Mei": a to-do and a message).
 - Confirm on → `pending`. Confirm off → `open` (to-do), or `open` and a
@@ -206,9 +211,18 @@ fields}`; improve: `{body}`); a JSON object in the text is the fallback.
   `fromActionID`, carries title, why, source, labels and matching fields
   (`person` ↔ `to`), and starts its draft right away.
 - `removeAction` (not from History) → `removed`, event detail = the status to
-  restore; `restoreAction` (removed or done; sent items have no Restore) puts
-  it back, as a to-do when its type is off now. `deleteActionForever`: History
-  or dismissed items only.
+  restore. `restoreAction` is every Undo: removed → where it was; done →
+  open (created when it has an external key); Mark as sent → ready; Send to →
+  back where it was, and the item it became is deleted if still untouched
+  (only added / drafted events; otherwise `invalid_state`, "it lives on in
+  …"); dismissed → pending (or open/ready for an auto-added item). A type
+  that is off now comes back as a to-do. `deleteActionForever`: History or
+  dismissed items only.
+- Try again: `findJobActions(jobID)` (`POST /v1/jobs/:id/actions/find`)
+  reruns "Finding actions" for an applied batch; it returns the job with
+  `actionsFound.status = "finding"` at once.
+- Handler ids for clients: `copy`, `markSent`, `create`, `refresh`,
+  `complete` (also "Mark done" for a created ticket or page).
 - Retention: on load and at most hourly on `listActions`, removed / done /
   sent / dismissed items whose last event is older than `historyDays` are
   dropped; `historyDays <= 0` keeps them forever. Live items are never dropped.
@@ -273,6 +287,7 @@ All routes need the bearer token, like every other route.
 | POST | `/v1/actions/:id/remove` | | `ActionItem` |
 | POST | `/v1/actions/:id/restore` | | `ActionItem` |
 | POST | `/v1/conversations/:id/actions/detect` | `{turnIndex?}` | `{actions: ActionItem[]}` |
+| POST | `/v1/jobs/:id/actions/find` | | `{job}` (Try again; 409 when the job has no applied changes) |
 | GET | `/v1/connections` | | `{connections: ConnectionInfo[]}` |
 | POST | `/v1/connections/:id/connect` | `{site, email, token}` (scrubbed from errors) | `ConnectionInfo` |
 | GET | `/v1/connections/:id/sign-in-url` | `?site=` | `{url}` |

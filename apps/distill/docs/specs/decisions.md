@@ -39,6 +39,24 @@ supersede it with a new entry.
   - An interrupted `creating` comes back `ready` with an error asking the
     user to check Jira / Confluence before retrying (it may have been
     created). Why: never create twice silently.
+  - Dedupe goes beyond live items for quotes: a line already handled (done,
+    removed, sent, dismissed) is never suggested again when a later batch
+    rewrites the same page (same note and quote, or a quote of 24+ characters
+    from any page). The title rule still counts live items only, so a
+    recurring to-do can come back. Within one run only the title rule applies
+    (one sentence can hold a to-do and a message). Why: a compounding wiki
+    rewrites pages; dismissed items kept coming back.
+  - `restoreAction` is the one Undo: removed → where it was; done → open /
+    created; sent by Mark as sent → ready; sent by Send to → back, and the
+    item it became is deleted while untouched (else `invalid_state`);
+    dismissed → pending (or where an auto-added item was).
+  - "Try again" for a failed find: `POST /v1/jobs/:id/actions/find`
+    (`findJobActions`, an engine extra like `deleteJob`).
+  - Models (lead): finding `findSelection` → `taskDefaults.actionFind` →
+    Claude Code · Sonnet · medium; drafts / improve per type
+    `draftSelection` / `improveSelection` → `taskDefaults.actionDraft` /
+    `actionImprove` → Claude Code · Sonnet. Settings writes only
+    `actionPreferences` for these.
   → [actions](actions.md)
 - **Design follow-ups (lead, from the canvas audit):** the flask hover menu
   gets an "Actions N" entry, while the flask badge stays queue-only. Every

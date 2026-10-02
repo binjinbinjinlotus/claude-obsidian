@@ -51,7 +51,8 @@ describe('v3: actionPreferences and the job actions summary', () => {
 
   test('the action tasks default to Claude Code · Sonnet', () => {
     const s = decodeSettings({});
-    for (const t of ['actionFind', 'actionDraft', 'actionImprove'] as const) {
+    assert.deepEqual(selectionFor(s, 'actionFind'), { runnerID: 'claude-code', model: 'sonnet', effort: 'medium' });
+    for (const t of ['actionDraft', 'actionImprove'] as const) {
       assert.deepEqual(selectionFor(s, t), { runnerID: 'claude-code', model: 'sonnet', effort: null });
     }
   });

@@ -129,6 +129,12 @@ export interface EngineExtras {
   removeQueueEntry(path: string): Promise<QueueEntry[]>;
   /** v3: record what "Finding actions" found for a job (actions service). */
   setJobActions?(id: string, summary: JobActionsSummary): void;
+  /**
+   * v3: run "Finding actions" again for an applied batch (Try again after a failure).
+   * Returns the job at once (actionsFound.status "finding"); progress and action events follow.
+   * Composed in index.ts.
+   */
+  findJobActions?(id: string): Promise<Job>;
 }
 
 /** Steps of a batch, in order (`Progress.steps`); "Suggesting labels" only when the batch has a label pre-step. */

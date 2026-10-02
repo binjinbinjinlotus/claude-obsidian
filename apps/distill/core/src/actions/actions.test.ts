@@ -499,6 +499,51 @@ describe('finding actions in an applied batch', () => {
     assert.equal((await h.service.listActions()).length, 2);
   });
 
+  test('lines already handled (done, removed, dismissed) are not suggested again when a later batch rewrites the page', async () => {
+    const h = harness();
+    writeTea(h);
+    h.runner.find = () => ({ structured: { items: TEA_FOUND.items.slice(0, 3) } });
+    await h.service.findInJob(job(h, 'job-1', ['inbox/tea.md'], ['wiki/sources/tea.md']));
+    const all = await h.service.listActions();
+    const of = (t: string) => all.find((i) => i.type === t)!;
+    await h.service.confirmActions([of('todo').id, of('jira').id]);
+    await h.service.performAction(of('todo').id, 'complete');
+    await h.service.dismissActions([of('slack').id]);
+    await h.service.removeAction(of('jira').id);
+    await h.service.findInJob(job(h, 'job-2', [], ['wiki/sources/tea.md']));
+    assert.equal(h.summaries.get('job-2')!.found, 0);
+    assert.equal((await h.service.listActions({ status: ['pending'] })).length, 0);
+    // A recurring to-do with the same title from a new line is added again once the old one is done.
+    h.runner.find = () => ({ structured: { items: [{ ...TEA_FOUND.items[0]!, quote: 'Next month: I’ll book the tasting room again.' }] } });
+    await h.service.findInJob(job(h, 'job-3', [], ['wiki/sources/tea.md']));
+    assert.equal(h.summaries.get('job-3')!.found, 1);
+  });
+
+  test('the batch’s own notes come first; a page over the limit does not push out smaller ones', async () => {
+    const h = harness();
+    writeTea(h);
+    fs.writeFileSync(path.join(h.vault, 'wiki', 'big.md'), 'x'.repeat(11_000));
+    for (let n = 0; n < 6; n++) fs.writeFileSync(path.join(h.vault, 'wiki', `p${n}.md`), 'y'.repeat(11_000));
+    await h.service.findInJob(job(h, 'job-1', ['inbox/tea.md'], ['wiki/big.md', ...[0, 1, 2, 3, 4, 5].map((n) => `wiki/p${n}.md`), 'wiki/sources/tea.md']));
+    const prompt = h.runner.requests[0]!.prompt;
+    assert.ok(prompt.indexOf('path="inbox/tea.md"') < prompt.indexOf('path="wiki/big.md"'));
+    assert.match(prompt, /path="wiki\/sources\/tea.md"/, 'the small page after the cut still fits');
+  });
+
+  test('Try again: retry runs a job that was already searched', async () => {
+    const h = harness();
+    writeTea(h);
+    h.runner.find = () => ({ isError: true, resultText: 'offline' });
+    await h.service.findInJob(job(h, 'job-1', ['inbox/tea.md'], ['wiki/sources/tea.md']));
+    assert.equal(h.summaries.get('job-1')!.status, 'failed');
+    h.runner.find = () => ({ structured: TEA_FOUND });
+    await h.service.findInJob(job(h, 'job-1', ['inbox/tea.md'], ['wiki/sources/tea.md']));
+    assert.equal(h.summaries.get('job-1')!.status, 'failed', 'not rerun by itself');
+    await h.service.findInJob(job(h, 'job-1', ['inbox/tea.md'], ['wiki/sources/tea.md']), { retry: true });
+    assert.equal(h.summaries.get('job-1')!.status, 'done');
+    assert.equal(h.summaries.get('job-1')!.found, 4);
+  });
+
   test('dedupe rule', () => {
     const note = (quote: string, notePath = 'a.md') => ({ kind: 'note' as const, notePath, quote });
     assert.ok(isDuplicate({ type: 'todo', title: 'A', source: note('Book it!') }, { type: 'slack', title: 'B', source: note('book it') }));
@@ -561,6 +606,18 @@ describe('actions from Ask answers', () => {
     assert.equal((await h.service.listActions({ status: ['pending', 'dismissed'] })).length, 2, 'nothing new added');
   });
 
+  test('reads the turn of the answer it was called for, even after a follow-up was saved', async () => {
+    const h = harness();
+    const conv = conversation(h);
+    const first = conv.turns[0]!;
+    conv.turns.push({ ...first, request: { question: 'And later?' }, response: { ...first.response, answer: 'A later answer.' } });
+    h.conversations.set('conv-1', conv);
+    await h.service.afterAsk('conv-1', first.response);
+    assert.match(h.runner.requests[0]!.prompt, /Answer:\nBook the tasting room/);
+    await h.service.afterAsk('conv-1');
+    assert.match(h.runner.requests[1]!.prompt, /Answer:\nA later answer\./);
+  });
+
   test('detection off: nothing runs after an answer', async () => {
     const h = harness({ prefs: prefsWith((p) => ((p.sources.ask.detectTodos = false), (p.sources.ask.detectTypes = false))) });
     h.conversations.set('conv-1', conversation(h));
@@ -618,16 +675,45 @@ describe('lifecycle', () => {
     const drafted = (await h.service.getAction(msg.id))!;
     assert.equal(drafted.status, 'ready');
     assert.match(drafted.body!, /Draft for: Tell Mei/);
-    await assert.rejects(h.service.restoreAction(todo.id), { code: 'invalid_state' }, 'a sent item has no Restore');
     await assert.rejects(h.service.sendActionTo(todo.id, 'jira'), { code: 'invalid_state' });
     await assert.rejects(h.service.sendActionTo(msg.id, 'email'), { code: 'invalid_request' });
 
-    // Copy then Mark as sent.
+    // Copy then Mark as sent; once the message was used, the to-do can't be restored.
     const copied = await h.service.performAction(msg.id, 'copy');
     assert.equal(copied.status, 'ready');
     assert.equal(copied.events.at(-1)!.event, 'copied');
+    await assert.rejects(h.service.restoreAction(todo.id), { code: 'invalid_state' }, 'it lives on as the message');
     await assert.rejects(h.service.performAction(msg.id, 'send'), { code: 'invalid_request' });
     assert.equal((await h.service.performAction(msg.id, 'markSent')).status, 'sent');
+    // Undo of Mark as sent.
+    assert.equal((await h.service.restoreAction(msg.id)).status, 'ready');
+  });
+
+  test('Undo: Send to (untouched draft goes away), Dismiss (back where it was), Complete', async () => {
+    const h = harness();
+    const todo = await h.service.createAction({ type: 'todo', title: 'Write up INC-212' });
+    const page = await h.service.sendActionTo(todo.id, 'confluence');
+    await h.service.whenIdle();
+    const back = await h.service.restoreAction(todo.id);
+    assert.equal(back.status, 'open');
+    assert.equal(back.type, 'todo');
+    assert.equal(await h.service.getAction(page.id), undefined, 'the draft it became is gone');
+    assert.ok(h.events.some((e) => e.type === 'action' && e.deleted && e.action.id === page.id));
+
+    const done = await h.service.performAction(todo.id, 'complete');
+    assert.equal(done.status, 'done');
+    assert.equal((await h.service.restoreAction(todo.id)).status, 'open');
+
+    h.settings.actionPreferences = prefsWith((p) => (p.sources.notes.confirm = false));
+    writeTea(h);
+    h.runner.find = () => ({ structured: { items: TEA_FOUND.items.slice(0, 1) } });
+    await h.service.findInJob(job(h, 'job-u', ['inbox/tea.md'], ['wiki/sources/tea.md']));
+    const added = (await h.service.listActions()).find((i) => i.events[0]!.event === 'found')!;
+    await h.service.dismissActions([added.id]);
+    assert.equal((await h.service.restoreAction(added.id)).status, 'open', 'an auto-added item goes back to open');
+    h.settings.actionPreferences = undefined;
+    const p = await h.service.createAction({ type: 'todo', title: 'p' });
+    await assert.rejects(h.service.restoreAction(p.id), { code: 'invalid_state' });
   });
 
   test('improve keeps previousBody; undo restores; an edit clears it', async () => {

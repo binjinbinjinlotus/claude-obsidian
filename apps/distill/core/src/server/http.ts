@@ -469,10 +469,10 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
     if (!job) throw new HttpError(404, 'job_not_found', `no job with id "${id}"`);
     return job;
   };
-  const extra = <K extends keyof EngineExtras>(name: K): EngineExtras[K] => {
+  const extra = <K extends keyof EngineExtras>(name: K): NonNullable<EngineExtras[K]> => {
     const fn = core[name];
     if (typeof fn !== 'function') throw new HttpError(501, 'not_implemented', `${name}: not implemented by this core`);
-    return fn.bind(core) as EngineExtras[K];
+    return fn.bind(core) as NonNullable<EngineExtras[K]>;
   };
   const vaultParam = (query: URLSearchParams) => {
     const v = query.get('vault');
@@ -694,6 +694,16 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
         }
         const job = core.getJob(id);
         return { job: job ? apiJob(job) : null };
+      },
+    },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/jobs\/([^/]+)\/actions\/find$/,
+      untyped: { status: 409, code: 'invalid_state' },
+      handler: async ({ params }) => {
+        const findJobActions = extra('findJobActions');
+        requireJob(params[0]!);
+        return { job: apiJob(await findJobActions(params[0]!)) };
       },
     },
     { method: 'POST', pattern: /^\/v1\/ask$/, handler: async ({ body }) => core.ask(parseAsk(await body())) },
