@@ -26,6 +26,7 @@ Nothing goes into the vault except approved notes and pages.
 | Job history (batches, reviews) | `jobs.json` |
 | Ask history | `ask/<chat-id>.json`, one file per chat |
 | Actions (to-dos, drafts, History) | `actions.json` (v3) |
+| Connections (site, account; no secrets) | `connections.json` (v3) |
 | API keys and connection tokens | macOS Keychain, never a file |
 | Backups | `backups/<time>[-tag]/` |
 | Runtime only | `server.json`, `server.log`, `token`, `ask/workspace/` |
@@ -57,10 +58,11 @@ Retention is the user's choice: Ask chats older than `askPreferences.historyDays
 
 - `update` backs up first (`backups/<time>-update`), installs, then compares
   settings / job / chat counts before and after and prints
-  "Your data is intact: settings kept · N jobs · M Ask chats", or a WARNING
+  "Your data is intact: settings kept · N jobs · M Ask chats · K actions", or a WARNING
   with how to restore.
-- `backup [TAG]` copies `settings.json`, `jobs.json`, `ask/*.json` and any
-  `*.unreadable-*` files. The newest 10 backups are kept; names sort by time
+- `backup [TAG]` copies `settings.json`, `jobs.json`, `ask/*.json`,
+  `actions.json`, `connections.json` and any `*.unreadable-*` files
+  (Keychain secrets stay in the Keychain). The newest 10 backups are kept; names sort by time
   (a same-second counter is zero-padded).
 - `backups` lists them, newest first.
 - `restore NAME` refuses while the app or the core runs, backs up the current
