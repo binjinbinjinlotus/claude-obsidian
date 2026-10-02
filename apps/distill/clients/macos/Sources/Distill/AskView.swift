@@ -288,34 +288,39 @@ struct AskFilterBar: View {
     @ObservedObject var thread: AskThread
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "line.3.horizontal.decrease").font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.muted)
-            if thread.filter.isEmpty {
-                Text("All notes").font(Theme.body(12, .semibold)).foregroundStyle(Theme.softInk).padding(.horizontal, 4)
-            }
-            ForEach(thread.filter.labels, id: \.self) { label in
-                FilterChip(text: "#\(label)") { thread.filter.removeLabel(label) }
-            }
-            LabelPickerButton(thread: thread)
-            if thread.filter.showsMatchSwitch {
-                Segmented(options: [(LabelMatch.any, "Any label"), (.all, "All labels")], selection: $thread.filter.labelMatch,
-                          help: [.any: "Notes with any of these labels", .all: "Only notes with all of these labels"])
-            }
-            if thread.filter.showsUnconfirmedToggle {
-                CapsuleSwitch(title: "Include unconfirmed", isOn: $thread.filter.includeUnconfirmed)
-                    .help("Count AI labels you haven't confirmed yet")
-            }
-            ForEach(thread.filter.sources, id: \.self) { id in
-                FilterChip(text: AskFilter.sourceLabel(id, taxonomy: ask.taxonomy), fill: Theme.limeTint, ink: Theme.limeInk) {
-                    thread.filter.removeSource(id)
+        // Controls wrap onto a second line in a narrow window; the count stays at the end.
+        HStack(alignment: .center, spacing: 8) {
+            FlowLayout(spacing: 8) {
+                Image(systemName: "line.3.horizontal.decrease").font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.muted)
+                    .frame(height: 28)
+                if thread.filter.isEmpty {
+                    Text("All notes").font(Theme.body(12, .semibold)).foregroundStyle(Theme.softInk).padding(.horizontal, 4)
+                        .frame(height: 28).fixedSize()
                 }
+                ForEach(thread.filter.labels, id: \.self) { label in
+                    FilterChip(text: "#\(label)") { thread.filter.removeLabel(label) }
+                }
+                LabelPickerButton(thread: thread)
+                if thread.filter.showsMatchSwitch {
+                    Segmented(options: [(LabelMatch.any, "Any label"), (.all, "All labels")], selection: $thread.filter.labelMatch,
+                              help: [.any: "Notes with any of these labels", .all: "Only notes with all of these labels"])
+                }
+                if thread.filter.showsUnconfirmedToggle {
+                    CapsuleSwitch(title: "Include unconfirmed", isOn: $thread.filter.includeUnconfirmed)
+                        .help("Count AI labels you haven't confirmed yet")
+                }
+                ForEach(thread.filter.sources, id: \.self) { id in
+                    FilterChip(text: AskFilter.sourceLabel(id, taxonomy: ask.taxonomy), fill: Theme.limeTint, ink: Theme.limeInk) {
+                        thread.filter.removeSource(id)
+                    }
+                }
+                SourcePickerButton(thread: thread)
             }
-            SourcePickerButton(thread: thread)
-            Spacer(minLength: 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
             countLine
                 .font(Theme.body(12)).foregroundStyle(Theme.muted)
                 .lineLimit(2)
-                .frame(minWidth: 140, alignment: .leading)
+                .frame(maxWidth: 240, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 12).padding(.vertical, 10)

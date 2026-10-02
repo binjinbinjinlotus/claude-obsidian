@@ -338,7 +338,7 @@ struct QuestionBubble: View {
     var body: some View {
         HStack {
             Spacer(minLength: 80)
-            Text(text).font(Theme.body(size)).lineSpacing(3)
+            Text(text).font(Theme.body(size)).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 16).padding(.vertical, 12)
                 .background(UnevenRoundedRectangle(topLeadingRadius: 18, bottomLeadingRadius: 18, bottomTrailingRadius: 4, topTrailingRadius: 18)
                     .fill(Theme.limeTint))
