@@ -240,7 +240,7 @@ struct QueueView: View {
                             .font(Theme.body(12)).foregroundStyle(Theme.muted)
                     }
                     Spacer()
-                    Text(entry.settled ? "Ready" : "Still copying…").font(Theme.body(12)).foregroundStyle(Theme.muted)
+                    Text(entry.settled ? "Ready" : "Settling…").font(Theme.body(12)).foregroundStyle(Theme.muted)
                     Button { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) } label: {
                         Image(systemName: "magnifyingglass").foregroundStyle(Theme.faint)
                     }
