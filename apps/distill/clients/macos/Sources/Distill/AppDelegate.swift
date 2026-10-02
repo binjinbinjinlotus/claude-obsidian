@@ -1,11 +1,15 @@
 import AppKit
 import Combine
 import SwiftUI
-import WorkerCore
+import DistillKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
-    let engine = WorkerEngine()
+    /// The app is a client of the Distill core (one per state dir). Leaving the
+    /// app does not stop the core: the CLI or agents may be using it.
+    let engine = AppModel(launcher: CoreLauncher(
+        paths: StatePaths.resolve(),
+        bundledProductRoot: Bundle.main.object(forInfoDictionaryKey: "ClaudeObsidianProductRoot") as? String))
     private var mainWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var floatingIcon: FloatingIconController?
@@ -14,14 +18,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = buildMenu()
-        engine.start()
+        engine.connect()
         floatingIcon = FloatingIconController(engine: engine, onOpen: { [weak self] in self?.showMainWindow() })
         if UserDefaults.standard.object(forKey: "showFloatingIcon") as? Bool ?? true {
             floatingIcon?.show()
         }
         installPasteShortcut()
         showMainWindow()
-        if engine.settings.vaults.isEmpty { showSettings() }
+        // First run: once the core answers with no vaults, open Settings.
+        engine.$connection
+            .first { $0 == .connected }
+            .sink { [weak self] _ in
+                guard let self, self.engine.settings.vaults.isEmpty else { return }
+                self.showSettings()
+            }
+            .store(in: &cancellables)
         engine.$jobs
             .map { $0.filter { $0.state == .awaitingApproval }.count }
             .removeDuplicates()

@@ -1,7 +1,7 @@
 import AppKit
 import Combine
 import SwiftUI
-import WorkerCore
+import DistillKit
 
 /// Always-on-top draggable flask. Click opens Distill, drag moves it, dropping
 /// files or right-click → Paste adds to the queue. The liquid rises with the
@@ -15,7 +15,7 @@ final class FloatingIconController {
 
     var isVisible: Bool { panel.isVisible }
 
-    init(engine: WorkerEngine, onOpen: @escaping () -> Void) {
+    init(engine: AppModel, onOpen: @escaping () -> Void) {
         let size = Self.size
         panel = NSPanel(
             contentRect: NSRect(origin: Self.savedOrigin() ?? Self.defaultOrigin(size: size),
@@ -69,7 +69,7 @@ final class DropState: ObservableObject {
 
 /// SwiftUI drawing of the floating flask; all mouse handling stays in AppKit.
 struct FloatingFace: View {
-    @EnvironmentObject var engine: WorkerEngine
+    @EnvironmentObject var engine: AppModel
     @ObservedObject var dropState: DropState
 
     var body: some View {

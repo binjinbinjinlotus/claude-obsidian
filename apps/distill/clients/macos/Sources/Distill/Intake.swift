@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import WorkerCore
+import DistillKit
 
 /// Turns a pasteboard (clipboard or drag) into queue files.
 @MainActor
@@ -8,7 +8,7 @@ enum PasteboardIntake {
     static let dragTypes: [NSPasteboard.PasteboardType] = [.fileURL, .png, .tiff, .string]
 
     @discardableResult
-    static func ingest(_ pb: NSPasteboard, engine: WorkerEngine) -> Bool {
+    static func ingest(_ pb: NSPasteboard, engine: AppModel) -> Bool {
         if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
            !urls.isEmpty {
             engine.enqueue(files: urls)
@@ -35,7 +35,7 @@ enum PasteboardIntake {
 
 /// AppKit drop target; shared by the queue view and the floating icon.
 class DropTargetView: NSView {
-    var engine: WorkerEngine?
+    var engine: AppModel?
     var onTargetChange: ((Bool) -> Void)?
 
     override init(frame: NSRect) {
@@ -60,7 +60,7 @@ class DropTargetView: NSView {
 }
 
 struct DropZone: NSViewRepresentable {
-    @EnvironmentObject var engine: WorkerEngine
+    @EnvironmentObject var engine: AppModel
     @Binding var isTargeted: Bool
 
     func makeNSView(context: Context) -> DropTargetView {
