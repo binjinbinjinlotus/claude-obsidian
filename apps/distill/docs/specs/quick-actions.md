@@ -1,6 +1,6 @@
 ---
 title: Quick actions and shortcuts
-status: designed
+status: built
 updated: 2026-10-01
 ---
 

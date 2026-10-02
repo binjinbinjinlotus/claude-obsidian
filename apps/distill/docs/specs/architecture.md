@@ -1,6 +1,6 @@
 ---
 title: Architecture (core, CLI, plugin, clients)
-status: designed
+status: built
 updated: 2026-10-02
 ---
 

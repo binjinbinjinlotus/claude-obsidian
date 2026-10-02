@@ -1,6 +1,6 @@
 ---
 title: Labels and sources
-status: built (core labels; Mac Labels screen and Settings → Sources/Labels; Ask filters designed)
+status: built
 updated: 2026-10-02
 ---
 
