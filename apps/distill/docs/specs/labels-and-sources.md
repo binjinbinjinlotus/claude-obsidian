@@ -1,6 +1,6 @@
 ---
 title: Labels and sources
-status: designed
+status: built (core labels; app UI, Notes screen and Ask filters designed)
 updated: 2026-10-01
 ---
 
@@ -23,19 +23,61 @@ about** (labels). Canvas artboards: "Write a note", "Ask", "Settings", "Notes".
 ## Labels
 
 - Stored as normal Obsidian tags (`tags:`), so they also work in Obsidian search.
-- The app reads existing labels from the vault's frontmatter (local, free).
-- AI suggestions run **after the note is added to the queue**, so they are
-  based on what is actually being added (text, extracted image text, source),
-  not on a half-written draft. A short `claude -p` call gets the note and the
-  existing label list; it prefers existing labels and marks new ones "new".
+  The page's frontmatter is the **only** record of whether labels are
+  confirmed (no separate store):
+  - `labels_by: ai | user`: who chose them.
+  - `labels_reviewed: false`: AI labels not yet confirmed (absent = confirmed).
+  - `labels_origin: queue-folder | cli | suggest`: where unconfirmed AI labels came from.
+- Labels are normalized everywhere (`core/src/labels/vault.ts`): lower case, no
+  `#`, spaces → `-`, only letters, digits, `_`, `-`, `/`; purely numeric values
+  dropped; deduped. Labels a caller types (addNote, labelNote, confirmLabels)
+  are rejected if they contain whitespace, as the server does.
+- Existing labels are read from `wiki/**/*.md` frontmatter (local, free).
+  System pages (`index.md`, `_index.md`, `hot.md`, `log.md`, `overview.md`,
+  `dashboard.md`, `wiki/meta/**`, `type: meta`) are not notes and are skipped.
 - The suggestions appear on the queued item in the Queue screen as dashed chips
   (green = existing, peach = new) with accept ✓ / dismiss ×, plus "Accept all".
-  The user can also type any label.
-- Model for suggestions: selectable in Settings → Labels, **default Haiku**.
-  Suggestions can be turned off there.
-- Proposed: suggestions still unconfirmed when the batch runs are kept as
-  suggestions in Review rather than applied silently (to confirm).
-- Settings → Labels lists labels with counts for renaming/merging.
+  The user can also type any label. (App UI: designed.)
+- Settings → Labels (model, on/off, rename/merge) is designed, not built.
+
+### Suggestions (`core/src/labels/suggest.ts`)
+
+- The `labelSuggest` task: `settings.taskDefaults.labelSuggest`, else Claude
+  Code + Haiku + effort low. Any runner with `structuredOutput` works.
+- One run per note, JSON-schema output `{labels: string[]}`, with the vault's
+  existing labels in the prompt (most used first, up to 200). Claude Code runs
+  with **no tools** (`--tools ""`, no allow rules) in the empty scratch
+  directory `<state dir>/labels/scratch`, so it only reads the prompt.
+- Output is normalized, capped at 5, and each label is marked `existing`.
+- Suggestions use the note's text, title and source; image text is not read.
+
+### How notes get labels
+
+| Where the note comes from | Labels |
+| --- | --- |
+| Distill app (`addNote`, origin `app`, suggest `background`) | The note is queued, then a `labelSuggestions` event carries the suggestions. The user confirms with `labelNote(requestID, labels)`. Never confirmed = no labels (no fallback). |
+| CLI (origin `cli`, suggest `wait`) | `addNote` returns `requestID` + `suggestedLabels`. The caller may `labelNote` until the batch picks the note up (then `invalid_state`). Nothing confirmed and `labeling.cliFallbackToAI` (default on) → the AI labels apply unconfirmed, `labels_origin: cli`. |
+| `labels` on addNote | Confirmed (`labels_by: user`); no suggestion is made. |
+| `labelNote(requestID, [])` | Confirmed: no labels. No AI fallback, no flags. |
+| Any other file in the queue folder | `labeling.autoLabelQueueFolder` (default on): the batch suggests labels for text files (`.md .txt .html .csv .json` ...) before the first turn, applied unconfirmed with `labels_origin: queue-folder`. Binary files (PDF, images) and failed suggestions stay unlabeled. |
+
+The batch passes each input's labels to the ingest turn (see
+[Queue and batching](queue-and-batching.md)); the agent writes them on the
+source page built from that input.
+
+### Labels screen (core API)
+
+- `labelReview()`: `toReview` = pages with `labels_reviewed: false` (with
+  origin); `unlabeled` = note pages under `wiki/` with no tags.
+- `listLabels()`: every label with `count` and `unconfirmed`.
+- `suggestLabelsForPages(paths)`: AI labels for existing pages. The page's
+  current tags are kept and the suggestions added, written with
+  `labels_by: ai`, `labels_reviewed: false`, `labels_origin: suggest`.
+- `confirmLabels(items)`: writes exactly the given tags with `labels_by: user`
+  and removes `labels_reviewed` / `labels_origin` (empty list = no labels).
+- Both return a `labels` job awaiting approval; the core builds, inspects and
+  applies the transaction itself ([Approval and review](approval-and-review.md)).
+  Every other byte of the page is kept.
 
 ## Filter semantics (Ask)
 

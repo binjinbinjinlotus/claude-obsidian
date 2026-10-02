@@ -98,6 +98,8 @@ function setup(steps: Step[], o: { runner?: FakeRunner; jobs?: unknown; queueIsI
       settleSeconds: 0,
       pythonPath: '/usr/bin/python3',
       autoProcessEnabled: false,
+      // The fake runner is scripted per turn; queue-folder label suggestions are tested in labels.test.ts.
+      labeling: { autoLabelQueueFolder: false },
     }),
   );
   if (o.jobs) fs.writeFileSync(path.join(state, 'jobs.json'), JSON.stringify(o.jobs));

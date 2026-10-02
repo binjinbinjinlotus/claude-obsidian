@@ -1,6 +1,6 @@
 ---
 title: Write a note
-status: designed
+status: built (core addNote/labelNote; composer UI designed)
 updated: 2026-10-01
 ---
 
@@ -33,7 +33,29 @@ images inside the composer get the switch.
 
 ## Queue format
 
-The composer writes one note file plus its images into the queue, with a small
-manifest recording each image's choice, the source and the labels. The ingest
-prompt reads the manifest so Claude follows the user's choices instead of
-guessing. The note still goes through Review before anything is written.
+`addNote` (`core/src/engine/notes.ts`) writes one note file plus its images
+into the queue, with a manifest `<stem>.distill.json`:
+
+| Field | Meaning |
+| --- | --- |
+| `title`, `source`, `sourceRef` | Provenance for the ingest prompt. |
+| `images[]` | `{file, mode: keep or extract}` per image. |
+| `requestID` | UUID returned by `addNote`; `labelNote` finds the note by it. |
+| `origin` | `app` (default) or `cli`; decides the fallback when nothing is confirmed. |
+| `labels` | Confirmed labels (present, even empty, = confirmed). Also written as the note's `tags`. |
+| `suggestedLabels`, `suggestError` | AI suggestions once known. Never applied for `app` notes. |
+
+Suggest modes: `wait` runs the suggestion first and then writes the files (the
+batch can never pick a note up mid-wait; a failure becomes `suggestError` and
+the note is still queued); `background` writes, then suggests and emits a
+`labelSuggestions` event, updating the manifest only while the note is still
+in the queue; `none` skips. Validation runs before any AI call.
+
+`labelNote(requestID, labels)` rewrites the manifest and the queued note's
+`tags` (nothing else in the file changes). Once a batch has claimed the note:
+`invalid_state`; unknown request: `not_found`.
+
+The ingest prompt reads the manifest so Claude follows the user's choices
+instead of guessing; its label fields are bookkeeping, and the prompt's own
+Labels section decides labels. The note still goes through Review before
+anything is written.

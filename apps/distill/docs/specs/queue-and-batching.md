@@ -16,7 +16,9 @@ schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
   `~/Documents/Distill Queue/<vault name>`. It may also be the vault's `inbox/`.
 - Pending files: top-level, non-hidden regular files. Folders are left alone.
   Partial downloads are skipped (`.crdownload .part .download .tmp .partial`).
-- Settle delay (default 10 s, Settings): a file must be unmodified that long
+- Settle delay (`settleSeconds`, default 600 s = 10 minutes in the TS core;
+  configurable in Settings → Batch; an explicit value is always honored): a
+  file must be unmodified that long
   before it is batched.
 - The queue may not be inside the vault's `.raw/` or `.vault-meta/`.
 
@@ -36,4 +38,16 @@ schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
    `name 2.ext`). When the queue is the inbox, files stay and only unclaimed
    ones are taken.
 3. One job is created for all of them (the queue-consuming `JobKind`, today
-   Ingest) and its first turn starts.
+   Ingest).
+4. Labels (TS core; see [Labels and sources](labels-and-sources.md)): the core
+   decides each input's labels from its manifest and the `labeling` settings.
+   When an input needs an AI suggestion (a queue-folder text file, or a CLI
+   note with nothing confirmed), a pre-step runs the `labelSuggest` runner
+   before the first turn. Its cost is recorded as an app turn; a failed
+   suggestion leaves that input unlabeled; Cancel during the pre-step cancels
+   the job. The plan is saved as `labels.json` in the job directory.
+5. The first turn starts. Its prompt has a **Labels** section that lists, per
+   input, the exact properties for its source page: confirmed → `tags` +
+   `labels_by: user`; unconfirmed AI → `tags` + `labels_by: ai`,
+   `labels_reviewed: false`, `labels_origin`; otherwise no labels. The
+   approval gate is unchanged.

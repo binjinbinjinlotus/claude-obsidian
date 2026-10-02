@@ -1,5 +1,6 @@
 import path from 'node:path';
-import type { AITask, Job, Settings, TransactionPlan, VaultProfile, WorkerStatus } from '../contracts.js';
+import type { AITask, Job, LabelOrigin, Settings, TransactionPlan, VaultProfile, WorkerStatus } from '../contracts.js';
+import { yamlScalar } from '../labels/frontmatter.js';
 import { coreScriptPath } from '../store/settings.js';
 import { jobStateDirectory } from '../store/jobs.js';
 
@@ -9,12 +10,24 @@ export function shellQuote(s: string): string {
   return "'" + s.replaceAll("'", "'\\''") + "'";
 }
 
+/**
+ * The labels the source page built from one batch input gets. Empty `labels`
+ * = no labels. Decided by the core before the turn (see labels-and-sources.md).
+ */
+export interface SourceLabels {
+  file: string; // vault-relative input, e.g. inbox/foo.md
+  labels: string[];
+  by: 'user' | 'ai';
+  origin?: LabelOrigin;
+}
+
 /** Everything a job kind needs to build prompts and permission rules. */
 export class JobContext {
   constructor(
     readonly job: Job,
     readonly vault: VaultProfile,
     readonly settings: Settings,
+    readonly labelPlan: SourceLabels[] = [],
   ) {}
 
   get corePath(): string {
@@ -68,6 +81,11 @@ export interface JobKind {
   readonly consumesQueue: boolean;
   /** Which per-task runner/model/effort setting this kind uses. */
   readonly task: AITask;
+  /**
+   * The core builds the bundle and runs the approved `transaction apply`
+   * itself; there is no agent session to resume (reply/allow are refused).
+   */
+  readonly appliesInCore?: boolean;
   initialPrompt(ctx: JobContext): string;
   allowedTools(ctx: JobContext): string[];
 }
@@ -165,7 +183,9 @@ ${list}
 
 A manifest records the user's choices for the note next to it (same name \
 with \`.md\`). It is instructions from the user, not a source: do not ingest, \
-cite, or store it. Read each manifest first and follow it:
+cite, or store it. Read each manifest first and follow it (except its label \
+fields \`labels\`, \`suggestedLabels\`, \`origin\` and \`requestID\`: those are \
+bookkeeping; only the Labels section of this prompt decides labels):
 - \`title\`, \`source\` (a source type such as slack or meeting) and \
 \`sourceRef\` describe where the note came from; use them as its provenance.
 - Each entry in \`images\` names an image file next to the note. Those images \
@@ -178,6 +198,33 @@ from \`shasum -a 256\`.
 - \`mode: extract\`: open the image with the Read tool, put the text it \
 contains into the note's knowledge, and do NOT store or embed the image.
 - An image missing from the manifest is kept (the default).`;
+}
+
+function labelLines(entry: SourceLabels): string {
+  if (entry.labels.length === 0) {
+    return `- ${entry.file}: no labels. Its source page gets no \`tags\` and no \`labels_*\` properties.`;
+  }
+  const props = ['tags:', ...entry.labels.map((l) => `  - ${yamlScalar(l)}`)];
+  if (entry.by === 'user') {
+    props.push('labels_by: user');
+    return `- ${entry.file}: labels the user confirmed:\n${props.map((l) => `    ${l}`).join('\n')}`;
+  }
+  props.push('labels_by: ai', 'labels_reviewed: false');
+  if (entry.origin) props.push(`labels_origin: ${entry.origin}`);
+  return `- ${entry.file}: AI labels the user has not confirmed yet:\n${props.map((l) => `    ${l}`).join('\n')}`;
+}
+
+export function labelsPrompt(plan: SourceLabels[]): string {
+  if (plan.length === 0) return '';
+  return `
+
+Labels (the \`tags\` property). For each input below, put exactly these \
+properties in the frontmatter of the source page built from it (the page that \
+summarizes that input), replacing any \`tags\` the skill would choose there. \
+Do not add \`labels_by\`, \`labels_reviewed\` or \`labels_origin\` to any \
+other page.
+
+${plan.map(labelLines).join('\n')}`;
 }
 
 export const IngestJobKind: JobKind = {
@@ -195,7 +242,7 @@ ${list}
 
 Agreed scope: exactly these ${ctx.job.files.length} local file(s); no network \
 egress; default existing-page budget from the skill. Media you cannot read \
-must be reported as unsupported, not invented.${manifestPrompt(ctx)}
+must be reported as unsupported, not invented.${manifestPrompt(ctx)}${labelsPrompt(ctx.labelPlan)}
 
 Build ONE \`claude-obsidian.transaction.v1\` ingest bundle for the whole batch \
 at ${ctx.bundlePath}, then run:
@@ -212,7 +259,25 @@ durable knowledge, or \`needs_input\` if you need the user.`;
   },
 };
 
-export const JOB_KINDS: JobKind[] = [IngestJobKind];
+/**
+ * Label changes to existing pages (confirmLabels, suggestLabelsForPages). The
+ * core writes the bundle itself; no agent turn runs, so there are no prompts.
+ */
+export const LabelsJobKind: JobKind = {
+  id: 'labels',
+  displayName: 'Labels',
+  consumesQueue: false,
+  task: 'labelSuggest',
+  appliesInCore: true,
+  initialPrompt(): string {
+    return '';
+  },
+  allowedTools(): string[] {
+    return [];
+  },
+};
+
+export const JOB_KINDS: JobKind[] = [IngestJobKind, LabelsJobKind];
 
 export function jobKind(id: string): JobKind | undefined {
   return JOB_KINDS.find((k) => k.id === id);

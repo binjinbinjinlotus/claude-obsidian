@@ -16,6 +16,9 @@ export const MAX_STORED_JOBS = 300;
 export const RECOVERY_NOTE =
   'The worker quit while this turn was running. Reply to resume the same session, or reject.';
 
+export const LABELS_RECOVERY_NOTE =
+  'Distill quit while applying this. Approve again to finish (an operation that already applied is not applied twice), or reject.';
+
 const JOB_STATES: JobState[] = ['running', 'awaitingApproval', 'completed', 'failed', 'rejected', 'cancelled'];
 
 /** A job in these states blocks the next batch for the same vault. */
@@ -166,6 +169,15 @@ export function jobRunnerID(job: Job): string {
 /** A job that was mid-turn when the core quit keeps its session; the user can reply to resume it. */
 export function recoverInterrupted(job: Job): Job {
   if (job.state !== 'running') return job;
+  // A core-applied label job has no session; keep its reviewed plan so it can be
+  // approved again (re-applying the same operation_id is an idempotent replay).
+  if (job.kind === 'labels' && job.approval?.plan) {
+    return {
+      ...job,
+      state: 'awaitingApproval',
+      approval: { ...job.approval, summary: `${LABELS_RECOVERY_NOTE}\n\n${job.approval.summary}` },
+    };
+  }
   return {
     ...job,
     state: 'awaitingApproval',
