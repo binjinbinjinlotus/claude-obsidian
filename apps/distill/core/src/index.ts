@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { DistillCore, StatePaths } from './contracts.js';
+import type { CoreEvent, DistillCore, StatePaths } from './contracts.js';
 import { createEngine, type EngineOptions } from './engine/index.js';
 import { createAskService } from './ask/index.js';
 import { createRunnerAdmin } from './runners/admin.js';
@@ -16,7 +16,13 @@ export interface CoreOptions extends Partial<Omit<EngineOptions, 'paths'>> {
 export function createCore(opts: CoreOptions = {}): DistillCore {
   const paths = opts.paths ?? statePaths();
   const engine = createEngine({ ...opts, paths });
+  // Events from services outside the engine (Ask history) join the engine's stream.
+  const extra = new Set<(e: CoreEvent) => void>();
+  const emit = (e: CoreEvent) => {
+    for (const l of extra) l(e);
+  };
   const ask = createAskService({
+    emit,
     getSettings: () => engine.getSettings(),
     runners: engine.runners,
     stateDir: path.join(paths.dir, 'ask'),
@@ -31,5 +37,13 @@ export function createCore(opts: CoreOptions = {}): DistillCore {
     setConversationPinned: (id, pinned) => ask.setConversationPinned(id, pinned),
     listRunners: () => admin.listRunners(),
     setRunnerSecret: (id, name, value) => admin.setRunnerSecret(id, name, value),
+    subscribe(listener) {
+      const off = engine.subscribe(listener);
+      extra.add(listener);
+      return () => {
+        off();
+        extra.delete(listener);
+      };
+    },
   };
 }
