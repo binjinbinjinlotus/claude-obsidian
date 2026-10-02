@@ -73,8 +73,12 @@ private struct LabelsScreen: View {
     /// Rows that Confirm N will send: all checked rows of this tab (unlabeled
     /// rows only once the user gave them labels).
     private var selectedRows: [Row] {
-        rows.filter { !notes.deselected.contains($0.path) && (tab == .toReview || !labels($0).isEmpty) }
+        rows.filter { !notes.deselected.contains($0.path) && selectable($0) }
     }
+
+    /// An unlabeled row can be ticked only once it has labels, so the ticks
+    /// always match "N selected".
+    private func selectable(_ row: Row) -> Bool { tab == .toReview || !labels(row).isEmpty }
 
     /// A label nobody has confirmed yet in the vault.
     private func isNew(_ name: String) -> Bool {
@@ -100,19 +104,24 @@ private struct LabelsScreen: View {
 
     private var tabs: some View {
         HStack(spacing: 8) {
-            tabButton(.toReview, "To review", review?.toReview.count ?? 0)
-            tabButton(.unlabeled, "Unlabeled", unlabeledCount)
+            tabButton(.toReview, "To review", review?.toReview.count)
+            tabButton(.unlabeled, "Unlabeled", review?.unlabeled.count)
             Spacer()
             if notes.reviewLoading && !snapshot { Spinner(color: Theme.muted, size: 14) }
         }
     }
 
-    private func tabButton(_ t: LabelsTab, _ title: String, _ count: Int) -> some View {
+    /// `count` nil until the first review arrives: a shimmer, never a fake 0.
+    private func tabButton(_ t: LabelsTab, _ title: String, _ count: Int?) -> some View {
         let on = tab == t
         return Button { tabRaw = t == .unlabeled ? "unlabeled" : "toReview" } label: {
             HStack(spacing: 7) {
                 Text(title).font(Theme.body(13, .semibold))
-                Text("\(count)").font(Theme.body(12, .bold)).opacity(0.8)
+                if let count {
+                    Text("\(count)").font(Theme.body(12, .bold)).opacity(0.8)
+                } else {
+                    Shimmer(width: 14, height: 10, radius: 3).opacity(on ? 0.6 : 1)
+                }
             }
             .padding(.horizontal, 13).frame(height: 32)
             .foregroundStyle(on ? Color.white : Color(hex: 0x48463F))
@@ -280,12 +289,15 @@ private struct LabelsScreen: View {
     }
 
     private func row(_ row: Row) -> some View {
-        let checked = !notes.deselected.contains(row.path)
+        let canSelect = selectable(row)
+        let checked = !notes.deselected.contains(row.path) && canSelect
         let current = labels(row)
         return HStack(spacing: 14) {
             checkbox(checked) {
                 if checked { notes.deselected.insert(row.path) } else { notes.deselected.remove(row.path) }
             }
+            .disabled(!canSelect).opacity(canSelect ? 1 : 0.5)
+            .help(canSelect ? "" : "Add a label to select this note")
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.title).font(Theme.body(14, .semibold)).lineLimit(1).truncationMode(.tail)
                 Button { engine.openInObsidian(row.path) } label: {
@@ -315,11 +327,10 @@ private struct LabelsScreen: View {
             SmallButton(title: "Confirm", fill: Theme.primaryTint, ink: Theme.primary, weight: .bold) {
                 engine.confirmLabels([LabeledPage(path: row.path, labels: current)])
             }
-            .disabled(tab == .unlabeled && current.isEmpty)
-            .opacity(tab == .unlabeled && current.isEmpty ? 0.4 : 1)
+            .unavailable(tab == .unlabeled && current.isEmpty, hint: "Add a label first")
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
-        .background(RoundedRectangle(cornerRadius: 14).fill(checked && (tab == .toReview || !current.isEmpty) ? Theme.panel : .clear))
+        .background(RoundedRectangle(cornerRadius: 14).fill(checked ? Theme.panel : .clear))
     }
 
     private func originTitle(_ origin: String?) -> String {
@@ -332,10 +343,13 @@ private struct LabelsScreen: View {
         }
     }
 
-    private var allSelected: Bool { !rows.isEmpty && rows.allSatisfy { !notes.deselected.contains($0.path) } }
+    private var allSelected: Bool {
+        let candidates = rows.filter(selectable)
+        return !candidates.isEmpty && candidates.allSatisfy { !notes.deselected.contains($0.path) }
+    }
 
     private func selectAll(_ on: Bool) {
-        for r in rows { if on { notes.deselected.remove(r.path) } else { notes.deselected.insert(r.path) } }
+        for r in rows.filter(selectable) { if on { notes.deselected.remove(r.path) } else { notes.deselected.insert(r.path) } }
     }
 
     private func checkbox(_ on: Bool, action: @escaping () -> Void) -> some View {
@@ -370,8 +384,7 @@ private struct LabelsScreen: View {
                 PrimaryButton(title: "Confirm \(selected.count) \(selected.count == 1 ? "note" : "notes")") {
                     engine.confirmLabels(selected.map { LabeledPage(path: $0.path, labels: labels($0)) })
                 }
-                .disabled(selected.isEmpty)
-                .opacity(selected.isEmpty ? 0.5 : 1)
+                .unavailable(selected.isEmpty, hint: "Select notes with labels first")
             }
         }
         .padding(.horizontal, 44).padding(.vertical, 16)
@@ -404,5 +417,16 @@ private struct RowLabelAdder: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Add label")
         }
+    }
+}
+
+private extension View {
+    /// Disabled look: the normal style at 50% opacity. `.disabled` on a plain
+    /// button also dims its text, which left light buttons nearly invisible.
+    func unavailable(_ off: Bool, hint: String) -> some View {
+        allowsHitTesting(!off)
+            .opacity(off ? 0.5 : 1)
+            .help(off ? hint : "")
+            .accessibilityHint(off ? "Unavailable. \(hint)" : "")
     }
 }
