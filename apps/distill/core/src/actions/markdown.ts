@@ -83,6 +83,9 @@ export function parseBlocks(markdown: string): Block[] {
           break;
         }
         const indent = m[1]!.length;
+        const isOrdered = NUMBERED.test(l) && !BULLET.test(l);
+        // A different kind of list at the same level starts a new list.
+        if (indent <= baseIndent && isOrdered !== ordered) break;
         if (indent > baseIndent && items.length > 0) {
           const parent = items[items.length - 1]!;
           const childOrdered = NUMBERED.test(l) && !BULLET.test(l);

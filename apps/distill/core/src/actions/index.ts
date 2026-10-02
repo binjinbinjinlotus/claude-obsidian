@@ -147,7 +147,7 @@ function readText(file: string, max: number): string | undefined {
 }
 
 function titleOf(text: string, file: string): string {
-  const fm = /^---\n[\s\S]*?\ntitle:\s*["']?(.+?)["']?\s*\n[\s\S]*?---/.exec(text);
+  const fm = /^---\n(?:[\s\S]*?\n)?title:\s*["']?(.+?)["']?\s*\n[\s\S]*?---/.exec(text);
   if (fm?.[1]) return fm[1];
   const h = /^#\s+(.+)$/m.exec(text);
   return h?.[1]?.trim() ?? path.basename(file, path.extname(file));
@@ -1046,14 +1046,15 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         status = item.external?.key ? 'created' : initialStatus(item.type, item.body);
       }
       const type = resolveTypeID(item.type, prefs());
+      const changedType = type !== item.type;
       return mutate(id, (i) => {
-        if (type !== i.type) {
+        if (changedType) {
           i.events.push(event(now(), 'type', `${i.type} → ${type}`));
           i.type = type;
           if (status === 'ready' || status === 'created') status = 'open';
         }
         i.status = status;
-        i.events.push(event(now(), 'restored', type !== item.type ? 'as a to-do' : null));
+        i.events.push(event(now(), 'restored', changedType ? 'as a to-do' : null));
       });
     },
 
