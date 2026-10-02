@@ -17,6 +17,13 @@ supersede it with a new entry.
 
 ## 2026-10-02
 
+- **Design follow-ups (lead, from the canvas audit):** the flask hover menu
+  gets an "Actions N" entry, while the flask badge stays queue-only. Every
+  elapsed timer becomes a clock time ("started at 3:12 PM"), including "Still
+  working". The Ask Gap callout shows only when the gap did not become an
+  action. The Settings board is split into General / AI / Actions &
+  connections windows. Job.actionsFound records what a batch found.
+  → [actions](actions.md), [app-shell](app-shell.md)
 - **Design system with components mapped one-to-one to Swift views.** Shared
   parts (sidebar, window shells, style bar, buttons, chips) are defined once
   and imported on the canvas; a Distill design system artifact follows, with
