@@ -343,7 +343,7 @@ enum LabelsModelName {
 // MARK: Source (footer)
 
 /// "+ Source" in the quick note's footer; once a source is picked it becomes that
-/// source's chip (blue, as on the canvas), and the same menu changes or clears it.
+/// source's chip (green, "In person ▾" on the canvas); the same menu changes or clears it.
 struct QuickSourceButton: View {
     @EnvironmentObject var engine: AppModel
     @Binding var draft: ComposeDraft
@@ -365,12 +365,16 @@ struct QuickSourceButton: View {
 
     private var face: some View {
         let chosen = draft.source.map(label(of:))
-        return Text(chosen ?? "+ Source").font(Theme.body(11, .bold)).lineLimit(1).truncationMode(.tail)
-            .padding(.horizontal, 9).frame(height: 24)
-            .frame(maxWidth: 120)
-            .foregroundStyle(chosen == nil ? Color(hex: 0x48463F) : .white)
-            .background(Capsule().fill(chosen == nil ? Theme.panel : Theme.primary))
-            .contentShape(Capsule())
+        return HStack(spacing: 4) {
+            Text(chosen ?? "+ Source").lineLimit(1).truncationMode(.tail)
+            if chosen != nil { Text("▾").font(Theme.body(10)) }
+        }
+        .font(Theme.body(11, .bold))
+        .padding(.horizontal, 9).frame(height: 24)
+        .frame(maxWidth: 130)
+        .foregroundStyle(chosen == nil ? Color(hex: 0x48463F) : Theme.limeInk)
+        .background(Capsule().fill(chosen == nil ? Theme.panel : Theme.limeTint))
+        .contentShape(Capsule())
     }
 
     @ViewBuilder private var items: some View {
@@ -398,9 +402,9 @@ struct QuickSourceRefField: View {
             Image(systemName: "link").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.faint)
             BareTextField(placeholder: "Link, channel or person", text: $text, font: Theme.body(12))
         }
-        .padding(.horizontal, 10).frame(height: 28)
+        .padding(.horizontal, 10).frame(height: 26)
         .background(Capsule().fill(Color.white))
-        .overlay(Capsule().strokeBorder(Theme.border))
+        .overlay(Capsule().strokeBorder(Color(hex: 0xE2DFD9)))
         .frame(maxWidth: .infinity)
         .clipShape(Capsule())
     }
