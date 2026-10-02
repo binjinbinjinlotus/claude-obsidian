@@ -42,7 +42,7 @@ enum NotesSnapshot {
         // Labels
         notes.suggestJobID = nil
         notes.confirmJobID = nil
-        render(MainShell(section: nil) { LabelsSection() }.environmentObject(engine),
+        render(MainShell(section: .labels) { LabelsSection() }.environmentObject(engine),
                size: main, to: outDir.appendingPathComponent("labels.png"))
         notes.suggestJobID = "fixture-labels-job"
         notes.suggestTotal = 23
@@ -50,7 +50,7 @@ enum NotesSnapshot {
             message: "Suggesting labels", done: 9, total: 23, startedAt: Date().addingTimeInterval(-41),
             model: "haiku", finished: false, error: nil)
         notes.confirmJobID = "pending"
-        render(MainShell(section: nil) { LabelsSection() }.environmentObject(engine),
+        render(MainShell(section: .labels) { LabelsSection() }.environmentObject(engine),
                size: main, to: outDir.appendingPathComponent("labels-loading.png"))
         notes.suggestJobID = nil
         notes.confirmJobID = nil
@@ -102,7 +102,7 @@ enum NotesSnapshot {
         notes.deselected = ["wiki/personal/weekend-ideas.md"]
         let counts: [(String, Int, Int)] = [("tea", 14, 1), ("brewing", 6, 1), ("gyokuro", 3, 0), ("project-x", 22, 2),
                                             ("hiring", 9, 1), ("architecture", 17, 1), ("incidents", 1, 1), ("personal", 1, 1)]
-        notes.labelCounts = counts.compactMap { DTO.make(.object(["name": .string($0.0), "count": .number(Double($0.1)), "unconfirmed": .number(Double($0.2))])) }
+        notes.labelCounts = counts.map { LabelCount(name: $0.0, count: $0.1, unconfirmed: $0.2) }
         notes.runners = runnerFixtures()
         notes.runnerBusy = ["codex": "Checking…", "openrouter": "Saving…"]
         notes.fixtureProgress = [:]
@@ -111,14 +111,11 @@ enum NotesSnapshot {
     private static func runnerFixtures() -> [RunnerInfo] {
         func runner(_ id: String, _ name: String, _ kind: String, enabled: Bool, tasks: [String], models: [(String, String)],
                     efforts: [String], problems: [String] = [], secrets: [(String, Bool)] = []) -> RunnerInfo? {
-            DTO.make(.object([
-                "id": .string(id), "displayName": .string(name), "kind": .string(kind), "enabled": .bool(enabled),
-                "capabilities": .array([]), "tasks": .array(tasks.map(JSONValue.string)),
-                "models": .array(models.map { .object(["id": .string($0.0), "label": .string($0.1)]) }),
-                "effortLevels": .array(efforts.map(JSONValue.string)), "defaultModel": .string(models.first?.0 ?? ""),
-                "problems": .array(problems.map { .object(["code": .string("x"), "message": .string($0)]) }),
-                "secrets": .array(secrets.map { .object(["name": .string($0.0), "label": .string("API key"), "isSet": .bool($0.1)]) }),
-            ]))
+            RunnerInfo(id: id, displayName: name, kind: kind, enabled: enabled, tasks: tasks.compactMap(AITask.init(rawValue:)),
+                       models: models.map { ModelOption(id: $0.0, label: $0.1) }, effortLevels: efforts,
+                       defaultModel: models.first?.0 ?? "",
+                       problems: problems.map { SetupProblem(code: "x", message: $0) },
+                       secrets: secrets.map { RunnerSecret(name: $0.0, label: "API key", isSet: $0.1) })
         }
         return [
             runner("claude-code", "Claude Code", "agent", enabled: true, tasks: ["ingest", "ask", "labelSuggest", "imageText"],

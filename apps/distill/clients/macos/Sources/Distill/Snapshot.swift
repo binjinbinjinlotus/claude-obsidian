@@ -12,6 +12,11 @@ enum Snapshot {
             guard let i = arguments.firstIndex(of: flag), i + 1 < arguments.count else { return nil }
             return arguments[i + 1]
         }
+        // `--snapshot OUT.iconset --app-icon`: the app icon PNGs for iconutil (scripts/make-icon.sh).
+        if arguments.contains("--app-icon"), let out = value("--snapshot") {
+            renderAppIconSet(to: URL(fileURLWithPath: out))
+            exit(0)
+        }
         guard let out = value("--snapshot"), let state = value("--state-dir") else {
             FileHandle.standardError.write(Data("usage: --snapshot OUT --state-dir DIR\n".utf8))
             exit(2)
@@ -31,6 +36,7 @@ enum Snapshot {
             FloatingFace(dropState: { let s = DropState(); s.targeted = true; return s }()).environmentObject(engine)
         }.padding(20).background(Color(hex: 0xEAE8E3)), size: CGSize(width: 260, height: 130), to: outDir.appendingPathComponent("floating.png"))
         NotesSnapshot.run(engine: engine, outDir: outDir) // Snapshot+Notes.swift (replaces settings.png with the full window)
+        renderV3(engine: engine, size: size, outDir: outDir)
         exit(0)
     }
 
@@ -63,7 +69,7 @@ enum Snapshot {
         return AppModel(fixtureSettings: settings, jobs: jobs, queue: queue, status: status)
     }
 
-    private static func render<V: View>(_ view: V, size: CGSize, to url: URL) {
+    static func render<V: View>(_ view: V, size: CGSize, to url: URL) {
         let renderer = ImageRenderer(content: view.frame(width: size.width, height: size.height)
             .environment(\.colorScheme, .light).environment(\.snapshotMode, true))
         renderer.scale = 2

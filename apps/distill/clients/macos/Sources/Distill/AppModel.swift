@@ -23,10 +23,17 @@ final class AppModel: ObservableObject {
     @Published var settings = Settings() {
         didSet { if !applyingRemote && settings != oldValue { scheduleSettingsSave() } }
     }
-    @Published private(set) var jobs: [Job] = []
-    @Published private(set) var queued: [QueueEntry] = []
+    @Published var jobs: [Job] = []
+    @Published var queued: [QueueEntry] = []
     @Published private(set) var status: StatusResponse?
     @Published var lastError: String?
+    /// Live progress by key (job id, `ask:<conversationID>`, `note:<requestID>`); see AppModel+Ask.swift.
+    @Published var progress: [String: CoreProgress] = [:]
+    /// Buttons waiting on the core ("process", "approve:<job id>") and when they were pressed;
+    /// cleared by the job event or an error.
+    @Published var pendingActions: [String: Date] = [:]
+    /// Ask chats, the Ask screen and the quick ask window (AskModel.swift).
+    lazy var ask = AskModel(engine: self)
 
     let launcher: CoreLauncher?
     private(set) var client: CoreClient?
@@ -149,6 +156,7 @@ final class AppModel: ObservableObject {
         queued = queue
         self.jobs = jobs
         self.status = status
+        refreshLiveExtras()
     }
 
     private func apply(_ event: CoreEvent) {
@@ -158,14 +166,24 @@ final class AppModel: ObservableObject {
             refreshStatusSoon()
         case .job(let job):
             if let i = jobs.firstIndex(where: { $0.id == job.id }) { jobs[i] = job } else { jobs.insert(job, at: 0) }
+            settlePendingActions(for: job)
             refreshStatusSoon()
         case .settings(let s):
             applyRemoteSettings(s, force: false)
             refreshStatusSoon()
         case .log(let level, let message):
             if level == "warn" || level == "error" { lastError = message }
-        case .labelSuggestions, .conversation, .unknown:
-            break // surfaced by screens built later (notes composer, Ask)
+        case .labelSuggestions(let requestID, let notePath, let labels, let error):
+            noteLabelSuggestions(requestID: requestID, notePath: notePath, labels: labels, error: error)
+        case .conversation(let conversation, let deleted):
+            ask.apply(conversation, deleted: deleted)
+        case .progress(let p):
+            applyProgress(p)
+        case .jobDeleted(let id):
+            jobs.removeAll { $0.id == id }
+            refreshStatusSoon()
+        case .unknown:
+            break
         }
     }
 
@@ -227,7 +245,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func report(_ error: Error) {
+    func report(_ error: Error) {
         if let e = error as? CoreClientError, e.isUnreachable, launcher?.liveEndpoint() == nil {
             connection = .unreachable("The Distill core stopped. Retry starts it again.")
             return
@@ -235,7 +253,7 @@ final class AppModel: ObservableObject {
         lastError = "\(error)"
     }
 
-    private func upsert(_ job: Job?) {
+    func upsert(_ job: Job?) {
         guard let job else { return }
         if let i = jobs.firstIndex(where: { $0.id == job.id }) { jobs[i] = job } else { jobs.insert(job, at: 0) }
     }

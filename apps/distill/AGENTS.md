@@ -37,7 +37,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Write a note](docs/specs/notes-composer.md) | built |
 | [Labels and sources](docs/specs/labels-and-sources.md) | built (Ask filters designed) |
 | [Quick actions and shortcuts](docs/specs/quick-actions.md) | designed |
-| [App icon](docs/specs/app-icon.md) | designed |
+| [App icon](docs/specs/app-icon.md) | built |
 
 ## Layout
 

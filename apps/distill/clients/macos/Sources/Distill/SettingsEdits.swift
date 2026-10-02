@@ -1,35 +1,12 @@
 import Foundation
 import DistillKit
 
-/// Builds DistillKit values that have no public memberwise init yet, through
-/// their tolerant decoders. (Swap for the inits once DistillKit exposes them.)
+/// Builds DistillKit values that have no public memberwise init (fixtures),
+/// through their tolerant decoders.
 enum DTO {
     static func make<T: Decodable>(_ json: JSONValue) -> T? {
         guard let data = try? JSONEncoder.core.encode(json) else { return nil }
         return try? JSONDecoder.core.decode(T.self, from: data)
-    }
-
-    static func source(id: String, label: String) -> SourceDefinition {
-        make(.object(["id": .string(id), "label": .string(label)]))!
-    }
-
-    static func group(id: String, label: String, sources: [SourceDefinition]) -> SourceGroup {
-        let list = sources.map { JSONValue.object(["id": .string($0.id), "label": .string($0.label)]) }
-        return make(.object(["id": .string(id), "label": .string(label), "sources": .array(list)]))!
-    }
-
-    static func shortcuts(ask: String?, addNote: String?) -> ShortcutSettings {
-        var o: [String: JSONValue] = [:]
-        if let ask { o["ask"] = .string(ask) }
-        if let addNote { o["addNote"] = .string(addNote) }
-        return make(.object(o))!
-    }
-
-    static func labeling(autoLabelQueueFolder: Bool?, cliFallbackToAI: Bool?) -> LabelingPreferences {
-        var o: [String: JSONValue] = [:]
-        if let autoLabelQueueFolder { o["autoLabelQueueFolder"] = .bool(autoLabelQueueFolder) }
-        if let cliFallbackToAI { o["cliFallbackToAI"] = .bool(cliFallbackToAI) }
-        return make(.object(o))!
     }
 }
 
@@ -41,20 +18,7 @@ enum SettingsEdits {
     // MARK: Sources
 
     /// `DEFAULT_SOURCE_TAXONOMY` in contracts.ts.
-    static let defaultTaxonomy: [SourceGroup] = [
-        DTO.group(id: "discussion", label: "Discussion", sources: [
-            DTO.source(id: "slack", label: "Slack"), DTO.source(id: "meeting", label: "Meeting"),
-            DTO.source(id: "github-review", label: "GitHub review"), DTO.source(id: "jira-comment", label: "Jira comment"),
-            DTO.source(id: "email", label: "Email"), DTO.source(id: "in-person", label: "In person"),
-        ]),
-        DTO.group(id: "reference", label: "Reference", sources: [
-            DTO.source(id: "web-page", label: "Web page"), DTO.source(id: "document", label: "Document"),
-            DTO.source(id: "paper", label: "Paper"),
-        ]),
-        DTO.group(id: "personal", label: "Personal", sources: [
-            DTO.source(id: "remember-this", label: "Remember this"), DTO.source(id: "idea", label: "Idea"),
-        ]),
-    ]
+    static let defaultTaxonomy: [SourceGroup] = SourceGroup.defaultTaxonomy
 
     static func taxonomy(_ s: Settings) -> [SourceGroup] { s.sourceTaxonomy ?? defaultTaxonomy }
 
@@ -75,7 +39,7 @@ enum SettingsEdits {
         guard !trimmed.isEmpty else { return }
         var groups = taxonomy(s)
         guard let i = groups.firstIndex(where: { $0.id == groupID }) else { return }
-        groups[i].sources.append(DTO.source(id: slug(trimmed, taken: allSourceIDs(groups)), label: trimmed))
+        groups[i].sources.append(SourceDefinition(id: slug(trimmed, taken: allSourceIDs(groups)), label: trimmed))
         s.sourceTaxonomy = groups
     }
 
@@ -90,7 +54,7 @@ enum SettingsEdits {
         let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         var groups = taxonomy(s)
-        groups.append(DTO.group(id: slug(trimmed, taken: allSourceIDs(groups)), label: trimmed, sources: []))
+        groups.append(SourceGroup(id: slug(trimmed, taken: allSourceIDs(groups)), label: trimmed, sources: []))
         s.sourceTaxonomy = groups
     }
 
@@ -125,7 +89,7 @@ enum SettingsEdits {
     }
 
     static func setLabeling(_ s: inout Settings, autoLabelQueueFolder: Bool? = nil, cliFallbackToAI: Bool? = nil) {
-        s.labeling = DTO.labeling(autoLabelQueueFolder: autoLabelQueueFolder ?? s.labeling?.autoLabelQueueFolder,
+        s.labeling = LabelingPreferences(autoLabelQueueFolder: autoLabelQueueFolder ?? s.labeling?.autoLabelQueueFolder,
                                   cliFallbackToAI: cliFallbackToAI ?? s.labeling?.cliFallbackToAI)
     }
 
@@ -142,7 +106,7 @@ enum SettingsEdits {
         case .ask: ask = shortcut?.stringValue
         case .addNote: note = shortcut?.stringValue
         }
-        s.shortcuts = DTO.shortcuts(ask: ask, addNote: note)
+        s.shortcuts = ShortcutSettings(ask: ask, addNote: note)
     }
 
     // MARK: Runners

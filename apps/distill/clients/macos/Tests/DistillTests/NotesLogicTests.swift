@@ -46,7 +46,7 @@ final class ShortcutTests: XCTestCase {
     }
 
     func testSettingsShortcutsMapToActions() {
-        let settings = DTO.shortcuts(ask: "ctrl+opt+space", addNote: "bogus")
+        let settings = ShortcutSettings(ask: "ctrl+opt+space", addNote: "bogus")
         let map = GlobalShortcuts.shortcuts(from: settings)
         XCTAssertEqual(map[.ask]?.stringValue, "ctrl+opt+space")
         XCTAssertNil(map[.addNote], "an unparsable value registers nothing")
@@ -188,7 +188,7 @@ final class SettingsEditTests: XCTestCase {
 
     func testClearingAShortcutSendsTheWholeObjectWithoutIt() {
         var old = Settings()
-        old.shortcuts = DTO.shortcuts(ask: "ctrl+opt+space", addNote: "ctrl+opt+n")
+        old.shortcuts = ShortcutSettings(ask: "ctrl+opt+space", addNote: "ctrl+opt+n")
         var new = old
         SettingsEdits.setShortcut(.ask, nil, in: &new)
         let patch = Settings.patch(from: old, to: new)

@@ -68,6 +68,8 @@ public struct ModelSelection: Codable, Hashable, Sendable {
 public struct SourceDefinition: Codable, Hashable, Sendable {
     public var id: String
     public var label: String
+
+    public init(id: String, label: String) { self.id = id; self.label = label }
 }
 
 public struct SourceGroup: Codable, Hashable, Sendable {
@@ -122,6 +124,8 @@ public struct LabelingPreferences: Codable, Hashable, Sendable {
 public struct ShortcutSettings: Codable, Hashable, Sendable {
     public var ask: String?
     public var addNote: String?
+
+    public init(ask: String? = nil, addNote: String? = nil) { self.ask = ask; self.addNote = addNote }
 }
 
 /// Mirrors `Settings` in contracts.ts. Edit a copy and send the difference with
@@ -877,14 +881,17 @@ public struct RunnerInfo: Codable, Equatable, Identifiable, Sendable {
 public enum CoreEvent: Equatable, Sendable {
     case queue([QueueEntry])
     case job(Job)
+    /// A job removed from the list (`DELETE /v1/jobs/:id`; job event with `deleted: true`).
+    case jobDeleted(id: String)
     case settings(Settings)
     case log(level: String, message: String)
     case labelSuggestions(requestID: String, notePath: String, labels: [LabelSuggestion], error: String?)
     case conversation(AskConversationSummary, deleted: Bool)
+    case progress(CoreProgress)
     case unknown(type: String)
 
     private enum Keys: String, CodingKey {
-        case type, entries, job, settings, level, message, requestID, notePath, labels, error, conversation, deleted
+        case type, entries, job, settings, level, message, requestID, notePath, labels, error, conversation, deleted, progress
     }
 
     /// Decodes the JSON of one `data:` line.
@@ -899,7 +906,9 @@ public enum CoreEvent: Equatable, Sendable {
             let type = try c.decode(String.self, forKey: .type)
             switch type {
             case "queue": event = .queue(c.lossyArray(QueueEntry.self, .entries))
-            case "job": event = .job(try c.decode(Job.self, forKey: .job))
+            case "job":
+                let job = try c.decode(Job.self, forKey: .job)
+                event = (c.lossy(Bool.self, .deleted) ?? false) ? .jobDeleted(id: job.id) : .job(job)
             case "settings": event = .settings(try c.decode(Settings.self, forKey: .settings))
             case "log": event = .log(level: c.lossy(String.self, .level) ?? "info", message: c.lossy(String.self, .message) ?? "")
             case "labelSuggestions":
@@ -908,6 +917,7 @@ public enum CoreEvent: Equatable, Sendable {
             case "conversation":
                 event = .conversation(try c.decode(AskConversationSummary.self, forKey: .conversation),
                                       deleted: c.lossy(Bool.self, .deleted) ?? false)
+            case "progress": event = .progress(try c.decode(CoreProgress.self, forKey: .progress))
             default: event = .unknown(type: type)
             }
         }

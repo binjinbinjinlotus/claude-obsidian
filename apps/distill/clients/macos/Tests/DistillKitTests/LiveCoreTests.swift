@@ -77,6 +77,21 @@ final class LiveCoreTests: XCTestCase {
             XCTAssertEqual(e.status, 401)
         }
 
+        // v3 routes exist on this core (no 404 "no route" / 501).
+        let progress = try await client.listProgress()
+        XCTAssertTrue(progress.isEmpty)
+        try await client.cancelAsk(conversationID: UUID().uuidString.lowercased()) // idle: no-op
+        for call in [{ try await client.deleteJob("job-missing") }, { _ = try await client.jobResume("job-missing") }] as [() async throws -> Void] {
+            do { try await call(); XCTFail("expected an error") } catch let e as CoreClientError {
+                XCTAssertFalse(e.isNotAvailable, "\(e)")
+                XCTAssertEqual(e.status, 404)
+            }
+        }
+        do { try await client.removeQueueEntry(path: "/tmp/nothing.md"); XCTFail("expected an error") } catch let e as CoreClientError {
+            XCTAssertFalse(e.isNotAvailable, "\(e)")
+        }
+        _ = try await client.conversations()
+
         // A second ensureRunning reuses the live core instead of starting another.
         let again = try await launcher.ensureRunning()
         XCTAssertEqual(again, endpoint)

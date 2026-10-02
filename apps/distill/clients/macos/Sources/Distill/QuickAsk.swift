@@ -1,0 +1,286 @@
+import AppKit
+import Combine
+import SwiftUI
+import DistillKit
+
+/// The quick ask window beside the flask (canvas: "Quick actions from the
+/// floating flask" panels 2 and 4, "Loading states" panel 2). Esc closes the
+/// window but not the run: the flask shows a green ring until the answer is
+/// seen, and clicking the flask reopens the window.
+@MainActor
+final class QuickAskController {
+    private let panel: QuickPanel
+    private let engine: AppModel
+    private var resizeObserver: AnyCancellable?
+    /// The window grows away from the flask: upward when it sits above it.
+    private var growsUp = true
+
+    var isVisible: Bool { panel.isVisible }
+
+    init(engine: AppModel, onContinue: @escaping () -> Void) {
+        self.engine = engine
+        panel = QuickPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 300),
+                           styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.hidesOnDeactivate = false
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.isMovableByWindowBackground = true
+        let ask = engine.ask
+        let host = FirstMouseHostingView(rootView: QuickAskView(
+            close: { [weak panel] in panel?.cancelOperation(nil) },
+            continueInDistill: {
+                ask.continueInMain()
+                onContinue()
+            })
+            .environmentObject(engine)
+            .environmentObject(ask))
+        panel.contentView = host
+        panel.onClose = { [weak engine] in engine?.ask.quickVisible = false }
+        // The answer replaces the shimmer, chips wrap: follow the content's size.
+        resizeObserver = ask.objectWillChange
+            .debounce(for: .milliseconds(30), scheduler: RunLoop.main)
+            .sink { [weak self] _ in MainActor.assumeIsolated { self?.fitToContent() } }
+    }
+
+    private func fitToContent() {
+        guard panel.isVisible, let content = panel.contentView else { return }
+        content.layoutSubtreeIfNeeded()
+        let size = content.fittingSize
+        var frame = panel.frame
+        guard abs(frame.height - size.height) > 0.5 || abs(frame.width - size.width) > 0.5 else { return }
+        if !growsUp { frame.origin.y += frame.height - size.height } // keep the top edge
+        frame.size = size
+        if let visible = panel.screen?.visibleFrame {
+            frame.origin.y = min(max(frame.origin.y, visible.minY + 8), visible.maxY - size.height - 8)
+        }
+        panel.setFrame(frame, display: true, animate: false)
+    }
+
+    /// Shows the window next to `anchor` (the flask's frame), toward the screen center.
+    func show(near anchor: NSRect?) {
+        engine.ask.prepareQuickAsk()
+        engine.ask.refresh()
+        engine.ask.quickVisible = true
+        panel.layoutIfNeeded()
+        let size = panel.contentView?.fittingSize ?? NSSize(width: 420, height: 260)
+        panel.setContentSize(size)
+        let screen = anchor.flatMap { a in NSScreen.screens.first { $0.frame.intersects(a) } } ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        var origin: NSPoint
+        if let a = anchor {
+            let toLeft = a.midX > visible.midX
+            let x = toLeft ? a.maxX - 12 - size.width : a.minX + 12
+            let above = a.midY < visible.midY
+            growsUp = above
+            let y = above ? a.maxY - 4 : a.minY + 4 - size.height
+            origin = NSPoint(x: x, y: y)
+        } else {
+            origin = NSPoint(x: visible.midX - size.width / 2, y: visible.midY)
+        }
+        origin.x = min(max(origin.x, visible.minX + 8), visible.maxX - size.width - 8)
+        origin.y = min(max(origin.y, visible.minY + 8), visible.maxY - size.height - 8)
+        panel.setFrameOrigin(origin)
+        // A non-activating panel takes typing without bringing Distill's other windows forward.
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    func hide() { panel.cancelOperation(nil) }
+}
+
+/// Borderless panel that can take typing; Esc hides it (the run keeps going).
+final class QuickPanel: NSPanel {
+    var onClose: (() -> Void)?
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+    override func cancelOperation(_ sender: Any?) {
+        orderOut(nil)
+        MainActor.assumeIsolated { onClose?() }
+    }
+    override func resignKey() {
+        super.resignKey()
+    }
+}
+
+/// Hosting view whose first click acts (non-activating panels).
+final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+struct QuickAskView: View {
+    @EnvironmentObject var engine: AppModel
+    @EnvironmentObject var ask: AskModel
+    var close: () -> Void = {}
+    var continueInDistill: () -> Void = {}
+
+    var body: some View {
+        QuickAskCard(thread: ask.quick, close: close, continueInDistill: continueInDistill)
+            .padding(24) // room for the shadow
+    }
+}
+
+struct QuickAskCard: View {
+    @EnvironmentObject var engine: AppModel
+    @EnvironmentObject var ask: AskModel
+    @ObservedObject var thread: AskThread
+    var close: () -> Void
+    var continueInDistill: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            questionRow
+            if !thread.isRunning { chips }
+            if thread.filter.showsUnconfirmedToggle && !thread.isRunning { scopeBox }
+            content
+            footer
+        }
+        .padding(16)
+        .frame(width: 400, alignment: .leading)
+        .onExitCommand(perform: close)
+        .background(RoundedRectangle(cornerRadius: 20).fill(Color.white)
+            .shadow(color: .black.opacity(0.22), radius: 20, y: 18))
+    }
+
+    // The field shows the last question while it runs or once answered.
+    private var questionRow: some View {
+        HStack(spacing: 10) {
+            if thread.isRunning {
+                Spinner(size: 14)
+                Text(thread.pending?.question ?? "").font(Theme.body(14)).lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Image(systemName: "bubble.left").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.primary)
+                QuestionField(text: $thread.draft, placeholder: placeholder, size: 14) { ask.send(thread) }
+                Text("↩").font(Theme.body(11)).foregroundStyle(Theme.faint)
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Theme.panel))
+    }
+
+    private var placeholder: String {
+        if let last = thread.entries.last, thread.draft.isEmpty { return thread.entries.count == 1 ? last.question : "Ask a follow-up…" }
+        return "Ask \(engine.activeVault?.name ?? "your vault")…"
+    }
+
+    private var chips: some View {
+        FlowLayout(spacing: 6) {
+            ModelChip(thread: thread, showRunner: false, showEffort: true, compact: true)
+            if thread.filter.isEmpty {
+                Text("All notes").font(Theme.body(11, .bold)).padding(.horizontal, 9).frame(height: 24)
+                    .background(Capsule().fill(Theme.panel)).fixedSize()
+            }
+            ForEach(thread.filter.labels, id: \.self) { label in
+                FilterChip(text: "#\(label)", height: 24) { thread.filter.removeLabel(label) }
+            }
+            ForEach(thread.filter.sources, id: \.self) { id in
+                FilterChip(text: AskFilter.sourceLabel(id, taxonomy: ask.taxonomy), fill: Theme.limeTint, ink: Theme.limeInk, height: 24) {
+                    thread.filter.removeSource(id)
+                }
+            }
+            LimitMenuButton(thread: thread)
+        }
+    }
+
+    /// Any/All and Include unconfirmed on one row (no wrapping), plus the page count.
+    private var scopeBox: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                if thread.filter.showsMatchSwitch {
+                    Segmented(options: [(LabelMatch.any, "Any label"), (.all, "All labels")], selection: $thread.filter.labelMatch, height: 22)
+                        .fixedSize()
+                }
+                CapsuleSwitch(title: "Include unconfirmed", isOn: $thread.filter.includeUnconfirmed, font: Theme.body(11, .semibold))
+                    .fixedSize()
+                Spacer(minLength: 0)
+            }
+            if let count = AskFilter.pageCount(notices: thread.lastResponse?.notices ?? []) {
+                Text("Using \(count)").font(Theme.body(11)).foregroundStyle(Theme.muted)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.panel))
+    }
+
+    @ViewBuilder private var content: some View {
+        if let pending = thread.pending {
+            switch pending.status {
+            case .running:
+                VStack(alignment: .leading, spacing: 8) {
+                    Shimmer(width: 350, height: 10)
+                    Shimmer(width: 250, height: 10)
+                }
+                .padding(.vertical, 2)
+            default:
+                AskHaltRow(pending: pending) { ask.retry(thread) }
+            }
+        } else if let entry = thread.entries.last {
+            let r = entry.response
+            AnswerText(answer: Self.short(r.answer), size: 14) { n in
+                if let c = r.citations.first(where: { $0.n == n }) { ask.openCitation(c) }
+            }
+            .lineLimit(6)
+            if !r.citations.isEmpty {
+                FlowLayout(spacing: 8) {
+                    ForEach(Array(r.citations.prefix(3).enumerated()), id: \.offset) { i, c in
+                        CitationCard(citation: c, index: i, compact: true) { ask.openCitation(c) }
+                    }
+                }
+            }
+            if let gap = r.gaps.first { GapCallout(text: gap) }
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 12) {
+            footerNote.font(Theme.body(11)).foregroundStyle(Theme.faint).lineLimit(1)
+            Spacer(minLength: 8)
+            if thread.isRunning {
+                Button { ask.stop(thread) } label: {
+                    Text("Stop").font(Theme.body(11, .semibold)).padding(.horizontal, 10).frame(height: 24)
+                        .background(Capsule().fill(Theme.panel))
+                }
+                .buttonStyle(.plain)
+            } else if !thread.isEmpty {
+                Button("Continue in Distill", action: continueInDistill)
+                    .buttonStyle(.plain).font(Theme.body(12, .semibold)).foregroundStyle(Theme.primary).underline()
+            }
+        }
+        .padding(.top, 6)
+        .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
+    }
+
+    private var footerNote: some View {
+        let s = ask.selection(for: thread)
+        let model = AskSelection.modelLabel(s, runners: ask.runners)
+        if let pending = thread.pending, pending.status == .running {
+            let effort = s.effort.map { " · " + AskSelection.effortLabel($0) } ?? ""
+            return AnyView(HStack(spacing: 0) {
+                Text("\(model)\(effort) · ")
+                ElapsedClock(start: pending.startedAt)
+                Text(" · Esc keeps it running")
+            })
+        }
+        if !thread.filter.isEmpty { return AnyView(Text("Defaults from Settings · Esc to close")) }
+        return AnyView(Text("\(engine.activeVault?.name ?? "Vault") · \(model) · Esc to close"))
+    }
+
+    /// The first paragraph, for the small window.
+    static func short(_ answer: String) -> String {
+        let first = answer.components(separatedBy: "\n\n").first ?? answer
+        return first.count > 420 ? String(first.prefix(420)) + "…" : first
+    }
+}
+
+/// "0:06" counting from `start` (shown from zero, unlike ElapsedText).
+struct ElapsedClock: View {
+    let start: Date
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            Text(ElapsedText.format(max(0, Int(context.date.timeIntervalSince(start))))).monospacedDigit()
+        }
+    }
+}
