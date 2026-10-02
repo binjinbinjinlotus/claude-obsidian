@@ -55,7 +55,7 @@ struct AskThreadView: View {
     // MARK: Conversation
 
     private var conversation: some View {
-        Scrolling {
+        ChatScrolling(followsEnd: !(thread.isEmpty && thread.pending == nil)) {
             VStack(alignment: .leading, spacing: 16) {
                 if let note = thread.note { NoticeLine(text: note) }
                 if thread.isEmpty { emptyState }
@@ -83,7 +83,6 @@ struct AskThreadView: View {
             .padding(.horizontal, 44).padding(.vertical, 18)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .defaultScrollAnchor(.bottom)
         .frame(maxHeight: .infinity)
     }
 
@@ -334,15 +333,39 @@ struct AskFilterBar: View {
                 SourcePickerButton(thread: thread)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            countLine
-                .font(Theme.body(12)).foregroundStyle(Theme.muted)
-                .lineLimit(2)
-                .frame(maxWidth: 240, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
+            // One line, as on the canvas: the whole line when it fits, else just the
+            // page count, else the line cut short with "…".
+            ViewThatFits(in: .horizontal) {
+                countLine.fixedSize()
+                if let pages = pageCount { Text(pages).fixedSize() }
+                countLine.truncationMode(.tail)
+            }
+            .font(Theme.body(12)).foregroundStyle(Theme.muted)
+            .lineLimit(1)
+            .frame(maxWidth: 240, alignment: .trailing)
+            .help(Text(countHelp))
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .frame(minHeight: 48)
         .background(RoundedRectangle(cornerRadius: 16).fill(Theme.panel))
+    }
+
+    /// "15 pages (3 unconfirmed)" once known, for the short form of the count line.
+    private var pageCount: String? {
+        thread.filter.isEmpty ? nil : AskFilter.pageCount(notices: thread.lastResponse?.notices ?? [])
+    }
+
+    /// The count line as plain text (tooltip when it is shortened).
+    private var countHelp: String {
+        if thread.filter.isEmpty { return thread.entries.isEmpty ? "" : "All notes" }
+        let joiner = thread.filter.labelMatch == .all ? " and " : " or "
+        var parts: [String] = []
+        if !thread.filter.labels.isEmpty { parts.append(thread.filter.labels.map { "#\($0)" }.joined(separator: joiner)) }
+        if !thread.filter.sources.isEmpty {
+            parts.append(thread.filter.sources.map { AskFilter.sourceLabel($0, taxonomy: ask.taxonomy) }.joined(separator: " or "))
+        }
+        if let pageCount { parts.append(pageCount) }
+        return parts.joined(separator: " · ")
     }
 
     private var countLine: Text {

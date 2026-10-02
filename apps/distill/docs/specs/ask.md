@@ -138,8 +138,13 @@ Code: `clients/macos/Sources/Distill/AskView.swift`, `AskParts.swift`,
   `obsidian://open?vault=<vault folder name>&file=<page>`, strictly
   percent-encoded), a **Gap** callout per gap, notices as small info lines
   (the "Limited to N pages" notice becomes the count at the end of the filter
-  bar), **Save answer to vault** (`addNote`, origin `app`, with a Sources list
+  bar; that count line is always one line: the whole line when it fits, else
+  just "N pages (M unconfirmed)", else cut with an ellipsis, full text in its
+  tooltip), **Save answer to vault** (`addNote`, origin `app`, with a Sources list
   of wikilinks; it goes through Review) and **Copy**. **New chat** (⌘N).
+  The chat area starts at the top under the filter bar: the empty chat's intro
+  ("Ask anything your notes cover.") sits there and opens scrolled to the top;
+  a chat with answers opens at its latest answer.
 - Filter bar: **All notes** by default; **+ Label** (labels from
   `GET /v1/labels`, or type any label), **+ Limit by source** (groups and
   sources from `settings.sourceTaxonomy`, else the default taxonomy); chips
