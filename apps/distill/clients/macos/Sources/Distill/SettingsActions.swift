@@ -303,7 +303,7 @@ struct ActionTypeSettingsPage: View {
                     }
                 }
                 if let later = type.laterHandler {
-                    row(later.label, later.reason ?? "Coming later") { StatePill(text: "Coming later", outlined: true) }
+                    row(later.label, "Copy only for now") { StatePill(text: "Coming later", outlined: true) }
                 }
             }
             .opacity(enabled ? 1 : 0.55)
