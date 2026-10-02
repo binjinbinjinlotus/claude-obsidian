@@ -145,13 +145,13 @@ struct QuickNoteBody: View {
 
     // MARK: Before queueing (panel 3)
 
-    /// Title (wraps to 2 lines, then scrolls in its field), the note text and the source.
+    /// Title (wraps to 2 lines, then scrolls in its field) and the note text.
+    /// The source lives in the footer, so it stays at the bottom however tall the window is.
     @ViewBuilder private var composerTop: some View {
         VStack(alignment: .leading, spacing: 10) {
             QuickTitleField(text: binding(\.title))
             BareTextEditor(placeholder: "Write a note…", text: binding(\.text), font: Theme.body(13), minHeight: 40, maxHeight: .infinity)
                 .padding(0)
-            SourcePickerRow(draft: binding(\.self), compact: true)
         }
     }
 
@@ -191,12 +191,27 @@ struct QuickNoteBody: View {
         }
     }
 
+    /// Pinned footer (canvas: "Quick windows: size, growth and scrolling"): Aa, + Source
+    /// (the chosen source's chip once picked), the hint and Add to queue. With a source
+    /// picked, the "Link, channel or person" field sits on its own row just above.
     private var composerFooter: some View {
         let draft = notes.draft(owner)
-        return HStack(spacing: 10) {
+        return VStack(alignment: .leading, spacing: 10) {
+            if draft.source != nil || !draft.sourceRef.isEmpty {
+                QuickSourceRefField(text: binding(\.sourceRef))
+            }
+            composerActions(draft)
+        }
+    }
+
+    private func composerActions(_ draft: ComposeDraft) -> some View {
+        HStack(spacing: 8) {
             QuickMarkdownBarToggle()
-            Text("⌘V adds an image · ⌘↩ saves").font(Theme.body(11)).foregroundStyle(Theme.faint).lineLimit(1)
+            QuickSourceButton(draft: binding(\.self))
+            Text("⌘↩ saves").font(Theme.body(11)).foregroundStyle(Theme.faint).lineLimit(1)
+                .help("⌘V adds an image · ⌘↩ saves")
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(-1)
             Button { engine.addNote(owner) } label: {
                 HStack(spacing: 6) {
                     if notes.adding.contains(owner) { Spinner(color: .white, size: 12) }
@@ -322,5 +337,75 @@ enum LabelsModelName {
         let sel = SettingsEdits.selection(.labelSuggest, settings: engine.settings)
         let runner = engine.notes.runners.first { $0.id == sel.runnerID }
         return SettingsEdits.modelTitle(sel.model, runner: runner)
+    }
+}
+
+// MARK: Source (footer)
+
+/// "+ Source" in the quick note's footer; once a source is picked it becomes that
+/// source's chip (green, "In person ▾" on the canvas); the same menu changes or clears it.
+struct QuickSourceButton: View {
+    @EnvironmentObject var engine: AppModel
+    @Binding var draft: ComposeDraft
+    @Environment(\.snapshotMode) private var snapshot
+
+    private var groups: [SourceGroup] { SettingsEdits.taxonomy(engine.settings) }
+
+    var body: some View {
+        if snapshot {
+            face
+        } else {
+            Menu { items } label: { face }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+                .fixedSize()
+                .help(draft.source == nil ? "Add a source" : "Change or remove the source")
+                .accessibilityLabel(draft.source.map { "Source: \(label(of: $0))" } ?? "Add a source")
+        }
+    }
+
+    private var face: some View {
+        let chosen = draft.source.map(label(of:))
+        return HStack(spacing: 4) {
+            Text(chosen ?? "+ Source").lineLimit(1).truncationMode(.tail)
+            if chosen != nil { Text("▾").font(Theme.body(10)) }
+        }
+        .font(Theme.body(11, .bold))
+        .padding(.horizontal, 9).frame(height: 24)
+        .frame(maxWidth: 130)
+        .foregroundStyle(chosen == nil ? Color(hex: 0x48463F) : Theme.limeInk)
+        .background(Capsule().fill(chosen == nil ? Theme.panel : Theme.limeTint))
+        .contentShape(Capsule())
+    }
+
+    @ViewBuilder private var items: some View {
+        ForEach(groups, id: \.id) { g in
+            SwiftUI.Section(g.label) {
+                ForEach(g.sources, id: \.id) { s in
+                    Button(s.label) { draft.source = s.id; draft.group = g.id }
+                }
+            }
+        }
+        if draft.source != nil { Divider(); Button("No source") { draft.source = nil } }
+    }
+
+    private func label(of id: String) -> String {
+        groups.lazy.flatMap(\.sources).first { $0.id == id }?.label ?? id
+    }
+}
+
+/// The source's "Link, channel or person", on its own row just above the footer buttons.
+struct QuickSourceRefField: View {
+    @Binding var text: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "link").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.faint)
+            BareTextField(placeholder: "Link, channel or person", text: $text, font: Theme.body(12))
+        }
+        .padding(.horizontal, 10).frame(height: 26)
+        .background(Capsule().fill(Color.white))
+        .overlay(Capsule().strokeBorder(Color(hex: 0xE2DFD9)))
+        .frame(maxWidth: .infinity)
+        .clipShape(Capsule())
     }
 }

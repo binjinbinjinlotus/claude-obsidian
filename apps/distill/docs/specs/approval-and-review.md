@@ -42,6 +42,14 @@ User actions:
   review.
 - **Reject**: ends the job. Inbox files are kept.
 
+Layout (canvas: "Review"): the details column shows the heading, then what
+needs the user (plan error, Claude's questions, the blocked-tools card with
+**Allow & continue**), then the stats and the change list, so Allow & continue
+is visible without scrolling at the 900 × 600 minimum window. The conversation
+column starts at the top; a long thread opens at its latest turn. The reply box
+shows the placeholder "e.g. Add this to the Green tea page instead" whenever it
+is empty (the text view redraws fully when it turns empty or non-empty).
+
 API clients get `suggestedRule` (string or `null`) on every denial of a job
 the server returns, so Allow can show and send the exact rule without
 re-deriving it. While Approve applies, the core emits `apply` progress

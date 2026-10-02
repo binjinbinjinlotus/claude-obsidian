@@ -204,6 +204,30 @@ enum StatesSnapshot {
         shoot(file, flow, screen, state, description, defaults: defaults, live: true, view)
     }
 
+    /// A quick window at the height it asks for (`onDesiredHeight`), like the app's
+    /// QuickWindowSizer: a natural render alone collapses the scrolling middle.
+    static func quickWindow<V: View>(_ file: String, _ flow: Flow, _ screen: String, _ state: String, _ description: String,
+                                     _ e: AppModel, width: CGFloat = QuickWindowGeometry.defaultWidth, padding: CGFloat = 24,
+                                     @ViewBuilder _ content: (@escaping (CGFloat) -> Void) -> V) {
+        let store = UserDefaults(suiteName: "distill.snapshot.states") ?? .standard
+        store.register(defaults: baseDefaults)
+        var desired: CGFloat = 0
+        let probe = NSHostingView(rootView: content { desired = $0 }
+            .environmentObject(e.ask).environmentObject(e)
+            .environment(\.colorScheme, .light).environment(\.snapshotMode, false).defaultAppStorage(store)
+            .frame(width: width, height: 600))
+        let window = NSWindow(contentRect: CGRect(x: -30000, y: -30000, width: width, height: 600),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = probe
+        liveWindows.append(window)
+        for _ in 0..<6 { RunLoop.main.run(until: Date().addingTimeInterval(0.04)) }
+        let height = max(QuickWindowGeometry.minSize.height, desired)
+        natural(file, flow, screen, state, description, e, padding: padding) {
+            content { _ in }.frame(width: width, height: height)
+        }
+    }
+
     /// `live`: draw through an offscreen NSHostingView with snapshot mode off,
     /// so AppKit-backed controls (checkboxes, switches, text fields, pickers,
     /// scroll views) render as in the app. ImageRenderer draws those as a
@@ -459,6 +483,9 @@ extension StatesSnapshot {
         main("review-ready", f, "Review", "Awaiting approval · plan ready", "Summary, 1 new page / 4 updated, changes list, conversation, Approve & apply.", e, section: .review, job: e.jobs[0].id) {
             ReviewSection(selectedJob: .constant(e.jobs[0].id))
         }
+        main("review-ready-900", f, "Review", "Plan ready · smallest window (900×600)", "The review at the window's minimum size: the conversation starts at the top.", e, section: .review, job: e.jobs[0].id, size: CGSize(width: 900, height: 600)) {
+            ReviewSection(selectedJob: .constant(e.jobs[0].id))
+        }
 
         e = engine()
         e.jobs = [awaiting(e), awaiting(e, id: "job-b", files: ["inbox/q3-architecture-sync.md"], summary: "One meeting note becomes a new page under Project X."),
@@ -490,6 +517,9 @@ extension StatesSnapshot {
         e = engine()
         e.jobs = [awaiting(e, denials: denials, worker: "I couldn't fetch the shop's guide or run the linter. Allow them and I'll continue.")]
         main("review-denials-allowed", f, "Review", "Blocked tools · rule ticked", "A rule is ticked: “Allow & continue” appears.", e, section: .review, job: e.jobs[0].id) {
+            JobDetailView(jobID: e.jobs[0].id, allowed: ["WebFetch(domain:www.example-tea.com)"])
+        }
+        main("review-denials-allowed-900", f, "Review", "Rule ticked · smallest window (900×600)", "“Allow & continue” is visible without scrolling at the minimum size.", e, section: .review, job: e.jobs[0].id, size: CGSize(width: 900, height: 600)) {
             JobDetailView(jobID: e.jobs[0].id, allowed: ["WebFetch(domain:www.example-tea.com)"])
         }
 
@@ -569,6 +599,7 @@ extension StatesSnapshot {
         var e = engine()
         e.ask.conversations = []
         main("ask-empty", f, "Ask", "Empty · first use", "No chats yet: intro, suggestions, model and effort.", e, section: .ask) { AskScreen() }
+        main("ask-empty-900", f, "Ask", "Empty · smallest window (900×600)", "The intro sits at the top of the chat area.", e, section: .ask, size: CGSize(width: 900, height: 600)) { AskScreen() }
 
         e = engine()
         main("ask-empty-recents", f, "Ask", "Empty · with recent chats", "Recent chats in the screen and Recent questions in the sidebar.", e, section: .ask) { AskScreen() }
@@ -581,6 +612,7 @@ extension StatesSnapshot {
         t.filter.includeUnconfirmed = false
         t.draft = "How hot should the water be for gyokuro?"
         main("ask-filtered", f, "Ask", "Filtered · labels and source", "#tea and #gyokuro (All labels), unconfirmed off, Slack source, a typed question.", e, section: .ask) { AskScreen() }
+        main("ask-filtered-900", f, "Ask", "Filtered · smallest window (900×600)", "The filter bar and its count line at the minimum size.", e, section: .ask, size: CGSize(width: 900, height: 600)) { AskScreen() }
 
         e = engine()
         AskFixtures.loading(e.ask.main, question: "How hot should the water be for green tea, and does it differ for gyokuro?")
@@ -603,6 +635,7 @@ extension StatesSnapshot {
         e = engine()
         AskFixtures.answered(e.ask.main)
         main("ask-answered", f, "Ask", "Answered · gaps and notices", "Answer with citation markers, cards, a Gap callout and a page-limit notice.", e, section: .ask) { AskScreen() }
+        main("ask-answered-900", f, "Ask", "Answered · smallest window (900×600)", "An answer at the minimum size.", e, section: .ask, size: CGSize(width: 900, height: 600)) { AskScreen() }
 
         e = engine()
         AskFixtures.answered(e.ask.main)
@@ -622,6 +655,9 @@ extension StatesSnapshot {
 
         e = engine()
         main("history-chats", f, "History · Ask chats", "Chats list · keep history on", "Ask chats with pin and delete; kept N days.", e, section: .history) {
+            HistorySection(selectedJob: .constant(nil), part: .chats)
+        }
+        main("history-chats-900", f, "History · Ask chats", "Chats list · smallest window (900×600)", "Each chat's “N questions · Asked …” stays on one line.", e, section: .history, size: CGSize(width: 900, height: 600)) {
             HistorySection(selectedJob: .constant(nil), part: .chats)
         }
 
@@ -752,7 +788,7 @@ extension StatesSnapshot {
         func quick(_ file: String, _ state: String, _ desc: String, _ setup: (AskThread) -> Void) {
             let e = engine()
             setup(e.ask.quick)
-            natural(file, f, "Quick ask", state, desc, e, padding: 8) { QuickAskView() }
+            quickWindow(file, f, "Quick ask", state, desc, e, padding: 8) { QuickAskView(onDesiredHeight: $0) }
         }
         quick("quickask-empty", "Empty", "Just opened: all notes, model chip, + Limit.") { $0.reset(filter: AskFilter()) }
         quick("quickask-limited", "Limited by labels", "Two labels and a source: Any/All, Include unconfirmed, page count.") { t in
@@ -764,6 +800,17 @@ extension StatesSnapshot {
                                 notices: ["Limited to 6 pages (2 unconfirmed)."])
             t.entries = [AskEntry(question: "What did we decide about retries?", askedAt: Date(),
                                   request: AskRequest(question: "What did we decide about retries?"), response: r)]
+        }
+        do {
+            let e = engine()
+            let t = e.ask.quick
+            t.reset(filter: AskFilter())
+            let r = AskResponse(conversationID: "q3", answer: "70–80 °C for sencha. Boiling water pulls out bitter catechins [1].",
+                                citations: [AskCitation(n: 1, path: "wiki/sources/Brewing Green Tea.md", title: "Brewing Green Tea")])
+            t.entries = [AskEntry(question: "Best water temp for sencha?", askedAt: Date(), request: AskRequest(question: "Best water temp for sencha?"), response: r)]
+            natural("quickask-resized", f, "Quick ask", "Dragged taller", "The answer takes the extra height; the model and filter row stays right above the footer.", e, padding: 8) {
+                QuickAskView().frame(width: QuickWindowGeometry.defaultWidth, height: 440)
+            }
         }
         quick("quickask-loading", "Answering", "Spinner, the question, shimmer, elapsed time and Stop.") { t in
             AskFixtures.loading(t, question: "Best water temp for sencha?", model: "haiku", effort: "low", seconds: 6)
@@ -812,11 +859,18 @@ extension StatesSnapshot {
             let e = engine()
             e.notes.drafts[.quick] = draft()
             setup(e.notes)
-            natural(file, f, "Quick note", state, desc, e) { QuickNoteView(close: {}) }
+            quickWindow(file, f, "Quick note", state, desc, e) { QuickNoteView(close: {}, onDesiredHeight: $0) }
         }
         shot("quicknote-empty", "Empty", "Just opened: title, text, + Source.") { $0.drafts[.quick] = ComposeDraft() }
         shot("quicknote-typing", "Typing", "Text and a source; no images.") { $0.drafts[.quick] = draft(images: 0) }
         shot("quicknote-images", "Images", "Two images: one read as text, one kept.") { $0.drafts[.quick] = draft(images: 2) }
+        do {
+            let e = engine()
+            e.notes.drafts[.quick] = draft(images: 0)
+            natural("quicknote-resized", f, "Quick note", "Dragged taller", "The text area takes the extra height; the source and footer stay at the bottom.", e) {
+                QuickNoteView(close: {}).frame(width: QuickWindowGeometry.defaultWidth, height: 420)
+            }
+        }
         shot("quicknote-adding", "Adding…", "Add to queue pressed.") { $0.adding = [.quick] }
         shot("quicknote-add-error", "Add failed", "The core refused; the draft stays.") { $0.addErrors[.quick] = "Cannot reach the Distill core: connection refused" }
         shot("quicknote-suggesting", "Label step · suggesting", "Queued ✓; suggestions on the way; type a label while you wait.") { $0.steps[.quick] = step() }

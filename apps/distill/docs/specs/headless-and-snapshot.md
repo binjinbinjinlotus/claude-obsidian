@@ -39,3 +39,9 @@ this goes into a fixture `AppModel` that never connects or sends anything. The
 `snapshotMode` environment swaps `ScrollView` for a plain stack and hides
 AppKit-backed controls (drop target, text editor) that `ImageRenderer` cannot
 draw. Native fields and switches still render as placeholders. For design QA only.
+
+`--states` draws the quick windows live at the height they ask for
+(`onDesiredHeight`, as `QuickWindowSizer` does), so their scrolling middle is
+not collapsed; `quicknote-resized` shows a window dragged taller than its
+content. Review and Ask also render at the 900 × 600 minimum window
+(`*-900` states).

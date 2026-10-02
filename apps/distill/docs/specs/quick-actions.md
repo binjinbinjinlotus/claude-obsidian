@@ -34,8 +34,8 @@ actions" panels 2–5. Code: `QuickWindow.swift` (window shell, resize corner,
 - **Close bar**: QUICK NOTE / QUICK ASK and **×**. × does what Esc does.
 - **Growth**: the window fits its content and grows downward; the top edge
   never moves. It stops 8 pt above the bottom of the visible frame; past that
-  only the middle scrolls (quick note: title, text, source, images and errors;
-  quick ask: the answer), with an overlay scroller and a soft fade at the cut
+  only the middle scrolls (quick note: title, text, images and errors;
+  quick ask: the answer; the source row and the model/filter row stay with the footer), with an overlay scroller and a soft fade at the cut
   edge. The close bar, the question (quick ask) and the footer stay put. It
   shrinks back as content shrinks. No scroll-bar strip anywhere: the scroll
   views are forced to the overlay style, also under "Show scroll bars: Always".
@@ -53,14 +53,24 @@ actions" panels 2–5. Code: `QuickWindow.swift` (window shell, resize corner,
 - **Quick ask** (built, `QuickAsk.swift`): question field, short answer (first
   paragraph) with up to three source chips, model · effort chip, "All notes"
   with **+ Limit** (labels and sources), chips, and the **Any label | All
-  labels** + **Include unconfirmed** row on one line. **Continue in Distill**
+  labels** + **Include unconfirmed** row on one line. The question stays at
+  the top; the model and filter row (and the Any/All panel when limited) sits
+  at the bottom right above the footer however big the window is, and more
+  chips wrap upward. The answer fills the space between, so there is never a
+  gap between the question and the answer. The row hides while answering. **Continue in Distill**
   hands the chat (even mid-run) to the full Ask screen. Esc closes the window
   but keeps the run: the flask gets a green ring while the answer is on its way
   or unseen, and clicking the flask then reopens the window instead of the app.
   Opening it again after a seen answer starts a new chat.
 - **Quick note**: title (wraps to 2 lines, then scrolls in its field), text,
-  source, images with Keep / Extract text, **Add to queue** (⌘↩; **Try again**
-  after an error, shown above the footer). Labels are suggested after
+  images with Keep / Extract text, and the footer **Aa · + Source · ⌘↩ saves ·
+  Add to queue** (**Try again** after an error, shown above the footer).
+  **+ Source** opens a menu of the Settings sources by group; once one is
+  picked the button becomes that source's green chip ("In person ▾"; truncated, never widens
+  the window; the same menu changes it or picks **No source**) and a **Link,
+  channel or person** field appears on its own row just above the footer
+  buttons. Both stay pinned at the bottom however tall the window is dragged;
+  the text area takes the extra height. Labels are suggested after
   queueing, like the full composer: the window turns into the label step in
   place (chips wrap, the window resizes) and closes once labels are applied.
   × or Esc during the label step is **Skip** (the note stays queued,
