@@ -167,6 +167,20 @@ Code: `clients/macos/Sources/Distill/AskView.swift`, `AskParts.swift`,
   answering, or shown in the other window.
 - Quick ask from the flask: see [Quick actions](quick-actions.md).
 
+## Markdown in questions
+
+Questions are Markdown (see [Markdown editing](markdown-editing.md)). The
+question field (`QuestionField`, the shared Markdown editor) works like this:
+
+- **Return sends**, ⇧Return adds a line. Inside a list, Return adds the next
+  item, and Return on an empty item sends. The field grows from 1 to 5 lines,
+  then scrolls with an overlay scroller only.
+- **Aa** at the left of the field toggles a compact style bar above the text,
+  remembered in `distill.markdownBar.ask`. Quick ask's field follows the quick
+  windows' Aa (`distill.markdownBar.quick`).
+- The selection bubble, ⌘K, the `[[` note picker, the shortcuts and
+  rich-text paste work with the bar hidden.
+
 ## Errors
 
 - Empty question, invalid conversation id → `invalid_request`. An unknown,

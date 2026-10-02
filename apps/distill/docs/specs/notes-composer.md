@@ -18,6 +18,23 @@ Type knowledge directly, with images, a source and labels. Canvas artboards:
 - **Add to queue** (⌘↩) saves; **Discard** clears. A summary line states what
   will be saved, e.g. "one note with 1 image attached and 1 image read as text".
 
+## Markdown
+
+The note text is Markdown, stored exactly as typed and styled while you type
+(see [Markdown editing](markdown-editing.md)).
+
+- **Write a note** always shows the **full style bar** between the title and
+  the text. The text area takes the card's leftover height and scrolls inside
+  it, with an overlay scroller and a soft fade at the cut edge.
+- The **quick note** shows a compact bar when its **Aa** is on
+  (`distill.markdownBar.quick`). Its text reports its full height, and the
+  window grows or scrolls around it.
+- Return adds a line and continues lists. ⌘↩ adds the note to the queue.
+- The selection bubble, ⌘K links, the `[[` note picker, the shortcuts and
+  rich-text paste (web pages and Slack become Markdown) work in both.
+- An image-only clipboard still becomes an image (see below). Title and source
+  fields stay plain text.
+
 ## Images
 
 Each image added in the composer (⌘V or Add image) has a two-way switch:

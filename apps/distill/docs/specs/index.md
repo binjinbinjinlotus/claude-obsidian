@@ -38,6 +38,7 @@ https://claude.ai/artifact/VSqHFPZjcqY2bMqFEnPqpG
 
 - [Ask](ask.md): answers from the vault with citations; label/source filters (Any/All, unconfirmed), history, Stop.
 - [Write a note](notes-composer.md): text notes with images (keep vs. extract text), source, and the label step.
+- [Markdown editing](markdown-editing.md): Markdown in note, question and reply inputs; style bar, selection bubble, links and the `[[` note picker, shortcuts, paste.
 - [Labels and sources](labels-and-sources.md): taxonomy, AI suggestions, confirmation through Review, the Labels screen.
 - [Intake: paste and drop](intake-paste-drop.md): how dropped files and pasted screenshots/text enter the queue.
 
