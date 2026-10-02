@@ -38,7 +38,7 @@ https://claude.ai/artifact/VSqHFPZjcqY2bMqFEnPqpG
 
 - [Ask](ask.md): answers from the vault with citations; label/source filters (Any/All, unconfirmed), history, Stop.
 - [Write a note](notes-composer.md): text notes with images inside the text (hover → Extract content), source, and the label step.
-- [Actions](actions.md): to-dos and action types (Slack, Jira, Confluence, …) found in processed notes and Ask answers; confirm, draft, improve, handlers, History, connections. Core, API and CLI built; macOS UI designed.
+- [Actions](actions.md): to-dos and action types (Slack, Jira, Confluence, …) found in processed notes and Ask answers; confirm, draft, improve, handlers, History, connections. Core, API, CLI and macOS UI built (selection bar for selected answer text not yet).
 - [Markdown editing](markdown-editing.md): Markdown in note, question and reply inputs; style bar, selection bubble, links and the `[[` note picker, shortcuts, paste.
 - [Labels and sources](labels-and-sources.md): taxonomy, AI suggestions, confirmation through Review, the Labels screen.
 - [Intake: paste and drop](intake-paste-drop.md): how dropped files and pasted screenshots/text enter the queue.

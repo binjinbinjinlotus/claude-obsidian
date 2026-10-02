@@ -39,7 +39,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Labels and sources](docs/specs/labels-and-sources.md) | built |
 | [Quick actions and shortcuts](docs/specs/quick-actions.md) | built |
 | [App icon](docs/specs/app-icon.md) | built |
-| [Actions](docs/specs/actions.md) | built (core, API, CLI; macOS UI designed) |
+| [Actions](docs/specs/actions.md) | built (core, API, CLI, macOS UI; answer selection bar not yet) |
 
 ## Layout
 
