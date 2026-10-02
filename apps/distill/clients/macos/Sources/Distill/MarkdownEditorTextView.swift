@@ -95,6 +95,7 @@ final class MarkdownTextView: NSTextView {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
+        drewEmpty = string.isEmpty   // also covers text set without didChangeText (Send clears the box)
         guard string.isEmpty, !hasMarkedText(), !placeholderString.isEmpty else { return }
         let attrs: [NSAttributedString.Key: Any] = [
             .font: MarkdownTheme.font(placeholderSize), .foregroundColor: MarkdownTheme.placeholder,

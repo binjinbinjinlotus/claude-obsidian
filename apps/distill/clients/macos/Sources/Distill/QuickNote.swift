@@ -401,5 +401,7 @@ struct QuickSourceRefField: View {
         .padding(.horizontal, 10).frame(height: 28)
         .background(Capsule().fill(Color.white))
         .overlay(Capsule().strokeBorder(Theme.border))
+        .frame(maxWidth: .infinity)
+        .clipShape(Capsule())
     }
 }
