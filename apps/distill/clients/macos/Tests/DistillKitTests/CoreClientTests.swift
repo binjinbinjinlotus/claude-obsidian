@@ -71,6 +71,15 @@ final class CoreClientTests: XCTestCase {
         XCTAssertEqual(client.makeRequest("GET", "/v1/status", body: nil, timeout: 1).url?.host, "127.0.0.1")
     }
 
+    func testExtractImageText() async throws {
+        respond(#"{"text":"**Card**\n- 60 °C","model":"Haiku"}"#)
+        let result = try await client.extractImageText(imagePath: "/tmp/card.png", vaultPath: "/v")
+        XCTAssertEqual(result, ExtractImageTextResult(text: "**Card**\n- 60 °C", model: "Haiku"))
+        XCTAssertEqual(last.method, "POST")
+        XCTAssertEqual(last.path, "/v1/images/extract")
+        XCTAssertEqual(try bodyJSON(), .object(["imagePath": .string("/tmp/card.png"), "vaultPath": .string("/v")]))
+    }
+
     func testErrorShapeBecomesAPIError() async {
         respond(#"{"error":{"code":"invalid_state","message":"Job j is not awaiting approval."}}"#, status: 409)
         do {

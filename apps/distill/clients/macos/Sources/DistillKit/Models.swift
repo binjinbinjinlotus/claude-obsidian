@@ -610,6 +610,13 @@ public struct NoteImage: Codable, Hashable, Sendable {
     public init(path: String, mode: Mode = .keep) { self.path = path; self.mode = mode }
 }
 
+/// `POST /v1/images/extract` answer: Markdown read from the image ('' = no text) and the model label ("Haiku").
+public struct ExtractImageTextResult: Codable, Hashable, Sendable {
+    public var text: String
+    public var model: String
+    public init(text: String, model: String) { self.text = text; self.model = model }
+}
+
 public struct AddNoteRequest: Codable, Hashable, Sendable {
     public enum Suggest: String, Codable, Sendable { case wait, background, none }
     public enum Origin: String, Codable, Sendable { case app, cli }
