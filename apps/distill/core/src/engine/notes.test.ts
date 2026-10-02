@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 import { defaultSettings } from '../store/settings.js';
 import { newJob } from '../store/jobs.js';
 import { IngestJobKind, JobContext } from './job-kinds.js';
-import { noteStem, writeNote } from './notes.js';
+import { noteStem, rewriteImageEmbeds, writeNote } from './notes.js';
 import { claimFiles, intakeFileName, pendingFiles, writeIntoQueue } from './queue.js';
 
 let tmp: string;
@@ -91,6 +91,46 @@ describe('addNote (writeNote)', () => {
     assert.equal(noteStem('x'.repeat(300)).length, 120);
   });
 
+  test('embeds in the text follow the images to their queued names', () => {
+    const card = image('brewing-card.png', 'card');
+    const setup = image('Screenshot 2026-10-02 at 15.32.12.png', 'setup');
+    const result = writeNote(
+      {
+        title: 'Kettle settings',
+        text: 'Their card:\n![[brewing-card.png]]\nMy setup:\n![[Screenshot 2026-10-02 at 15.32.12.png|300]]\n![[other.png]]',
+        images: [{ path: card, mode: 'keep' }, { path: setup, mode: 'keep' }],
+      },
+      vault,
+      NOW,
+    );
+    const body = fs.readFileSync(result.notePath, 'utf8').split('---\n\n')[1];
+    assert.equal(body, 'Their card:\n![[Kettle settings image 1.png]]\nMy setup:\n![[Kettle settings image 2.png|300]]\n![[other.png]]\n');
+  });
+
+  test('image names never carry characters Obsidian reads inside an embed', () => {
+    const img = image('a.png');
+    const result = writeNote({ title: 'Notes #3 [draft] | a^b', text: '![[a.png]]', images: [{ path: img, mode: 'keep' }] }, vault, NOW);
+    const q = vault.queueDirectory;
+    assert.ok(fs.existsSync(path.join(q, 'Notes 3 draft ab image 1.png')), fs.readdirSync(q).join(', '));
+    assert.match(fs.readFileSync(result.notePath, 'utf8'), /!\[\[Notes 3 draft ab image 1\.png\]\]/);
+  });
+
+  test('images that share a file name are matched in order', () => {
+    fs.mkdirSync(path.join(tmp, 'x'));
+    fs.mkdirSync(path.join(tmp, 'y'));
+    const a = path.join(tmp, 'x', 'image.png');
+    const b = path.join(tmp, 'y', 'image.png');
+    fs.writeFileSync(a, 'a');
+    fs.writeFileSync(b, 'b');
+    const out = rewriteImageEmbeds('![[image.png]] then ![[image.png]] and again ![[image.png]]', [
+      { from: path.basename(a), to: 'T image 1.png' },
+      { from: path.basename(b), to: 'T image 2.png' },
+    ]);
+    assert.equal(out, '![[T image 1.png]] then ![[T image 2.png]] and again ![[T image 2.png]]');
+    const result = writeNote({ title: 'T', text: '![[image.png]]\n![[image.png]]', images: [{ path: a, mode: 'keep' }, { path: b, mode: 'keep' }] }, vault, NOW);
+    assert.match(fs.readFileSync(result.notePath, 'utf8'), /!\[\[T image 1\.png\]\]\n!\[\[T image 2\.png\]\]/);
+  });
+
   test('rejects empty notes and missing images', () => {
     assert.throws(() => writeNote({ title: ' ', text: 'x' }, vault, NOW), /title/);
     assert.throws(() => writeNote({ title: 'T', text: '  ' }, vault, NOW), /text or at least one image/);
@@ -106,6 +146,7 @@ describe('addNote (writeNote)', () => {
     assert.ok(prompt.includes('not a source'));
     assert.ok(prompt.includes('`mode: keep`'));
     assert.ok(prompt.includes('wiki/attachments/'));
+    assert.ok(prompt.includes('where the note text embeds it'));
     assert.ok(prompt.includes('`mode: extract`'));
     assert.ok(prompt.includes('do NOT store or embed the image'));
     const plain = newJob({ id: 'j', kind: 'ingest', vaultPath: vault.path, files: ['inbox/a.md'], model: 'm', now: NOW });

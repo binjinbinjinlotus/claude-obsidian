@@ -191,7 +191,9 @@ bookkeeping; only the Labels section of this prompt decides labels):
 - Each entry in \`images\` names an image file next to the note. Those images \
 belong to the note; they are not separate sources.
 - \`mode: keep\`: store the image in the vault as an attachment and embed it \
-in the page built from the note with \`![[<attachment file name>]]\`. Add it to \
+in the page built from the note with \`![[<attachment file name>]]\`, where the note text embeds it \
+(\`![[<image file name>]]\` marks the spot the user put it; keep that spot and \
+use the attachment's name). Add it to \
 the bundle as a \`create\` write under \`wiki/attachments/\` whose \
 \`content_file\` is the image's absolute path in the inbox, with the sha256 \
 from \`shasum -a 256\`.

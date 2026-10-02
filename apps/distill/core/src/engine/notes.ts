@@ -95,6 +95,32 @@ export function noteStem(title: string): string {
   return s || 'Note';
 }
 
+/** Image file names drop the characters Obsidian reads inside `![[…]]` (heading, block, alias, brackets). */
+export function imageStem(stem: string): string {
+  return stem.replace(/[#[\]|^]/g, '').replace(/\s+/g, ' ').trim() || 'Note';
+}
+
+const EMBED_RE = /!\[\[([^\]|#^\n]+)((?:[#|^][^\]\n]*)?)\]\]/g;
+
+/**
+ * The note text with each `![[<pasted file name>]]` pointing at the name the
+ * image gets in the queue. Images that share a file name are matched in order;
+ * an embed of an unknown name is left as written.
+ */
+export function rewriteImageEmbeds(text: string, images: { from: string; to: string }[]): string {
+  const pending = new Map<string, string[]>();
+  for (const img of images) pending.set(img.from, [...(pending.get(img.from) ?? []), img.to]);
+  const last = new Map<string, string>();
+  return text.replace(EMBED_RE, (whole, rawName: string, suffix: string) => {
+    const name = rawName.trim();
+    const queue = pending.get(name);
+    const to = queue && queue.length > 0 ? queue.shift()! : last.get(name);
+    if (to === undefined) return whole;
+    last.set(name, to);
+    return `![[${to}${suffix}]]`;
+  });
+}
+
 function yamlString(s: string): string {
   // JSON strings are valid YAML double-quoted scalars.
   return JSON.stringify(s);
@@ -151,7 +177,7 @@ export function writeNote(req: AddNoteRequest, vault: VaultProfile, now: Date, l
   const namesFor = (stem: string) => ({
     note: `${stem}.md`,
     manifest: `${stem}${NOTE_MANIFEST_SUFFIX}`,
-    images: images.map((img, i) => `${stem} image ${i + 1}${path.extname(img.path).toLowerCase()}`),
+    images: images.map((img, i) => `${imageStem(stem)} image ${i + 1}${path.extname(img.path).toLowerCase()}`),
   });
   const taken = (name: string) => fs.existsSync(path.join(queue, name)) || fs.existsSync(path.join(inbox, name));
   let stem = base;
@@ -188,7 +214,9 @@ export function writeNote(req: AddNoteRequest, vault: VaultProfile, now: Date, l
   const notePath = path.join(queue, names.note);
   const confirmed = labels?.labels;
   const { labels: _ignored, ...rest } = req;
-  fs.writeFileSync(notePath, noteMarkdown({ ...rest, title, ...(confirmed ? { labels: confirmed } : {}) }, now), { flag: 'wx' });
+  // The text embeds each image where it was pasted (`![[name]]`); point those at the queued names.
+  const text = rewriteImageEmbeds(req.text, images.map((img, i) => ({ from: path.basename(img.path), to: names.images[i] as string })));
+  fs.writeFileSync(notePath, noteMarkdown({ ...rest, text, title, ...(confirmed ? { labels: confirmed } : {}) }, now), { flag: 'wx' });
   queued.unshift(notePath);
   return { queued, notePath, requestID: labels?.requestID ?? '' };
 }
