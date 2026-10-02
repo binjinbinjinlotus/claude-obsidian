@@ -22,12 +22,11 @@ supersede it with a new entry.
   (matches the SidebarStates numbers). Every Undo is `restore` (complete,
   remove, mark as sent, Send to, a dismissed Ask row); Undo of an automatic
   add or of Add all is `dismiss`; Undo improve is `undo-improve`. To-do group
-  and sort live in app defaults (`distill.todo.group` / `.sort`, default due)
-  until the To-do defaults in Settings are read by the screen. Menus inside
+  and sort start from Settings → To-do defaults; a change on the screen is
+  remembered in app defaults (`distill.todo.group` / `.sort`). Menus inside
   scrolling lists (answer buttons, Found rows, Slack recipient) are popovers
   in the app and drawn panels in snapshots; the To do filter menus are drawn
-  panels. History's "Kept until" uses 90 days (the default) until the screen
-  reads `historyDays`. → [actions](actions.md)
+  panels. History's "Kept until" follows `historyDays`. → [actions](actions.md)
 - **Selected answer text is not an action source yet:** Ask answers render as
   a SwiftUI `Text`, whose selection the app can't read, so "To-do from
   selected text" is listed disabled and the selection bar (Add as to-do /

@@ -94,8 +94,9 @@ struct TodoScreen: View {
     @EnvironmentObject var engine: AppModel
     @ObservedObject var store: ActionsStore
     @State var ui: TodoUI
-    @AppStorage("distill.todo.group") private var groupRaw = ActionGrouping.due.rawValue
-    @AppStorage("distill.todo.sort") private var sortRaw = ActionSort.due.rawValue
+    /// Changes here are remembered; empty = Settings → To-do defaults.
+    @AppStorage("distill.todo.group") private var groupRaw = ""
+    @AppStorage("distill.todo.sort") private var sortRaw = ""
     var now = Date()
 
     init(store: ActionsStore, ui: TodoUI = TodoUI(), now: Date = Date()) {
@@ -104,8 +105,12 @@ struct TodoScreen: View {
         self.now = now
     }
 
-    private var grouping: ActionGrouping { ActionGrouping(rawValue: groupRaw) ?? .due }
-    private var sort: ActionSort { ActionSort(rawValue: sortRaw) ?? .due }
+    private var grouping: ActionGrouping {
+        ActionGrouping(rawValue: groupRaw.isEmpty ? (engine.settings.actionPreferences?.todoGroup ?? "due") : groupRaw) ?? .due
+    }
+    private var sort: ActionSort {
+        ActionSort(rawValue: sortRaw.isEmpty ? (engine.settings.actionPreferences?.todoSort ?? "due") : sortRaw) ?? .due
+    }
 
     private var todos: [ActionItem] { store.items(type: "todo") }
     private var visible: [ActionItem] { todos.filter { ui.filter.matches($0, now: now) || ui.completing.contains($0.id) } }

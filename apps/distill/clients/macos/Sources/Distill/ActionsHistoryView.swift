@@ -219,7 +219,8 @@ struct ActionsHistoryContent: View {
     }
 
     private func keptUntil(_ item: ActionItem) -> String {
-        let days = 90 // actionPreferences.historyDays; Settings → To-do defaults (default 90)
+        let days = engine.settings.actionPreferences?.historyDays ?? 90 // Settings → To-do defaults; 0 = forever
+        if days <= 0 { return "you delete it" }
         let until = Calendar.current.date(byAdding: .day, value: days, to: ActionHistory.when(item)) ?? now
         let f = DateFormatter(); f.setLocalizedDateFormatFromTemplate("MMM d")
         return f.string(from: until)

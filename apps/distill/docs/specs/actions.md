@@ -423,8 +423,9 @@ Status per part; `built` parts ship in `clients/macos`.
   this type" posts `actions/<type>`.
 - **To do** (built, `ActionsScreen.swift`): header with History and Add
   to-do; filter chips Status, Due, Person (with search), Label, Note,
-  Priority, More (added by, vault, this batch); group and sort menu (kept in
-  `distill.todo.group` / `distill.todo.sort`, default due); grouped rows with
+  Priority, More (added by, vault, this batch); group and sort menu (starts from
+  Settings → To-do defaults; a change here is kept in `distill.todo.group` /
+  `distill.todo.sort`); grouped rows with
   note, person, labels, priority and a due badge; the detail (fields, FROM
   context with quote, Why and "Found by", "Also from this note", Complete,
   Send to ▾ with the suggested type first and Email disabled, Remove); edit in

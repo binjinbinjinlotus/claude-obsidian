@@ -28,7 +28,7 @@ enum StatesSnapshot {
     private static var counter = 0
     private static let baseDefaults: [String: Any] = ["distill.addMode": "files", "distill.labelsTab": "toReview",
                                                       AppModel.suggestAfterQueueKey: true,
-                                                      "distill.todo.group": "due", "distill.todo.sort": "due"]
+                                                      "distill.todo.group": "", "distill.todo.sort": ""]
 
     static func run(stateDir: URL, outDir: URL) {
         self.stateDir = stateDir
