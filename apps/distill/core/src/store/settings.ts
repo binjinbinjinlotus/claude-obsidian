@@ -3,10 +3,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  DEFAULT_ACTION_PREFERENCES,
   DEFAULT_ASK_PREFERENCES,
   DEFAULT_LABELING_PREFERENCES,
   DEFAULT_SOURCE_TAXONOMY,
   type AITask,
+  type ActionPreferences,
+  type ActionSourcePreferences,
+  type ActionTypePreferences,
   type AskPreferences,
   type LabelingPreferences,
   type LabelMatch,
@@ -19,7 +23,7 @@ import {
 import { bool, encodeJSON, isObject, num, preserveUnreadable, readJSON, str, strArray, writeFileAtomic, type JSONObject } from './json.js';
 
 export const DEFAULT_RUNNER_ID = 'claude-code';
-export const AI_TASKS: AITask[] = ['ingest', 'ask', 'labelSuggest', 'imageText'];
+export const AI_TASKS: AITask[] = ['ingest', 'ask', 'labelSuggest', 'imageText', 'actionFind', 'actionDraft', 'actionImprove'];
 
 /** Keys the core understands; everything else in settings.json is carried through untouched. */
 const KNOWN_KEYS = [
@@ -41,6 +45,7 @@ const KNOWN_KEYS = [
   'labeling',
   'shortcuts',
   'runnerOptions',
+  'actionPreferences',
 ] as const;
 
 /**
@@ -158,6 +163,127 @@ function decodeRunnerOptions(v: unknown): Record<string, Record<string, string>>
   return out;
 }
 
+const SORTS = ['due', 'created', 'priority', 'note'] as const;
+const GROUPS = ['due', 'note', 'none'] as const;
+const DRAFT_WHEN = ['onFind', 'onRequest'] as const;
+
+/** Unknown keys of a nested object, carried through so a newer build's settings survive. */
+function unknownKeys(v: JSONObject, known: readonly string[]): JSONObject {
+  const out: JSONObject = {};
+  for (const [k, value] of Object.entries(v)) if (!known.includes(k)) out[k] = value;
+  return out;
+}
+
+function optionalSelection(v: unknown): ModelSelection | null | undefined {
+  if (v === null) return null;
+  return decodeSelection(v);
+}
+
+function optionalString(v: unknown): string | null | undefined {
+  if (v === null) return null;
+  return str(v);
+}
+
+function decodeActionSource(v: unknown): Partial<ActionSourcePreferences> | undefined {
+  if (!isObject(v)) return undefined;
+  const known = ['detectTodos', 'detectTypes', 'disabledTypes', 'confirm'] as const;
+  const out = unknownKeys(v, known) as Partial<ActionSourcePreferences>;
+  for (const key of ['detectTodos', 'detectTypes', 'confirm'] as const) {
+    const b = bool(v[key]);
+    if (b !== undefined) out[key] = b;
+  }
+  const disabled = strArray(v.disabledTypes);
+  if (disabled) out.disabledTypes = disabled;
+  return out;
+}
+
+function decodeActionType(v: unknown): Partial<ActionTypePreferences> | undefined {
+  if (!isObject(v)) return undefined;
+  const known = [
+    'enabled', 'draftWhen', 'improveAfterEdit', 'draftSelection', 'improveSelection', 'draftPrompt', 'improvePrompt', 'fieldDefaults',
+  ] as const;
+  const out = unknownKeys(v, known) as Partial<ActionTypePreferences>;
+  const enabled = bool(v.enabled);
+  if (enabled !== undefined) out.enabled = enabled;
+  if ((DRAFT_WHEN as readonly unknown[]).includes(v.draftWhen)) out.draftWhen = v.draftWhen as ActionTypePreferences['draftWhen'];
+  const improve = bool(v.improveAfterEdit);
+  if (improve !== undefined) out.improveAfterEdit = improve;
+  for (const key of ['draftSelection', 'improveSelection'] as const) {
+    const sel = optionalSelection(v[key]);
+    if (sel !== undefined) out[key] = sel;
+  }
+  for (const key of ['draftPrompt', 'improvePrompt'] as const) {
+    const text = optionalString(v[key]);
+    if (text !== undefined) out[key] = text;
+  }
+  if (isObject(v.fieldDefaults)) {
+    const fd: Record<string, string> = {};
+    for (const [k, value] of Object.entries(v.fieldDefaults)) if (typeof value === 'string') fd[k] = value;
+    out.fieldDefaults = fd;
+  }
+  return out;
+}
+
+/**
+ * Lenient decode of `actionPreferences`: mistyped known keys are dropped (they
+ * take their defaults), unknown keys at every level are kept so a newer build's
+ * preferences survive a save. `historyDays <= 0` means keep forever (no clamp).
+ */
+export function decodeActionPreferences(v: unknown): Partial<ActionPreferences> | undefined {
+  if (!isObject(v)) return undefined;
+  const known = ['sources', 'types', 'findSelection', 'findPrompt', 'todo', 'historyDays'] as const;
+  const out = unknownKeys(v, known) as Partial<ActionPreferences>;
+  if (isObject(v.sources)) {
+    const sources = unknownKeys(v.sources, ['notes', 'ask']) as JSONObject;
+    for (const key of ['notes', 'ask'] as const) {
+      const src = decodeActionSource(v.sources[key]);
+      if (src) sources[key] = src;
+    }
+    out.sources = sources as unknown as ActionPreferences['sources'];
+  }
+  if (isObject(v.types)) {
+    const types: Record<string, Partial<ActionTypePreferences>> = {};
+    for (const [id, t] of Object.entries(v.types)) {
+      const decoded = decodeActionType(t);
+      if (decoded) types[id] = decoded;
+    }
+    out.types = types;
+  }
+  const findSelection = optionalSelection(v.findSelection);
+  if (findSelection !== undefined) out.findSelection = findSelection;
+  const findPrompt = optionalString(v.findPrompt);
+  if (findPrompt !== undefined) out.findPrompt = findPrompt;
+  if (isObject(v.todo)) {
+    const todo = unknownKeys(v.todo, ['defaultSort', 'defaultGroup', 'remindOverdue']) as JSONObject;
+    if ((SORTS as readonly unknown[]).includes(v.todo.defaultSort)) todo.defaultSort = v.todo.defaultSort;
+    if ((GROUPS as readonly unknown[]).includes(v.todo.defaultGroup)) todo.defaultGroup = v.todo.defaultGroup;
+    const remind = bool(v.todo.remindOverdue);
+    if (remind !== undefined) todo.remindOverdue = remind;
+    out.todo = todo as unknown as ActionPreferences['todo'];
+  }
+  const historyDays = num(v.historyDays);
+  if (historyDays !== undefined) out.historyDays = Math.trunc(historyDays);
+  return out;
+}
+
+/** actionPreferences with every default filled in (nested objects merged key by key). */
+export function actionPreferences(s: Settings): ActionPreferences {
+  const p = s.actionPreferences ?? {};
+  const d = DEFAULT_ACTION_PREFERENCES;
+  const out: ActionPreferences = {
+    sources: {
+      notes: { ...d.sources.notes, ...(p.sources?.notes ?? {}) },
+      ask: { ...d.sources.ask, ...(p.sources?.ask ?? {}) },
+    },
+    types: { ...d.types, ...(p.types ?? {}) },
+    todo: { ...d.todo, ...(p.todo ?? {}) },
+    historyDays: p.historyDays ?? d.historyDays,
+  };
+  if (p.findSelection !== undefined) out.findSelection = p.findSelection;
+  if (p.findPrompt !== undefined) out.findPrompt = p.findPrompt;
+  return out;
+}
+
 /** Tolerant decode: missing or mistyped keys fall back to defaults (Swift `init(from:)`). */
 export function decodeSettings(raw: unknown): Settings {
   const d = defaultSettings();
@@ -199,6 +325,8 @@ export function decodeSettings(raw: unknown): Settings {
   if (shortcuts) s.shortcuts = shortcuts;
   const runnerOptions = decodeRunnerOptions(raw.runnerOptions);
   if (runnerOptions) s.runnerOptions = runnerOptions;
+  const actionPrefs = decodeActionPreferences(raw.actionPreferences);
+  if (actionPrefs) s.actionPreferences = actionPrefs;
   return s;
 }
 
@@ -239,6 +367,8 @@ export function encodeSettings(s: Settings, raw: JSONObject = {}): JSONObject {
     for (const [id, options] of Object.entries(s.runnerOptions)) ro[id] = { ...options };
     out.runnerOptions = ro;
   }
+  // Decoded with its unknown keys kept, so a plain deep copy round-trips.
+  if (s.actionPreferences != null) out.actionPreferences = JSON.parse(JSON.stringify(s.actionPreferences)) as JSONObject;
   return out;
 }
 

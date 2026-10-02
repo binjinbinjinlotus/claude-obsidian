@@ -3,6 +3,7 @@ import path from 'node:path';
 import type {
   ApprovalRequest,
   Job,
+  JobActionsSummary,
   JobState,
   PermissionDenial,
   TransactionPlan,
@@ -158,7 +159,31 @@ export function decodeJob(v: unknown, now = new Date()): Job | undefined {
   if (operationID !== undefined) job.operationID = operationID;
   const error = str(v.error);
   if (error !== undefined) job.error = error;
+  const actionsFound = decodeActionsSummary(v.actionsFound);
+  if (actionsFound) job.actionsFound = actionsFound;
   return job;
+}
+
+const SUMMARY_STATES: JobActionsSummary['status'][] = ['finding', 'done', 'failed', 'skipped'];
+
+/** v3: what "Finding actions" found after the batch was applied (lenient). */
+function decodeActionsSummary(v: unknown): JobActionsSummary | undefined {
+  if (!isObject(v)) return undefined;
+  const status = str(v.status) as JobActionsSummary['status'] | undefined;
+  const byType: Record<string, number> = {};
+  if (isObject(v.byType)) for (const [k, n] of Object.entries(v.byType)) if (typeof n === 'number' && Number.isFinite(n)) byType[k] = n;
+  const out: JobActionsSummary = {
+    status: status && SUMMARY_STATES.includes(status) ? status : 'done',
+    found: num(v.found) ?? 0,
+    pending: num(v.pending) ?? 0,
+    added: num(v.added) ?? 0,
+    byType,
+  };
+  const error = str(v.error);
+  if (error !== undefined) out.error = error;
+  const model = str(v.model);
+  if (model !== undefined) out.model = model;
+  return out;
 }
 
 /** Jobs saved before runners existed have no runnerID = Claude Code. */
@@ -210,7 +235,7 @@ function encodeApproval(a: ApprovalRequest): JSONObject {
 
 const JOB_KEYS = [
   'id', 'kind', 'vaultPath', 'files', 'sessionID', 'runnerID', 'model', 'effort', 'state',
-  'createdAt', 'updatedAt', 'approval', 'turns', 'grantedTools', 'operationID', 'changedPaths', 'error',
+  'createdAt', 'updatedAt', 'approval', 'turns', 'grantedTools', 'operationID', 'changedPaths', 'error', 'actionsFound',
 ];
 
 /** Every non-optional key is always written; nil optionals are omitted (never `null`). */
@@ -236,6 +261,13 @@ export function encodeJob(job: Job, raw: JSONObject = {}): JSONObject {
   if (job.approval != null) out.approval = encodeApproval(job.approval);
   if (job.operationID != null) out.operationID = job.operationID;
   if (job.error != null) out.error = job.error;
+  if (job.actionsFound != null) {
+    const a = job.actionsFound;
+    const summary: JSONObject = { status: a.status, found: a.found, pending: a.pending, added: a.added, byType: { ...a.byType } };
+    if (a.error != null) summary.error = a.error;
+    if (a.model != null) summary.model = a.model;
+    out.actionsFound = summary;
+  }
   return out;
 }
 
