@@ -1,6 +1,6 @@
 ---
 name: distill-note
-description: "Queue something the user wants to remember as a note for Distill to ingest into their Obsidian vault, using `distill note add`, then label it with `distill note label <request-id>` from Distill's suggestions. Use when the user says remember this, save this to my notes, add a note, jot this down, or capture this (text, a file, or images). The note only enters the queue; the user approves vault changes in the Distill app and agents cannot approve changes or confirm labels."
+description: "Queue something the user wants to remember as a note for Distill to ingest into their Obsidian vault, using `distill note add`, then label it by request ID with `distill note label` from Distill's suggestions. Use when the user says remember this, save this to my notes, add a note, jot this down, or capture this (text, a file, or images). The note only enters the queue; the user approves vault changes in the Distill app and agents cannot approve changes or confirm labels."
 ---
 
 # Queue a note with Distill
