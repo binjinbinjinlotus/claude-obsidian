@@ -423,23 +423,35 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
 // MARK: - Queue, status
 
 public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
-    enum CodingKeys: String, CodingKey { case path, name, modified, size, settled }
+    enum CodingKeys: String, CodingKey { case path, name, modified, size, settled, readyAt, kind, problem }
+
+    /// note = written by addNote (complete when queued, skips the settle wait); file = anything else.
+    public enum Kind: String, Codable, Sendable { case note, file }
 
     public var path: String
     public var name: String
     public var modified: Date
     public var size: Int
     public var settled: Bool
+    /// When the settle wait ends (modified + settleSeconds); nil once ready.
+    public var readyAt: Date?
+    public var kind: Kind
+    /// Why the core can't use this file (unreadable, ...).
+    public var problem: String?
 
     public var id: String { path }
     public var url: URL { URL(fileURLWithPath: path) }
 
-    public init(path: String, name: String? = nil, modified: Date, size: Int, settled: Bool) {
+    public init(path: String, name: String? = nil, modified: Date, size: Int, settled: Bool,
+                readyAt: Date? = nil, kind: Kind = .file, problem: String? = nil) {
         self.path = path
         self.name = name ?? URL(fileURLWithPath: path).lastPathComponent
         self.modified = modified
         self.size = size
         self.settled = settled
+        self.readyAt = readyAt
+        self.kind = kind
+        self.problem = problem
     }
 
     public init(from decoder: Decoder) throws {
@@ -449,6 +461,9 @@ public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
         modified = c.lossyDate(.modified) ?? .distantPast
         size = c.lossyInt(.size) ?? 0
         settled = c.lossy(Bool.self, .settled) ?? true
+        readyAt = c.lossyDate(.readyAt)
+        kind = c.lossy(String.self, .kind).flatMap(Kind.init(rawValue:)) ?? .file
+        problem = c.lossy(String.self, .problem).flatMap { $0.isEmpty ? nil : $0 }
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -458,6 +473,9 @@ public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
         try c.encode(CoreDate.format(modified), forKey: .modified)
         try c.encode(size, forKey: .size)
         try c.encode(settled, forKey: .settled)
+        try c.encodeIfPresent(readyAt.map(CoreDate.format), forKey: .readyAt)
+        try c.encode(kind, forKey: .kind)
+        try c.encodeIfPresent(problem, forKey: .problem)
     }
 }
 

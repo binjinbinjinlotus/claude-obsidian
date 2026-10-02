@@ -20,6 +20,17 @@ schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
   configurable in Settings → Batch; an explicit value is always honored): a
   file must be unmodified that long
   before it is batched.
+- **Notes skip the wait.** Every file of a note written by `addNote` (the
+  `.md`, its `<stem>.distill.json` manifest and the images the manifest lists)
+  is ready at once, so the next batch takes the whole set together
+  (`noteSetPaths`, `readyFiles` in `core/src/engine/queue.ts`).
+- **Problems**: a file the core can't read is marked with `problem` and left
+  out of batches (even Process now) until the user removes it.
+- Queue entries (`QueueEntry`): `settled`; `readyAt` = modified +
+  `settleSeconds`, rounded up to the second, absent once ready; `kind`
+  (`note` for every file of a note set, else `file`); `problem` (a reason).
+  The core re-emits the queue only when an entry changes (for example
+  `settled` flips), so clients never need a ticking timer.
 - The queue may not be inside the vault's `.raw/` or `.vault-meta/`.
 - **Remove** (`removeQueueEntry(path)`, `DELETE /v1/queue/entries`): moves a
   pending file of the active queue folder to the user's Trash (`~/.Trash`,
@@ -27,6 +38,26 @@ schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
   its `.md`. Refused for paths outside the folder, folders and symlinks
   (`invalid_request`) and, when the queue is the inbox, files a batch already
   took (`invalid_state`).
+
+## Queue screen
+
+Canvas: "Queue rows: every state" and Main. Code: `QueueView` in
+`MainView.swift`, `QueueRowViews.swift`, formatting in
+`DistillKit/QueueRows.swift`. Nothing on this screen ticks.
+
+- Header: "N sources in the queue" and **Next batch at 5:30 AM · every 2
+  hours** (a clock time; it changes only when the schedule does). When the
+  window is narrow (900 pt) the Drop files | Write a note switch and Process
+  now move under the title instead of squeezing it.
+- Row meta line: **Pasted at 3:04 AM** (Screenshot/Clipping files made by
+  paste intake), **Dropped at …** (anything else), **Written note · Added at
+  …** (notes). Another day adds the date ("Sep 3 at 2:12 AM").
+- Status pills: **Ready at 3:14 AM** (gray; tooltip explains the wait and that
+  Process now skips it), **Ready** (green; notes are Ready immediately), **In
+  batch** (blue; the row is locked, no ×), **Next batch** (gray; added while
+  a batch runs), **Couldn’t read** (peach; the core's reason in the tooltip).
+- A note shows as one row (its title); the `.distill.json` sidecar is hidden
+  (× on the note removes it with the `.md`). Right-click → Show in Finder.
 
 ## Schedule
 

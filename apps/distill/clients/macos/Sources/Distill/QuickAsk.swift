@@ -3,106 +3,53 @@ import Combine
 import SwiftUI
 import DistillKit
 
-/// The quick ask window beside the flask (canvas: "Quick actions from the
-/// floating flask" panels 2 and 4, "Loading states" panel 2). Esc closes the
-/// window but not the run: the flask shows a green ring until the answer is
-/// seen, and clicking the flask reopens the window.
+/// The quick ask window (canvas: "Quick actions from the floating flask"
+/// panels 2 and 4, "Quick windows: size, growth and scrolling"). Opens
+/// centered like Spotlight and grows with the answer; past the screen's limit
+/// only the answer scrolls. × and Esc close the window but not the run: the
+/// flask shows a green ring until the answer is seen, and clicking the flask
+/// reopens the window.
 @MainActor
 final class QuickAskController {
-    private let panel: QuickPanel
+    private let sizer: QuickWindowSizer
     private let engine: AppModel
-    private var resizeObserver: AnyCancellable?
-    /// The window grows away from the flask: upward when it sits above it.
-    private var growsUp = true
 
-    var isVisible: Bool { panel.isVisible }
+    var isVisible: Bool { sizer.window.isVisible }
 
     init(engine: AppModel, onContinue: @escaping () -> Void) {
         self.engine = engine
-        panel = QuickPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 300),
-                           styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.isFloatingPanel = true
-        panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.hidesOnDeactivate = false
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = false
-        panel.isMovableByWindowBackground = true
+        let panel = QuickWindow(width: QuickWindowGeometry.defaultWidth)
+        sizer = QuickWindowSizer(window: panel, sizeKey: "distill.quickAsk.size")
         let ask = engine.ask
-        let host = FirstMouseHostingView(rootView: QuickAskView(
+        panel.onCancel = { [weak panel, weak engine] in
+            panel?.orderOut(nil)
+            engine?.ask.quickVisible = false
+        }
+        sizer.setContent(QuickAskView(
             close: { [weak panel] in panel?.cancelOperation(nil) },
             continueInDistill: {
                 ask.continueInMain()
                 onContinue()
-            })
+            },
+            onDesiredHeight: { [weak sizer] h in sizer?.contentHeight(h) })
             .environmentObject(engine)
             .environmentObject(ask))
-        panel.contentView = host
-        panel.onClose = { [weak engine] in engine?.ask.quickVisible = false }
-        // The answer replaces the shimmer, chips wrap: follow the content's size.
-        resizeObserver = ask.objectWillChange
-            .debounce(for: .milliseconds(30), scheduler: RunLoop.main)
-            .sink { [weak self] _ in MainActor.assumeIsolated { self?.fitToContent() } }
     }
 
-    private func fitToContent() {
-        guard panel.isVisible, let content = panel.contentView else { return }
-        content.layoutSubtreeIfNeeded()
-        let size = content.fittingSize
-        var frame = panel.frame
-        guard abs(frame.height - size.height) > 0.5 || abs(frame.width - size.width) > 0.5 else { return }
-        if !growsUp { frame.origin.y += frame.height - size.height } // keep the top edge
-        frame.size = size
-        if let visible = panel.screen?.visibleFrame {
-            frame.origin.y = min(max(frame.origin.y, visible.minY + 8), visible.maxY - size.height - 8)
-        }
-        panel.setFrame(frame, display: true, animate: false)
-    }
-
-    /// Shows the window next to `anchor` (the flask's frame), toward the screen center.
+    /// Opens on the screen of `anchor` (the flask's frame, from the hover menu) or of the pointer.
     func show(near anchor: NSRect?) {
         engine.ask.prepareQuickAsk()
         engine.ask.refresh()
         engine.ask.quickVisible = true
-        panel.layoutIfNeeded()
-        let size = panel.contentView?.fittingSize ?? NSSize(width: 420, height: 260)
-        panel.setContentSize(size)
-        let screen = anchor.flatMap { a in NSScreen.screens.first { $0.frame.intersects(a) } } ?? NSScreen.main
-        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        var origin: NSPoint
-        if let a = anchor {
-            let toLeft = a.midX > visible.midX
-            let x = toLeft ? a.maxX - 12 - size.width : a.minX + 12
-            let above = a.midY < visible.midY
-            growsUp = above
-            let y = above ? a.maxY - 4 : a.minY + 4 - size.height
-            origin = NSPoint(x: x, y: y)
-        } else {
-            origin = NSPoint(x: visible.midX - size.width / 2, y: visible.midY)
+        if !sizer.window.isVisible {
+            sizer.window.contentView?.layoutSubtreeIfNeeded()
+            sizer.open(on: QuickWindowSizer.screen(near: anchor))
         }
-        origin.x = min(max(origin.x, visible.minX + 8), visible.maxX - size.width - 8)
-        origin.y = min(max(origin.y, visible.minY + 8), visible.maxY - size.height - 8)
-        panel.setFrameOrigin(origin)
         // A non-activating panel takes typing without bringing Distill's other windows forward.
-        panel.makeKeyAndOrderFront(nil)
+        sizer.window.makeKeyAndOrderFront(nil)
     }
 
-    func hide() { panel.cancelOperation(nil) }
-}
-
-/// Borderless panel that can take typing; Esc hides it (the run keeps going).
-final class QuickPanel: NSPanel {
-    var onClose: (() -> Void)?
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
-    override func cancelOperation(_ sender: Any?) {
-        orderOut(nil)
-        MainActor.assumeIsolated { onClose?() }
-    }
-    override func resignKey() {
-        super.resignKey()
-    }
+    func hide() { sizer.window.cancelOperation(nil) }
 }
 
 /// Hosting view whose first click acts (non-activating panels).
@@ -115,10 +62,10 @@ struct QuickAskView: View {
     @EnvironmentObject var ask: AskModel
     var close: () -> Void = {}
     var continueInDistill: () -> Void = {}
+    var onDesiredHeight: (CGFloat) -> Void = { _ in }
 
     var body: some View {
-        QuickAskCard(thread: ask.quick, close: close, continueInDistill: continueInDistill)
-            .padding(24) // room for the shadow
+        QuickAskCard(thread: ask.quick, close: close, continueInDistill: continueInDistill, onDesiredHeight: onDesiredHeight)
     }
 }
 
@@ -128,20 +75,28 @@ struct QuickAskCard: View {
     @ObservedObject var thread: AskThread
     var close: () -> Void
     var continueInDistill: () -> Void
+    var onDesiredHeight: (CGFloat) -> Void = { _ in }
+    /// Snapshots only (see QuickShell).
+    var snapshotHeight: CGFloat? = nil
+    /// Snapshots only: older fixtures (SnapshotAsk) frame the card at 400 pt.
+    var snapshotWidth: CGFloat = 400
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            questionRow
-            if !thread.isRunning { chips }
-            if thread.filter.showsUnconfirmedToggle && !thread.isRunning { scopeBox }
-            content
+        QuickShell(title: "Quick ask", close: close, onDesiredHeight: onDesiredHeight, snapshotHeight: snapshotHeight,
+                   snapshotWidth: snapshotWidth) {
+            VStack(alignment: .leading, spacing: 12) {
+                questionRow
+                if !thread.isRunning { chips }
+                if thread.filter.showsUnconfirmedToggle && !thread.isRunning { scopeBox }
+            }
+        } top: {
+            VStack(alignment: .leading, spacing: 12) { content }
+        } bottom: {
+            EmptyView()
+        } footer: {
             footer
         }
-        .padding(16)
-        .frame(width: 400, alignment: .leading)
         .onExitCommand(perform: close)
-        .background(RoundedRectangle(cornerRadius: 20).fill(Color.white)
-            .shadow(color: .black.opacity(0.22), radius: 20, y: 18))
     }
 
     // The field shows the last question while it runs or once answered.
@@ -210,8 +165,8 @@ struct QuickAskCard: View {
             switch pending.status {
             case .running:
                 VStack(alignment: .leading, spacing: 8) {
-                    Shimmer(width: 350, height: 10)
-                    Shimmer(width: 250, height: 10)
+                    Shimmer(width: 300, height: 10)
+                    Shimmer(width: 220, height: 10)
                 }
                 .padding(.vertical, 2)
             default:
@@ -222,7 +177,6 @@ struct QuickAskCard: View {
             AnswerText(answer: Self.short(r.answer), size: 14) { n in
                 if let c = r.citations.first(where: { $0.n == n }) { ask.openCitation(c) }
             }
-            .lineLimit(6)
             if !r.citations.isEmpty {
                 FlowLayout(spacing: 8) {
                     ForEach(Array(r.citations.prefix(3).enumerated()), id: \.offset) { i, c in
@@ -235,7 +189,8 @@ struct QuickAskCard: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
+            MarkdownBarToggle()
             footerNote.font(Theme.body(11)).foregroundStyle(Theme.faint).lineLimit(1)
             Spacer(minLength: 8)
             if thread.isRunning {
@@ -268,10 +223,10 @@ struct QuickAskCard: View {
         return AnyView(Text("\(engine.activeVault?.name ?? "Vault") · \(model) · Esc to close"))
     }
 
-    /// The first paragraph, for the small window.
+    /// The first paragraph, for the small window (the window grows to fit it, then the answer scrolls).
     static func short(_ answer: String) -> String {
         let first = answer.components(separatedBy: "\n\n").first ?? answer
-        return first.count > 420 ? String(first.prefix(420)) + "…" : first
+        return first.count > 1600 ? String(first.prefix(1600)) + "…" : first
     }
 }
 

@@ -2,15 +2,18 @@ import AppKit
 import SwiftUI
 import DistillKit
 
-/// The quick-note window beside the floating flask (canvas: "Quick actions",
-/// panels 3 and 5). Opened by `distill.openQuickNote` (hover menu, shortcut).
-/// Same rules as the composer; after Add to queue it turns into the label
-/// step in place and closes once labels are applied or skipped.
+/// The quick-note window (canvas: "Quick actions" panels 3 and 5, "Quick
+/// windows: size, growth and scrolling"). Opened by `distill.openQuickNote`
+/// (hover menu, shortcut). Opens centered like Spotlight, grows with the note,
+/// and after Add to queue turns into the label step in place; it closes once
+/// labels are applied or skipped. × and Esc during the label step are Skip.
 @MainActor
-final class QuickNoteController: NSObject, NSWindowDelegate {
+final class QuickNoteController: NSObject {
     static let shared = QuickNoteController()
+    /// Set by the hover menu: open on the flask's screen instead of the pointer's.
+    static var anchor: NSRect?
 
-    private var panel: QuickNotePanel?
+    private var sizer: QuickWindowSizer?
     private weak var engine: AppModel?
     private var observer: NSObjectProtocol?
 
@@ -24,78 +27,44 @@ final class QuickNoteController: NSObject, NSWindowDelegate {
 
     func show() {
         guard let engine else { return }
-        if panel == nil {
-            let panel = QuickNotePanel(
-                contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
-                styleMask: [.titled, .closable, .fullSizeContentView, .nonactivatingPanel],
-                backing: .buffered, defer: false)
-            panel.titleVisibility = .hidden
-            panel.titlebarAppearsTransparent = true
-            panel.standardWindowButton(.closeButton)?.isHidden = true
-            panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
-            panel.standardWindowButton(.zoomButton)?.isHidden = true
-            panel.isFloatingPanel = true
-            panel.level = .floating
-            panel.hidesOnDeactivate = false
-            panel.isReleasedWhenClosed = false
-            panel.isMovableByWindowBackground = true
-            panel.backgroundColor = .white
-            panel.appearance = NSAppearance(named: .aqua)
-            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            panel.delegate = self
+        if sizer == nil {
+            let panel = QuickNotePanel(width: QuickWindowGeometry.defaultWidth)
             panel.engine = engine
-            let host = NSHostingController(rootView: QuickNoteView(close: { [weak self] in self?.close() })
+            panel.onCancel = { [weak self] in self?.close() }
+            let sizer = QuickWindowSizer(window: panel, sizeKey: "distill.quickNote.size")
+            sizer.setContent(QuickNoteView(close: { [weak self] in self?.close() },
+                                           onDesiredHeight: { [weak sizer] h in sizer?.contentHeight(h) },
+                                           focusText: { [weak panel] in NoteEditorFocus.focus(in: panel) })
                 .environmentObject(engine))
-            host.sizingOptions = [.preferredContentSize]
-            panel.contentViewController = host
-            self.panel = panel
+            self.sizer = sizer
         }
-        guard let panel else { return }
-        position(panel)
+        guard let sizer else { return }
+        let anchor = Self.anchor
+        Self.anchor = nil
+        if !sizer.window.isVisible {
+            sizer.window.contentView?.layoutSubtreeIfNeeded()
+            sizer.open(on: QuickWindowSizer.screen(near: anchor))
+        }
         NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
+        sizer.window.makeKeyAndOrderFront(nil)
     }
 
+    /// × and Esc: during the label step this is Skip (the note stays queued, unlabeled).
     func close() {
-        panel?.orderOut(nil)
+        sizer?.window.orderOut(nil)
         finishStep()
     }
 
-    func windowWillClose(_ notification: Notification) { finishStep() }
-
-    /// Closing (Esc, ×) during the label step is a Skip: the note stays queued, unlabeled.
     private func finishStep() {
         guard let engine, let step = engine.notes.steps[.quick] else { return }
         if step.phase == .applying { return }
         engine.closeLabelStep(.quick)
     }
-
-    /// Beside the flask, toward the screen center; bottom-right of the screen without one.
-    private func position(_ panel: NSPanel) {
-        let size = panel.frame.size
-        let flask = NSApp.windows.first { $0.contentView is FloatingIconView && $0.isVisible }?.frame
-        let screen = (flask.flatMap { f in NSScreen.screens.first { $0.frame.intersects(f) } } ?? NSScreen.main)?.visibleFrame
-            ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        var origin: NSPoint
-        if let f = flask {
-            let left = f.midX > screen.midX
-            origin = NSPoint(x: left ? f.minX - size.width - 4 : f.maxX + 4, y: f.minY + 12)
-        } else {
-            origin = NSPoint(x: screen.maxX - size.width - 24, y: screen.minY + 110)
-        }
-        origin.x = min(max(origin.x, screen.minX + 8), screen.maxX - size.width - 8)
-        origin.y = min(max(origin.y, screen.minY + 8), screen.maxY - size.height - 8)
-        panel.setFrameOrigin(origin)
-    }
 }
 
 /// Key handling for the quick note: ⌘V adds an image, ⌘↩ saves or applies, Esc closes.
-final class QuickNotePanel: NSPanel {
+final class QuickNotePanel: QuickWindow {
     weak var engine: AppModel?
-
-    override var canBecomeKey: Bool { true }
-
-    override func cancelOperation(_ sender: Any?) { close() }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -121,27 +90,52 @@ final class QuickNotePanel: NSPanel {
 struct QuickNoteView: View {
     @EnvironmentObject var engine: AppModel
     let close: () -> Void
+    var onDesiredHeight: (CGFloat) -> Void = { _ in }
+    var focusText: () -> Void = {}
+    /// Snapshots only (see QuickShell).
+    var snapshotHeight: CGFloat? = nil
 
     var body: some View {
-        QuickNoteBody(notes: engine.notes, close: close)
+        QuickNoteBody(notes: engine.notes, close: close, onDesiredHeight: onDesiredHeight, focusText: focusText,
+                      snapshotHeight: snapshotHeight)
     }
 }
 
-/// Panel content (also rendered by `--snapshot`).
+/// Window content (also rendered by `--snapshot`).
 struct QuickNoteBody: View {
     @EnvironmentObject var engine: AppModel
     @ObservedObject var notes: NotesStore
     let close: () -> Void
+    var onDesiredHeight: (CGFloat) -> Void = { _ in }
+    var focusText: () -> Void = {}
+    var snapshotHeight: CGFloat? = nil
     private let owner = ComposeOwner.quick
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let step = notes.steps[owner] { labelStep(step) } else { composer }
+        Group {
+            if let step = notes.steps[owner] {
+                QuickShell(title: "Quick note", close: close, onDesiredHeight: onDesiredHeight, snapshotHeight: snapshotHeight) {
+                    EmptyView()
+                } top: {
+                    VStack(alignment: .leading, spacing: 12) { labelStep(step) }
+                } bottom: {
+                    EmptyView()
+                } footer: {
+                    labelFooter(step)
+                }
+            } else {
+                QuickShell(title: "Quick note", close: close, onDesiredHeight: onDesiredHeight, onSpareTap: focusText,
+                           snapshotHeight: snapshotHeight) {
+                    EmptyView()
+                } top: {
+                    composerTop
+                } bottom: {
+                    composerBottom
+                } footer: {
+                    composerFooter
+                }
+            }
         }
-        .padding(16)
-        .frame(width: 400)
-        .background(Color.white)
-        .foregroundStyle(Theme.ink)
         .onChange(of: notes.steps[owner]?.phase) { _, phase in
             if phase == .applied {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { close() }
@@ -151,45 +145,69 @@ struct QuickNoteBody: View {
 
     // MARK: Before queueing (panel 3)
 
-    @ViewBuilder private var composer: some View {
+    /// Title (wraps to 2 lines, then scrolls in its field), the note text and the source.
+    @ViewBuilder private var composerTop: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            QuickTitleField(text: binding(\.title))
+            BareTextEditor(placeholder: "Write a note…", text: binding(\.text), font: Theme.body(13), minHeight: 40, maxHeight: .infinity)
+                .padding(0)
+            SourcePickerRow(draft: binding(\.self), compact: true)
+        }
+    }
+
+    /// Images (in the same scroll area as the text) and the error line.
+    @ViewBuilder private var composerBottom: some View {
         let draft = notes.draft(owner)
-        BareTextField(placeholder: "Title", text: binding(\.title), font: .system(size: 17, weight: .semibold, design: .rounded))
-        BareTextEditor(placeholder: "Write a note…", text: binding(\.text), font: Theme.body(13), minHeight: 40)
-            .padding(0)
-        SourcePickerRow(draft: binding(\.self), compact: true)
-        ForEach(draft.images) { image in
-            HStack(spacing: 10) {
-                ComposeImagePreview(image: image, mode: image.mode)
-                    .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 10))
-                Text(image.name).font(Theme.body(12, .semibold)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                ImageModeSwitch(mode: image.mode, height: 26, font: Theme.body(11, .bold), compact: true) { mode in
-                    engine.updateDraft(owner) { d in if let i = d.images.firstIndex(where: { $0.id == image.id }) { d.images[i].mode = mode } }
+        if !draft.images.isEmpty || notes.addErrors[owner] != nil {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(draft.images) { image in
+                    HStack(spacing: 10) {
+                        ComposeImagePreview(image: image, mode: image.mode)
+                            .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 10))
+                        Text(image.name).font(Theme.body(12, .semibold)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                        ImageModeSwitch(mode: image.mode, height: 26, font: Theme.body(11, .bold), compact: true) { mode in
+                            engine.updateDraft(owner) { d in if let i = d.images.firstIndex(where: { $0.id == image.id }) { d.images[i].mode = mode } }
+                        }
+                        .fixedSize()
+                        Button { engine.updateDraft(owner) { $0.images.removeAll { $0.id == image.id } } } label: {
+                            Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.faint)
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("Remove \(image.name)")
+                    }
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(Theme.panel))
                 }
-                .fixedSize()
-                Button { engine.updateDraft(owner) { $0.images.removeAll { $0.id == image.id } } } label: {
-                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.faint)
+                if let error = notes.addErrors[owner] {
+                    HStack(alignment: .top, spacing: 6) {
+                        Text("!").font(Theme.body(11, .heavy))
+                        Text(error).fixedSize(horizontal: false, vertical: true)
+                    }
+                    .font(Theme.body(11)).foregroundStyle(Theme.peachInk)
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Color(hex: 0xFFF4EE)))
                 }
-                .buttonStyle(.plain).accessibilityLabel("Remove \(image.name)")
             }
-            .padding(8)
-            .background(RoundedRectangle(cornerRadius: 14).fill(Theme.panel))
         }
-        if let error = notes.addErrors[owner] {
-            Text(error).font(Theme.body(11)).foregroundStyle(Theme.peachInk)
-        }
-        HStack(spacing: 10) {
-            Text("⌘V adds an image · ⌘↩ saves").font(Theme.body(11)).foregroundStyle(Theme.faint)
+    }
+
+    private var composerFooter: some View {
+        let draft = notes.draft(owner)
+        return HStack(spacing: 10) {
+            MarkdownBarToggle()
+            Text("⌘V adds an image · ⌘↩ saves").font(Theme.body(11)).foregroundStyle(Theme.faint).lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button { engine.addNote(owner) } label: {
                 HStack(spacing: 6) {
                     if notes.adding.contains(owner) { Spinner(color: .white, size: 12) }
-                    Text("Add to queue").font(Theme.body(13, .semibold))
+                    Text(notes.addErrors[owner] != nil ? "Try again" : "Add to queue").font(Theme.body(13, .semibold)).lineLimit(1)
                 }
                 .padding(.horizontal, 16).frame(height: 34)
                 .foregroundStyle(.white)
                 .background(Capsule().fill(Theme.primary))
             }
             .buttonStyle(.plain)
+            .fixedSize()
             .disabled(draft.blocker != nil || notes.adding.contains(owner))
             .opacity(draft.blocker == nil ? 1 : 0.5)
         }
@@ -246,17 +264,20 @@ struct QuickNoteBody: View {
         }
 
         LabelStepChips(engine: engine, owner: owner, step: step, inline: false)
+    }
 
+    @ViewBuilder private func labelFooter(_ step: LabelStep) -> some View {
         HStack(spacing: 10) {
+            MarkdownBarToggle()
             if step.phase == .suggesting {
-                AddLabelField(placeholder: "Type a label while you wait", width: 240, height: 28) { raw in
+                AddLabelField(placeholder: "Type a label while you wait", width: 200, height: 28) { raw in
                     var ok = false
                     engine.editStep(owner) { ok = $0.add(raw) }
                     return ok
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                Text("Skip leaves it unlabeled → Labels").font(Theme.body(11)).foregroundStyle(Theme.faint)
+                Text("Skip leaves it unlabeled → Labels").font(Theme.body(11)).foregroundStyle(Theme.faint).lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             SmallButton(title: "Skip", height: 32) { engine.skipLabels(owner); close() }
@@ -266,13 +287,31 @@ struct QuickNoteBody: View {
                     .disabled(!step.canApply).opacity(step.canApply || step.phase == .applying ? 1 : 0.5)
             }
         }
-        .padding(.top, 4)
-        .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1).offset(y: -4) }
     }
 
     private func binding<T>(_ path: WritableKeyPath<ComposeDraft, T>) -> Binding<T> {
         Binding(get: { notes.draft(owner)[keyPath: path] },
                 set: { value in engine.updateDraft(owner) { $0[keyPath: path] = value } })
+    }
+}
+
+/// The quick note's title: wraps to 2 lines, then scrolls inside its own field.
+struct QuickTitleField: View {
+    @Binding var text: String
+    @Environment(\.snapshotMode) private var snapshot
+    private let font = Font.system(size: 17, weight: .semibold, design: .rounded)
+
+    var body: some View {
+        if snapshot {
+            Text(text.isEmpty ? "Title" : text).font(font).lineLimit(2)
+                .foregroundStyle(text.isEmpty ? Theme.faint : Theme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            TextField("Title", text: $text, axis: .vertical)
+                .textFieldStyle(.plain).font(font).lineLimit(1...2)
+                .frame(maxWidth: .infinity, alignment: .leading) // wraps instead of widening the window
+        }
     }
 }
 

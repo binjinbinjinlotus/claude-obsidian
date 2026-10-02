@@ -18,12 +18,13 @@ struct AddModeSwitch: View {
         .background(Capsule().fill(Theme.panel))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Add mode")
+        .fixedSize() // never wraps: "Drop files | Write a note" keeps one line at any window width
     }
 
     private func item(_ m: AddMode, _ title: String) -> some View {
         let on = mode == m
         return Button { mode = m } label: {
-            Text(title).font(Theme.body(13, .semibold))
+            Text(title).font(Theme.body(13, .semibold)).lineLimit(1).fixedSize()
                 .padding(.horizontal, 16).frame(height: 32)
                 .foregroundStyle(on ? Theme.ink : Theme.muted)
                 .background(Capsule().fill(on ? Color.white : .clear).shadow(color: .black.opacity(on ? 0.1 : 0), radius: 1.5, y: 1))
@@ -59,7 +60,8 @@ private struct ComposeScreenBody: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 16) {
-                Text("Add to your vault").font(Theme.display(30)).frame(maxWidth: .infinity, alignment: .leading)
+                Text("Add to your vault").font(Theme.display(30)).lineLimit(1).minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 AddModeSwitch(mode: $mode)
             }
             card
@@ -73,33 +75,40 @@ private struct ComposeScreenBody: View {
 
     // MARK: Card
 
+    /// The card fills the space between the header and the footer. The note box
+    /// takes the card's spare height (never a blank gap under the images); in a
+    /// short window it keeps 4 lines and the whole card scrolls with an overlay
+    /// bar and a fade (canvas: "Write a note: size and scrolling").
     private var card: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        ComposeCardLayout(snapshot: snapshot, minEditor: ComposeSizing.minEditorHeight) {
+            BareTextField(placeholder: "Title", text: binding(\.title),
+                          font: .system(size: 22, weight: .semibold, design: .rounded))
+                .disabled(step != nil)
+        } editor: {
             Group {
-                BareTextField(placeholder: "Title", text: binding(\.title),
-                              font: .system(size: 22, weight: .semibold, design: .rounded))
                 BareTextEditor(placeholder: "Write what you want to remember…", text: binding(\.text), font: Theme.body(15), minHeight: 52)
                     .padding(0)
             }
             .disabled(step != nil)
-            VStack(alignment: .leading, spacing: 10) {
-                SourcePickerRow(draft: binding(\.self), compact: false)
-                    .disabled(step != nil)
-                labelsRow
+        } bottom: {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 10) {
+                    SourcePickerRow(draft: binding(\.self), compact: false)
+                        .disabled(step != nil)
+                    labelsRow
+                }
+                .padding(.horizontal, 14).padding(.vertical, 12)
+                .background(RoundedRectangle(cornerRadius: 16).fill(Theme.panel))
+                images.disabled(step != nil)
+                if let error = notes.addErrors[owner] {
+                    Label(error, systemImage: "exclamationmark.circle.fill")
+                        .font(Theme.body(12)).foregroundStyle(Theme.peachInk)
+                }
             }
-            .padding(.horizontal, 14).padding(.vertical, 12)
-            .background(RoundedRectangle(cornerRadius: 16).fill(Theme.panel))
-            images.disabled(step != nil)
-            if let error = notes.addErrors[owner] {
-                Label(error, systemImage: "exclamationmark.circle.fill")
-                    .font(Theme.body(12)).foregroundStyle(Theme.peachInk)
-            }
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 26).padding(.vertical, 22)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(RoundedRectangle(cornerRadius: 22).fill(dropTargeted ? Theme.primaryTint.opacity(0.4) : Color.white))
         .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(dropTargeted ? Theme.primary : Theme.border, lineWidth: 1.5))
+        .clipShape(RoundedRectangle(cornerRadius: 22))
         .compositingGroup()
         .shadow(color: Color(hex: 0x1D1C1A).opacity(0.05), radius: 15, y: 10)
         .modifier(ComposeDropModifier(enabled: !snapshot, targeted: $dropTargeted) { providers in
@@ -125,8 +134,9 @@ private struct ComposeScreenBody: View {
         .frame(minHeight: 26)
     }
 
+    /// Image tiles wrap onto more rows instead of widening the window.
     private var images: some View {
-        HStack(alignment: .top, spacing: 16) {
+        FlowLayout(spacing: 16) {
             ForEach(draft.images) { image in
                 ComposeImageCard(image: image,
                                  setMode: { mode in engine.updateDraft(owner) { d in
@@ -141,8 +151,7 @@ private struct ComposeScreenBody: View {
                     Text("or paste ⌘V").font(Theme.body(11, .medium)).foregroundStyle(Theme.faint)
                 }
                 .foregroundStyle(Theme.primary)
-                .frame(width: 130)
-                .frame(minHeight: draft.images.isEmpty ? 84 : 168)
+                .frame(width: 130, height: draft.images.isEmpty ? 84 : 168)
                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color(hex: 0xD6D3CC), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5])))
                 .contentShape(Rectangle())
             }
@@ -178,7 +187,7 @@ private struct ComposeScreenBody: View {
                 }
             } else {
                 Text(draft.blocker ?? draft.summary + (engine.suggestLabelsAfterQueue ? " Labels are suggested once it is queued." : ""))
-                    .font(Theme.body(13)).foregroundStyle(Theme.muted)
+                    .font(Theme.body(13)).foregroundStyle(Theme.muted).lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 SoftButton(title: "Discard") { engine.discardDraft(owner) }
                     .disabled(draft.isEmpty)
@@ -408,7 +417,7 @@ struct ComposeImageCard: View {
             .padding(.horizontal, 4)
         }
         .padding(10)
-        .frame(width: 300)
+        .frame(width: 240) // two tiles side by side even at the minimum window width; more wrap
         .background(RoundedRectangle(cornerRadius: 18).fill(Theme.panel))
     }
 }

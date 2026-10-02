@@ -103,14 +103,75 @@ export function isSettled(e: ScanEntry, settleSeconds: number, now: Date): boole
   return (now.getTime() - e.modifiedMs) / 1000 >= settleSeconds;
 }
 
-export function toQueueEntry(e: ScanEntry, settleSeconds: number, now: Date): QueueEntry {
-  return {
+/** Same as NOTE_MANIFEST_SUFFIX in job-kinds.ts (kept here so queue.ts stays import-free). */
+const MANIFEST_SUFFIX = '.distill.json';
+
+/**
+ * Paths of every file that belongs to a note written by addNote: the
+ * `<stem>.distill.json` manifest, its `<stem>.md` and the images it lists.
+ * A note is complete when it is queued, so the whole set skips the settle
+ * wait (and a batch never takes the note without its manifest or images).
+ */
+export function noteSetPaths(entries: ScanEntry[]): Set<string> {
+  const byName = new Map(entries.map((e) => [e.name, e.path]));
+  const out = new Set<string>();
+  for (const e of entries) {
+    if (!e.name.endsWith(MANIFEST_SUFFIX)) continue;
+    out.add(e.path);
+    const stem = e.name.slice(0, -MANIFEST_SUFFIX.length);
+    const note = byName.get(`${stem}.md`);
+    if (note) out.add(note);
+    let images: unknown = [];
+    try {
+      images = (JSON.parse(fs.readFileSync(e.path, 'utf8')) as { images?: unknown }).images;
+    } catch {
+      // An unreadable manifest still marks its note; its images wait like other files.
+    }
+    if (!Array.isArray(images)) continue;
+    for (const img of images) {
+      const file = (img as { file?: unknown } | null)?.file;
+      const p = typeof file === 'string' ? byName.get(file) : undefined;
+      if (p) out.add(p);
+    }
+  }
+  return out;
+}
+
+/** Why the core can't use a queued file, or undefined. Narrow on purpose: today only "can't read it". */
+export function queueProblem(e: ScanEntry): string | undefined {
+  try {
+    fs.accessSync(e.path, fs.constants.R_OK);
+    return undefined;
+  } catch {
+    return "Distill can't read this file. Check its permissions, or remove it.";
+  }
+}
+
+/**
+ * Files a batch may take now: settled ones and every note set, minus files
+ * with a problem (they stay in the queue, marked, until the user removes them).
+ */
+export function readyFiles(entries: ScanEntry[], settleSeconds: number, now: Date): ScanEntry[] {
+  const notes = noteSetPaths(entries);
+  return entries.filter((e) => (notes.has(e.path) || isSettled(e, settleSeconds, now)) && !queueProblem(e));
+}
+
+export function toQueueEntry(e: ScanEntry, settleSeconds: number, now: Date, notes: Set<string> = new Set()): QueueEntry {
+  const kind = notes.has(e.path) ? 'note' : 'file';
+  const settled = kind === 'note' || isSettled(e, settleSeconds, now);
+  const entry: QueueEntry = {
     path: e.path,
     name: e.name,
     modified: isoDate(new Date(e.modifiedMs)),
     size: e.size,
-    settled: isSettled(e, settleSeconds, now),
+    settled,
+    kind,
   };
+  // Rounded up to the second so the shown time is never before the file is really ready.
+  if (!settled) entry.readyAt = isoDate(new Date(Math.ceil((e.modifiedMs + settleSeconds * 1000) / 1000) * 1000));
+  const problem = queueProblem(e);
+  if (problem) entry.problem = problem;
+  return entry;
 }
 
 // ───────────── Mover ─────────────
