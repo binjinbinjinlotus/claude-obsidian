@@ -28,13 +28,15 @@ final class NotesLiveTests: XCTestCase {
             .write(to: png)
         var draft = ComposeDraft()
         draft.title = "Live note"
-        draft.text = "Gyokuro at 60 °C."
+        draft.text = "Gyokuro at 60 °C.\n![[card.png]]"
         draft.source = "in-person"
         draft.sourceRef = "#tea-club"
-        draft.images = [DraftImage(url: png, mode: .keep)]
+        draft.images = [DraftImage(url: png)]
         let result = try await client.addNote(draft.request(suggest: false, vaultPath: nil))
         XCTAssertFalse(result.requestID.isEmpty)
         XCTAssertTrue(result.queued.contains { $0.hasSuffix(".png") }, "\(result.queued)")
+        let queuedNote = try String(contentsOfFile: result.notePath, encoding: .utf8)
+        XCTAssertTrue(queuedNote.contains("![[Live note image 1.png]]"), queuedNote)
 
         var step = LabelStep(requestID: result.requestID, title: draft.effectiveTitle, suggesting: false)
         step.add("tea, Tea Shops")

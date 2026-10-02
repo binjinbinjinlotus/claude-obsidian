@@ -15,6 +15,8 @@ enum MarkdownTheme {
     static let codeFill = NSColor(hex: 0xF6F5F2)
     static let quoteBar = NSColor(hex: 0xE1DED8)
     static let selection = NSColor(hex: 0xCFE0FF)
+    /// Text just extracted from an image.
+    static let extractedFill = NSColor(hex: 0xF3FDE4)
 
     /// Line height ≈ 1.6 × the font size (13 → 21, as in the design).
     static func lineSpacing(_ size: CGFloat) -> CGFloat { round(size * 0.42) }
@@ -125,8 +127,14 @@ enum MarkdownStyler {
     /// Restyle `storage` (whose string is the Markdown) in place.
     static func apply(to storage: NSTextStorage, size: CGFloat) {
         let full = NSRange(location: 0, length: storage.length)
+        // Images inside the text are attachments: styling must not drop them.
+        var attachments: [(NSRange, Any)] = []
+        storage.enumerateAttribute(.attachment, in: full) { value, range, _ in
+            if let value { attachments.append((range, value)) }
+        }
         storage.beginEditing()
         storage.setAttributes(baseAttributes(size: size), range: full)
+        for (range, value) in attachments { storage.addAttribute(.attachment, value: value, range: range) }
         for (range, attrs) in runs(for: storage.string, size: size) where NSMaxRange(range) <= storage.length {
             var plain = attrs
             plain[.markdownTrait] = nil
