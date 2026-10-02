@@ -13,6 +13,8 @@ export interface ConversationRecord {
   vaultPath: string;
   /** cwd the session runs in (the Ask workspace, not the vault). */
   workingDirectory?: string;
+  /** Filter scope of the session ('' = all notes). A session never crosses scopes. */
+  scope?: string;
   createdAt: string;
   updatedAt: string;
   turns: number;

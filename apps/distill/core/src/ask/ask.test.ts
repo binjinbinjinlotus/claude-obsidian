@@ -371,13 +371,25 @@ test('state directory inside the vault is refused', async () => {
   await assert.rejects(svc.ask({ question: 'q' }), /must not be inside the vault/);
 });
 
-test('a conversation can switch between filtered and unfiltered and keep its session', async () => {
+test('changing the filter mid-conversation starts a new session; same filter resumes', async () => {
   const fx = fixture();
   const runner = new FakeRunner('claude-code');
   const svc = service(fx, runner);
-  const first = await svc.ask({ question: 'q', labels: ['tea'] });
-  await svc.ask({ question: 'q2', conversationID: first.conversationID });
-  const [a, b] = runner.requests;
-  assert.equal(a!.workingDirectory, b!.workingDirectory);
-  assert.deepEqual(b!.session, { resume: (a!.session as { start: string }).start });
+  const first = await svc.ask({ question: 'q' });
+  const second = await svc.ask({ question: 'q2', conversationID: first.conversationID, labels: ['Tea'] });
+  const third = await svc.ask({ question: 'q3', conversationID: first.conversationID, labels: ['#tea'] });
+  const fourth = await svc.ask({ question: 'q4', conversationID: first.conversationID, sources: ['discussion'] });
+  const fifth = await svc.ask({ question: 'q5', conversationID: first.conversationID, sources: ['slack', 'meeting', 'email', 'in-person', 'jira-comment', 'github-review'] });
+  const [a, b, c, d, e] = runner.requests;
+  assert.ok('start' in b!.session);
+  assert.notEqual((b!.session as { start: string }).start, (a!.session as { start: string }).start);
+  assert.match(second.answer, /filter changed/);
+  assert.deepEqual(c!.session, { resume: (b!.session as { start: string }).start });
+  assert.doesNotMatch(third.answer, /new session/);
+  assert.ok('start' in d!.session);
+  assert.match(fourth.answer, /filter changed/);
+  // The same expanded source set is the same scope.
+  assert.deepEqual(e!.session, { resume: (d!.session as { start: string }).start });
+  assert.doesNotMatch(fifth.answer, /new session/);
+  assert.equal(a!.workingDirectory, e!.workingDirectory);
 });

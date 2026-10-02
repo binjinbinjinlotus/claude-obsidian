@@ -11,9 +11,9 @@ import {
   type Settings,
 } from '../contracts.js';
 import { ConversationStore, KeyedMutex, type ConversationRecord } from './conversations.js';
-import { filterPages, hasFilter, readRule, scanVaultPages, type VaultPage } from './filters.js';
+import { filterPages, hasFilter, normalizeTag, readRule, scanVaultPages, type VaultPage } from './filters.js';
 import { ASK_OUTPUT_SCHEMA_TEXT, ASK_READ_ONLY_TOOLS, ASK_SYSTEM_PROMPT, buildAskPrompt } from './prompt.js';
-import { DEFAULT_SOURCE_TAXONOMY, type SourceTaxonomy } from './taxonomy.js';
+import { DEFAULT_SOURCE_TAXONOMY, expandSources, type SourceTaxonomy } from './taxonomy.js';
 
 export interface AskDeps {
   getSettings(): Settings;
@@ -80,7 +80,15 @@ export function createAskService(deps: AskDeps): AskService {
       throw new Error(`ask: productRoot "${productRoot}" is not a claude-obsidian checkout (skills/wiki-query/SKILL.md missing)`);
     }
 
-    // Session: resume unless there is none yet, or the runner or vault changed.
+    // Filters.
+    const labels = (req.labels ?? []).filter((l) => l.trim());
+    const sources = (req.sources ?? []).filter((s) => s.trim());
+    const filtered = hasFilter({ labels, sources });
+    const scope = scopeKey(labels, sources, deps.taxonomy ?? DEFAULT_SOURCE_TAXONOMY);
+
+    // Session: resume unless there is none yet, or the runner, vault or scope changed.
+    // A session never crosses filter scopes: earlier turns' page text stays in
+    // context, so resuming would let a narrower filter see unfiltered pages.
     let sessionID = record?.sessionID ?? null;
     if (record && sessionID) {
       if (record.selection.runnerID !== selection.runnerID) {
@@ -91,16 +99,17 @@ export function createAskService(deps: AskDeps): AskService {
       } else if (record.vaultPath !== vaultPath) {
         notices.push('Started a new session: the vault changed, so earlier turns are not in context.');
         sessionID = null;
+      } else if ((record.scope ?? '') !== scope) {
+        notices.push(
+          `Started a new session: the label/source filter changed, so earlier turns are not in context (a filter only limits a fresh session).`,
+        );
+        sessionID = null;
       } else if (record.workingDirectory !== undefined && record.workingDirectory !== workspace) {
         notices.push('Started a new session: the Ask workspace moved, so earlier turns are not in context.');
         sessionID = null;
       }
     }
 
-    // Filters.
-    const labels = (req.labels ?? []).filter((l) => l.trim());
-    const sources = (req.sources ?? []).filter((s) => s.trim());
-    const filtered = hasFilter({ labels, sources });
     let allowedPages: VaultPage[] | undefined;
     if (filtered) {
       const pages = await scanVaultPages(vaultPath);
@@ -110,7 +119,7 @@ export function createAskService(deps: AskDeps): AskService {
           .filter(Boolean)
           .join(' and ');
         const answer = `No notes in the vault match ${describe}, so there is nothing to answer from. Remove or change the filters to search all notes.`;
-        await store.save(nextRecord(record, { conversationID, sessionID, selection, vaultPath, workspace, cost: 0, ran: false }));
+        await store.save(nextRecord(record, { conversationID, sessionID, selection, vaultPath, workspace, scope, cost: 0, ran: false }));
         return {
           conversationID,
           answer: withNotices(notices, answer),
@@ -161,6 +170,7 @@ export function createAskService(deps: AskDeps): AskService {
         selection,
         vaultPath,
         workspace,
+        scope,
         cost: costUSD,
         ran: true,
       }),
@@ -184,6 +194,7 @@ export function createAskService(deps: AskDeps): AskService {
       selection: ModelSelection;
       vaultPath: string;
       workspace: string;
+      scope: string;
       cost: number;
       ran: boolean;
     },
@@ -195,6 +206,7 @@ export function createAskService(deps: AskDeps): AskService {
       selection: next.selection,
       vaultPath: next.vaultPath,
       workingDirectory: next.workspace,
+      scope: next.scope,
       createdAt: previous?.createdAt ?? stamp,
       updatedAt: stamp,
       turns: (previous?.turns ?? 0) + (next.ran ? 1 : 0),
@@ -203,6 +215,14 @@ export function createAskService(deps: AskDeps): AskService {
   }
 
   return { ask };
+}
+
+/** Canonical filter scope: sorted normalized labels and expanded sources; '' when unfiltered. */
+function scopeKey(labels: string[], sources: string[], taxonomy: SourceTaxonomy): string {
+  if (!hasFilter({ labels, sources })) return '';
+  const l = [...new Set(labels.map(normalizeTag).filter(Boolean))].sort();
+  const s = sources.some((x) => x.trim()) ? [...expandSources(sources, taxonomy)].sort() : [];
+  return JSON.stringify({ labels: l, sources: s });
 }
 
 function isInside(child: string, parent: string): boolean {
