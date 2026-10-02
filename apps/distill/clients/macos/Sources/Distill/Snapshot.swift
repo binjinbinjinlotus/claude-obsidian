@@ -30,6 +30,7 @@ enum Snapshot {
             FloatingFace(dropState: DropState()).environmentObject(engine)
             FloatingFace(dropState: { let s = DropState(); s.targeted = true; return s }()).environmentObject(engine)
         }.padding(20).background(Color(hex: 0xEAE8E3)), size: CGSize(width: 260, height: 130), to: outDir.appendingPathComponent("floating.png"))
+        renderV3(engine: engine, size: size, outDir: outDir)
         exit(0)
     }
 
@@ -62,7 +63,7 @@ enum Snapshot {
         return AppModel(fixtureSettings: settings, jobs: jobs, queue: queue, status: status)
     }
 
-    private static func render<V: View>(_ view: V, size: CGSize, to url: URL) {
+    static func render<V: View>(_ view: V, size: CGSize, to url: URL) {
         let renderer = ImageRenderer(content: view.frame(width: size.width, height: size.height)
             .environment(\.colorScheme, .light).environment(\.snapshotMode, true))
         renderer.scale = 2

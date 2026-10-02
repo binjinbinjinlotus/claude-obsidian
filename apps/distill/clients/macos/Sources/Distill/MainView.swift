@@ -3,7 +3,7 @@ import SwiftUI
 import DistillKit
 
 enum Section: Hashable {
-    case queue, review, history
+    case queue, review, ask, labels, history
 }
 
 struct MainView: View {
@@ -19,19 +19,27 @@ struct MainView: View {
                 switch section {
                 case .queue: QueueView()
                 case .review: ReviewSection(selectedJob: $selectedJob)
-                case .history: HistorySection(selectedJob: $selectedJob)
+                case .ask: AskScreen()
+                case .labels: LabelsSection()
+                case .history: HistorySection(selectedJob: $selectedJob, openAsk: { section = .ask })
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.window)
         }
+        .environmentObject(engine.ask)
         .overlay(alignment: .bottom) { ErrorBanner() }
         .frame(minWidth: 900, minHeight: 600)
         .foregroundStyle(Theme.ink)
         .ignoresSafeArea()
         .onChange(of: engine.pendingApprovals.count) { old, new in
             // Jump to Review when something new needs the user.
-            if new > old { section = .review; selectedJob = engine.pendingApprovals.first?.id }
+            if new > old, section != .ask { section = .review; selectedJob = engine.pendingApprovals.first?.id }
+        }
+        .onReceive(engine.ask.$showAskRequest.dropFirst()) { _ in section = .ask }
+        .onChange(of: section) { old, _ in
+            // Keep history off: leaving the Ask screen deletes its finished chat.
+            if old == .ask { engine.ask.leave(engine.ask.main) }
         }
     }
 }
@@ -56,8 +64,12 @@ struct Sidebar: View {
             VStack(spacing: 2) {
                 navItem(.queue, "Queue", "tray", count: engine.queued.count, highlight: false)
                 navItem(.review, "Review", "checkmark.square", count: engine.pendingApprovals.count, highlight: true)
+                navItem(.ask, "Ask", "questionmark.bubble", count: 0, highlight: false)
+                navItem(.labels, "Labels", "tag", count: engine.labelsToReviewCount, highlight: false)
                 navItem(.history, "History", "clock", count: 0, highlight: false)
             }
+
+            if section == .ask { RecentQuestions(ask: engine.ask) }
 
             Spacer()
             VaultSwitcher(openSettings: openSettings)
@@ -96,6 +108,31 @@ struct Sidebar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// "Recent questions" under the nav while Ask is open (canvas: "Ask").
+struct RecentQuestions: View {
+    @ObservedObject var ask: AskModel
+
+    var body: some View {
+        let recent = ask.conversations.prefix(5)
+        if !recent.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("RECENT QUESTIONS").font(Theme.body(11, .bold)).foregroundStyle(Theme.faint).kerning(0.6)
+                    .padding(.horizontal, 12).padding(.bottom, 4)
+                ForEach(Array(recent)) { c in
+                    Button { ask.open(conversationID: c.id) } label: {
+                        Text(c.title).font(Theme.body(13)).foregroundStyle(c.id == ask.main.conversationID ? Theme.primary : Theme.softInk)
+                            .lineLimit(1).truncationMode(.tail)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 }
 
@@ -291,34 +328,105 @@ struct ReviewSection: View {
 struct HistorySection: View {
     @EnvironmentObject var engine: AppModel
     @Binding var selectedJob: String?
+    var openAsk: () -> Void = {}
+    @State private var part: HistoryPart = .jobs
+
+    enum HistoryPart: Hashable { case jobs, chats }
 
     var body: some View {
         let jobs = engine.jobs.filter { $0.state != .awaitingApproval }
         HStack(spacing: 0) {
-            Scrolling {
-                VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
                     Text("History").font(Theme.display(24))
-                        .padding(.bottom, 10)
-                    ForEach(jobs) { job in
-                        Button { selectedJob = job.id } label: {
-                            JobRow(job: job, selected: job.id == selectedJob)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    if jobs.isEmpty {
-                        Text("No jobs yet.").font(Theme.body(13)).foregroundStyle(Theme.faint).padding(.top, 8)
+                    Spacer()
+                    if part == .jobs && engine.hasFinishedJobs {
+                        Button("Clear") { engine.clearFinishedJobs() }
+                            .buttonStyle(.plain).font(Theme.body(12, .semibold)).foregroundStyle(Theme.primary)
+                            .help("Remove finished jobs from this list (the vault keeps every change)")
                     }
                 }
-                .padding(24)
+                Segmented(options: [(HistoryPart.jobs, "Jobs"), (.chats, "Ask chats")], selection: $part, height: 26)
+                Scrolling {
+                    VStack(alignment: .leading, spacing: 4) {
+                        switch part {
+                        case .jobs:
+                            if engine.isStarting {
+                                ForEach(0..<4, id: \.self) { _ in Shimmer(height: 44, radius: 12).padding(.vertical, 2) }
+                            }
+                            ForEach(jobs) { job in
+                                Button { selectedJob = job.id } label: {
+                                    JobRow(job: job, selected: job.id == selectedJob)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            if jobs.isEmpty && !engine.isStarting {
+                                Text("No jobs yet.").font(Theme.body(13)).foregroundStyle(Theme.faint).padding(.top, 8)
+                            }
+                        case .chats:
+                            AskChatList(ask: engine.ask, openAsk: openAsk)
+                        }
+                    }
+                }
             }
+            .padding(24)
             .frame(width: 300)
             .background(Theme.window)
             Divider().overlay(Theme.border)
-            if let id = selectedJob, jobs.contains(where: { $0.id == id }) {
+            if part == .jobs, let id = selectedJob, jobs.contains(where: { $0.id == id }) {
                 JobDetailView(jobID: id)
+            } else if part == .chats {
+                EmptyState(title: "Ask chats", message: engine.settings.resolvedAskPreferences.resolvedKeepHistory
+                           ? "Chats are kept \(engine.settings.resolvedAskPreferences.resolvedHistoryDays) days after their last message. Pinned chats stay."
+                           : "Keep history is off: a chat is deleted when you start a new one or leave Ask. Pinned chats stay.")
             } else {
                 EmptyState(title: "Pick a job", message: "Select a job to see what Claude did.")
             }
+        }
+    }
+}
+
+/// Ask conversations in History: open in Ask, pin, delete.
+struct AskChatList: View {
+    @ObservedObject var ask: AskModel
+    var openAsk: () -> Void
+
+    var body: some View {
+        if ask.conversations.isEmpty {
+            Text("No Ask chats yet.").font(Theme.body(13)).foregroundStyle(Theme.faint).padding(.top, 8)
+        }
+        ForEach(ask.conversations) { c in
+            HStack(spacing: 10) {
+                Button {
+                    ask.open(conversationID: c.id)
+                    openAsk()
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "bubble.left.fill").font(.system(size: 11)).foregroundStyle(Theme.primary)
+                            .frame(width: 24, height: 24).background(Circle().fill(Theme.primaryTint))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(c.title.isEmpty ? "Untitled chat" : c.title).font(Theme.body(13, .semibold)).lineLimit(1)
+                            Text("\(c.turnCount == 1 ? "1 question" : "\(c.turnCount) questions") · \(Text(c.updatedAt, style: .relative)) ago")
+                                .font(Theme.body(11)).foregroundStyle(Theme.muted)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Open in Ask")
+                Button { ask.setPinned(c.id, !c.pinned) } label: {
+                    Image(systemName: c.pinned ? "pin.fill" : "pin").font(.system(size: 11))
+                        .foregroundStyle(c.pinned ? Theme.primary : Theme.faint)
+                }
+                .buttonStyle(.plain).help(c.pinned ? "Unpin (it can then expire)" : "Pin (kept until you delete it)")
+                Button { ask.delete(c.id) } label: {
+                    Image(systemName: "trash").font(.system(size: 11)).foregroundStyle(Theme.faint)
+                }
+                .buttonStyle(.plain).help("Delete this chat")
+            }
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .background(RoundedRectangle(cornerRadius: 12).fill(c.id == ask.main.conversationID ? Theme.panel : .clear))
         }
     }
 }
