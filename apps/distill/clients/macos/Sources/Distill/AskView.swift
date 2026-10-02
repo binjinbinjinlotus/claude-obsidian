@@ -148,14 +148,18 @@ struct AskThreadView: View {
                 }
                 Spacer(minLength: 0)
             }
-            HStack(spacing: 10) {
-                QuestionField(text: $thread.draft, placeholder: placeholder, disabled: thread.isRunning) { ask.send(thread) }
-                Text("⌘↩").font(Theme.body(12)).foregroundStyle(Theme.faint)
+            // Bottom-aligned so a taller field (more lines, or Aa's bar above it) keeps Aa and Send on its last line.
+            HStack(alignment: .bottom, spacing: 10) {
+                MarkdownBarAaButton(key: MarkdownBarKeys.ask, height: 26)
+                    .padding(.bottom, 6)
+                QuestionField(text: $thread.draft, placeholder: placeholder, disabled: thread.isRunning, bar: .ask) { ask.send(thread) }
+                    .padding(.bottom, 5)
+                Text("⌘↩").font(Theme.body(12)).foregroundStyle(Theme.faint).padding(.bottom, 11)
                 SendButton(enabled: !thread.isRunning && !thread.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
                     ask.send(thread)
                 }
             }
-            .padding(.leading, 18).padding(.trailing, 8).padding(.vertical, 8)
+            .padding(.leading, 12).padding(.trailing, 8).padding(.vertical, 8)
             .background(RoundedRectangle(cornerRadius: 24).fill(thread.isRunning ? Color(hex: 0xFBFAF8) : Color.white)
                 .shadow(color: .black.opacity(0.06), radius: 9, y: 6))
             .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Theme.border, lineWidth: 1.5))

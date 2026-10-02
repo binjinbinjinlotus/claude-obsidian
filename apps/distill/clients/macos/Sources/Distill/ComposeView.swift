@@ -78,7 +78,7 @@ private struct ComposeScreenBody: View {
             Group {
                 BareTextField(placeholder: "Title", text: binding(\.title),
                               font: .system(size: 22, weight: .semibold, design: .rounded))
-                BareTextEditor(placeholder: "Write what you want to remember…", text: binding(\.text), font: Theme.body(15), minHeight: 52)
+                BareTextEditor(placeholder: "Write what you want to remember…", text: binding(\.text), font: Theme.body(15), minHeight: 52, maxHeight: .infinity, bar: .full, fillsHeight: true, textSize: 15)
                     .padding(0)
             }
             .disabled(step != nil)

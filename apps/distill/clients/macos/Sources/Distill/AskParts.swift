@@ -563,37 +563,7 @@ struct AskHaltRow: View {
     }
 }
 
-/// The question field: a TextField in the app, its placeholder in snapshots.
-struct QuestionField: View {
-    @Binding var text: String
-    let placeholder: String
-    var size: CGFloat = 15
-    var disabled = false
-    let submit: () -> Void
-    @Environment(\.snapshotMode) private var snapshot
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        if snapshot {
-            Text(text.isEmpty ? placeholder : text).font(Theme.body(size))
-                .foregroundStyle(text.isEmpty ? Theme.faint : Theme.ink)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            TextField(placeholder, text: $text, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(Theme.body(size))
-                .lineLimit(1...5)
-                // Wrap at the available width. Without this a vertical TextField
-                // asks for the full width of its text and widens the window.
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .focused($focused)
-                .disabled(disabled)
-                .onSubmit(submit)
-                .onAppear { focused = true }
-        }
-    }
-}
+// QuestionField (Markdown question text) lives in MarkdownEditor.swift.
 
 /// Round send button.
 struct SendButton: View {
