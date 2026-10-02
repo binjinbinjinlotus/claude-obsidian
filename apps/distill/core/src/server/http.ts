@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
-import type { AddNoteRequest, AskRequest, CoreEvent, DistillCore, ModelSelection, NoteImage, Settings } from '../contracts.js';
+import type { AddNoteRequest, AskRequest, CoreEvent, DistillCore, LabelMatch, ModelSelection, NoteImage, Settings } from '../contracts.js';
 
 export interface ServerOptions {
   core: DistillCore;
@@ -159,6 +159,37 @@ function optStringArray(obj: Record<string, unknown>, key: string): string[] | u
   return v as string[];
 }
 
+function optEnum<T extends string>(obj: Record<string, unknown>, key: string, allowed: readonly T[]): T | undefined {
+  const v = optString(obj, key);
+  if (v === undefined) return undefined;
+  if (!(allowed as readonly string[]).includes(v)) throw bad(`"${key}" must be one of ${allowed.map((a) => `"${a}"`).join(', ')}`);
+  return v as T;
+}
+
+function optBoolean(obj: Record<string, unknown>, key: string): boolean | undefined {
+  const v = obj[key];
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== 'boolean') throw bad(`"${key}" must be a boolean`);
+  return v;
+}
+
+/** Label names: non-empty strings, a leading "#" dropped, trimmed, de-duplicated (order kept). */
+function labelList(obj: Record<string, unknown>, key: string, required: boolean): string[] | undefined {
+  const raw = optStringArray(obj, key);
+  if (raw === undefined) {
+    if (required) throw bad(`"${key}" must be an array of strings`);
+    return undefined;
+  }
+  const out: string[] = [];
+  for (const item of raw) {
+    const name = item.trim().replace(/^#/, '').trim();
+    if (!name) throw bad(`"${key}" must not contain empty labels`);
+    if (/\s/.test(name)) throw bad(`label "${name}" must not contain spaces`);
+    if (!out.includes(name)) out.push(name);
+  }
+  return out;
+}
+
 function parseSelection(v: unknown): ModelSelection | undefined {
   if (v === undefined || v === null) return undefined;
   const o = asObject(v, false);
@@ -179,6 +210,10 @@ function parseAsk(body: unknown): AskRequest {
   if (labels) req.labels = labels;
   if (sources) req.sources = sources;
   if (vaultPath) req.vaultPath = vaultPath;
+  const labelMatch = optEnum<LabelMatch>(o, 'labelMatch', ['any', 'all']);
+  const includeUnconfirmed = optBoolean(o, 'includeUnconfirmed');
+  if (labelMatch) req.labelMatch = labelMatch;
+  if (includeUnconfirmed !== undefined) req.includeUnconfirmed = includeUnconfirmed;
   return req;
 }
 
@@ -201,7 +236,33 @@ function parseNote(body: unknown): AddNoteRequest {
   if (source) req.source = source;
   if (sourceRef) req.sourceRef = sourceRef;
   if (vaultPath) req.vaultPath = vaultPath;
+  const labels = labelList(o, 'labels', false);
+  const suggest = optEnum(o, 'suggest', ['wait', 'background', 'none'] as const);
+  const origin = optEnum(o, 'origin', ['app', 'cli'] as const);
+  if (labels) req.labels = labels;
+  if (suggest) req.suggest = suggest;
+  if (origin) req.origin = origin;
   return req;
+}
+
+function parsePaths(o: Record<string, unknown>): string[] {
+  const paths = optStringArray(o, 'paths');
+  if (!paths || paths.length === 0 || paths.some((p) => p.trim() === '')) throw bad('"paths" must be a non-empty array of non-empty strings');
+  return paths;
+}
+
+function parseConfirmItems(o: Record<string, unknown>): { path: string; labels: string[] }[] {
+  const items = o.items;
+  if (!Array.isArray(items) || items.length === 0) throw bad('"items" must be a non-empty array of {path, labels}');
+  return items.map((item) => {
+    const io = asObject(item, false);
+    return { path: reqString(io, 'path'), labels: labelList(io, 'labels', true)! };
+  });
+}
+
+/** Replace every occurrence of a secret in an error message. */
+function redact(message: string, secret: string | null | undefined): string {
+  return secret ? message.split(secret).join('[redacted]') : message;
 }
 
 /** Map an error thrown by the core to an HTTP status. Core errors may carry `status` and/or `code`. */
@@ -229,7 +290,15 @@ function coreErrorStatus(err: unknown, untyped?: { status: number; code: string 
 
 // ───────────────────────────── routing ─────────────────────────────
 
-type Handler = (ctx: { req: http.IncomingMessage; res: http.ServerResponse; params: string[]; body: () => Promise<unknown> }) => Promise<unknown>;
+type Handler = (ctx: {
+  req: http.IncomingMessage;
+  res: http.ServerResponse;
+  params: string[];
+  query: URLSearchParams;
+  body: () => Promise<unknown>;
+  /** Push request secrets here; they are removed from any error message for this request. */
+  secrets: string[];
+}) => Promise<unknown>;
 
 interface Route {
   method: string;
@@ -238,6 +307,8 @@ interface Route {
   stream?: boolean;
   /** Status for a plain Error thrown by the core on this route (precondition failures). Default: 500. */
   untyped?: { status: number; code: string };
+  /** Response status on success (default 200). */
+  status?: number;
 }
 
 const JOB_ACTIONS = ['approve', 'reply', 'allow', 'reject', 'cancel'] as const;
@@ -247,6 +318,10 @@ function buildRoutes(core: DistillCore, opts: { keepAliveMs: number; trackStream
     const job = core.getJob(id);
     if (!job) throw new HttpError(404, 'job_not_found', `no job with id "${id}"`);
     return job;
+  };
+  const vaultParam = (query: URLSearchParams) => {
+    const v = query.get('vault');
+    return v && v.trim() ? v : undefined;
   };
 
   const routes: Route[] = [
@@ -277,7 +352,91 @@ function buildRoutes(core: DistillCore, opts: { keepAliveMs: number; trackStream
         return { job: (await core.processQueue({ force: o.force === true })) ?? null };
       },
     },
-    { method: 'POST', pattern: /^\/v1\/notes$/, untyped: { status: 400, code: 'invalid_request' }, handler: async ({ body }) => core.addNote(parseNote(await body())) },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/notes$/,
+      status: 201,
+      untyped: { status: 400, code: 'invalid_request' },
+      handler: async ({ body }) => core.addNote(parseNote(await body())),
+    },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/notes\/([^/]+)\/labels$/,
+      untyped: { status: 409, code: 'invalid_state' },
+      handler: async ({ params, body }) => core.labelNote(params[0]!, labelList(asObject(await body(), false), 'labels', true)!),
+    },
+    { method: 'GET', pattern: /^\/v1\/labels$/, handler: async ({ query }) => ({ labels: await core.listLabels(vaultParam(query)) }) },
+    { method: 'GET', pattern: /^\/v1\/labels\/review$/, handler: async ({ query }) => core.labelReview(vaultParam(query)) },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/labels\/suggest$/,
+      untyped: { status: 400, code: 'invalid_request' },
+      handler: async ({ body }) => {
+        const o = asObject(await body(), false);
+        const paths = parsePaths(o);
+        const vaultPath = optString(o, 'vaultPath');
+        const selection = parseSelection(o.selection);
+        const opts: { vaultPath?: string; selection?: ModelSelection } = {};
+        if (vaultPath) opts.vaultPath = vaultPath;
+        if (selection) opts.selection = selection;
+        return { job: await core.suggestLabelsForPages(paths, opts) };
+      },
+    },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/labels\/confirm$/,
+      untyped: { status: 400, code: 'invalid_request' },
+      handler: async ({ body }) => {
+        const o = asObject(await body(), false);
+        const items = parseConfirmItems(o);
+        const vaultPath = optString(o, 'vaultPath');
+        return { job: await (vaultPath ? core.confirmLabels(items, vaultPath) : core.confirmLabels(items)) };
+      },
+    },
+    { method: 'GET', pattern: /^\/v1\/conversations$/, handler: async () => ({ conversations: await core.listConversations() }) },
+    {
+      method: 'GET',
+      pattern: /^\/v1\/conversations\/([^/]+)$/,
+      handler: async ({ params }) => {
+        const conversation = await core.getConversation(params[0]!);
+        if (!conversation) throw new HttpError(404, 'conversation_not_found', `no conversation with id "${params[0]}"`);
+        return conversation;
+      },
+    },
+    {
+      method: 'DELETE',
+      pattern: /^\/v1\/conversations\/([^/]+)$/,
+      handler: async ({ params }) => {
+        await core.deleteConversation(params[0]!);
+        return { id: params[0]!, deleted: true };
+      },
+    },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/conversations\/([^/]+)\/pin$/,
+      handler: async ({ params, body }) => {
+        const pinned = optBoolean(asObject(await body(), false), 'pinned');
+        if (pinned === undefined) throw bad('"pinned" must be a boolean');
+        return core.setConversationPinned(params[0]!, pinned);
+      },
+    },
+    { method: 'GET', pattern: /^\/v1\/runners$/, handler: async () => ({ runners: await core.listRunners() }) },
+    {
+      method: 'PUT',
+      pattern: /^\/v1\/runners\/([^/]+)\/secrets\/([^/]+)$/,
+      handler: async ({ params, body, secrets }) => {
+        // Never echo, log or include the value in an error message.
+        const o = asObject(await body(), false);
+        if (!('value' in o)) throw bad('"value" is required (a string, or null to clear)');
+        const value = o.value;
+        if (value !== null && (typeof value !== 'string' || value.trim() === '')) {
+          throw bad('"value" must be a non-empty string, or null to clear');
+        }
+        if (typeof value === 'string') secrets.push(value);
+        await core.setRunnerSecret(params[0]!, params[1]!, value);
+        return { runnerID: params[0]!, name: params[1]!, isSet: value !== null };
+      },
+    },
     { method: 'GET', pattern: /^\/v1\/jobs$/, handler: async () => ({ jobs: core.listJobs() }) },
     { method: 'GET', pattern: /^\/v1\/jobs\/([^/]+)$/, handler: async ({ params }) => requireJob(params[0]!) },
     {
@@ -370,6 +529,8 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
 
   const server = http.createServer(async (req, res) => {
     let matchedRoute: Route | undefined;
+    const secrets: string[] = [];
+    const clean = (message: string) => secrets.reduce((m, secret) => redact(m, secret), message);
     try {
       if (!isLocalHost(req.headers.host)) {
         return sendError(res, 403, 'forbidden_host', 'requests must use a local Host (127.0.0.1 or localhost)');
@@ -399,19 +560,18 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       } catch {
         throw bad('malformed path');
       }
-      const result = await hit.r.handler({ req, res, params, body: () => readBody(req, maxBody) });
+      const result = await hit.r.handler({ req, res, params, query: url.searchParams, secrets, body: () => readBody(req, maxBody) });
       if (hit.r.stream) return;
-      const status = req.method === 'POST' && pathname === '/v1/notes' ? 201 : 200;
-      sendJSON(res, status, result ?? null);
+      sendJSON(res, hit.r.status ?? 200, result ?? null);
     } catch (err) {
       if (err instanceof HttpError) {
         const close = err.status === 413;
-        sendError(res, err.status, err.code, err.message, close ? { Connection: 'close' } : {});
+        sendError(res, err.status, err.code, clean(err.message), close ? { Connection: 'close' } : {});
         if (close) res.once("finish", () => req.destroy());
         return;
       }
       const mapped = coreErrorStatus(err, matchedRoute?.untyped);
-      sendError(res, mapped.status, mapped.code, mapped.message);
+      sendError(res, mapped.status, mapped.code, clean(mapped.message));
     }
   });
   server.requestTimeout = 0; // SSE streams are long-lived; Ask can take minutes

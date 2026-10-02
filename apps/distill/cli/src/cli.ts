@@ -5,6 +5,8 @@ import { parseArgs, type ParseArgsConfig } from 'node:util';
 import type {
   AddNoteRequest,
   AddNoteResult,
+  AskConversation,
+  AskConversationSummary,
   AskRequest,
   AskResponse,
   ModelSelection,
@@ -54,10 +56,15 @@ export function cliVersion(): string {
 export const HELP = `distill: ask your notes and queue new ones for Distill
 
 Usage:
-  distill ask "<question>" [--label L]... [--source S]... [--runner R] [--model M]
-              [--effort E] [--conversation ID] [--vault PATH] [--json]
+  distill ask "<question>" [--label L]... [--match any|all] [--unconfirmed include|exclude]
+              [--source S]... [--runner R] [--model M] [--effort E] [--conversation ID]
+              [--vault PATH] [--json]
   distill note add --title T [--text "..." | --file PATH | -] [--image PATH[:extract|:keep]]...
-              [--source S] [--ref "..."] [--vault PATH] [--json]
+              [--source S] [--ref "..."] [--label L]... [--no-suggest] [--vault PATH] [--json]
+  distill note label <request-id> --label L... [--json]
+  distill history [--json]
+  distill history show <conversation-id> [--json]
+  distill history rm <conversation-id> [--json]
   distill status [--json]
   distill serve [--port N]
   distill plugin install --target claude|codex [--dry-run] [--copy] [--force] [--json]
@@ -69,12 +76,30 @@ Commands:
                 --runner/--model/--effort override the "ask" defaults from settings
                 (effort: low | medium | high | xhigh | max). --conversation ID continues
                 a previous answer's conversation. "-" as the question reads stdin.
+                --match any (a note with at least one --label) or all (every --label);
+                --unconfirmed include|exclude decides whether AI labels nobody has
+                confirmed yet count. Both default to the user's Ask settings.
+                Notices (e.g. a new session because the filter changed) are printed
+                above the answer, or returned as "notices" with --json.
   note add      Queue a written note (text, images, source) for Distill to ingest.
                 Text comes from --text, --file PATH, or "-" (stdin). --image may repeat;
                 ":keep" (default) stores the image in the vault, ":extract" reads its
                 text into the note without storing it. Nothing is written to the vault
                 until a person approves the change in the Distill app.
-  status        Server, active vault, queue size, reviews waiting, runner problems.
+                Labels: --label L (repeatable) sets the labels yourself and skips AI
+                suggestions. Without --label, Distill suggests labels and waits for
+                them (a short model call), then prints them with the request ID and the
+                \`distill note label\` command that confirms your choice. --no-suggest
+                skips the suggestion. Notes added here with no labels sent back before
+                the next batch get the AI labels marked unconfirmed (if enabled in
+                Settings → Labels).
+  note label    Set the labels of a note added with \`note add\`, by its request ID,
+                while it is still in the queue (afterwards: error invalid_state).
+                Replaces any labels sent before; a leading "#" is dropped.
+  history       List past Ask conversations (newest first; pinned ones are kept).
+                \`history show ID\` prints every question and answer; \`history rm ID\`
+                deletes one. Continue one with \`distill ask --conversation ID\`.
+  status       Server, active vault, queue size, reviews waiting, runner problems.
   serve         Run the Distill core server in the foreground (one per user).
   plugin install
                 Install the distill-ask and distill-note agent skills.
@@ -85,7 +110,9 @@ Commands:
                 --dry-run prints the actions without doing them.
 
 Approval stays with a person: this CLI has no approve, apply, reply or reject
-commands. Review queued changes in the Distill app.
+commands, and no confirm-labels command. Review queued changes, and confirm AI
+labels on pages already in the vault, in the Distill app (or another UI client).
+\`note label\` only sets the labels of a note that is still in the queue.
 
 Other commands start the server in the background when it is not running
 (log: <state dir>/server.log). State dir: ~/Library/Application Support/Distill,
@@ -93,8 +120,18 @@ or $DISTILL_STATE_DIR.
 
 --json output (one JSON document on stdout):
   ask       {"conversationID", "answer", "citations": [{"n","path","title"}], "gaps": [..],
-             "selection": {"runnerID","model","effort"}, "costUSD"}
-  note add  {"notePath", "queued": [absolute paths]}
+             "selection": {"runnerID","model","effort"}, "costUSD", "notices"?: [..]}
+  note add  {"notePath", "queued": [absolute paths], "requestID",
+             "suggestedLabels"?: [{"name","existing"}],  (existing false = a new label)
+             "suggestError"?: "why there are no suggestions"}
+  note label
+            {"notePath", "labels": [..]}
+  history   {"conversations": [{"id","title","vaultPath","createdAt","updatedAt","pinned","turnCount"}]}
+  history show
+            {"id","title","vaultPath","createdAt","updatedAt","pinned","turnCount",
+             "turns": [{"askedAt", "request": {ask request}, "response": {ask --json shape}}]}
+  history rm
+            {"id", "deleted": true}
   status    {"version", "activeVault": {"path","queueDirectory"}|null, "problems": [{"code","message"}],
              "queueCount", "pendingApprovals", "runningJobs", "nextBatchAt",
              "runners": [{"id","displayName","enabled","problems"}],
@@ -187,6 +224,8 @@ async function dispatch(argv: string[], io: CliIO): Promise<number> {
       return ask(rest, io, api);
     case 'note':
       return note(rest, io, api);
+    case 'history':
+      return history(rest, io, api);
     case 'status':
       return status(rest, io, api);
     case 'serve':
@@ -211,17 +250,28 @@ async function ask(args: string[], io: CliIO, api: ApiFactory): Promise<number> 
     effort: { type: 'string' },
     conversation: { type: 'string' },
     vault: { type: 'string' },
+    match: { type: 'string' },
+    unconfirmed: { type: 'string' },
   });
   const out = new Output(io, values.json === true);
+  const match = str(values.match);
+  if (match !== undefined && match !== 'any' && match !== 'all') throw usageError('--match must be "any" or "all"');
+  const unconfirmed = str(values.unconfirmed);
+  if (unconfirmed !== undefined && unconfirmed !== 'include' && unconfirmed !== 'exclude') {
+    throw usageError('--unconfirmed must be "include" or "exclude"');
+  }
   let question = positionals.join(' ').trim();
   if (question === '-') question = (await io.readStdin()).trim();
   if (!question) throw usageError('ask needs a question, e.g. distill ask "How hot for sencha?"');
 
   const req: AskRequest = { question };
-  const labels = strs(values.label);
+  const labels = labelArgs(values.label);
   const sources = strs(values.source);
   if (labels.length) req.labels = labels;
   if (sources.length) req.sources = sources;
+  // Omitted flags leave the fields out so the server applies the user's Ask settings.
+  if (match) req.labelMatch = match;
+  if (unconfirmed) req.includeUnconfirmed = unconfirmed === 'include';
   const conversation = str(values.conversation);
   if (conversation) req.conversationID = conversation;
   const vault = str(values.vault);
@@ -246,22 +296,40 @@ async function ask(args: string[], io: CliIO, api: ApiFactory): Promise<number> 
 
   const res = await client.request<AskResponse>('POST', '/v1/ask', req);
   out.result(res, () => {
-    const lines = [res.answer.trimEnd(), ''];
-    if (res.citations.length) {
-      lines.push('Sources:');
-      for (const c of res.citations) lines.push(`  [${c.n}] ${c.title} (${c.path})`);
-      lines.push('');
-    }
-    if (res.gaps.length) {
-      lines.push('Not covered by your notes:');
-      for (const g of res.gaps) lines.push(`  - ${g}`);
-      lines.push('');
-    }
+    const lines = (res.notices ?? []).map((n) => `Note: ${n}`);
+    if (lines.length) lines.push('');
+    lines.push(...formatAnswer(res));
     const sel = `${res.selection.runnerID} · ${res.selection.model}${res.selection.effort ? ` · ${res.selection.effort}` : ''}`;
     lines.push(`(${sel} · $${res.costUSD.toFixed(4)} · follow up with --conversation ${res.conversationID})`);
     return lines.join('\n') + '\n';
   });
   return 0;
+}
+
+function formatAnswer(res: AskResponse): string[] {
+  const lines = [res.answer.trimEnd(), ''];
+  if (res.citations.length) {
+    lines.push('Sources:');
+    for (const c of res.citations) lines.push(`  [${c.n}] ${c.title} (${c.path})`);
+    lines.push('');
+  }
+  if (res.gaps.length) {
+    lines.push('Not covered by your notes:');
+    for (const g of res.gaps) lines.push(`  - ${g}`);
+    lines.push('');
+  }
+  return lines;
+}
+
+/** --label values: a leading "#" dropped, empty ones rejected, duplicates removed. */
+function labelArgs(v: Values[string]): string[] {
+  const out: string[] = [];
+  for (const raw of strs(v)) {
+    const name = raw.trim().replace(/^#/, '').trim();
+    if (!name) throw usageError('--label needs a name');
+    if (!out.includes(name)) out.push(name);
+  }
+  return out;
 }
 
 // ───────────────────────────── note add ─────────────────────────────
@@ -288,7 +356,10 @@ export function parseImage(spec: string, cwd: string): NoteImage {
 
 async function note(args: string[], io: CliIO, api: ApiFactory): Promise<number> {
   const [sub, ...rest] = args;
-  if (sub !== 'add') throw usageError(sub ? `unknown note command "${sub}" (only "note add")` : 'usage: distill note add --title T ...');
+  if (sub === 'label') return noteLabel(rest, io, api);
+  if (sub !== 'add') {
+    throw usageError(sub ? `unknown note command "${sub}" (use "note add" or "note label")` : 'usage: distill note add --title T ... | distill note label <request-id> --label L');
+  }
   const { values, positionals } = parse(rest, {
     title: { type: 'string' },
     text: { type: 'string' },
@@ -297,6 +368,8 @@ async function note(args: string[], io: CliIO, api: ApiFactory): Promise<number>
     source: { type: 'string' },
     ref: { type: 'string' },
     vault: { type: 'string' },
+    label: { type: 'string', multiple: true },
+    'no-suggest': { type: 'boolean' },
   });
   const out = new Output(io, values.json === true);
   const title = str(values.title)?.trim();
@@ -329,6 +402,14 @@ async function note(args: string[], io: CliIO, api: ApiFactory): Promise<number>
   if (source) req.source = source;
   if (ref) req.sourceRef = ref;
   if (vault) req.vaultPath = path.resolve(io.cwd, vault);
+  const labels = labelArgs(values.label);
+  req.origin = 'cli';
+  if (labels.length) {
+    req.labels = labels;
+    req.suggest = 'none';
+  } else {
+    req.suggest = values['no-suggest'] === true ? 'none' : 'wait';
+  }
 
   const client = await api(out);
   const res = await client.request<AddNoteResult>('POST', '/v1/notes', req);
@@ -336,10 +417,81 @@ async function note(args: string[], io: CliIO, api: ApiFactory): Promise<number>
     const kept = images.filter((i) => i.mode === 'keep').length;
     const extracted = images.length - kept;
     const parts = [kept ? `${kept} image${kept > 1 ? 's' : ''} kept` : '', extracted ? `${extracted} read as text` : ''].filter(Boolean);
-    return (
-      `Queued "${title}"${parts.length ? ` (${parts.join(', ')})` : ''}: ${res.notePath}\n` +
-      'Distill will ingest it in the next batch; the vault changes only after you approve them in the Distill app.\n'
-    );
+    const lines = [`Queued "${title}"${parts.length ? ` (${parts.join(', ')})` : ''}: ${res.notePath}`, `Request ID: ${res.requestID}`];
+    const label = (names: string[]) => ['distill', 'note', 'label', res.requestID, ...names.flatMap((n) => ['--label', n])].map(shellQuote).join(' ');
+    if (labels.length) {
+      lines.push(`Labels: ${labels.join(', ')}`);
+    } else if (res.suggestedLabels?.length) {
+      lines.push(`Suggested labels: ${res.suggestedLabels.map((l) => (l.existing ? l.name : `${l.name} (new)`)).join(', ')}`);
+      lines.push(`Keep them (edit the list as you like): ${label(res.suggestedLabels.map((l) => l.name))}`);
+    } else {
+      if (res.suggestError) lines.push(`No label suggestions: ${res.suggestError}`);
+      else if (req.suggest === 'wait') lines.push('No label suggestions.');
+      lines.push(`Set labels: ${label([])} --label <label>`);
+    }
+    lines.push('Distill will ingest it in the next batch; the vault changes only after you approve them in the Distill app.');
+    return lines.join('\n') + '\n';
+  });
+  return 0;
+}
+
+async function noteLabel(args: string[], io: CliIO, api: ApiFactory): Promise<number> {
+  const { values, positionals } = parse(args, { label: { type: 'string', multiple: true } });
+  const out = new Output(io, values.json === true);
+  const [requestID, extra] = positionals;
+  if (!requestID?.trim()) throw usageError('usage: distill note label <request-id> --label L...');
+  if (extra !== undefined) throw usageError(`unexpected argument "${extra}"`);
+  const labels = labelArgs(values.label);
+  if (!labels.length) throw usageError('note label needs at least one --label');
+  const client = await api(out);
+  const res = await client.request<{ notePath: string; labels: string[] }>(
+    'POST',
+    `/v1/notes/${encodeURIComponent(requestID.trim())}/labels`,
+    { labels },
+  );
+  out.result(res, () => `Labels for ${res.notePath}: ${res.labels.join(', ')}\nThey apply when Distill ingests the note (after you approve it in the Distill app).\n`);
+  return 0;
+}
+
+// ───────────────────────────── history ─────────────────────────────
+
+async function history(args: string[], io: CliIO, api: ApiFactory): Promise<number> {
+  const sub = args[0] === 'show' || args[0] === 'rm' ? args[0] : undefined;
+  const { values, positionals } = parse(sub ? args.slice(1) : args, {});
+  const out = new Output(io, values.json === true);
+  if (!sub) {
+    if (positionals.length) throw usageError(`unknown history command "${positionals[0]}" (use "history", "history show ID" or "history rm ID")`);
+    const client = await api(out);
+    const res = await client.request<{ conversations: AskConversationSummary[] }>('GET', '/v1/conversations');
+    out.result(res, () => {
+      if (!res.conversations.length) return 'No saved Ask conversations.\n';
+      const lines = res.conversations.map(
+        (c) => `${c.id}  ${c.updatedAt}  ${c.turnCount} question${c.turnCount === 1 ? '' : 's'}${c.pinned ? '  pinned' : ''}  ${c.title}`,
+      );
+      lines.push('', 'Show one: distill history show <id>   Continue: distill ask "..." --conversation <id>');
+      return lines.join('\n') + '\n';
+    });
+    return 0;
+  }
+  const [id, extra] = positionals;
+  if (!id?.trim()) throw usageError(`usage: distill history ${sub} <conversation-id>`);
+  if (extra !== undefined) throw usageError(`unexpected argument "${extra}"`);
+  const client = await api(out);
+  const p = `/v1/conversations/${encodeURIComponent(id.trim())}`;
+  if (sub === 'rm') {
+    const res = await client.request<{ id: string; deleted: boolean }>('DELETE', p);
+    out.result(res, () => `Deleted conversation ${res.id}.\n`);
+    return 0;
+  }
+  const c = await client.request<AskConversation>('GET', p);
+  out.result(c, () => {
+    const lines = [`${c.title}`, `${c.id} · ${c.vaultPath} · ${c.createdAt} → ${c.updatedAt}${c.pinned ? ' · pinned' : ''}`, ''];
+    c.turns.forEach((t, i) => {
+      lines.push(`Q${i + 1} (${t.askedAt}): ${t.request.question}`, '');
+      lines.push(...formatAnswer(t.response));
+    });
+    lines.push(`Continue: distill ask "..." --conversation ${shellQuote(c.id)}`);
+    return lines.join('\n') + '\n';
   });
   return 0;
 }
