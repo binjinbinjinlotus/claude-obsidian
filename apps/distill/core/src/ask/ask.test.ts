@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -134,9 +134,11 @@ test('unfiltered ask: read-only tools, plugin dir, schema, new session', async (
   const req = runner.requests[0]!;
   assert.deepEqual(req.allowedTools, ['Skill', 'Read', 'Glob', 'Grep']);
   for (const tool of req.allowedTools) assert.ok(!/^(Edit|Write|Bash|MultiEdit|NotebookEdit)/.test(tool));
-  assert.equal(req.workingDirectory, fx.vault);
+  // cwd is an empty Ask workspace, not the vault (reads inside cwd bypass Read rules).
+  assert.equal(req.workingDirectory, path.join(fx.stateDir, 'workspace'));
   assert.equal(req.pluginDirectory, fx.productRoot);
-  assert.deepEqual(req.readableDirectories, [fx.productRoot]);
+  assert.deepEqual(req.readableDirectories, [fx.vault, fx.productRoot]);
+  assert.equal(req.environment?.CLAUDE_OBSIDIAN_VAULT, fx.vault);
   assert.deepEqual(JSON.parse(req.outputSchema!), ASK_OUTPUT_SCHEMA);
   assert.match(req.prompt, /claude-obsidian:wiki-query/);
   assert.match(req.prompt, /How hot for sencha\?$/);
@@ -236,6 +238,9 @@ test('label filter: exact Read rules plus Skill, no Glob/Grep, pages listed in p
   const expected = ['wiki/sources/Oolong Paper.md', 'wiki/sources/Sencha Slack.md'];
   assert.deepEqual(req.allowedTools, ['Skill', ...expected.map((p) => `Read(/${path.join(fx.vault, p)})`)]);
   assert.ok(req.allowedTools.every((t) => t === 'Skill' || t.startsWith('Read(//')));
+  // The vault is not an added directory in filtered mode.
+  assert.deepEqual(req.readableDirectories, [fx.productRoot]);
+  assert.equal(req.workingDirectory, path.join(fx.stateDir, 'workspace'));
   for (const p of expected) assert.ok(req.prompt.includes(`- ${p}`));
   assert.ok(!req.prompt.includes('Secret'));
   assert.ok(!req.prompt.includes('Linked.md'));
@@ -321,7 +326,7 @@ test('runner error throws and does not persist a conversation', async () => {
   runner.reply = () => ({ isError: true, resultText: 'boom' });
   const svc = service(fx, runner);
   await assert.rejects(svc.ask({ question: 'q' }), /claude-code failed: boom/);
-  assert.equal(existsSync(fx.stateDir), false);
+  assert.deepEqual(existsSync(fx.stateDir) ? readdirSync(fx.stateDir).filter((f) => f.endsWith('.json')) : [], []);
 });
 
 test('vault resolution fails closed', async () => {
@@ -341,4 +346,38 @@ test('missing productRoot skill is a clear error', async () => {
   const fx = fixture();
   fx.settings.productRoot = '/nonexistent';
   await assert.rejects(service(fx, new FakeRunner('claude-code')).ask({ question: 'q' }), /not a claude-obsidian checkout/);
+});
+
+test('filtered: productRoot is not readable when the vault lives inside it', async () => {
+  const fx = fixture();
+  fx.settings.productRoot = path.dirname(fx.vault);
+  mkdirSync(path.join(fx.settings.productRoot, 'skills', 'wiki-query'), { recursive: true });
+  writeFileSync(path.join(fx.settings.productRoot, 'skills', 'wiki-query', 'SKILL.md'), '# skill\n');
+  const runner = new FakeRunner('claude-code');
+  const svc = service(fx, runner);
+  await svc.ask({ question: 'q', labels: ['tea'] });
+  assert.deepEqual(runner.requests[0]!.readableDirectories, []);
+  await svc.ask({ question: 'q' });
+  assert.deepEqual(runner.requests[1]!.readableDirectories, [fx.vault, fx.settings.productRoot]);
+});
+
+test('state directory inside the vault is refused', async () => {
+  const fx = fixture();
+  const svc = createAskService({
+    getSettings: () => fx.settings,
+    runners: registry(new FakeRunner('claude-code')),
+    stateDir: path.join(fx.vault, '.vault-meta', 'ask'),
+  });
+  await assert.rejects(svc.ask({ question: 'q' }), /must not be inside the vault/);
+});
+
+test('a conversation can switch between filtered and unfiltered and keep its session', async () => {
+  const fx = fixture();
+  const runner = new FakeRunner('claude-code');
+  const svc = service(fx, runner);
+  const first = await svc.ask({ question: 'q', labels: ['tea'] });
+  await svc.ask({ question: 'q2', conversationID: first.conversationID });
+  const [a, b] = runner.requests;
+  assert.equal(a!.workingDirectory, b!.workingDirectory);
+  assert.deepEqual(b!.session, { resume: (a!.session as { start: string }).start });
 });

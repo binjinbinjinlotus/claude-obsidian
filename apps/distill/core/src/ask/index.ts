@@ -75,6 +75,7 @@ export function createAskService(deps: AskDeps): AskService {
       throw new Error(`ask: runner "${runner.displayName}" is not ready: ${problems.map((p) => p.message).join('; ')}`);
     }
     const productRoot = settings.productRoot;
+    const workspace = await askWorkspace(deps.stateDir, vaultPath);
     if (!productRoot || !existsSync(path.join(productRoot, 'skills', 'wiki-query', 'SKILL.md'))) {
       throw new Error(`ask: productRoot "${productRoot}" is not a claude-obsidian checkout (skills/wiki-query/SKILL.md missing)`);
     }
@@ -89,6 +90,9 @@ export function createAskService(deps: AskDeps): AskService {
         sessionID = null;
       } else if (record.vaultPath !== vaultPath) {
         notices.push('Started a new session: the vault changed, so earlier turns are not in context.');
+        sessionID = null;
+      } else if (record.workingDirectory !== undefined && record.workingDirectory !== workspace) {
+        notices.push('Started a new session: the Ask workspace moved, so earlier turns are not in context.');
         sessionID = null;
       }
     }
@@ -106,7 +110,7 @@ export function createAskService(deps: AskDeps): AskService {
           .filter(Boolean)
           .join(' and ');
         const answer = `No notes in the vault match ${describe}, so there is nothing to answer from. Remove or change the filters to search all notes.`;
-        await store.save(nextRecord(record, { conversationID, sessionID, selection, vaultPath, cost: 0, ran: false }));
+        await store.save(nextRecord(record, { conversationID, sessionID, selection, vaultPath, workspace, cost: 0, ran: false }));
         return {
           conversationID,
           answer: withNotices(notices, answer),
@@ -121,12 +125,18 @@ export function createAskService(deps: AskDeps): AskService {
     const isNewSession = sessionID === null;
     const runSessionID = sessionID ?? store.newID();
     const request: RunRequest = {
-      workingDirectory: vaultPath,
+      // Not the vault: Claude Code auto-approves reads inside its working
+      // directories, which would bypass the per-page Read rules (verified).
+      workingDirectory: workspace,
       prompt: buildAskPrompt(question, { vaultPath, labels, sources, allowedPages }),
       session: isNewSession ? { start: runSessionID } : { resume: runSessionID },
       selection,
       allowedTools: allowedPages ? ['Skill', ...allowedPages.map((p) => readRule(p.absPath))] : [...ASK_READ_ONLY_TOOLS],
-      readableDirectories: [productRoot],
+      readableDirectories: allowedPages
+        ? isInside(vaultPath, await realOr(productRoot))
+          ? []
+          : [productRoot]
+        : [vaultPath, productRoot],
       pluginDirectory: productRoot,
       outputSchema: ASK_OUTPUT_SCHEMA_TEXT,
       systemPrompt: ASK_SYSTEM_PROMPT,
@@ -150,6 +160,7 @@ export function createAskService(deps: AskDeps): AskService {
         sessionID: result.sessionID || runSessionID,
         selection,
         vaultPath,
+        workspace,
         cost: costUSD,
         ran: true,
       }),
@@ -167,7 +178,15 @@ export function createAskService(deps: AskDeps): AskService {
 
   function nextRecord(
     previous: ConversationRecord | undefined,
-    next: { conversationID: string; sessionID: string | null; selection: ModelSelection; vaultPath: string; cost: number; ran: boolean },
+    next: {
+      conversationID: string;
+      sessionID: string | null;
+      selection: ModelSelection;
+      vaultPath: string;
+      workspace: string;
+      cost: number;
+      ran: boolean;
+    },
   ): ConversationRecord {
     const stamp = now();
     return {
@@ -175,6 +194,7 @@ export function createAskService(deps: AskDeps): AskService {
       sessionID: next.sessionID,
       selection: next.selection,
       vaultPath: next.vaultPath,
+      workingDirectory: next.workspace,
       createdAt: previous?.createdAt ?? stamp,
       updatedAt: stamp,
       turns: (previous?.turns ?? 0) + (next.ran ? 1 : 0),
@@ -183,6 +203,27 @@ export function createAskService(deps: AskDeps): AskService {
   }
 
   return { ask };
+}
+
+function isInside(child: string, parent: string): boolean {
+  const rel = path.relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+async function realOr(p: string): Promise<string> {
+  return fs.realpath(p).catch(() => path.resolve(p));
+}
+
+/**
+ * The empty directory every Ask turn runs in (sessions are keyed by cwd, so it
+ * is stable). It must not be inside the vault, or filtered reads would leak.
+ */
+async function askWorkspace(stateDir: string, vaultPath: string): Promise<string> {
+  const dir = path.join(stateDir, 'workspace');
+  await fs.mkdir(dir, { recursive: true });
+  const real = await fs.realpath(dir);
+  if (isInside(real, vaultPath)) throw new Error(`ask: state directory ${stateDir} must not be inside the vault`);
+  return real;
 }
 
 /** Fail closed: request, then the conversation's vault, then the active vault, then the only vault. */

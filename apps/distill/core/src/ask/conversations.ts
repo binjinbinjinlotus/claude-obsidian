@@ -11,6 +11,8 @@ export interface ConversationRecord {
   selection: ModelSelection;
   /** Real path of the vault the session runs in (sessions are keyed by cwd). */
   vaultPath: string;
+  /** cwd the session runs in (the Ask workspace, not the vault). */
+  workingDirectory?: string;
   createdAt: string;
   updatedAt: string;
   turns: number;

@@ -64,7 +64,7 @@ export function buildAskPrompt(question: string, scope: PromptScope): string {
     if (scope.sources.length) filters.push(`sources: ${scope.sources.join(', ')}`);
     lines.push(`Scope: limited to pages matching ${filters.join('; ')}.`);
     lines.push('You may read only these pages (vault-relative). Every other read is denied by permission rules:');
-    for (const page of scope.allowedPages) lines.push(`- ${page.path} (${page.title})`);
+    for (const page of scope.allowedPages) lines.push(`- ${page.path} (${page.title}): ${page.absPath}`);
     lines.push('');
     lines.push(
       'Read the listed pages directly with Read using their absolute paths under the vault. Skip wiki/hot.md, ' +
@@ -73,7 +73,10 @@ export function buildAskPrompt(question: string, scope: PromptScope): string {
     );
   } else {
     lines.push('Scope: all notes in the vault. Search and read pages under wiki/ as the skill describes.');
-    lines.push('Only read-only tools are available (Skill, Read, Glob, Grep); do not try Bash.');
+    lines.push(
+      'Your working directory is not the vault: give Read, Glob and Grep absolute paths under the vault. ' +
+        'Only read-only tools are available (Skill, Read, Glob, Grep); do not try Bash.',
+    );
   }
   lines.push('');
   lines.push('Answer only from the vault, cite the pages you read with [n] markers, and report gaps.');
