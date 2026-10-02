@@ -317,6 +317,10 @@ the Jira / Confluence handlers against a fake HTTP), `actions/e2e.test.ts`
 `store/actions-settings.test.ts`, `server/http-actions.test.ts`, and the
 CLI tests. No test calls a real model or Atlassian.
 
+## Labels on actions
+
+`NewActionInput.labels` sets an item's labels and `ActionPatch.labels` replaces them (the To do list's edit, bulk Label, and Add to-do with labels pre-filled). Stored trimmed, without a leading `#`, deduped case-insensitively (`cleanLabels`). Items added through the CLI carry `source.by = 'agent'` and their timeline says "added by an agent".
+
 ## macOS client
 
 Status per part; `built` parts ship in `clients/macos`.

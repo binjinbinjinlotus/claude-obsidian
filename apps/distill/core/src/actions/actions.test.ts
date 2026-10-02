@@ -974,3 +974,10 @@ describe('ask source details', () => {
     assert.equal(fromGap({ title: 'Anything' }, undefined), false);
   });
 });
+
+describe('labels on actions', () => {
+  test('cleanLabels trims, drops #, blanks and duplicates', async () => {
+    const { cleanLabels } = await import('./index.js');
+    assert.deepEqual(cleanLabels([' #tea ', 'Tea', '', '##gyokuro', 'tea-shops']), ['tea', 'gyokuro', 'tea-shops']);
+  });
+});

@@ -354,6 +354,8 @@ function parseNewAction(body: unknown): NewActionInput {
   if (source) input.source = source;
   const vaultPath = optString(o, 'vaultPath');
   if (vaultPath) input.vaultPath = vaultPath;
+  const labels = optStringArray(o, 'labels');
+  if (labels) input.labels = labels;
   return input;
 }
 
@@ -370,6 +372,8 @@ function parsePatch(body: unknown): ActionPatch {
   if (fields) patch.fields = fields;
   const type = optString(o, 'type');
   if (type) patch.type = type;
+  const labels = optStringArray(o, 'labels');
+  if (labels) patch.labels = labels;
   return patch;
 }
 
