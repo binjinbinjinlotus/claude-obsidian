@@ -1,7 +1,7 @@
 ---
 title: Queue and batching
 status: built
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 
 # Queue and batching
@@ -21,6 +21,12 @@ schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
   file must be unmodified that long
   before it is batched.
 - The queue may not be inside the vault's `.raw/` or `.vault-meta/`.
+- **Remove** (`removeQueueEntry(path)`, `DELETE /v1/queue/entries`): moves a
+  pending file of the active queue folder to the user's Trash (`~/.Trash`,
+  collisions become `name 2.ext`); a note's `.distill.json` manifest goes with
+  its `.md`. Refused for paths outside the folder, folders and symlinks
+  (`invalid_request`) and, when the queue is the inbox, files a batch already
+  took (`invalid_state`).
 
 ## Schedule
 
@@ -51,3 +57,21 @@ schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
    `labels_by: user`; unconfirmed AI → `tags` + `labels_by: ai`,
    `labels_reviewed: false`, `labels_origin`; otherwise no labels. The
    approval gate is unchanged.
+
+## Progress
+
+A batch emits `batch` progress keyed by its job id (see
+[Architecture](architecture.md)):
+
+| `stepIndex` points at | While | Message |
+| --- | --- | --- |
+| `Suggesting labels` (only with a pre-step) | the label pre-step; `done`/`total` count files | `Suggesting labels for N sources` |
+| `Read sources` | the agent turn | `Reading N sources into <vault name>` |
+| `Drafting page changes` | the core inspects the bundle the turn wrote | `Checking the page changes` |
+| `Ready for review` | finished: the job awaits approval or completed | `Ready for review` / `Done` |
+
+`Moved to inbox` is done once the job exists. The runner gives no signal
+inside a turn, so reading and drafting are not told apart while the turn
+runs. Reply and Allow turns start a new run of the same key at `Drafting page
+changes`. Failed and cancelled batches finish with `Failed` (and `error`) or
+`Cancelled`.

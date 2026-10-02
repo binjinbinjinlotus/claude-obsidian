@@ -1,7 +1,7 @@
 ---
 title: Architecture (core, CLI, plugin, clients)
 status: designed
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 
 # Architecture
@@ -77,6 +77,7 @@ application/json`, at most 1 MiB). Every error is `{"error": {"code",
 | GET · PUT | `/v1/settings` | PUT: partial `Settings` | `Settings` (no secrets) |
 | GET | `/v1/queue` | | `{entries: QueueEntry[]}` |
 | POST | `/v1/queue/files` | `{paths}` | `{entries}` |
+| DELETE | `/v1/queue/entries` | `{path}` | `{entries}`: the file (and a note's `.distill.json`) moved to the Trash; 400 outside the active queue folder, 409 when a batch took it |
 | POST | `/v1/queue/process` | `{force?}` | `{job: Job \| null}` |
 | POST | `/v1/notes` | `AddNoteRequest` (`labels?`, `suggest?: wait\|background\|none`, `origin?: app\|cli`) | 201 `AddNoteResult` |
 | POST | `/v1/notes/:requestID/labels` | `{labels: string[]}` | `{notePath, labels}`; 409 once the batch took the note |
@@ -85,8 +86,12 @@ application/json`, at most 1 MiB). Every error is `{"error": {"code",
 | POST | `/v1/labels/suggest` | `{paths, vaultPath?, selection?}` | `{job}` (UI clients) |
 | POST | `/v1/labels/confirm` | `{items: [{path, labels}], vaultPath?}` | `{job}` (UI clients) |
 | GET | `/v1/jobs` · `/v1/jobs/:id` | | `{jobs}` · `Job` |
+| DELETE | `/v1/jobs/:id` | | `{id, deleted: true}`; 409 unless completed/failed/rejected/cancelled |
+| GET | `/v1/jobs/:id/resume` | | `{argv}` that reopens the job's AI session; 404 `no_resume_command` when there is none |
 | POST | `/v1/jobs/:id/approve` · `/reply` · `/allow` · `/reject` · `/cancel` | `reply {text}`, `allow {rules}` | `{job}` (UI clients only) |
-| POST | `/v1/ask` | `AskRequest` (`labelMatch?: any\|all`, `includeUnconfirmed?`) | `AskResponse` (`notices?`) |
+| POST | `/v1/ask` | `AskRequest` (`labelMatch?: any\|all`, `includeUnconfirmed?`, `conversationID?`: an existing chat, or a new well-formed id) | `AskResponse` (`notices?`); 409 `invalid_state` "Stopped" after a cancel |
+| POST | `/v1/conversations/:id/cancel` | | `{id, cancelled: true}`; stops the in-flight turn (no-op when idle) |
+| GET | `/v1/progress` | | `{progress: Progress[]}`: work in flight, for clients that connect mid-run |
 | GET | `/v1/conversations` | | `{conversations: AskConversationSummary[]}` |
 | GET · DELETE | `/v1/conversations/:id` | | `AskConversation` · `{id, deleted: true}` |
 | POST | `/v1/conversations/:id/pin` | `{pinned: boolean}` | `AskConversationSummary` |
@@ -103,10 +108,36 @@ no separate sources route.
 response; any error message that contains it is redacted (`[redacted]`). The
 value goes only to the core, which keeps it in the Keychain.
 
+**Jobs in responses.** Every `Job` the API returns (also inside `job` events)
+has `suggestedRule` (string or `null`) on each `approval.denials` entry: the
+exact rule Allow would grant (`runners/permissions.ts`), `null` for compound
+shell commands. Stored jobs do not change.
+
 **Events.** `GET /v1/events` is `text/event-stream`: `retry: 2000`, then one
 `event: <type>\ndata: <CoreEvent JSON>\n\n` per event (`queue`, `job`,
-`settings`, `log`, `labelSuggestions`, `conversation`), and a `: keep-alive`
-comment every 15 s.
+`settings`, `log`, `labelSuggestions`, `conversation`, `progress`), and a
+`: keep-alive` comment every 15 s. A deleted job is a `job` event with
+`deleted: true` (proposed contract addition).
+
+**Progress (loading states).** Long AI work emits `progress` events
+(`Progress` in contracts.ts); each run of a key ends with exactly one event
+with `finished: true` (with `error` when it failed). `startedAt` stays the same
+for the run, so clients can show an elapsed timer.
+
+| Kind | Key | When | Fields |
+| --- | --- | --- | --- |
+| `batch` | job id | a batch from creation to review; reply and allow turns | `steps`, `stepIndex`, `runnerID`, `model`; `done`/`total` during the label pre-step |
+| `apply` | job id | from Approve until the job leaves `running` | message `Applying N changes`; `runnerID`/`model` only when an agent applies |
+| `labelSuggest` | `note:<requestID>` | the suggestion around `addNote` (wait and background) | `runnerID`, `model` |
+| `labelPages` | job id | `suggestLabelsForPages` | `done`/`total` pages, then "Preparing the change for Review" |
+| `ask` | `ask:<conversationID>` | one Ask runner turn | message `Reading your notes`; `runnerID`, `model`; "Stopped" after a cancel |
+
+Batch steps are `Moved to inbox`, `Suggesting labels` (only with a label
+pre-step), `Read sources`, `Drafting page changes`, `Ready for review`;
+`stepIndex` is the step in progress (earlier ones are done). Runners report no
+progress inside a turn, so `Read sources` covers the whole agent turn and
+`Drafting page changes` the core's `transaction inspect` of the bundle; the
+finished event of a job that waits for review points at `Ready for review`.
 
 ## CLI (built: `cli/src/cli.ts`)
 
@@ -134,10 +165,17 @@ distill plugin install --target claude|codex [--dry-run] [--copy] [--force] [--j
   to keep them.
 - `ask` leaves `--match`/`--unconfirmed` out of the request when not given, so
   the server's Ask settings apply; notices print above the answer.
+- `ask` picks a new chat's `conversationID` (a UUID) before the request. When
+  stdout is a terminal and `--json` is off it follows `ask:<id>` progress over
+  `/v1/events` and keeps one status line on stderr (message, runner · model,
+  elapsed time after 3 s, "Still working" after 60 s). Ctrl-C posts
+  `/v1/conversations/:id/cancel` and exits 130 with code `stopped`; a second
+  Ctrl-C quits at once.
 - There are no approve, apply, reply, reject or confirm-labels commands:
   approval and label confirmation stay in UI clients. `--help` says so.
 - `--json` prints one JSON document (each shape is documented in `--help`);
-  errors are `{"error": {"code","message"}}` with exit code 1, or 2 for usage.
+  errors are `{"error": {"code","message"}}` with exit code 1, or 2 for usage
+  (130 for a stopped `ask`).
 
 The CLI talks to the running server and starts it if it is not running.
 
