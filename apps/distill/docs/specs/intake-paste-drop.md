@@ -1,7 +1,7 @@
 ---
 title: "Intake: paste and drop"
 status: built
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 
 # Intake: paste and drop
@@ -23,6 +23,10 @@ Code: `clients/macos/Sources/Distill/Intake.swift` (`PasteboardIntake`, `DropTar
 - **Choose files** on the Queue screen opens a file picker (handled like a drop).
 - **Remove** (× on a queue row) moves that file from the queue folder to the
   Trash. The file belongs to the user, and the core rescans the folder.
+- Queue rows say how a file arrived, as a clock time: **Pasted at 3:04 AM**
+  for the `Screenshot …`/`Clipping …` names above, **Dropped at …** for
+  everything else (the core's copy gets a fresh modification time, so this is
+  the drop time). See [Queue and batching](queue-and-batching.md).
 
 Image handling beyond "a file in the queue" (keep vs. extract text) is part of
 [Write a note](notes-composer.md) (`POST /v1/notes`). While the composer is on

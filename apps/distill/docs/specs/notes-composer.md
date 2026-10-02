@@ -18,6 +18,23 @@ Type knowledge directly, with images, a source and labels. Canvas artboards:
 - **Add to queue** (⌘↩) saves; **Discard** clears. A summary line states what
   will be saved, e.g. "one note with 1 image attached and 1 image read as text".
 
+## Sizing
+
+Canvas: "Write a note: size and scrolling". Code: `ComposeCardLayout`
+(`ScrollChrome.swift`) around the composer card in `ComposeView.swift`.
+
+- The header ("Add to your vault" and the **Drop files | Write a note**
+  switch) and the footer (summary, Discard, Add to queue) stay put at every
+  window size. The switch never wraps (fixed width).
+- The note box fills the card: the window's extra height goes to it, never to
+  a blank gap under the images. The source panel, images and errors stay
+  together at the bottom of the card.
+- A note longer than the box scrolls inside the box only (overlay scroller,
+  fade at the cut edge; the editor owns that).
+- In a short window (down to the 900 × 600 minimum) the box keeps at least 4
+  lines and the whole card scrolls, with an overlay bar and a fade.
+- Image tiles (240 pt) wrap onto more rows instead of widening the window.
+
 ## Images
 
 Each image added in the composer (⌘V or Add image) has a two-way switch:
