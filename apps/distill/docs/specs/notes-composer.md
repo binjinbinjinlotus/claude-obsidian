@@ -1,7 +1,7 @@
 ---
 title: Write a note
-status: built (core addNote/labelNote; composer UI designed)
-updated: 2026-10-01
+status: built (core addNote/labelNote; composer, quick note and label step in the Mac app)
+updated: 2026-10-02
 ---
 
 # Write a note

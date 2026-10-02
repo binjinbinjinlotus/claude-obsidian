@@ -25,4 +25,7 @@ Code: `clients/macos/Sources/Distill/Intake.swift` (`PasteboardIntake`, `DropTar
   Trash. The file belongs to the user, and the core rescans the folder.
 
 Image handling beyond "a file in the queue" (keep vs. extract text) is part of
-[Write a note](notes-composer.md) (`POST /v1/notes`), which has no Mac UI yet.
+[Write a note](notes-composer.md) (`POST /v1/notes`). While the composer is on
+screen and its window is key, ⌘V adds images (and text) to the note instead
+of the queue (`PasteboardIntake.composeTarget`); drops on the Queue panel or
+the flask always queue files.

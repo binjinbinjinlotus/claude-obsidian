@@ -195,16 +195,21 @@ struct QueueView: View {
     @EnvironmentObject var engine: AppModel
     @Environment(\.snapshotMode) private var snapshot
     @State private var targeted = false
+    @AppStorage("distill.addMode") private var addMode: AddMode = .files
 
     var body: some View {
-        Scrolling {
-            VStack(alignment: .leading, spacing: 26) {
-                header
-                if let batch = engine.runningBatch { BatchBanner(job: batch) }
-                dropPanel
-                if engine.isStarting { StartingPlaceholder() } else { fileList }
+        if addMode == .note {
+            ComposeScreen(mode: $addMode) // Write a note (ComposeView.swift)
+        } else {
+            Scrolling {
+                VStack(alignment: .leading, spacing: 26) {
+                    header
+                    if let batch = engine.runningBatch { BatchBanner(job: batch) }
+                    dropPanel
+                    if engine.isStarting { StartingPlaceholder() } else { fileList }
+                }
+                .padding(.horizontal, 44).padding(.top, 44).padding(.bottom, 30)
             }
-            .padding(.horizontal, 44).padding(.top, 44).padding(.bottom, 30)
         }
     }
 
@@ -220,6 +225,7 @@ struct QueueView: View {
                 }
             }
             Spacer()
+            AddModeSwitch(mode: $addMode)
             if engine.isProcessing {
                 ProcessingButton()
             } else {

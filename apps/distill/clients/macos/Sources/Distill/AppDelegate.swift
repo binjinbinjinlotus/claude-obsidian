@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = buildMenu()
         engine.connect()
+        engine.installNotesFeatures() // quick note window, global shortcuts, Labels count (AppModel+Notes.swift)
         floatingIcon = FloatingIconController(engine: engine, onOpen: { [weak self] in self?.flaskClicked() },
                                               onMenu: { [weak self] action in self?.hoverMenu(action) })
         quickAsk = QuickAskController(engine: engine, onContinue: { [weak self] in
