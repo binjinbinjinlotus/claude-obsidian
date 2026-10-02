@@ -7,7 +7,7 @@ import { defaultSettings } from '../store/settings.js';
 import { newJob } from '../store/jobs.js';
 import { IngestJobKind, JobContext } from './job-kinds.js';
 import { noteStem, writeNote } from './notes.js';
-import { claimFiles, pendingFiles } from './queue.js';
+import { claimFiles, intakeFileName, pendingFiles, writeIntoQueue } from './queue.js';
 
 let tmp: string;
 let vault: { path: string; queueDirectory: string };
@@ -110,5 +110,18 @@ describe('addNote (writeNote)', () => {
     assert.ok(prompt.includes('do NOT store or embed the image'));
     const plain = newJob({ id: 'j', kind: 'ingest', vaultPath: vault.path, files: ['inbox/a.md'], model: 'm', now: NOW });
     assert.ok(!IngestJobKind.initialPrompt(new JobContext(plain, vault, settings)).includes('manifest'));
+  });
+});
+
+describe('pasted-data intake (writeIntoQueue)', () => {
+  test('names pastes <prefix> yyyy-MM-dd HHmmss.<ext> and never clobbers', () => {
+    assert.equal(intakeFileName('Clipping', 'md', NOW), 'Clipping 2026-10-01 154200.md');
+    const a = writeIntoQueue('one', 'Clipping', 'md', vault.queueDirectory, NOW);
+    const b = writeIntoQueue('two', 'Clipping', 'md', vault.queueDirectory, NOW);
+    assert.equal(path.basename(a), 'Clipping 2026-10-01 154200.md');
+    assert.equal(path.basename(b), 'Clipping 2026-10-01 154200 2.md');
+    assert.equal(fs.readFileSync(a, 'utf8'), 'one');
+    const png = writeIntoQueue(Buffer.from([0x89, 0x50]), 'Screenshot', 'png', vault.queueDirectory, NOW);
+    assert.deepEqual([...fs.readFileSync(png)], [0x89, 0x50]);
   });
 });

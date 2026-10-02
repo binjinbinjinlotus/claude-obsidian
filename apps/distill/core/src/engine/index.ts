@@ -568,6 +568,7 @@ export function createEngine(opts: EngineOptions): Engine {
   }
 
   async function status(): Promise<StatusResponse> {
+    refreshQueue();
     const probs = problems();
     return {
       version,
