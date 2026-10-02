@@ -21,6 +21,11 @@ enum Snapshot {
             FileHandle.standardError.write(Data("usage: --snapshot OUT --state-dir DIR\n".utf8))
             exit(2)
         }
+        // `--states`: every screen state plus manifest.json (SnapshotStates.swift).
+        if arguments.contains("--states") {
+            StatesSnapshot.run(stateDir: URL(fileURLWithPath: state), outDir: URL(fileURLWithPath: out))
+            exit(0)
+        }
         let engine = fixtureModel(stateDir: URL(fileURLWithPath: state))
         let outDir = URL(fileURLWithPath: out)
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)

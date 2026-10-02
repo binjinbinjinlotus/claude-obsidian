@@ -62,6 +62,14 @@ final class AppModel: ObservableObject {
         self.status = status
     }
 
+    /// Snapshot fixtures only: puts a fixture model (no launcher) into a
+    /// connection state ("Starting Distill…", core unreachable, setup problems).
+    func setFixtureState(connection: Connection, status: StatusResponse?) {
+        guard launcher == nil else { return }
+        self.connection = connection
+        self.status = status
+    }
+
     // MARK: Derived state
 
     var activeVault: VaultProfile? { settings.activeVault }
