@@ -732,6 +732,8 @@ export interface NewActionInput {
   why?: string | null;
   source?: ActionSource; // default manual
   vaultPath?: string | null;
+  /** Labels to set (trimmed, leading # dropped, deduped). */
+  labels?: string[];
 }
 
 export interface ActionPatch {
@@ -740,6 +742,8 @@ export interface ActionPatch {
   fields?: Record<string, string | null>;
   /** Change where it goes (only while pending/open/ready). */
   type?: ActionTypeID;
+  /** Replaces the item's labels (trimmed, leading # dropped, deduped). */
+  labels?: string[];
 }
 
 // ───────────────────────────── Connections ─────────────────────────────

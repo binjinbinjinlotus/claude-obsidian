@@ -848,10 +848,11 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         fields: withDefaults(def.id, input.fields),
         why: input.why ?? null,
         source,
+        ...(input.labels ? { labels: cleanLabels(input.labels) } : {}),
         vaultPath: input.vaultPath ?? opts.getSettings().activeVaultPath ?? null,
         createdAt: t,
         updatedAt: t,
-        events: [event(now(), 'added', source.kind === 'ask' ? 'from Ask' : 'by you')],
+        events: [event(now(), 'added', source.kind === 'ask' ? 'from Ask' : source.kind === 'manual' && source.by === 'agent' ? 'by an agent' : 'by you')],
       };
       const created = insert(item);
       if (!body && effective(def.id)?.draftWhen === 'onFind') draftInBackground(item.id);
@@ -883,6 +884,10 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         if (patch.fields) {
           for (const [k, v] of Object.entries(patch.fields)) i.fields[k] = v;
           changes.push('fields');
+        }
+        if (patch.labels) {
+          i.labels = cleanLabels(patch.labels);
+          changes.push('labels');
         }
         if (patch.type !== undefined && patch.type !== i.type) {
           const from = i.type;
@@ -1203,4 +1208,17 @@ export function fromGap(f: { title?: string | null; quote?: string | null }, gap
     for (const w of gw) if (mine.has(w)) shared++;
     return shared / gw.size >= 0.5;
   });
+}
+
+/** Labels as stored: trimmed, without a leading #, no blanks, no duplicates (case-insensitive), in order. */
+export function cleanLabels(labels: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of labels) {
+    const l = String(raw).trim().replace(/^#+/, '').trim();
+    if (!l || seen.has(l.toLowerCase())) continue;
+    seen.add(l.toLowerCase());
+    out.push(l);
+  }
+  return out;
 }
