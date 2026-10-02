@@ -18,7 +18,7 @@ enum MarkdownPageSearch {
 
     static func search(_ query: String) async -> [PageRef] {
         if let provider { return await provider(query) }
-        guard let engine = (NSApp.delegate as? AppDelegate)?.engine, let client = engine.client else { return [] }
+        guard let engine = (NSApplication.shared.delegate as? AppDelegate)?.engine, let client = engine.client else { return [] }
         return (try? await client.searchPages(query, vaultPath: engine.activeVault?.path, limit: 8)) ?? []
     }
 }
