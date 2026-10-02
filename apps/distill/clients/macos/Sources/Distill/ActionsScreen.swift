@@ -422,7 +422,7 @@ struct ToConfirmGroup: View {
                     }
                     Spacer(minLength: 6)
                     ActionButton(title: item.type == "todo" ? "Add" : "Create draft", icon: "plus", kind: .soft, height: 26) { store.confirm([item.id]) }
-                    IconButton(icon: "xmark", help: "Dismiss", size: 26) { store.dismiss([item.id]) }
+                    IconButton(systemImage: "xmark", size: 26, help: "Dismiss") { store.dismiss([item.id]) }
                 }
                 .padding(.horizontal, 12).padding(.vertical, 9)
                 .background(RoundedRectangle(cornerRadius: 12).fill(Theme.primaryTint.opacity(0.35)))
@@ -777,7 +777,7 @@ struct TodoDetail: View {
                 StatusBadge(text: item.status == .done ? "Completed" : "Open", fill: item.status == .done ? Theme.limeTint : Theme.panel,
                             ink: item.status == .done ? Theme.limeInk : Theme.softInk)
                 Spacer()
-                IconButton(icon: editing ? "checkmark" : "pencil", help: editing ? "Done" : "Edit", size: 28) { editing.toggle() }
+                IconButton(systemImage: editing ? "checkmark" : "pencil", size: 28, help: editing ? "Done" : "Edit") { editing.toggle() }
                     .keyboardShortcut(editing ? KeyboardShortcut(.return, modifiers: .command) : nil)
             }
             if editing { editor } else { reading }
@@ -799,7 +799,7 @@ struct TodoDetail: View {
                         ActionButton(title: "Send to", icon: "arrow.turn.up.right", kind: .soft) { menu = menu == "sendto" ? nil : "sendto" }
                     }
                     Spacer()
-                    IconButton(icon: "trash", help: "Remove (Delete)") { store.remove(item) }
+                    IconButton(systemImage: "trash", size: 30, help: "Remove (Delete)") { store.remove(item) }
                 }
                 .overlay(alignment: .bottomTrailing) {
                     if menu == "sendto" {

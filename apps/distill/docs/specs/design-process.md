@@ -53,3 +53,38 @@ Every design-system component has the name of its Swift view and props equal
 to that view's states (selected item, counts, loading, disabled, …). A table
 here lists component → Swift file, and a test fails when a component has no
 Swift view of that name or the reverse.
+
+### Component ↔ Swift view
+
+Canvas components (`components/*.dc.html` / `project/<Name>.dc.html`) and the
+Swift view of the same name, in `clients/macos/Sources/Distill/`. Built
+2026-10-02 for the rows below; the checking test is not built yet.
+
+| Canvas component | Swift view | File |
+| --- | --- | --- |
+| PrimaryButton | `PrimaryButton` | Theme.swift |
+| SoftButton | `SoftButton` | Theme.swift |
+| IconButton | `IconButton(systemImage:size:tint:fill:help:)` (plus `iconSize`, `weight`, `label` to keep a call site's glyph and VoiceOver label) | Theme.swift |
+| Pill | `Pill` | Theme.swift |
+| Tile | `Tile` | Theme.swift |
+| Segmented | `Segmented` | AskParts.swift |
+| SegmentedPills | `SegmentedPills` = `Segmented` (typealias; one view, props options, selection, height, font, track, help) | ComposeComponents.swift |
+| PillSwitch | `PillSwitch` | ComposeComponents.swift |
+| CapsuleSwitch | `CapsuleSwitch` | AskParts.swift |
+| LabelChip | `LabelChip` | ComposeComponents.swift |
+| FilterChip | `FilterChip` | AskParts.swift |
+| SourceChip | `SourceChip` (private) | SettingsSections.swift |
+| ModelChip | `ModelChip` | AskParts.swift |
+| DropdownButton | `DropdownButton` | ComposeComponents.swift |
+| QuickSourceButton | `QuickSourceButton` | QuickNote.swift |
+| MarkdownBarToggle | `MarkdownBarToggle` | MarkdownEditorBar.swift |
+| SendButton | `SendButton` | AskParts.swift |
+| LinkButton | `LinkButton` | AskParts.swift |
+
+IconButton is round (fill and hover fill are circles, as on the canvas); the
+hover fill is ink at 6%. Icon-only buttons in rows, cards and toolbars use it
+instead of drawing their own. Not IconButton, by design: the clear buttons
+inside search fields and FilterMenuChip (part of those components), the
+Settings stepper and the image-remove button (shadowed discs), checkboxes,
+the Markdown bar buttons, SendButton, and `Menu` labels (the ⋯ on Actions
+type pages is a menu, not a button).

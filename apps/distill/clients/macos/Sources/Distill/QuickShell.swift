@@ -123,14 +123,8 @@ struct QuickShell<Header: View, Top: View, Bottom: View, Footer: View>: View {
         HStack(spacing: 8) {
             Text(title.uppercased()).font(Theme.body(10.5, .bold)).tracking(0.9).foregroundStyle(Theme.faint)
             Spacer(minLength: 0)
-            Button(action: close) {
-                Image(systemName: "xmark").font(.system(size: 8.5, weight: .heavy)).foregroundStyle(Theme.muted)
-                    .frame(width: 22, height: 22).background(Circle().fill(Theme.panel))
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .help("Close (Esc)")
-            .accessibilityLabel("Close \(title)")
+            IconButton(systemImage: "xmark", size: 22, fill: Theme.panel, iconSize: 8.5, weight: .heavy,
+                       help: "Close (Esc)", label: "Close \(title)", action: close)
         }
         .padding(.horizontal, Self.padding).padding(.top, 12).padding(.bottom, 10)
     }

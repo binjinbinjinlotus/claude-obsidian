@@ -434,8 +434,8 @@ struct RunnersSettings: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .layoutPriority(-1)
             if hasSetup(r) && !needsSetup(r) {
-                Button { setup = r } label: { Image(systemName: "gearshape").foregroundStyle(Theme.faint) }
-                    .buttonStyle(.plain).fixedSize().help("Set up \(r.displayName)")
+                IconButton(systemImage: "gearshape", size: 16, tint: Theme.faint, iconSize: 13, weight: .regular,
+                           help: "Set up \(r.displayName)") { setup = r }
             }
             Button {
                 if busy != nil { return }

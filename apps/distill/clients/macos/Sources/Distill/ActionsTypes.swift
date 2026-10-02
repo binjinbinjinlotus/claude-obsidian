@@ -308,7 +308,7 @@ struct MessageCard: View {
                 ActionButton(title: "Create message", kind: .primary, height: 30) { store.draft(item) }
                 Text("\(model) writes it from the note").font(Theme.body(11)).foregroundStyle(Theme.muted)
                 Spacer()
-                IconButton(icon: "trash", help: "Remove") { store.remove(item) }
+                IconButton(systemImage: "trash", size: 30, help: "Remove") { store.remove(item) }
             } else {
                 let busy = run != nil || item.status == .drafting
                 if type.handler("copy") != nil {
@@ -326,8 +326,8 @@ struct MessageCard: View {
                 }
                 Spacer()
                 if !busy {
-                    IconButton(icon: "pencil", help: "Edit") { store.beginEdit(item) }
-                    IconButton(icon: "trash", help: "Remove") { store.remove(item) }
+                    IconButton(systemImage: "pencil", size: 30, help: "Edit") { store.beginEdit(item) }
+                    IconButton(systemImage: "trash", size: 30, help: "Remove") { store.remove(item) }
                 }
             }
         }
@@ -851,12 +851,12 @@ struct ExternalCard: View {
                 ActionButton(title: "Open in \(service)", icon: "arrow.up.right", kind: .primary) { open(item.external?.url) }
                 ActionButton(title: "Mark done", icon: "checkmark", kind: .soft) { store.markDone(item) }
                 Spacer()
-                IconButton(icon: "trash", help: "Remove from Distill (stays in \(service))") { store.remove(item) }
+                IconButton(systemImage: "trash", size: 30, help: "Remove from Distill (stays in \(service))") { store.remove(item) }
             } else if notWritten && !writing {
                 ActionButton(title: "Write draft", kind: .primary, height: 30) { store.draft(item) }
                 Text("with \(model)").font(Theme.body(11)).foregroundStyle(Theme.muted)
                 Spacer()
-                IconButton(icon: "trash", help: "Remove") { store.remove(item) }
+                IconButton(systemImage: "trash", size: 30, help: "Remove") { store.remove(item) }
             } else {
                 if creating {
                     Spinner(size: 14)
@@ -870,8 +870,8 @@ struct ExternalCard: View {
                 }
                 Spacer()
                 if !creating && !writing && !improving {
-                    IconButton(icon: "pencil", help: "Edit") { store.beginEdit(item) }
-                    IconButton(icon: "trash", help: "Remove") { store.remove(item) }
+                    IconButton(systemImage: "pencil", size: 30, help: "Edit") { store.beginEdit(item) }
+                    IconButton(systemImage: "trash", size: 30, help: "Remove") { store.remove(item) }
                 }
             }
         }
