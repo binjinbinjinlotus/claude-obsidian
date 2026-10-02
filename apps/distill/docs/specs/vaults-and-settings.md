@@ -29,7 +29,7 @@ unknown keys.
 | Key | Default |
 | --- | --- |
 | `batchIntervalMinutes` | 10 |
-| `settleSeconds` | 10 |
+| `settleSeconds` | 600 (10 minutes): a file is batched only once unchanged this long. Settings → "Wait before picking up a file" edits it as minutes + seconds (0–59 each). Process now ignores it. |
 | `autoProcessEnabled` | true |
 | `model` | `sonnet` (Haiku/Sonnet/Opus cards, pinned IDs, or custom) |
 | `claudePath` | `~/.local/bin/claude` |

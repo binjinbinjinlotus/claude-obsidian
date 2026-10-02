@@ -125,16 +125,30 @@ struct SettingsView: View {
                 if !presets.contains(where: { $0.1 == engine.settings.batchIntervalMinutes }) {
                     chip(BatchInterval(totalMinutes: engine.settings.batchIntervalMinutes).description, selected: true) {}
                 }
-                Spacer()
-                Menu("Wait \(engine.settings.settleSeconds)s for files to settle") {
-                    ForEach([0, 5, 10, 30, 60], id: \.self) { s in
-                        Button("\(s) seconds") { engine.settings.settleSeconds = s }
-                    }
-                }
-                .menuStyle(.borderlessButton).fixedSize()
-                .font(Theme.body(12)).foregroundStyle(Theme.muted)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Wait before picking up a file").font(Theme.body(14, .bold))
+                Text("A file joins a batch only after it has not changed for this long, so downloads and edits in progress are left alone. Process now ignores the wait.")
+                    .font(Theme.body(12)).foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 6)
+            HStack(spacing: 12) {
+                IntervalCounter(label: "minutes", value: settlePart(\.minutes), range: SettleWait.range)
+                IntervalCounter(label: "seconds", value: settlePart(\.seconds), range: SettleWait.range)
+                Spacer().frame(maxWidth: .infinity)
             }
         }
+    }
+
+    private func settlePart(_ part: WritableKeyPath<SettleWait, Int>) -> Binding<Int> {
+        Binding(
+            get: { SettleWait(totalSeconds: engine.settings.settleSeconds)[keyPath: part] },
+            set: { value in
+                var wait = SettleWait(totalSeconds: engine.settings.settleSeconds)
+                wait[keyPath: part] = value
+                engine.settings.settleSeconds = wait.totalSeconds
+            })
     }
 
     private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
