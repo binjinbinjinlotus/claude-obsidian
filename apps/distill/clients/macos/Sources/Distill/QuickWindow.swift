@@ -30,6 +30,28 @@ class QuickWindow: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
     override func cancelOperation(_ sender: Any?) { MainActor.assumeIsolated { onCancel?() } }
+
+    /// A non-activating panel leaves Distill inactive, so the Edit menu never sees
+    /// ⌘X/C/V/A/Z: send those actions to the focused field ourselves.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if super.performKeyEquivalent(with: event) { return true }
+        guard let action = Self.editAction(for: event) else { return false }
+        return firstResponder?.tryToPerform(action, with: self) ?? false
+    }
+
+    static func editAction(for event: NSEvent) -> Selector? {
+        let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        let key = event.charactersIgnoringModifiers?.lowercased()
+        switch (flags, key) {
+        case (.command, "x"): return #selector(NSText.cut(_:))
+        case (.command, "c"): return #selector(NSText.copy(_:))
+        case (.command, "v"): return #selector(NSText.paste(_:))
+        case (.command, "a"): return #selector(NSText.selectAll(_:))
+        case (.command, "z"): return Selector(("undo:"))
+        case ([.command, .shift], "z"): return Selector(("redo:"))
+        default: return nil
+        }
+    }
 }
 
 /// Rounded container: the SwiftUI content plus the AppKit resize corner on top.
