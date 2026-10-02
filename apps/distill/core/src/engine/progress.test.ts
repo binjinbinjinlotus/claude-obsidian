@@ -376,6 +376,36 @@ describe('job and queue extras', () => {
     assert.ok(fs.existsSync(outside));
   });
 
+  test('removeQueueEntry on a note removes the whole set; a member alone is refused', async () => {
+    h = setup([]);
+    const img = path.join(tmp, 'card.png');
+    fs.writeFileSync(img, 'PNGDATA');
+    const { notePath } = await h.engine.addNote({ title: 'Gyokuro', text: 'x', images: [{ path: img, mode: 'keep' }], suggest: 'none' });
+    const manifest = path.join(h.queue, 'Gyokuro.distill.json');
+    const image = path.join(h.queue, 'Gyokuro image 1.png');
+    fs.writeFileSync(path.join(h.queue, 'keep.txt'), 'k');
+
+    await assert.rejects(h.engine.removeQueueEntry(manifest), { code: 'invalid_request', message: /belongs to the note Gyokuro\.md/ });
+    await assert.rejects(h.engine.removeQueueEntry(image), { code: 'invalid_request', message: /remove the note instead/ });
+    assert.ok(fs.existsSync(manifest) && fs.existsSync(image), 'the note set is untouched');
+    assert.deepEqual(h.engine.listQueue().find((e) => e.path === notePath)?.members, [manifest, image]);
+
+    const entries = await h.engine.removeQueueEntry(notePath);
+    assert.deepEqual(entries.map((e) => e.name), ['keep.txt']);
+    for (const name of ['Gyokuro.md', 'Gyokuro.distill.json', 'Gyokuro image 1.png']) {
+      assert.ok(fs.existsSync(path.join(h.trash, name)), name);
+      assert.ok(!fs.existsSync(path.join(h.queue, name)), name);
+    }
+  });
+
+  test('removeQueueEntry: an orphan manifest (its .md gone) can be removed on its own', async () => {
+    h = setup([]);
+    const { notePath } = await h.engine.addNote({ title: 'Lone', text: 'x', suggest: 'none' });
+    fs.rmSync(notePath);
+    const entries = await h.engine.removeQueueEntry(path.join(h.queue, 'Lone.distill.json'));
+    assert.deepEqual(entries, []);
+  });
+
   test('removeQueueEntry refuses a file a batch already took (queue = inbox)', async () => {
     h = setup([{ structured: { status: 'needs_input', summary: '?', questions: [] } }], { queueIsInbox: true });
     fs.writeFileSync(path.join(h.queue, 'a.md'), '# A\n');

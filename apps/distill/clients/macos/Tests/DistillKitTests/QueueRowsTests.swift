@@ -95,6 +95,65 @@ final class QueueRowsTests: XCTestCase {
         XCTAssertEqual(QueueRows.visible(entries).map(\.name), ["a.md", "Tea.md", "Tea image 1.png"])
     }
 
+    func testDecodesNoteRowFieldsLeniently() throws {
+        let json = #"""
+        [{"path":"/q/Tea.md","modified":"2026-10-02T03:04:00Z","size":1,"settled":true,"kind":"note",
+          "members":["/q/Tea.distill.json",7,"/q/Tea image 1.png"],"note":{"source":"In person","labelsConfirmed":true,"imageCount":1.0}},
+         {"path":"/q/a.md","modified":"2026-10-02T03:04:00Z","size":1,"settled":false,"changing":true,"members":"nope","note":5},
+         {"path":"/q/b.md","modified":"2026-10-02T03:04:00Z","size":1,"settled":false,"changing":"yes","note":{"source":""}}]
+        """#
+        let entries = try JSONDecoder.core.decode([QueueEntry].self, from: Data(json.utf8))
+        XCTAssertEqual(entries[0].members, ["/q/Tea.distill.json", "/q/Tea image 1.png"], "bad elements skipped")
+        XCTAssertEqual(entries[0].note, .init(source: "In person", labelsConfirmed: true, imageCount: 1))
+        XCTAssertFalse(entries[0].changing)
+        XCTAssertTrue(entries[1].changing)
+        XCTAssertNil(entries[1].members, "a wrong shape is treated as absent")
+        XCTAssertNil(entries[1].note)
+        XCTAssertFalse(entries[2].changing)
+        XCTAssertEqual(entries[2].note, .init(source: nil, labelsConfirmed: false, imageCount: 0))
+
+        let round = try JSONDecoder.core.decode([QueueEntry].self, from: JSONEncoder().encode(entries))
+        XCTAssertEqual(round, entries)
+    }
+
+    func testNoteAndChangingMeta() {
+        let now = date("2026-10-02T03:30:00Z")
+        let at = date("2026-10-02T03:04:00Z")
+        func meta(_ e: QueueEntry) -> String { plain(QueueRows.meta(e, now: now, locale: en, timeZone: utc)) }
+        let note = QueueEntry(path: "/q/Gyokuro at 60 °C.md", modified: at, size: 120, settled: true, kind: .note,
+                              members: ["/q/Gyokuro at 60 °C.distill.json"],
+                              note: .init(source: "In person", labelsConfirmed: true, imageCount: 0))
+        XCTAssertEqual(meta(note), "Written note · In person · labels confirmed")
+        var one = note
+        one.note?.imageCount = 1
+        XCTAssertEqual(meta(one), "Written note · In person · labels confirmed · 1 image")
+        var three = note
+        three.note = .init(source: nil, labelsConfirmed: false, imageCount: 3)
+        XCTAssertEqual(meta(three), "Written note · 3 images")
+        var bare = note
+        bare.note = .init()
+        XCTAssertEqual(meta(bare), "Written note · Added at 3:04 AM", "nothing to summarize: the time")
+
+        let clip = QueueEntry(path: "/q/Clipping 2026-10-02 030900.md", modified: at, size: 4_000, settled: false,
+                              readyAt: date("2026-10-02T03:14:00Z"), changing: true)
+        XCTAssertEqual(meta(clip), "Pasted at 3:04 AM · 4 KB · still changing")
+    }
+
+    func testVisibleUsesMembersAndCountMatches() {
+        // Current core: one note row with members; any member listed anyway is hidden.
+        let note = QueueEntry(path: "/q/Tea.md", modified: Date(), size: 1, settled: true, kind: .note,
+                              members: ["/q/Tea.distill.json", "/q/Tea image 1.png"])
+        let stray = QueueEntry(path: "/q/Tea image 1.png", modified: Date(), size: 1, settled: true, kind: .note)
+        let file = QueueEntry(path: "/q/a.pdf", modified: Date(), size: 1, settled: true)
+        XCTAssertEqual(QueueRows.visible([note, stray, file]).map(\.name), ["Tea.md", "a.pdf"])
+        XCTAssertEqual(QueueRows.count([note, stray, file]), 2)
+        XCTAssertEqual(QueueRows.paths(removing: note), ["/q/Tea.md", "/q/Tea.distill.json", "/q/Tea image 1.png"])
+        XCTAssertEqual(QueueRows.paths(removing: file), ["/q/a.pdf"])
+        // Old core (no members): the sidecar is still hidden.
+        let old = ["Tea.md", "Tea.distill.json"].map { QueueEntry(path: "/q/\($0)", modified: Date(), size: 1, settled: true) }
+        XCTAssertEqual(QueueRows.count(old), 1)
+    }
+
     func testHeaderLine() {
         let now = date("2026-10-02T03:30:00Z")
         XCTAssertEqual(plain(QueueRows.nextBatchLine(date("2026-10-02T05:30:00Z"), intervalMinutes: 120, now: now, locale: en, timeZone: utc)),

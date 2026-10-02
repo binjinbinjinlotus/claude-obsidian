@@ -137,10 +137,13 @@ enum WindowsSnapshot {
         func at(_ minutes: Double) -> Date { now.addingTimeInterval(minutes * 60) }
         engine.queued = [
             QueueEntry(path: "\(q)/Screenshot 2026-10-02 030432.png", modified: at(-2), size: 36_000, settled: false, readyAt: at(8)),
-            QueueEntry(path: "\(q)/Clipping 2026-10-02 030900.md", modified: at(-1), size: 4_000, settled: false, readyAt: at(9)),
+            QueueEntry(path: "\(q)/Clipping 2026-10-02 030900.md", modified: at(-1), size: 4_000, settled: false, readyAt: at(9),
+                       changing: true),
             QueueEntry(path: "\(q)/gongfu-brewing-guide.pdf", modified: at(-52), size: 2_300_000, settled: true),
-            QueueEntry(path: "\(q)/Gyokuro at 60 °C.md", modified: at(-3), size: 420, settled: true, kind: .note),
-            QueueEntry(path: "\(q)/Gyokuro at 60 °C.distill.json", modified: at(-3), size: 120, settled: true, kind: .note),
+            // A current core lists a note as one row; its sidecar rides along in members.
+            QueueEntry(path: "\(q)/Gyokuro at 60 °C.md", modified: at(-3), size: 420, settled: true, kind: .note,
+                       members: ["\(q)/Gyokuro at 60 °C.distill.json"],
+                       note: .init(source: "In person", labelsConfirmed: true, imageCount: 0)),
             QueueEntry(path: "\(q)/huge-scan.pdf", modified: at(-20), size: 48_000_000, settled: true,
                        problem: "Distill can't read this file. Check its permissions, or remove it."),
         ]

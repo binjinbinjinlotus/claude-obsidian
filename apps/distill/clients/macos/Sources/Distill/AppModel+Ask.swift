@@ -134,7 +134,8 @@ extension AppModel {
         Task {
             do {
                 try await client.removeQueueEntry(path: entry.path)
-                queued.removeAll { $0.path == entry.path }
+                let gone = QueueRows.paths(removing: entry) // a note takes its members along
+                queued.removeAll { gone.contains($0.path) }
             } catch let e as CoreClientError where e.isNotAvailable {
                 trash(entry)
             } catch {

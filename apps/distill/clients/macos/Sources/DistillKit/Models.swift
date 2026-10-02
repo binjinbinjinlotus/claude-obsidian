@@ -423,10 +423,39 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
 // MARK: - Queue, status
 
 public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
-    enum CodingKeys: String, CodingKey { case path, name, modified, size, settled, readyAt, kind, problem }
+    enum CodingKeys: String, CodingKey { case path, name, modified, size, settled, readyAt, kind, problem, changing, members, note }
 
     /// note = written by addNote (complete when queued, skips the settle wait); file = anything else.
     public enum Kind: String, Codable, Sendable { case note, file }
+
+    /// A note row's summary from its manifest.
+    public struct NoteSummary: Codable, Equatable, Hashable, Sendable {
+        enum CodingKeys: String, CodingKey { case source, labelsConfirmed, imageCount }
+        /// Display text ("In person"; free text from the CLI as given).
+        public var source: String?
+        public var labelsConfirmed: Bool
+        public var imageCount: Int
+
+        public init(source: String? = nil, labelsConfirmed: Bool = false, imageCount: Int = 0) {
+            self.source = source
+            self.labelsConfirmed = labelsConfirmed
+            self.imageCount = imageCount
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            source = c.lossy(String.self, .source).flatMap { $0.isEmpty ? nil : $0 }
+            labelsConfirmed = c.lossy(Bool.self, .labelsConfirmed) ?? false
+            imageCount = max(0, c.lossyInt(.imageCount) ?? 0)
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encodeIfPresent(source, forKey: .source)
+            try c.encode(labelsConfirmed, forKey: .labelsConfirmed)
+            try c.encode(imageCount, forKey: .imageCount)
+        }
+    }
 
     public var path: String
     public var name: String
@@ -438,12 +467,19 @@ public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
     public var kind: Kind
     /// Why the core can't use this file (unreadable, ...).
     public var problem: String?
+    /// The file changed after the core first saw it (its ready time moved).
+    public var changing: Bool
+    /// A note row's companion files (its .distill.json and images). nil from an
+    /// older core, which listed them as rows of their own.
+    public var members: [String]?
+    public var note: NoteSummary?
 
     public var id: String { path }
     public var url: URL { URL(fileURLWithPath: path) }
 
     public init(path: String, name: String? = nil, modified: Date, size: Int, settled: Bool,
-                readyAt: Date? = nil, kind: Kind = .file, problem: String? = nil) {
+                readyAt: Date? = nil, kind: Kind = .file, problem: String? = nil,
+                changing: Bool = false, members: [String]? = nil, note: NoteSummary? = nil) {
         self.path = path
         self.name = name ?? URL(fileURLWithPath: path).lastPathComponent
         self.modified = modified
@@ -452,6 +488,9 @@ public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
         self.readyAt = readyAt
         self.kind = kind
         self.problem = problem
+        self.changing = changing
+        self.members = members
+        self.note = note
     }
 
     public init(from decoder: Decoder) throws {
@@ -464,6 +503,9 @@ public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
         readyAt = c.lossyDate(.readyAt)
         kind = c.lossy(String.self, .kind).flatMap(Kind.init(rawValue:)) ?? .file
         problem = c.lossy(String.self, .problem).flatMap { $0.isEmpty ? nil : $0 }
+        changing = c.lossy(Bool.self, .changing) ?? false
+        members = c.lossy([Lossy<String>].self, .members).map { $0.compactMap(\.value) }
+        note = c.lossy(NoteSummary.self, .note)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -476,6 +518,9 @@ public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
         try c.encodeIfPresent(readyAt.map(CoreDate.format), forKey: .readyAt)
         try c.encode(kind, forKey: .kind)
         try c.encodeIfPresent(problem, forKey: .problem)
+        if changing { try c.encode(true, forKey: .changing) }
+        try c.encodeIfPresent(members, forKey: .members)
+        try c.encodeIfPresent(note, forKey: .note)
     }
 }
 

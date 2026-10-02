@@ -106,6 +106,66 @@ export function isSettled(e: ScanEntry, settleSeconds: number, now: Date): boole
 /** Same as NOTE_MANIFEST_SUFFIX in job-kinds.ts (kept here so queue.ts stays import-free). */
 const MANIFEST_SUFFIX = '.distill.json';
 
+/** A note written by addNote, as found in a queue scan: its `.md`, manifest and the listed images present. */
+export interface NoteSet {
+  note: string;
+  manifest: string;
+  /** Listed images that are in the scan, in manifest order. */
+  images: string[];
+  /** From the manifest; absent when it can't be read or has none. */
+  source?: string;
+  labelsConfirmed: boolean;
+  imageCount: number;
+}
+
+interface ParsedManifest {
+  source?: string;
+  labelsConfirmed: boolean;
+  images: string[];
+}
+
+/** Lenient read of a manifest (queue.ts stays independent of notes.ts). Unreadable = no fields. */
+function parseManifest(file: string): ParsedManifest {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return { labelsConfirmed: false, images: [] };
+  }
+  const obj = raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const images = Array.isArray(obj.images)
+    ? obj.images.flatMap((img) => {
+        const name = (img as { file?: unknown } | null)?.file;
+        return typeof name === 'string' ? [name] : [];
+      })
+    : [];
+  // Labels present (even empty) = confirmed, as in NoteManifest.
+  const out: ParsedManifest = { labelsConfirmed: Array.isArray(obj.labels), images };
+  if (typeof obj.source === 'string' && obj.source.trim() !== '') out.source = obj.source;
+  return out;
+}
+
+/** Note sets whose `.md` is in the scan (an orphan manifest or image is not a set). */
+export function noteSets(entries: ScanEntry[]): NoteSet[] {
+  const byName = new Map(entries.map((e) => [e.name, e.path]));
+  const out: NoteSet[] = [];
+  for (const e of entries) {
+    if (!e.name.endsWith(MANIFEST_SUFFIX)) continue;
+    const stem = e.name.slice(0, -MANIFEST_SUFFIX.length);
+    const note = byName.get(`${stem}.md`);
+    if (!note) continue;
+    const m = parseManifest(e.path);
+    const images = m.images.flatMap((f) => {
+      const p = byName.get(f);
+      return p && p !== note && p !== e.path ? [p] : [];
+    });
+    const set: NoteSet = { note, manifest: e.path, images, labelsConfirmed: m.labelsConfirmed, imageCount: m.images.length };
+    if (m.source) set.source = m.source;
+    out.push(set);
+  }
+  return out;
+}
+
 /**
  * Paths of every file that belongs to a note written by addNote: the
  * `<stem>.distill.json` manifest, its `<stem>.md` and the images it lists.
@@ -121,16 +181,9 @@ export function noteSetPaths(entries: ScanEntry[]): Set<string> {
     const stem = e.name.slice(0, -MANIFEST_SUFFIX.length);
     const note = byName.get(`${stem}.md`);
     if (note) out.add(note);
-    let images: unknown = [];
-    try {
-      images = (JSON.parse(fs.readFileSync(e.path, 'utf8')) as { images?: unknown }).images;
-    } catch {
-      // An unreadable manifest still marks its note; its images wait like other files.
-    }
-    if (!Array.isArray(images)) continue;
-    for (const img of images) {
-      const file = (img as { file?: unknown } | null)?.file;
-      const p = typeof file === 'string' ? byName.get(file) : undefined;
+    // An unreadable manifest still marks its note; its images wait like other files.
+    for (const file of parseManifest(e.path).images) {
+      const p = byName.get(file);
       if (p) out.add(p);
     }
   }
@@ -153,10 +206,25 @@ export function queueProblem(e: ScanEntry): string | undefined {
  */
 export function readyFiles(entries: ScanEntry[], settleSeconds: number, now: Date): ScanEntry[] {
   const notes = noteSetPaths(entries);
-  return entries.filter((e) => (notes.has(e.path) || isSettled(e, settleSeconds, now)) && !queueProblem(e));
+  // A note set goes all or nothing: a problem on any of its files holds the whole note back.
+  const byPath = new Map(entries.map((e) => [e.path, e]));
+  const held = new Set<string>();
+  for (const s of noteSets(entries)) {
+    const files = [s.note, s.manifest, ...s.images];
+    if (files.some((p) => { const e = byPath.get(p); return e !== undefined && queueProblem(e) !== undefined; })) {
+      for (const p of files) held.add(p);
+    }
+  }
+  return entries.filter((e) => (notes.has(e.path) || isSettled(e, settleSeconds, now)) && !held.has(e.path) && !queueProblem(e));
 }
 
-export function toQueueEntry(e: ScanEntry, settleSeconds: number, now: Date, notes: Set<string> = new Set()): QueueEntry {
+export function toQueueEntry(
+  e: ScanEntry,
+  settleSeconds: number,
+  now: Date,
+  notes: Set<string> = new Set(),
+  firstSeenMs?: number,
+): QueueEntry {
   const kind = notes.has(e.path) ? 'note' : 'file';
   const settled = kind === 'note' || isSettled(e, settleSeconds, now);
   const entry: QueueEntry = {
@@ -169,9 +237,62 @@ export function toQueueEntry(e: ScanEntry, settleSeconds: number, now: Date, not
   };
   // Rounded up to the second so the shown time is never before the file is really ready.
   if (!settled) entry.readyAt = isoDate(new Date(Math.ceil((e.modifiedMs + settleSeconds * 1000) / 1000) * 1000));
+  // Omitted when false (like problem), so an unchanged queue compares equal.
+  if (!settled && firstSeenMs !== undefined && e.modifiedMs > firstSeenMs) entry.changing = true;
   const problem = queueProblem(e);
   if (problem) entry.problem = problem;
   return entry;
+}
+
+export interface QueueListOptions {
+  /** The mtime each path had when the core first saw it (drives `changing`). */
+  firstSeen?: ReadonlyMap<string, number>;
+  /** Display text for a manifest's source id (e.g. "in-person" → "In person"). */
+  sourceLabel?: (source: string) => string;
+}
+
+/**
+ * What clients see: one entry per file, except that a note set is one entry
+ * for its `.md` carrying `members` (manifest, then images) and `note`; the
+ * members are not listed on their own. A member's problem is carried up to
+ * the note row, the only row clients show.
+ */
+export function queueList(entries: ScanEntry[], settleSeconds: number, now: Date, opts: QueueListOptions = {}): QueueEntry[] {
+  const notes = noteSetPaths(entries);
+  const sets = new Map(noteSets(entries).map((s) => [s.note, s]));
+  const hidden = new Set<string>();
+  for (const s of sets.values()) for (const p of [s.manifest, ...s.images]) hidden.add(p);
+  const byPath = new Map(entries.map((e) => [e.path, e]));
+  const out: QueueEntry[] = [];
+  for (const e of entries) {
+    if (hidden.has(e.path)) continue;
+    const entry = toQueueEntry(e, settleSeconds, now, notes, opts.firstSeen?.get(e.path));
+    const set = sets.get(e.path);
+    if (set) {
+      const members = [set.manifest, ...set.images];
+      entry.members = members;
+      const note: NonNullable<QueueEntry['note']> = { labelsConfirmed: set.labelsConfirmed, imageCount: set.imageCount };
+      if (set.source) note.source = opts.sourceLabel ? opts.sourceLabel(set.source) : set.source;
+      entry.note = note;
+      if (!entry.problem) {
+        for (const m of members) {
+          const member = byPath.get(m);
+          const problem = member && queueProblem(member);
+          if (problem) {
+            entry.problem = `${path.basename(m)}: ${problem}`;
+            break;
+          }
+        }
+      }
+    }
+    out.push(entry);
+  }
+  return out;
+}
+
+/** The note set `file` belongs to as a member (manifest or image), if its `.md` is queued. */
+export function noteSetOfMember(entries: ScanEntry[], file: string): NoteSet | undefined {
+  return noteSets(entries).find((s) => s.manifest === file || s.images.includes(file));
 }
 
 // ───────────── Mover ─────────────
