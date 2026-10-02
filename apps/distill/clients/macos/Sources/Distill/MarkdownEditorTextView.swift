@@ -16,11 +16,34 @@ final class MarkdownTextView: NSTextView {
     override var readablePasteboardTypes: [NSPasteboard.PasteboardType] { [.string] }
 
     override func paste(_ sender: Any?) {
+        if isEditable, let controller, controller.pasteImages(from: .general) { return }
         guard isEditable, let text = MarkdownPaste.text(from: .general) else {
             super.paste(sender)   // nothing textual (an image): compose's image intake handles ⌘V before this
             return
         }
+        if let controller, controller.embedsKnownImage(text) {
+            controller.insertMarkdown(text)
+            return
+        }
         insertText(text, replacementRange: selectedRange())
+    }
+
+    /// Copy and drag write Markdown: an image is its `![[name]]`.
+    override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {
+        guard let storage = textStorage, selectedRange().length > 0, storage.string.contains("\u{FFFC}") else {
+            return super.writeSelection(to: pboard, types: types)
+        }
+        let markdown = MarkdownEditorController.markdown(from: storage.attributedSubstring(from: selectedRange()))
+        pboard.declareTypes([.string], owner: nil)
+        return pboard.setString(markdown, forType: .string)
+    }
+
+    /// A drop of Markdown that embeds this note's images puts the images back.
+    override func readSelection(from pboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+        if type == .string, let controller, let text = pboard.string(forType: .string), controller.embedsKnownImage(text) {
+            return controller.insertMarkdown(text)
+        }
+        return super.readSelection(from: pboard, type: type)
     }
 
     override func pasteAsRichText(_ sender: Any?) { paste(sender) }
@@ -84,6 +107,18 @@ final class MarkdownTextView: NSTextView {
             MarkdownTheme.codeFill.setFill()
             NSBezierPath(roundedRect: band, xRadius: 6, yRadius: 6).fill()
         }
+        if let r = controller?.extractedHighlight, r.length > 0 {
+            // Just extracted from an image: tinted for a few seconds.
+            var union = NSRect.null
+            lm.enumerateLineFragments(forGlyphRange: lm.glyphRange(forCharacterRange: r, actualCharacterRange: nil)) { _, used, _, _, _ in
+                union = union.union(used)
+            }
+            if !union.isNull {
+                let band = NSRect(x: origin.x - 8, y: union.minY + origin.y - 6, width: tc.size.width + 16, height: union.height + 12)
+                MarkdownTheme.extractedFill.setFill()
+                NSBezierPath(roundedRect: band, xRadius: 8, yRadius: 8).fill()
+            }
+        }
         storage.enumerateAttribute(.markdownQuote, in: full) { value, range, _ in
             guard value != nil else { return }
             lm.enumerateLineFragments(forGlyphRange: lm.glyphRange(forCharacterRange: range, actualCharacterRange: nil)) { r, _, _, _, _ in
@@ -143,6 +178,8 @@ struct MarkdownTextArea: NSViewRepresentable {
     var editable: Bool
     var scrolls: Bool
     var autoFocus: Bool
+    /// Images inside the text (Write a note, quick note); nil = text only.
+    var images: InlineImageHost? = nil
 
     func makeNSView(context: Context) -> MarkdownScrollView {
         let storage = NSTextStorage()
@@ -193,6 +230,7 @@ struct MarkdownTextArea: NSViewRepresentable {
 
         controller.attach(tv, scroll: scroll, size: size)
         controller.setText = { value in if self.text != value { self.text = value } }
+        controller.imageHost = images
         controller.load(text)
         controller.autoFocus = autoFocus
         return scroll
@@ -209,7 +247,16 @@ struct MarkdownTextArea: NSViewRepresentable {
             tv.isEditable = editable
             tv.isSelectable = true
         }
-        if tv.string != text, !tv.hasMarkedText() { controller.load(text) }
+        let hadImages = controller.imageHost != nil
+        controller.imageHost = images
+        if images == nil {
+            if hadImages { controller.refreshImageOverlays() }
+            if tv.string != text, !tv.hasMarkedText() { controller.load(text) }
+        } else if controller.markdownText() != text, !tv.hasMarkedText() {
+            controller.load(text)
+        } else {
+            controller.refreshImageOverlays()
+        }
     }
 
     @available(macOS 13.0, *)
@@ -219,7 +266,7 @@ struct MarkdownTextArea: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ scroll: MarkdownScrollView, coordinator: ()) {
-        (scroll.documentView as? MarkdownTextView)?.controller?.closePanels()
+        (scroll.documentView as? MarkdownTextView)?.controller?.dismantle()
     }
 }
 

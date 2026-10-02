@@ -273,6 +273,8 @@ export function fallbackModel(task: AITask): string {
 
 /** Before per-task settings existed, `model` was the one model for the agentic tasks. */
 export function defaultSelection(s: Settings, task: AITask): ModelSelection {
+  // Text from images: fast and cheap for reading screenshots (Swift `SettingsEdits.fallbackSelection`).
+  if (task === 'imageText') return { runnerID: DEFAULT_RUNNER_ID, model: 'haiku', effort: 'low' };
   const legacy = task === 'ingest' || task === 'ask' ? s.model : fallbackModel(task);
   return { runnerID: DEFAULT_RUNNER_ID, model: legacy, effort: null };
 }

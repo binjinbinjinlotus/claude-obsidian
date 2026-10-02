@@ -220,6 +220,7 @@ describe('RunnerTests', () => {
     assert.equal(ingest.model, 'opus');
     assert.equal(ingest.effort ?? null, null);
     assert.equal(selectionFor(s, 'labelSuggest').model, 'haiku');
+    assert.deepEqual(selectionFor(s, 'imageText'), { runnerID: 'claude-code', model: 'haiku', effort: 'low' });
     s.taskDefaults.ask = { runnerID: 'claude-code', model: 'sonnet', effort: 'high' };
     assert.equal(selectionFor(s, 'ask').effort, 'high');
     const back = decodeSettings(JSON.parse(JSON.stringify(encodeSettings(s))));

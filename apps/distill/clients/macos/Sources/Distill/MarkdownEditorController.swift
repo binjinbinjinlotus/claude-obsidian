@@ -57,6 +57,19 @@ final class MarkdownEditorController: NSObject, ObservableObject, NSTextViewDele
     private var keyWatch: NSObjectProtocol?
     private var menuDismissedAt = Date.distantPast
 
+    // Images inside the text (MarkdownEditorImages.swift)
+    /// Set by the owner each render; nil = this editor takes no images.
+    var imageHost: InlineImageHost? {
+        didSet { if let key = imageHost?.key { InlineImageEditors.register(self, for: key) } }
+    }
+    var readTasks: [ObjectIdentifier: (name: String, task: Task<Void, Never>)] = [:]
+    var imageOverlays: [ObjectIdentifier: InlineOverlayHost] = [:]
+    var extractedNote: InlineOverlayHost?
+    var extracted: ExtractedText?
+    var extractedClear: DispatchWorkItem?
+    /// The extract replacement is being applied (the edit that must not hide its own note).
+    var extractEditing = false
+
     // MARK: Lifecycle
 
     func attach(_ tv: MarkdownTextView, scroll: MarkdownScrollView, size: CGFloat) {
@@ -95,13 +108,23 @@ final class MarkdownEditorController: NSObject, ObservableObject, NSTextViewDele
 
     /// Replace the text from the binding (keeps the selection where it can).
     func load(_ text: String) {
-        guard let tv = textView else { return }
+        guard let tv = textView, let storage = tv.textStorage else { return }
         let sel = tv.selectedRange()
-        tv.string = text
+        if imageHost == nil {
+            tv.string = text
+        } else {
+            storage.setAttributedString(Self.attributed(text, images: imageHost?.images ?? [:], attributes: MarkdownStyler.baseAttributes(size: size)))
+            extracted = nil
+            if let f = imageHost?.fixture?.extracted, let image = imageHost?.images[f.name],
+               case let r = (storage.string as NSString).range(of: f.text), r.location != NSNotFound {
+                extracted = ExtractedText(range: r, name: f.name, model: f.model, attachment: InlineImageAttachment(image: image))
+            }
+        }
         restyle()
-        let length = (text as NSString).length
+        let length = storage.length
         tv.setSelectedRange(NSRange(location: min(sel.location, length), length: 0))
         updateHeight()
+        if imageHost != nil { DispatchQueue.main.async { [weak self] in self?.refreshImageOverlays() } }
     }
 
     func update(size newSize: CGFloat) {
@@ -117,13 +140,24 @@ final class MarkdownEditorController: NSObject, ObservableObject, NSTextViewDele
         if abs(tv.frame.width - lastWidth) > 0.5 {
             lastWidth = tv.frame.width
             updateHeight()
+            if imageHost != nil { refreshImageOverlays() }
         }
         updateAtBottom()
+    }
+
+    func restyleNow() {
+        restyle()
+        updateHeight()
     }
 
     private func restyle() {
         guard let tv = textView, let storage = tv.textStorage, !tv.hasMarkedText() else { return }
         MarkdownStyler.apply(to: storage, size: size)
+        if extracted != nil {
+            storage.beginEditing()
+            addExtractedSpacing(storage)
+            storage.endEditing()
+        }
         tv.typingAttributes = MarkdownStyler.baseAttributes(size: size)
         tv.needsDisplay = true
     }
@@ -134,6 +168,8 @@ final class MarkdownEditorController: NSObject, ObservableObject, NSTextViewDele
         lm.ensureLayout(for: tc)
         var used = lm.usedRect(for: tc).height
         if used < 1 { used = lineHeight }
+        // Text extracted at the very end: the last line's paragraph spacing (the note line's room) is not in usedRect.
+        if let r = extractedHighlight, NSMaxRange(r) >= (tv.textStorage?.length ?? 0) { used += 26 }
         let h = ceil(used + Self.inset * 2)
         if abs(h - contentHeight) > 0.5 {
             DispatchQueue.main.async { [weak self] in self?.contentHeight = h }
@@ -163,15 +199,27 @@ final class MarkdownEditorController: NSObject, ObservableObject, NSTextViewDele
         closePicker()
     }
 
+    /// The text view is going away for good.
+    func dismantle() {
+        closePanels()
+        cancelAllReads()
+        extractedClear?.cancel()
+    }
+
     // MARK: NSTextViewDelegate
 
     func textDidChange(_ notification: Notification) {
         guard let tv = textView else { return }
+        if !extractEditing, extracted != nil {
+            extracted = nil
+            extractedClear?.cancel()
+        }
         restyle()
-        setText?(tv.string)
+        setText?(imageHost == nil ? tv.string : markdownText())
         updateHeight()
         hideBubble()
         refreshAnchoredPicker()
+        if imageHost != nil { refreshImageOverlays() }
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
@@ -179,6 +227,15 @@ final class MarkdownEditorController: NSObject, ObservableObject, NSTextViewDele
         active = MarkdownParser.activeStyles(in: tv.string, selection: tv.selectedRange())
         scheduleBubble()
         if pickerAnchor != nil { refreshAnchoredPicker() }
+        if !imageOverlays.isEmpty { refreshImageOverlays() }
+    }
+
+    /// Typing next to an image never types more image.
+    func textView(_ textView: NSTextView, shouldChangeTypingAttributes oldTypingAttributes: [String: Any] = [:],
+                  toAttributes newTypingAttributes: [NSAttributedString.Key: Any] = [:]) -> [NSAttributedString.Key: Any] {
+        var attrs = newTypingAttributes
+        attrs[.attachment] = nil
+        return attrs
     }
 
     func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
@@ -289,8 +346,24 @@ final class MarkdownEditorController: NSObject, ObservableObject, NSTextViewDele
 
     func apply(_ e: MarkdownEdit) {
         guard let tv = textView, let storage = tv.textStorage else { return }
+        // Images inside the edited range keep their attachments, in order.
+        var images: [NSTextAttachment] = []
+        if e.range.length > 0 {
+            storage.enumerateAttribute(.attachment, in: e.range) { value, range, _ in
+                if let a = value as? NSTextAttachment { images.append(contentsOf: Array(repeating: a, count: range.length)) }
+            }
+        }
         guard tv.shouldChangeText(in: e.range, replacementString: e.replacement) else { return }
-        storage.replaceCharacters(in: e.range, with: NSAttributedString(string: e.replacement, attributes: tv.typingAttributes))
+        let replacement = NSMutableAttributedString(string: e.replacement, attributes: tv.typingAttributes)
+        if !images.isEmpty {
+            let ns = e.replacement as NSString
+            var next = 0
+            for i in 0..<ns.length where ns.character(at: i) == 0xFFFC && next < images.count {
+                replacement.addAttribute(.attachment, value: images[next], range: NSRange(location: i, length: 1))
+                next += 1
+            }
+        }
+        storage.replaceCharacters(in: e.range, with: replacement)
         tv.didChangeText()
         tv.setSelectedRange(e.selection)
         tv.scrollRangeToVisible(e.selection)

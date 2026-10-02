@@ -189,7 +189,7 @@ enum SettingsEdits {
         case .ingest: return ("Adding notes", "Ingest batches into the vault")
         case .ask: return ("Ask a question", "Answers from your vault")
         case .labelSuggest: return ("Label suggestions", "After a note is queued")
-        case .imageText: return ("Text from images", "When you pick Extract text")
+        case .imageText: return ("Text from images", "When you click Extract content on an image")
         }
     }
 

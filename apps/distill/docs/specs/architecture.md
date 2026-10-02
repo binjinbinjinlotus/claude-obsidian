@@ -80,6 +80,7 @@ application/json`, at most 1 MiB). Every error is `{"error": {"code",
 | DELETE | `/v1/queue/entries` | `{path}` | `{entries}`: the file (and a note's `.distill.json`) moved to the Trash; 400 outside the active queue folder, 409 when a batch took it |
 | POST | `/v1/queue/process` | `{force?}` | `{job: Job \| null}` |
 | POST | `/v1/notes` | `AddNoteRequest` (`labels?`, `suggest?: wait\|background\|none`, `origin?: app\|cli`) | 201 `AddNoteResult` |
+| POST | `/v1/images/extract` | `{imagePath, vaultPath?}` (absolute png/jpg/gif/webp) | `{text, model}` (`text` '' = none found); imageText task; closing the request stops the runner |
 | POST | `/v1/notes/:requestID/labels` | `{labels: string[]}` | `{notePath, labels}`; 409 once the batch took the note |
 | GET | `/v1/labels[?vault=PATH]` | | `{labels: LabelCount[]}` |
 | GET | `/v1/labels/review[?vault=PATH]` | | `LabelReview` |

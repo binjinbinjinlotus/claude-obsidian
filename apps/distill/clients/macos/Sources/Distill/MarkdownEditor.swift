@@ -74,6 +74,8 @@ struct MarkdownEditor: View {
     var onHeightChange: ((CGFloat) -> Void)? = nil
     /// Put the text (not the bar) on a gray rounded box.
     var textBox = false
+    /// Images inside the text (Write a note, quick note); the full bar gets an Image button.
+    var images: InlineImageHost? = nil
 
     @StateObject private var controller = MarkdownEditorController()
     @AppStorage(MarkdownBarKeys.quick) private var quickBar = false
@@ -96,7 +98,8 @@ struct MarkdownEditor: View {
         VStack(alignment: .leading, spacing: barSpacing) {
             if let variant = barVariant {
                 MarkdownStyleBar(variant: variant, active: snapshot ? (fixture?.active ?? .init()) : controller.active,
-                                 pressed: snapshot ? fixture?.pressed : nil) { item, frame in
+                                 pressed: snapshot ? fixture?.pressed : nil,
+                                 onImage: images != nil && variant == .full ? { controller.chooseImages() } : nil) { item, frame in
                     controller.barAction(item, frame: frame)
                 }
                 .disabled(disabled)
@@ -126,7 +129,7 @@ struct MarkdownEditor: View {
         controller.onSubmit = onSubmit
         controller.submitMode = submit
         return MarkdownTextArea(text: $text, controller: controller, size: textSize, placeholder: placeholder,
-                         editable: !disabled, scrolls: scrolls, autoFocus: autoFocus)
+                         editable: !disabled, scrolls: scrolls, autoFocus: autoFocus, images: images)
             .frame(height: fillsHeight ? nil : fitted)
             .frame(minHeight: fillsHeight ? minH : nil, maxHeight: fillsHeight ? .infinity : nil)
             .mask(fade)
@@ -169,11 +172,13 @@ struct BareTextEditor: View {
     var textSize: CGFloat = 13
     var onSubmit: (() -> Void)? = nil
     var onHeightChange: ((CGFloat) -> Void)? = nil
+    /// Images inside the text (Write a note, quick note).
+    var images: InlineImageHost? = nil
 
     var body: some View {
         MarkdownEditor(text: $text, placeholder: placeholder, textSize: textSize, minHeight: minHeight, maxHeight: maxHeight,
                        fillsHeight: fillsHeight, bar: bar, barSpacing: bar == .full ? 14 : 10,
-                       submit: .commandReturn, onSubmit: onSubmit, onHeightChange: onHeightChange)
+                       submit: .commandReturn, onSubmit: onSubmit, onHeightChange: onHeightChange, images: images)
     }
 }
 

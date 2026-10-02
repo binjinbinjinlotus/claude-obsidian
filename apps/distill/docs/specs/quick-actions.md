@@ -34,7 +34,7 @@ actions" panels 2–5. Code: `QuickWindow.swift` (window shell, resize corner,
 - **Close bar**: QUICK NOTE / QUICK ASK and **×**. × does what Esc does.
 - **Growth**: the window fits its content and grows downward; the top edge
   never moves. It stops 8 pt above the bottom of the visible frame; past that
-  only the middle scrolls (quick note: title, text, images and errors;
+  only the middle scrolls (quick note: title, text with its images and errors;
   quick ask: the answer; the source row and the model/filter row stay with the footer), with an overlay scroller and a soft fade at the cut
   edge. The close bar, the question (quick ask) and the footer stay put. It
   shrinks back as content shrinks. No scroll-bar strip anywhere: the scroll
@@ -62,8 +62,10 @@ actions" panels 2–5. Code: `QuickWindow.swift` (window shell, resize corner,
   but keeps the run: the flask gets a green ring while the answer is on its way
   or unseen, and clicking the flask then reopens the window instead of the app.
   Opening it again after a seen answer starts a new chat.
-- **Quick note**: title (wraps to 2 lines, then scrolls in its field), text,
-  images with Keep / Extract text, and the footer **Aa · + Source · ⌘↩ saves ·
+- **Quick note**: title (wraps to 2 lines, then scrolls in its field), text
+  with images inside it (⌘V puts an image at the cursor; hover for **Extract
+  content** and ×, same rules as [Write a note](notes-composer.md#images);
+  **Add to queue** waits while an image is being read), and the footer **Aa · + Source · ⌘↩ saves ·
   Add to queue** (**Try again** after an error, shown above the footer).
   **+ Source** opens a menu of the Settings sources by group; once one is
   picked the button becomes that source's green chip ("In person ▾"; truncated, never widens

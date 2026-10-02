@@ -65,22 +65,22 @@ enum NotesSnapshot {
     private static func composeDraft() -> ComposeDraft {
         var d = ComposeDraft()
         d.title = "Kettle settings for the new tea set"
-        d.text = "The gooseneck kettle has presets. 80 °C works for sencha; I set 60 °C for the gyokuro the shop recommended. Photos of the shop's brewing card and my tasting setup below."
+        d.text = "The gooseneck kettle has presets. 80 °C works for sencha; I set 60 °C for the gyokuro the shop recommended.\nThe shop's brewing card:\n![[brewing-card.png]]\nMy tasting setup:\n![[tasting-setup.jpg]]"
         d.group = "discussion"
         d.source = "in-person"
         d.sourceRef = "#tea-club · with Mei"
-        d.images = [DraftImage(url: URL(fileURLWithPath: "/nonexistent/brewing-card.png"), mode: .extract),
-                    DraftImage(url: URL(fileURLWithPath: "/nonexistent/tasting-setup.jpg"), mode: .keep)]
+        d.images = [DraftImage(url: URL(fileURLWithPath: "/nonexistent/brewing-card.png")),
+                    DraftImage(url: URL(fileURLWithPath: "/nonexistent/tasting-setup.jpg"))]
         return d
     }
 
     private static func quickDraft() -> ComposeDraft {
         var d = ComposeDraft()
         d.title = "Gyokuro at 60 °C"
-        d.text = "Shop recommended 60 °C, 2 min first steep. Card attached."
+        d.text = "Shop recommended 60 °C, 2 min first steep.\n![[brewing-card.png]]"
         d.group = "discussion"
         d.source = "in-person"
-        d.images = [DraftImage(url: URL(fileURLWithPath: "/nonexistent/brewing-card.png"), mode: .extract)]
+        d.images = [DraftImage(url: URL(fileURLWithPath: "/nonexistent/brewing-card.png"))]
         return d
     }
 

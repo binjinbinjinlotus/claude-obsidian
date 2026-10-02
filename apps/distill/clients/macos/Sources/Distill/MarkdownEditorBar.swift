@@ -60,6 +60,8 @@ struct MarkdownStyleBar: View {
     var variant: MarkdownBarVariant
     var active: MarkdownParser.ActiveStyles
     var pressed: MarkdownBarItem? = nil
+    /// The Image button at the end (editors that take images inline).
+    var onImage: (() -> Void)? = nil
     var perform: (MarkdownBarItem, CGRect) -> Void
 
     var body: some View {
@@ -71,12 +73,40 @@ struct MarkdownStyleBar: View {
                     MarkdownBarButton(item: item, on: item.isOn(active) || pressed == item, dark: false, perform: perform)
                 }
             }
+            if let onImage {
+                Rectangle().fill(barDivider).frame(width: 1, height: 16).padding(.horizontal, 3)
+                MarkdownImageButton(action: onImage)
+            }
         }
         .padding(3)
         .background(RoundedRectangle(cornerRadius: 11).fill(Theme.panel))
         .fixedSize()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Text style")
+    }
+}
+
+/// "Image": insert an image at the cursor (or paste ⌘V, or drop).
+struct MarkdownImageButton: View {
+    let action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: "photo").font(.system(size: 12, weight: .semibold))
+                Text("Image").font(.system(size: 12, weight: .bold))
+            }
+            .padding(.horizontal, 8).frame(height: 28)
+            .foregroundStyle(barInk)
+            .background(RoundedRectangle(cornerRadius: 8).fill(hover ? Color(hex: 0xF6F5F2) : Color.white))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.border))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .help("Insert image (or paste ⌘V, or drop)")
+        .accessibilityLabel("Insert image")
     }
 }
 

@@ -72,8 +72,7 @@ final class QuickNotePanel: QuickWindow {
             if event.charactersIgnoringModifiers == "v", engine.notes.steps[.quick] == nil,
                ComposeImageIntake.hasImage(NSPasteboard.general),
                !(firstResponder is NSText && NSPasteboard.general.string(forType: .string) != nil) {
-                let images = MainActor.assumeIsolated { ComposeImageIntake.images(from: NSPasteboard.general) }
-                MainActor.assumeIsolated { engine.updateDraft(.quick) { $0.images += images } }
+                MainActor.assumeIsolated { engine.insertImages(.quick, ComposeImageIntake.images(from: NSPasteboard.general)) }
                 return true
             }
             if event.keyCode == 36 { // Return
@@ -150,44 +149,23 @@ struct QuickNoteBody: View {
     @ViewBuilder private var composerTop: some View {
         VStack(alignment: .leading, spacing: 10) {
             QuickTitleField(text: binding(\.title))
-            BareTextEditor(placeholder: "Write a note…", text: binding(\.text), font: Theme.body(13), minHeight: 40, maxHeight: .infinity)
+            BareTextEditor(placeholder: "Write a note…", text: binding(\.text), font: Theme.body(13), minHeight: 40, maxHeight: .infinity,
+                           images: engine.imageHost(owner))
                 .padding(0)
         }
     }
 
-    /// Images (in the same scroll area as the text) and the error line.
+    /// The error line (images sit inside the text).
     @ViewBuilder private var composerBottom: some View {
-        let draft = notes.draft(owner)
-        if !draft.images.isEmpty || notes.addErrors[owner] != nil {
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(draft.images) { image in
-                    HStack(spacing: 10) {
-                        ComposeImagePreview(image: image, mode: image.mode)
-                            .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 10))
-                        Text(image.name).font(Theme.body(12, .semibold)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                        ImageModeSwitch(mode: image.mode, height: 26, font: Theme.body(11, .bold), compact: true) { mode in
-                            engine.updateDraft(owner) { d in if let i = d.images.firstIndex(where: { $0.id == image.id }) { d.images[i].mode = mode } }
-                        }
-                        .fixedSize()
-                        Button { engine.updateDraft(owner) { $0.images.removeAll { $0.id == image.id } } } label: {
-                            Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.faint)
-                        }
-                        .buttonStyle(.plain).accessibilityLabel("Remove \(image.name)")
-                    }
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 14).fill(Theme.panel))
-                }
-                if let error = notes.addErrors[owner] {
-                    HStack(alignment: .top, spacing: 6) {
-                        Text("!").font(Theme.body(11, .heavy))
-                        Text(error).fixedSize(horizontal: false, vertical: true)
-                    }
-                    .font(Theme.body(11)).foregroundStyle(Theme.peachInk)
-                    .padding(.horizontal, 10).padding(.vertical, 7)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Color(hex: 0xFFF4EE)))
-                }
+        if let error = notes.addErrors[owner] {
+            HStack(alignment: .top, spacing: 6) {
+                Text("!").font(Theme.body(11, .heavy))
+                Text(error).fixedSize(horizontal: false, vertical: true)
             }
+            .font(Theme.body(11)).foregroundStyle(Theme.peachInk)
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color(hex: 0xFFF4EE)))
         }
     }
 
@@ -330,11 +308,17 @@ struct QuickTitleField: View {
     }
 }
 
-/// "Haiku" for the label-suggestion model in status lines.
+/// "Haiku" for the label-suggestion (or image-reading) model in status lines.
 enum LabelsModelName {
     @MainActor
-    static func labelSuggest(_ engine: AppModel) -> String {
-        let sel = SettingsEdits.selection(.labelSuggest, settings: engine.settings)
+    static func labelSuggest(_ engine: AppModel) -> String { title(.labelSuggest, engine) }
+
+    @MainActor
+    static func imageText(_ engine: AppModel) -> String { title(.imageText, engine) }
+
+    @MainActor
+    private static func title(_ task: AITask, _ engine: AppModel) -> String {
+        let sel = SettingsEdits.selection(task, settings: engine.settings)
         let runner = engine.notes.runners.first { $0.id == sel.runnerID }
         return SettingsEdits.modelTitle(sel.model, runner: runner)
     }

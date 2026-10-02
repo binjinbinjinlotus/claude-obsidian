@@ -64,7 +64,10 @@ Stored in `settings.json`:
 - `enabledRunners`: ids turned on (default `["claude-code"]`).
 - `taskDefaults`: `{ "<task>": { "runnerID", "model", "effort" } }`.
 - Missing entries fall back to `defaultSelection(for:)`: Claude Code, the legacy
-  `model` field for `ingest`/`ask`, Haiku for `labelSuggest`.
+  `model` field for `ingest`/`ask`, Haiku for `labelSuggest`, Haiku with low
+  effort for `imageText` ("Text from images": Extract content on an image,
+  `extractImageText`; Claude Code gets only `Read` on a copy of the image in an
+  empty scratch directory, model APIs get the image attached).
 - `SetupValidator` checks every runner that some task is set to use.
 
 ## Claude Code runner

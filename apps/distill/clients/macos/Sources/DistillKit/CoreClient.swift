@@ -115,6 +115,20 @@ public final class CoreClient: Sendable {
         try await send("POST", "/v1/notes", body: request)
     }
 
+    /// `POST /v1/images/extract`: the Markdown in one image ("Extract content").
+    /// Cancelling the task closes the request, which stops the runner; it then
+    /// throws `CancellationError` (never `.unreachable`).
+    public func extractImageText(imagePath: String, vaultPath: String? = nil) async throws -> ExtractImageTextResult {
+        var body: [String: String] = ["imagePath": imagePath]
+        if let vaultPath { body["vaultPath"] = vaultPath }
+        do {
+            return try await send("POST", "/v1/images/extract", body: body, timeout: Self.askTimeout)
+        } catch {
+            if Task.isCancelled { throw CancellationError() }
+            throw error
+        }
+    }
+
     public func labelNote(requestID: String, labels: [String]) async throws -> LabelNoteResult {
         try await send("POST", "/v1/notes/\(Self.segment(requestID))/labels", body: ["labels": labels])
     }

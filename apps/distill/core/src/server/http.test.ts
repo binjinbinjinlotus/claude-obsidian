@@ -571,6 +571,58 @@ describe('HTTP API', () => {
       }
     });
 
+    it('POST /v1/images/extract passes the request and returns { text, model }', async () => {
+      const res = await request(port, 'POST', '/v1/images/extract', { body: { imagePath: '/tmp/card.png', vaultPath: '/tmp/vault' } });
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body, { text: '', model: 'Haiku' });
+      assert.deepEqual(lastCall()?.args[0], { imagePath: '/tmp/card.png', vaultPath: '/tmp/vault' });
+      const missing = await request(port, 'POST', '/v1/images/extract', { body: {} });
+      assert.equal(missing.status, 400);
+      core.failNext('extractImageText', new CoreError('invalid_request', 'Image not found: /x.png'));
+      const bad = await request(port, 'POST', '/v1/images/extract', { body: { imagePath: '/x.png' } });
+      assert.equal(bad.status, 400);
+      assert.equal(bad.body.error.message, 'Image not found: /x.png');
+      core.failNext('extractImageText', new Error('Claude Code isn’t signed in.'));
+      const failed = await request(port, 'POST', '/v1/images/extract', { body: { imagePath: '/x.png' } });
+      assert.equal(failed.status, 400);
+      assert.equal(failed.body.error.message, 'Claude Code isn’t signed in.');
+    });
+
+    it('closing the extract request aborts the reading', async () => {
+      let aborted!: () => void;
+      const wasAborted = new Promise<void>((r) => (aborted = r));
+      let started!: () => void;
+      const didStart = new Promise<void>((r) => (started = r));
+      const base = createFakeCore();
+      const s = await startServer({
+        core: {
+          ...base,
+          extractImageText: (_req, opts) =>
+            new Promise((_resolve, reject) => {
+              started();
+              opts?.signal?.addEventListener('abort', () => {
+                aborted();
+                reject(new Error('Cancelled.'));
+              });
+            }),
+        },
+        token: TOKEN,
+      });
+      try {
+        const req = http.request({
+          host: '127.0.0.1', port: s.port, method: 'POST', path: '/v1/images/extract',
+          headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+        });
+        req.on('error', () => {});
+        req.end(JSON.stringify({ imagePath: '/tmp/card.png' }));
+        await didStart;
+        req.destroy();
+        await wasAborted;
+      } finally {
+        await s.close();
+      }
+    });
+
     it('GET /v1/events forwards progress, and job events carry suggestedRule', async () => {
       const progress: CoreEvent = {
         type: 'progress',

@@ -86,7 +86,8 @@ private struct ComposeScreenBody: View {
                 .disabled(step != nil)
         } editor: {
             Group {
-                BareTextEditor(placeholder: "Write what you want to remember…", text: binding(\.text), font: Theme.body(15), minHeight: 52, maxHeight: .infinity, bar: .full, fillsHeight: true, textSize: 15)
+                BareTextEditor(placeholder: "Write what you want to remember…", text: binding(\.text), font: Theme.body(15), minHeight: 52, maxHeight: .infinity, bar: .full, fillsHeight: true, textSize: 15,
+                               images: engine.imageHost(owner))
                     .padding(0)
             }
             .disabled(step != nil)
@@ -99,7 +100,6 @@ private struct ComposeScreenBody: View {
                 }
                 .padding(.horizontal, 14).padding(.vertical, 12)
                 .background(RoundedRectangle(cornerRadius: 16).fill(Theme.panel))
-                images.disabled(step != nil)
                 if let error = notes.addErrors[owner] {
                     Label(error, systemImage: "exclamationmark.circle.fill")
                         .font(Theme.body(12)).foregroundStyle(Theme.peachInk)
@@ -113,7 +113,7 @@ private struct ComposeScreenBody: View {
         .shadow(color: Color(hex: 0x1D1C1A).opacity(0.05), radius: 15, y: 10)
         .modifier(ComposeDropModifier(enabled: !snapshot, targeted: $dropTargeted) { providers in
             guard step == nil else { return false }
-            return ComposeDrop.handle(providers) { images in engine.updateDraft(owner) { $0.images += images } }
+            return ComposeDrop.handle(providers) { images in engine.insertImages(owner, images) }
         })
     }
 
@@ -132,31 +132,6 @@ private struct ComposeScreenBody: View {
             Spacer(minLength: 0)
         }
         .frame(minHeight: 26)
-    }
-
-    /// Image tiles wrap onto more rows instead of widening the window.
-    private var images: some View {
-        FlowLayout(spacing: 16) {
-            ForEach(draft.images) { image in
-                ComposeImageCard(image: image,
-                                 setMode: { mode in engine.updateDraft(owner) { d in
-                                     if let i = d.images.firstIndex(where: { $0.id == image.id }) { d.images[i].mode = mode }
-                                 } },
-                                 remove: { engine.updateDraft(owner) { $0.images.removeAll { $0.id == image.id } } })
-            }
-            Button { engine.updateDraft(owner) { $0.images += ComposeImageIntake.choose() } } label: {
-                VStack(spacing: 6) {
-                    Image(systemName: "plus").font(.system(size: 18, weight: .medium))
-                    Text("Add image").font(Theme.body(12, .semibold))
-                    Text("or paste ⌘V").font(Theme.body(11, .medium)).foregroundStyle(Theme.faint)
-                }
-                .foregroundStyle(Theme.primary)
-                .frame(width: 130, height: draft.images.isEmpty ? 84 : 168)
-                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color(hex: 0xD6D3CC), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5])))
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-        }
     }
 
     // MARK: Footer
@@ -228,14 +203,14 @@ private struct ComposeScreenBody: View {
 
     // MARK: Paste
 
-    /// ⌘V while composing adds images to the note instead of the queue.
+    /// ⌘V while composing adds images to the note (at the cursor) instead of the queue.
     private func installPaste() {
         guard !snapshot else { return }
         PasteboardIntake.composeTarget = { pb in
             guard let window, NSApp.keyWindow === window, mode == .note, engine.notes.steps[owner] == nil else { return false }
             let images = ComposeImageIntake.images(from: pb)
             if !images.isEmpty {
-                engine.updateDraft(owner) { $0.images += images }
+                engine.insertImages(owner, images)
                 return true
             }
             if let text = pb.string(forType: .string), !text.isEmpty {
@@ -252,8 +227,7 @@ private struct ComposeScreenBody: View {
                   engine.notes.steps[owner] == nil,
                   NSPasteboard.general.string(forType: .string) == nil,
                   ComposeImageIntake.hasImage(NSPasteboard.general) else { return event }
-            let images = ComposeImageIntake.images(from: NSPasteboard.general)
-            engine.updateDraft(owner) { $0.images += images }
+            engine.insertImages(owner, ComposeImageIntake.images(from: NSPasteboard.general))
             return nil
         }
     }
@@ -329,129 +303,6 @@ struct SourcePickerRow: View {
         .padding(.horizontal, 10).frame(height: 28)
         .background(Capsule().fill(Color.white))
         .overlay(Capsule().strokeBorder(Theme.border))
-    }
-}
-
-// MARK: Images
-
-struct ComposeImageCard: View {
-    let image: DraftImage
-    var extracting = false
-    let setMode: (NoteImage.Mode) -> Void
-    let remove: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ZStack(alignment: .topLeading) {
-                ComposeImagePreview(image: image, mode: image.mode)
-                    .frame(maxWidth: .infinity).frame(height: 84)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                Text(image.name).font(Theme.body(11, .bold)).lineLimit(1)
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .foregroundStyle(Color(hex: 0x48463F))
-                    .background(Capsule().fill(Color.white.opacity(0.92)))
-                    .padding(8)
-                HStack {
-                    Spacer()
-                    Button(action: remove) {
-                        Image(systemName: "xmark").font(.system(size: 10, weight: .bold)).foregroundStyle(Color(hex: 0x48463F))
-                            .frame(width: 26, height: 26).background(Circle().fill(Color.white.opacity(0.92)))
-                    }
-                    .buttonStyle(.plain).accessibilityLabel("Remove image")
-                }
-                .padding(6)
-            }
-            ImageModeSwitch(mode: image.mode, height: 30, font: Theme.body(12, .bold), setMode: setMode)
-            Group {
-                if extracting {
-                    HStack(spacing: 6) {
-                        Spinner(color: Theme.muted, size: 11)
-                        Text("Reading text from the image… You can keep writing.")
-                    }
-                } else {
-                    Text(image.mode == .keep ? "Saved with the note as an attachment (default)."
-                                             : "Text is read into the note. The image itself is not saved.")
-                }
-            }
-            .font(Theme.body(12)).foregroundStyle(Theme.muted).lineSpacing(2)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 4)
-        }
-        .padding(10)
-        .frame(width: 240) // two tiles side by side even at the minimum window width; more wrap
-        .background(RoundedRectangle(cornerRadius: 18).fill(Theme.panel))
-    }
-}
-
-/// Keep image | Extract text.
-struct ImageModeSwitch: View {
-    let mode: NoteImage.Mode
-    var height: CGFloat = 30
-    var font: Font = Theme.body(12, .bold)
-    var compact = false
-    let setMode: (NoteImage.Mode) -> Void
-
-    var body: some View {
-        HStack(spacing: 0) {
-            option(.keep, compact ? "Keep" : "Keep image", "photo")
-            option(.extract, "Extract text", "textformat")
-        }
-        .padding(compact ? 2 : 3)
-        .background(RoundedRectangle(cornerRadius: compact ? 11 : 14).fill(Color.white))
-        .overlay(RoundedRectangle(cornerRadius: compact ? 11 : 14).strokeBorder(Theme.border))
-    }
-
-    private func option(_ m: NoteImage.Mode, _ title: String, _ icon: String) -> some View {
-        let on = mode == m
-        return Button { setMode(m) } label: {
-            HStack(spacing: 6) {
-                if !compact { Image(systemName: icon).font(.system(size: 11, weight: .semibold)) }
-                Text(title).font(font)
-            }
-            .padding(.horizontal, compact ? 9 : 6)
-            .frame(maxWidth: compact ? nil : .infinity).frame(height: height)
-            .foregroundStyle(on ? Color.white : Theme.muted)
-            .background(RoundedRectangle(cornerRadius: compact ? 9 : 11).fill(on ? Theme.primary : .clear))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(on ? .isSelected : [])
-    }
-}
-
-/// The image itself, or a drawn stand-in when the file cannot be read
-/// (snapshots use made-up paths).
-struct ComposeImagePreview: View {
-    let image: DraftImage
-    let mode: NoteImage.Mode
-
-    var body: some View {
-        if let ns = NSImage(contentsOf: image.url) {
-            Image(nsImage: ns).resizable().scaledToFill()
-        } else if mode == .extract {
-            ZStack {
-                Theme.primaryTint
-                VStack(alignment: .leading, spacing: 7) {
-                    Capsule().fill(Theme.ink).frame(width: 90, height: 7)
-                    Capsule().fill(Color(hex: 0xC9C6BF)).frame(width: 140, height: 5)
-                    Capsule().fill(Color(hex: 0xC9C6BF)).frame(width: 120, height: 5)
-                    Capsule().fill(Color(hex: 0xC9C6BF)).frame(width: 130, height: 5)
-                }
-                .padding(14)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.white).shadow(color: .black.opacity(0.12), radius: 3, y: 2))
-                .offset(y: 14)
-            }
-        } else {
-            ZStack(alignment: .bottom) {
-                Theme.skyTint
-                Circle().fill(Color(hex: 0xFFE58A)).frame(width: 24).offset(x: 28, y: -46)
-                Path { p in
-                    p.move(to: CGPoint(x: 0, y: 60)); p.addLine(to: CGPoint(x: 38, y: 14)); p.addLine(to: CGPoint(x: 64, y: 44))
-                    p.addLine(to: CGPoint(x: 80, y: 26)); p.addLine(to: CGPoint(x: 120, y: 60)); p.closeSubpath()
-                }
-                .fill(Theme.lime).frame(width: 120, height: 60)
-            }
-        }
     }
 }
 

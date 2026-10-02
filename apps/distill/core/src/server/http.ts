@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
-import type { AddNoteRequest, AskRequest, CoreEvent, DistillCore, Job, LabelMatch, ModelSelection, NoteImage, PermissionDenial, Settings } from '../contracts.js';
+import type { AddNoteRequest, AskRequest, CoreEvent, DistillCore, ExtractImageTextRequest, Job, LabelMatch, ModelSelection, NoteImage, PermissionDenial, Settings } from '../contracts.js';
 import type { EngineExtras } from '../engine/index.js';
 import { suggestedRule } from '../runners/permissions.js';
 
@@ -393,6 +393,28 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
       status: 201,
       untyped: { status: 400, code: 'invalid_request' },
       handler: async ({ body }) => core.addNote(parseNote(await body())),
+    },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/images\/extract$/,
+      untyped: { status: 400, code: 'invalid_request' },
+      handler: async ({ res, body }) => {
+        const o = asObject(await body(), false);
+        const req: ExtractImageTextRequest = { imagePath: reqString(o, 'imagePath') };
+        const vaultPath = optString(o, 'vaultPath');
+        if (vaultPath) req.vaultPath = vaultPath;
+        // The client closing the request (Cancel) stops the runner.
+        const controller = new AbortController();
+        const onClose = () => {
+          if (!res.writableFinished) controller.abort();
+        };
+        res.on('close', onClose);
+        try {
+          return await core.extractImageText(req, { signal: controller.signal });
+        } finally {
+          res.off('close', onClose);
+        }
+      },
     },
     {
       method: 'POST',

@@ -153,21 +153,62 @@ final class ComposeDraftTests: XCTestCase {
     func testSummaryAndRequest() {
         var d = ComposeDraft()
         XCTAssertNotNil(d.blocker)
-        d.text = "Gooseneck kettle presets"
+        d.text = "Gooseneck kettle presets\n![[b.jpg]]\nand the card:\n![[a.png]]"
         d.source = "in-person"
         d.sourceRef = "  #tea-club  "
-        d.images = [DraftImage(url: URL(fileURLWithPath: "/tmp/a.png"), mode: .extract),
-                    DraftImage(url: URL(fileURLWithPath: "/tmp/b.jpg"))]
+        d.images = [DraftImage(url: URL(fileURLWithPath: "/tmp/a.png")), DraftImage(url: URL(fileURLWithPath: "/tmp/b.jpg")),
+                    DraftImage(url: URL(fileURLWithPath: "/tmp/extracted.png"))]
         XCTAssertNil(d.blocker)
-        XCTAssertEqual(d.summary, "One note · 1 image attached · 1 image read as text.")
+        XCTAssertEqual(d.summary, "One note · 2 images.", "only images the text embeds stay")
         let r = d.request(suggest: true, vaultPath: "/v")
         XCTAssertEqual(r.title, "Gooseneck kettle presets", "an untitled note takes its first line")
+        XCTAssertEqual(r.text, d.text, "the text keeps the embeds where the images sit")
         XCTAssertEqual(r.sourceRef, "#tea-club")
         XCTAssertEqual(r.suggest, .background)
         XCTAssertEqual(r.origin, .app)
-        XCTAssertEqual(r.images?.map(\.mode), [.extract, .keep])
+        XCTAssertEqual(r.images?.map(\.path), ["/tmp/b.jpg", "/tmp/a.png"], "in text order")
+        XCTAssertEqual(r.images?.map(\.mode), [.keep, .keep])
         XCTAssertNil(r.labels, "labels are never sent with the note from the app")
         XCTAssertEqual(d.request(suggest: false, vaultPath: nil).suggest, AddNoteRequest.Suggest.none)
+    }
+
+    func testReadingBlocksAddAndImageOnlyTitles() {
+        var d = ComposeDraft()
+        d.text = "![[brewing-card.png]]\n"
+        d.images = [DraftImage(url: URL(fileURLWithPath: "/tmp/brewing-card.png"))]
+        XCTAssertNil(d.blocker)
+        XCTAssertEqual(d.effectiveTitle, "brewing-card", "an embed line is not a title")
+        d.imageStates["brewing-card.png"] = .reading(model: "Haiku")
+        XCTAssertEqual(d.blocker, "One note · reading 1 image…")
+        d.imageStates["brewing-card.png"] = .failed("x")
+        XCTAssertNil(d.blocker)
+        d.text = "![[brewing-card.png]]\nSteep 2 min"
+        XCTAssertEqual(d.effectiveTitle, "Steep 2 min")
+        d.text = ""
+        XCTAssertEqual(d.summary, "One note.")
+    }
+
+    func testRegisterKeepsNamesUniqueAndEmbeddable() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("distill-reg-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("x"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("y"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let a = dir.appendingPathComponent("x/card.png"), b = dir.appendingPathComponent("y/card.png")
+        let odd = dir.appendingPathComponent("x/Notes #3 [v2].png")
+        for f in [a, b, odd] { try Data([1, 2, 3]).write(to: f) }
+        var d = ComposeDraft()
+        let first = d.register([DraftImage(url: a)])
+        XCTAssertEqual(first.map(\.name), ["card.png"])
+        XCTAssertEqual(first.first?.byteCount, 3)
+        XCTAssertEqual(d.register([DraftImage(url: a)]).first?.id, first.first?.id, "the same file is reused")
+        let second = d.register([DraftImage(url: b), DraftImage(url: odd)])
+        XCTAssertEqual(second.map(\.name), ["card 2.png", "Notes 3 v2.png"])
+        XCTAssertTrue(second.allSatisfy(\.isTemporary))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: second[0].url.path))
+        XCTAssertEqual(d.images.count, 3)
+        d.cleanUpTemporaryImages()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: second[0].url.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: b.path), "the user's file is never touched")
     }
 }
 

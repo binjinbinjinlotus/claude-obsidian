@@ -42,6 +42,8 @@ final class NotesStore: ObservableObject {
 
     /// Snapshot fixtures only (see LabelsProgress).
     var fixtureProgress: [String: LabelsProgress] = [:]
+    /// Snapshot fixtures only: forced hover / selection / extracted note per editor.
+    var imageFixtures: [ComposeOwner: InlineImageFixture] = [:]
     fileprivate var cancellables: Set<AnyCancellable> = []
     fileprivate var installed = false
 
@@ -115,6 +117,55 @@ extension AppModel {
         var d = notes.draft(owner)
         edit(&d)
         notes.drafts[owner] = d
+    }
+
+    // MARK: Images inside the text
+
+    /// Pasted, dropped or chosen images: into the draft, at the editor's cursor
+    /// (or at the end of the text when its editor is not on screen).
+    func insertImages(_ owner: ComposeOwner, _ images: [DraftImage]) {
+        guard !images.isEmpty, notes.steps[owner] == nil else { return }
+        var added: [DraftImage] = []
+        updateDraft(owner) { added = $0.register(images) }
+        guard !added.isEmpty else { return }
+        if let editor = InlineImageEditors.editor(for: owner), editor.insertImages(added) { return }
+        updateDraft(owner) { d in
+            let embeds = added.map { ComposeDraft.embed($0.name) }.joined(separator: "\n")
+            let trimmed = d.text.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression)
+            d.text = (trimmed.isEmpty ? "" : trimmed + "\n") + embeds + "\n"
+        }
+    }
+
+    /// What the owner's editor needs to show and read images.
+    func imageHost(_ owner: ComposeOwner) -> InlineImageHost {
+        let draft = notes.draft(owner)
+        return InlineImageHost(
+            key: owner,
+            images: Dictionary(draft.images.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a }),
+            states: draft.imageStates,
+            register: { [weak self] images in
+                var out: [DraftImage] = []
+                self?.updateDraft(owner) { out = $0.register(images) }
+                return out
+            },
+            extract: { [weak self] image in
+                guard let self else { throw CancellationError() }
+                return try await self.extractImageText(image)
+            },
+            setState: { [weak self] name, state in self?.updateDraft(owner) { $0.imageStates[name] = state } },
+            readingModel: { [weak self] in self.map { LabelsModelName.imageText($0) } ?? "AI" },
+            openSettings: { (NSApp.delegate as? AppDelegate)?.showSettings() },
+            fixture: notes.imageFixtures[owner])
+    }
+
+    /// Extract content: the Markdown in one image (`POST /v1/images/extract`).
+    func extractImageText(_ image: DraftImage) async throws -> ExtractImageTextResult {
+        guard let client else { throw CoreClientError.unreachable("the core is not running") }
+        guard let readable = ComposeImageIntake.readable(image) else {
+            throw CoreClientError.badResponse("can't open \(image.name) as an image")
+        }
+        defer { readable.cleanup() }
+        return try await client.extractImageText(imagePath: readable.url.path, vaultPath: activeVault?.path)
     }
 
     func discardDraft(_ owner: ComposeOwner) {

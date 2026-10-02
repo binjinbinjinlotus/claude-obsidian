@@ -63,11 +63,12 @@ import {
   type ParsedStatus,
   type SourceLabels,
 } from './job-kinds.js';
-import { CoreError, notImplemented } from './errors.js';
+import { CoreError } from './errors.js';
 import { searchVaultPages } from './pages.js';
 import { noteFileFor, readManifest, validateNote, writeManifest, writeNote, type NoteLabelState } from './notes.js';
 import { draftBatchLabels } from '../labels/batch.js';
 import { bodyOf, parseFrontmatter, scalarValue, setLabelProperties } from '../labels/frontmatter.js';
+import { extractImageText } from './image-text.js';
 import { labelSuggestSelection, suggestLabels, type SuggestInput, type SuggestOutcome } from '../labels/suggest.js';
 import {
   buildLabelBundle,
@@ -1428,7 +1429,17 @@ export function createEngine(opts: EngineOptions): Engine {
     allow,
     reject,
     cancel,
-    extractImageText: async () => notImplemented('extractImageText'), // owner: mac-images
+    async extractImageText(req, o) {
+      // A vault only scopes the request (it must be known); nothing in it is read or written.
+      if (req.vaultPath) resolveVault(req.vaultPath);
+      return extractImageText(req, {
+        runners,
+        settings: clone(settings),
+        selection: selectionFor(settings, 'imageText'),
+        scratchRoot: path.join(paths.dir, 'images', 'scratch'),
+        ...(o?.signal ? { signal: o.signal } : {}),
+      });
+    },
     async searchPages(query, opts) {
       return searchVaultPages(resolveVault(opts?.vaultPath).path, query, opts?.limit);
     },
