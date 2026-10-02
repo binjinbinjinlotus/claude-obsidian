@@ -103,7 +103,11 @@ struct MessageCard: View {
         self.type = type
         self.item = item
         _menu = State(initialValue: menu)
+        inlineMenus = menu != nil
     }
+
+    /// Snapshots draw the recipient panel in place; the app uses a popover (the list scrolls).
+    private let inlineMenus: Bool
 
     private var run: ActionRun? { store.running[item.id] }
     private var draft: ActionEditDraft? { store.editing[item.id] }
@@ -173,7 +177,10 @@ struct MessageCard: View {
         .buttonStyle(.plain)
         .help("Click to change who gets it")
         .overlay(alignment: .topLeading) {
-            if menu == "to" { recipientPanel.offset(y: 24) }
+            if menu == "to" && inlineMenus { recipientPanel.offset(y: 24) }
+        }
+        .popover(isPresented: Binding(get: { menu == "to" && !inlineMenus }, set: { if !$0 { menu = nil } }), arrowEdge: .bottom) {
+            recipientPanel.padding(4)
         }
     }
 

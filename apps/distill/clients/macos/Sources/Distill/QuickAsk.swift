@@ -192,7 +192,11 @@ struct QuickAskCard: View {
                     }
                 }
             }
-            if let gap = r.gaps.first { GapCallout(text: gap) }
+            AnswerGaps(store: engine.actions, gaps: Array(r.gaps.prefix(1)), conversationID: thread.conversationID,
+                       turnIndex: thread.entries.count - 1, answer: r.answer, isLast: true)
+            if let cid = thread.conversationID {
+                AskFoundBlock(store: engine.actions, conversationID: cid, turnIndex: thread.entries.count - 1, answer: r.answer, compact: true)
+            }
         }
     }
 

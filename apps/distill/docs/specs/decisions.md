@@ -17,6 +17,27 @@ supersede it with a new entry.
 
 ## 2026-10-02
 
+- **Actions client (mac-actions):** the sidebar badge counts open to-dos and
+  drafts in `ready`; pending items wait in "To confirm" and are not counted
+  (matches the SidebarStates numbers). Every Undo is `restore` (complete,
+  remove, mark as sent, Send to, a dismissed Ask row); Undo of an automatic
+  add or of Add all is `dismiss`; Undo improve is `undo-improve`. To-do group
+  and sort live in app defaults (`distill.todo.group` / `.sort`, default due)
+  until the To-do defaults in Settings are read by the screen. Menus inside
+  scrolling lists (answer buttons, Found rows, Slack recipient) are popovers
+  in the app and drawn panels in snapshots; the To do filter menus are drawn
+  panels. History's "Kept until" uses 90 days (the default) until the screen
+  reads `historyDays`. → [actions](actions.md)
+- **Selected answer text is not an action source yet:** Ask answers render as
+  a SwiftUI `Text`, whose selection the app can't read, so "To-do from
+  selected text" is listed disabled and the selection bar (Add as to-do /
+  Send to / Copy) waits for a selectable answer view. → [ask](ask.md)
+- **Open in Actions from the Ask screen leaves Ask,** which deletes the chat
+  when Keep history is off (as leaving Ask always does). Items keep the quote
+  and question; their "Ask chat" source stops being a link once the chat is
+  gone. → [ask](ask.md), [actions](actions.md)
+- **Settings uses the shared `ActionTypeInfo`** (`SettingsActionType` is now a
+  typealias with Settings helpers); the private JSON decoding is gone.
 - **Settings window built with section navigation and search** (mac-settings):
   - Picking a section shows its group's page (General, AI, Actions and
     connections), scrolled to that section. This follows the Settings board,

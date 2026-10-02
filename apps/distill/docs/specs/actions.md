@@ -12,8 +12,8 @@ tags:
 # Actions
 
 Build status: **core, HTTP API and CLI built** (`core/src/actions/`,
-`server/http.ts`, `distill actions`); **macOS client** being built: see
-"macOS client" below for what ships.
+`server/http.ts`, `distill actions`); **macOS client built** (see "macOS
+client" below; the selection bar for selected answer text is not built yet).
 
 Things to do that Distill finds in processed notes and in Ask answers.
 Canvas: row "6 · Actions from your notes" (ActionsOverview, ActionsAsk,
@@ -466,3 +466,12 @@ Status per part; `built` parts ship in `clients/macos`.
   them / Open in Actions, which open To do filtered to that job; finding uses
   the loading pattern; failed has Try again); Review says before apply that
   actions are looked for after it.
+- **Ask** (built): see [Ask](ask.md) → Actions in answers.
+- **Batch progress** (built): the Queue banner's steps end with "Finding
+  actions (after you apply)" while the core's steps stop at review; after
+  apply the core's own steps include Finding actions. The banner shows
+  "started at 3:41 PM" (a clock time) instead of a ticking counter.
+- **Snapshots** (built): `--states` renders flow "6 · Actions from your
+  notes" (`SnapshotActions.swift`): every To do, Slack, Jira, Confluence,
+  History, Ask and quick ask state above, plus the sidebar collapsed total
+  and History › Actions. `DISTILL_STATES_ONLY=<prefix>` renders a subset.

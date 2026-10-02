@@ -65,6 +65,12 @@ final class ActionsStore: ObservableObject {
     /// Ask: the summary line after Add all, per conversation and turn ("c1#0").
     @Published var addedAll: [String: [String]] = [:]
 
+    /// Snapshot fixtures only: open the answer menu / new to-do form / a Found row's type menu or edit on appear.
+    var fixtureAnswerMenu = false
+    var fixtureTodoForm: NewTodo?
+    var fixtureFoundMenu: String?
+    var fixtureFoundEdit: String?
+
     private var tasks: [String: Task<Void, Never>] = [:]
     private var arrivals: [ActionItem] = []
     private var arrivalTask: Task<Void, Never>?

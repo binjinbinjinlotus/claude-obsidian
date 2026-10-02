@@ -206,6 +206,7 @@ extension StatesSnapshot {
         actionsSlackStates()
         actionsExternalStates()
         actionsHistoryStates()
+        actionsAskStates()
     }
 
     private static func actionsEngine(items: [ActionItem]? = nil, tab: String = "todo", select: String? = nil,
@@ -533,5 +534,118 @@ struct MessageRecipientSnapshot: View {
             Spacer()
         }
         .padding(32)
+    }
+}
+
+// MARK: - Actions from Ask answers
+
+extension ActionFixtures {
+    static let askAnswer = "For the tea club, you said you’d **book the tasting room for Saturday** and tell Mei so she can bring the new tin [1]. For Project X, the INC-212 review is Friday and the write-up isn’t in Confluence yet [2]; the retry cap still needs a ticket in PX [3]."
+
+    static func askSource(_ quote: String, gap: Bool = false) -> ActionSource {
+        .ask(conversationID: "c9", question: "What do I still owe the tea club and Project X before Friday?", quote: quote,
+             citedPaths: ["wiki/notes/Tea club planning.md"], turnIndex: 0, gap: gap)
+    }
+
+    static func askItems(_ status: ActionStatus = .pending) -> [ActionItem] {
+        let found = [ActionEvent(at: at(15, 12), event: "found", detail: "Sonnet")]
+        return [
+            ActionItem(id: "a1", type: "todo", status: status, title: "Book the tasting room for Saturday", why: "You said you would book it",
+                       source: askSource("you’d book the tasting room for Saturday"), createdAt: at(15, 12), events: found),
+            ActionItem(id: "a2", type: "slack", status: status, title: "Tell Mei the room is booked and ask her to bring the tin", fields: ["to": "Mei Tanaka"],
+                       why: "Mei is bringing the tea; she needs the time", source: askSource("tell Mei so she can bring the new tin"), createdAt: at(15, 12), events: found),
+            ActionItem(id: "a3", type: "confluence", status: status, title: "Incident review: INC-212 auth retry storm",
+                       fields: ["space": "Project X", "parent": "Incident reviews"], why: "The review is Friday and no page exists yet",
+                       source: askSource("the write-up isn’t in Confluence yet"), createdAt: at(15, 12), events: found),
+            ActionItem(id: "a4", type: "jira", status: status, title: "Cap payment client retries at 3 with backoff", fields: ["project": "PX · Project X"],
+                       why: "The note says it needs a ticket in PX", source: askSource("the retry cap still needs a ticket in PX"), createdAt: at(15, 12), events: found),
+        ]
+    }
+
+    @MainActor static func askThread(_ thread: AskThread, answer: String = askAnswer,
+                                     question: String = "What do I still owe the tea club and Project X before Friday?", gaps: [String] = []) {
+        thread.reset(filter: AskFilter())
+        thread.conversationID = "c9"
+        thread.selection = ModelSelection(runnerID: "claude-code", model: "sonnet", effort: "medium")
+        let response = AskResponse(conversationID: "c9", answer: answer,
+                                   citations: [AskCitation(n: 1, path: "wiki/notes/Tea club planning.md", title: "Tea club planning"),
+                                               AskCitation(n: 2, path: "wiki/notes/Incident review prep.md", title: "Incident review prep"),
+                                               AskCitation(n: 3, path: "wiki/notes/Auth retry bug.md", title: "Auth retry bug")],
+                                   gaps: gaps, selection: thread.selection)
+        thread.entries = [AskEntry(question: question, askedAt: at(15, 12), request: AskRequest(question: question, conversationID: "c9"),
+                                   response: response, duration: 6)]
+    }
+}
+
+extension StatesSnapshot {
+    static func actionsAskStates() {
+        let f = Flow.actions
+        func ask(_ file: String, _ state: String, _ desc: String, items: [ActionItem], _ setup: (AppModel) -> Void = { _ in }) {
+            let e = engine()
+            ActionFixtures.load(e, items: ActionFixtures.live() + items)
+            ActionFixtures.askThread(e.ask.main)
+            setup(e)
+            main(file, f, "Actions · from Ask answers", state, desc, e, section: .ask) { AskScreen() }
+        }
+        ask("actions-ask-found", "Found: confirm each one", "Found in this answer: where each goes, what it says and why; Add or Create draft, ×, Add all.",
+            items: ActionFixtures.askItems())
+        ask("actions-ask-by-hand", "Add or send by hand", "Nothing detected: Add to to-do ▾ / Send to ▾ for the whole answer; selected text is a later step.",
+            items: []) { $0.actions.fixtureAnswerMenu = true }
+        ask("actions-ask-detecting", "Detecting", "Looking for actions in this answer… with Sonnet; shimmer holds the place.", items: []) { e in
+            e.progress["actions:c9"] = CoreProgress(key: "actions:c9", kind: "actions", message: "Looking for actions", startedAt: Date(), model: "sonnet")
+        }
+        ask("actions-ask-target", "Change where it goes", "The type label is a menu of the types that are on.",
+            items: Array(ActionFixtures.askItems().prefix(2))) { $0.actions.fixtureFoundMenu = "a1" }
+        ask("actions-ask-edit", "Edit before adding", "Click the text to fix it; Return adds, Esc cancels.",
+            items: Array(ActionFixtures.askItems().prefix(2))) { $0.actions.fixtureFoundEdit = "a1" }
+        var mixed = ActionFixtures.askItems()
+        mixed[0].status = .open; mixed[0].events.append(ActionEvent(at: Date(), event: "confirmed"))
+        mixed[1].status = .drafting; mixed[1].events.append(ActionEvent(at: Date(), event: "confirmed"))
+        mixed[2].status = .ready; mixed[2].events.append(ActionEvent(at: Date(), event: "confirmed"))
+        ask("actions-ask-added", "Adding and added", "Each row turns into where it went, with Open; a draft being written says so.", items: mixed)
+        var dismissed = ActionFixtures.askItems()
+        dismissed[0].status = .open; dismissed[0].events.append(ActionEvent(at: Date(), event: "confirmed"))
+        dismissed[1].status = .dismissed; dismissed[2].status = .dismissed
+        ask("actions-ask-dismissed", "Dismissed", "Dismissed rows fold into one faded line with Undo.", items: dismissed)
+        let all = ActionFixtures.askItems().map { i in i.with { $0.status = $0.type == "todo" ? .open : .ready; $0.events.append(ActionEvent(at: Date(), event: "confirmed")) } }
+        ask("actions-ask-add-all", "Add all", "The header becomes the summary with one Undo for all of them.", items: all) {
+            $0.actions.addedAll["c9#0"] = all.map(\.id)
+        }
+        ask("actions-ask-already", "Already there", "An item already open in Actions links to it instead of adding a copy.",
+            items: Array(ActionFixtures.askItems().prefix(3))) { e in
+            e.actions.already["c9"] = ["j1"]
+        }
+        let auto = ActionFixtures.askItems().map { i in i.with { $0.status = $0.type == "todo" ? .open : .ready } }
+        ask("actions-ask-confirm-off", "Confirmation off", "Added right away: one line with Show, Undo and Open Actions.", items: auto)
+        ask("actions-ask-form", "Added by hand: prefilled", "To-do from the whole answer opens a small prefilled form.", items: []) {
+            $0.actions.fixtureTodoForm = NewTodo(title: "Write the INC-212 review in Confluence", due: ActionFixtures.day(1), labels: ["project-x"])
+        }
+        do {
+            let e = engine()
+            let gapItem = ActionItem(id: "g1", type: "todo", status: .pending, title: "Ask the shop for the gyokuro water temperature",
+                                     why: "Your vault has no temperature for gyokuro",
+                                     source: .ask(conversationID: "c9", question: "How hot should the water be?", quote: "no temperature for gyokuro",
+                                                  citedPaths: [], turnIndex: 0, gap: true), createdAt: Date())
+            ActionFixtures.load(e, items: ActionFixtures.live() + [gapItem])
+            ActionFixtures.askThread(e.ask.main, answer: AskFixtures.answer, question: "How hot should the water be for green tea, and does it differ for gyokuro?",
+                                     gaps: ["nothing in your vault on gyokuro water temperature."])
+            main("actions-ask-gap", f, "Actions · from Ask answers", "Gap became an action", "The Gap callout is hidden when the gap became an action.", e, section: .ask) {
+                AskScreen()
+            }
+        }
+        // Quick ask: the same block, compact.
+        for (file, state, desc, added) in [("actions-quickask-found", "Quick ask: found", "Compact: no Why line (hover shows it), no Dismiss all.", false),
+                                           ("actions-quickask-added", "Quick ask: added", "Rows show where things went; Open closes the window and opens Actions.", true)] {
+            let e = engine()
+            var items = Array(ActionFixtures.askItems().prefix(3))
+            if added {
+                items[0].status = .open; items[1].status = .ready; items[2].status = .dismissed
+                for i in 0..<2 { items[i].events.append(ActionEvent(at: Date(), event: "confirmed")) }
+                e.actions.addedAll["c9#0"] = ["a1", "a2"]
+            }
+            ActionFixtures.load(e, items: ActionFixtures.live() + items)
+            ActionFixtures.askThread(e.ask.quick, answer: "Book the tasting room for Saturday and tell Mei [1]. INC-212 needs a Confluence write-up [2] and the retry cap a PX ticket [3].")
+            quickWindow(file, f, "Quick ask", state, desc, e, padding: 8) { QuickAskView(onDesiredHeight: $0) }
+        }
     }
 }
