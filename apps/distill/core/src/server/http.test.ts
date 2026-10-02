@@ -132,6 +132,29 @@ describe('HTTP API', () => {
       assert.equal(res.status, 413);
       assert.equal(res.body.error.code, 'payload_too_large');
     });
+    it('413 for an oversized chunked body (no Content-Length)', async () => {
+      const res = await new Promise<Res>((resolve, reject) => {
+        const req = http.request(
+          {
+            host: '127.0.0.1',
+            port,
+            method: 'POST',
+            path: '/v1/ask',
+            headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json', 'transfer-encoding': 'chunked' },
+          },
+          (r) => {
+            let text = '';
+            r.on('data', (c: Buffer) => (text += c));
+            r.on('end', () => resolve({ status: r.statusCode ?? 0, headers: r.headers, body: JSON.parse(text) }));
+          },
+        );
+        req.on('error', reject);
+        for (let i = 0; i < 4; i++) req.write('x'.repeat(2048));
+        req.end();
+      });
+      assert.equal(res.status, 413);
+      assert.equal(res.body.error.code, 'payload_too_large');
+    });
     it('maps core errors: status/code when given, else 500', async () => {
       core.failNext('status', Object.assign(new Error('boom'), {}));
       const e500 = await request(port, 'GET', '/v1/status');

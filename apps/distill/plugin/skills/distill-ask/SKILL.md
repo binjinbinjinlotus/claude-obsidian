@@ -41,7 +41,10 @@ Only set runner, model or effort when the user asks for them (for example
 "think harder" means a higher `--effort`).
 
 The first call may print nothing for a few seconds while the Distill server
-starts in the background. Answers can take a minute; do not retry early.
+starts in the background. Answers can take a minute or more (longer at high
+effort): give the shell command a timeout of at least 5 minutes and do not
+retry early. A question that starts with `-` goes after `--`:
+`distill ask --json -- "-flag meaning?"`.
 
 ## Output
 

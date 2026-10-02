@@ -110,6 +110,23 @@ Exit codes: 0 success, 1 error, 2 usage error.
 type Values = Record<string, string | boolean | (string | boolean)[] | undefined>;
 
 function parse(args: string[], options: ParseArgsConfig['options']): { values: Values; positionals: string[] } {
+  // `--text "- a bullet"`: a string option always takes the next token, even one starting
+  // with "-" (parseArgs alone rejects that as ambiguous). Rewrite to `--text=- a bullet`.
+  const normalized: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a === '--') {
+      normalized.push(...args.slice(i));
+      break;
+    }
+    const name = a.startsWith('--') && !a.includes('=') ? a.slice(2) : undefined;
+    if (name && options?.[name]?.type === 'string' && i + 1 < args.length) {
+      normalized.push(`${a}=${args[++i]!}`);
+    } else {
+      normalized.push(a);
+    }
+  }
+  args = normalized;
   try {
     const r = parseArgs({ args, options: { ...options, json: { type: 'boolean' }, help: { type: 'boolean', short: 'h' } }, allowPositionals: true, strict: true });
     return { values: r.values as Values, positionals: r.positionals };

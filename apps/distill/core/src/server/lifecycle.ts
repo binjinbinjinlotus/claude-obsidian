@@ -53,7 +53,7 @@ export function ensureToken(paths: StatePaths): string {
   ensureStateDir(paths);
   try {
     const token = randomBytes(32).toString('hex');
-    fs.writeFileSync(paths.token, token + '\n', { flag: 'wx', mode: 0o600 });
+    fs.writeFileSync(paths.token, token, { flag: 'wx', mode: 0o600 }); // exactly 64 hex chars, no newline
     fs.chmodSync(paths.token, 0o600); // in case the umask stripped bits we did not want stripped
     return token;
   } catch (err) {

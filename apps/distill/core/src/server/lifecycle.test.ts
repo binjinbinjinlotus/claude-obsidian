@@ -39,6 +39,7 @@ describe('server lifecycle', () => {
   it('creates a 64-hex token with mode 0600 and reuses it', () => {
     const token = ensureToken(paths);
     assert.match(token, /^[0-9a-f]{64}$/);
+    assert.equal(fs.readFileSync(paths.token, 'utf8'), token); // no trailing newline
     assert.equal(fs.statSync(paths.token).mode & 0o777, 0o600);
     assert.equal(ensureToken(paths), token);
   });

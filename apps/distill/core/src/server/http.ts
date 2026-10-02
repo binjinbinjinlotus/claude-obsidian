@@ -95,11 +95,26 @@ async function readBody(req: http.IncomingMessage, limit: number): Promise<unkno
   }
   const chunks: Buffer[] = [];
   let size = 0;
-  for await (const chunk of req as AsyncIterable<Buffer>) {
-    size += chunk.length;
-    if (size > limit) throw new HttpError(413, 'payload_too_large', `request body exceeds ${limit} bytes`);
-    chunks.push(chunk);
-  }
+  // Event-based (not for-await) so an oversized chunked body is discarded, not
+  // torn down mid-request: the 413 still reaches the client, then the socket closes.
+  await new Promise<void>((resolve, reject) => {
+    const onData = (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > limit) {
+        req.off('data', onData);
+        req.off('end', onEnd);
+        req.resume(); // discard the rest
+        chunks.length = 0;
+        reject(new HttpError(413, 'payload_too_large', `request body exceeds ${limit} bytes`));
+        return;
+      }
+      chunks.push(chunk);
+    };
+    const onEnd = () => resolve();
+    req.on('data', onData);
+    req.on('end', onEnd);
+    req.once('error', reject);
+  });
   if (size === 0) return undefined;
   const type = (req.headers['content-type'] ?? '').split(';')[0]?.trim().toLowerCase();
   if (type !== 'application/json') {

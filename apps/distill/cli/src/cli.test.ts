@@ -180,6 +180,14 @@ describe('distill CLI', () => {
       assert.equal((await cli(['note', 'add', '--title', 'S', '-', '--json'], {}, 'piped text')).code, 0);
       assert.equal((lastCall('addNote')?.args[0] as { text: string }).text, 'piped text');
     });
+    it('accepts option values that start with "-" (Markdown bullets)', async () => {
+      const r = await cli(['note', 'add', '--title', 'B', '--text', '- a bullet', '--ref', '-x', '--json']);
+      assert.equal(r.code, 0, r.stdout);
+      assert.equal((lastCall('addNote')?.args[0] as { text: string }).text, '- a bullet');
+      const q = await cli(['ask', '--json', '--', '-why?']);
+      assert.equal(q.code, 0, q.stdout);
+      assert.equal((lastCall('ask')?.args[0] as { question: string }).question, '-why?');
+    });
     it('human output says it is queued for approval', async () => {
       const r = await cli(['note', 'add', '--title', 'H', '--text', 'x']);
       assert.equal(r.code, 0);
