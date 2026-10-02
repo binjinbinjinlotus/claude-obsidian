@@ -638,7 +638,6 @@ struct JobDetailView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Pill(text: style.label, fill: style.fill, ink: style.ink)
-                if job.state == .running { Spinner(size: 14) }
             }
             Text(job.displayTitle).font(Theme.display(28)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
             Text(job.historyTime).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
@@ -657,6 +656,9 @@ struct JobDetailView: View {
     @ViewBuilder
     private func content(_ job: Job) -> some View {
         let changes = changeList(job)
+        if job.state == .running {
+            BatchBanner(job: job, showsCancel: false)
+        }
         if !changes.isEmpty {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 165), spacing: 10)], alignment: .leading, spacing: 10) {
                 StatTile(n: changes.filter(\.isNew).count, label: plural(changes.filter(\.isNew).count, "new page", "new pages"), fill: Theme.limeTint, ink: Theme.limeInk)
