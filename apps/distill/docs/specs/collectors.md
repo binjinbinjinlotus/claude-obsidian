@@ -28,11 +28,33 @@ approval ([Queue and batching](queue-and-batching.md),
 - A **Collectors** sidebar item directly under Queue, because it feeds the
   queue. It shows a peach count only when collectors need the user: the last
   run failed, or a script waits for consent. Otherwise it shows no count.
-- The screen is a list plus a detail, like the Actions lists: `CollectorRow`
-  rows on the left (kind tile, name, last-run line, status pill), the
-  selected collector's settings and run history on the right. **Add
-  collector** is in the header, and the header shows the active vault's queue
-  folder (`QueuePath`).
+- The screen is a list plus a detail, like the Actions lists. **Add
+  collector** is the only button in the header.
+- **List rows** (`CollectorRow`): kind tile, name, and one status line ("Every
+  hour · copied 3 at 9:00 AM"). A healthy collector has no pill; a pill
+  appears only for Running, Failed and Needs your OK. Off rows are dimmed.
+- **The detail shows less by default.** It answers "is it working, and what
+  did it last do?":
+  - a title row: name, one quiet line (kind · schedule · next run), the
+    on/off switch, **Run now** (Stop while running) and ⋯;
+  - a **status card** with the last run in one sentence. Errors, consent,
+    running progress and live output appear here and nowhere else. For a
+    Folder it ends with the **Already collected: 128 files** link;
+  - a compact read-only **Settings** block (Folder: From, After collecting,
+    Into with the queue path, Schedule; script: Script, Schedule, Allowed)
+    with an **Edit** link. Edit (also in ⋯) turns the block into a form in
+    place, with Cancel and Save;
+  - for scripts, an **Advanced** row, collapsed by default: interpreter,
+    timeout, cron expression and what the script gets;
+  - **Recent runs**: the last three runs, one line each; **Show all runs**
+    opens the full list. Per-file results and output show only in an opened
+    run.
+- **Adding** is a short stepped sheet with defaults: 1 Kind (Folder or Custom
+  script) → 2 Source (Folder: the folder, default `~/Distill Inbox`, and
+  Keep or Move; script: file or inline code and interpreter) → 3 Schedule
+  (default every hour) and target vault (the active vault). Folder ends with
+  **Add and turn on**. A script ends with **Add**; it is saved off and its
+  detail asks for consent, with the code shown.
 - **No Collectors section in Settings.** Collectors are objects with run
   history and errors, not preferences, and a second place to edit them would
   drift. Settings → Vaults keeps the queue folder setting. The default
@@ -122,8 +144,8 @@ job.
   folder) with **View…**. That opens a list of collected files: name, size and
   when, newest first, with search. Each row has **Forget**: it removes that
   entry, so the next run collects the file again if it is still in the
-  folder. The row reads "Forgotten · the next run collects it again" with
-  Undo until the sheet closes. **Forget all…** asks for confirmation first.
+  folder. The row reads "Will be collected again" with Undo until the sheet
+  closes. **Forget all…** asks for confirmation first.
   The ledger stores name, size, mtime and sha256, never file content.
 - Hashing is cheap to avoid: if path, size and mtime all equal an entry, the
   run treats the file as already collected without hashing it. Otherwise it
@@ -151,9 +173,10 @@ job.
   | Weekdays at T | `M H * * 1-5` |
   | Custom | anything valid |
 
-- `ScheduleField` shows the expression next to every preset (read-only unless
-  the preset is Custom), a plain-English preview ("Mon, Wed and Fri at
-  8:30 AM"), and the next run. An invalid expression keeps Save off.
+- `ScheduleField` shows a preset, a time for daily presets, a plain-English
+  preview ("Mon, Wed and Fri at 8:30 AM") and the next run. The cron
+  expression shows only for Custom and under Advanced, where editing it
+  switches the preset to Custom. An invalid expression keeps Save off.
   Seconds, `@reboot` and nicknames are not accepted; `@hourly` and `@daily`
   are accepted and shown as their preset.
 - The core's scheduler wakes for the earliest next run across collectors.
