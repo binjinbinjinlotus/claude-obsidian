@@ -78,12 +78,43 @@ isn't.
   asks only what blocks progress, with a recommendation.
 - **Plain-language status.** Lead with the outcome, then the evidence, then
   what's left.
+- **A numbered list of pending work.** When decisions pile up, the lead lists
+  everything open, numbered and grouped (running, waiting on the owner,
+  follow-ups). The owner answers several in one short message ("2 no, 3
+  build it, do 7–10"). *Why:* questions scattered across long replies got
+  lost.
 
 ---
 
 ## Friction log (newest first)
 
 ### 2026-10-04
+- **The owner's own deletions looked like data loss.** Three Ask chats and a
+  Script collector disappeared. With no activity record, we spent a long time
+  investigating and suspected a teammate's stray input. In the end the owner
+  had deleted them.
+  - *Change:* an activity log for the app (what changed, when, from where),
+    designed on the canvas first.
+  - *Lesson:* an app that holds user data needs an activity log and an undo or
+    trash for deletes from the start, not after the first scare.
+- **A deliverable was left in a temporary folder.** The meeting-notes script
+  was written to the session's scratchpad, so the owner had to ask where it
+  was. It then moved twice: to `~/Scripts`, then `apps/scripts/`, then its
+  own folder with a README.
+  - *Lesson:* anything the owner will keep goes where it will live from the
+    start (ask if unclear), and comes with its setup instructions.
+- **"Pre-existing environmental failures" sat unexamined.** `make test` stopped
+  on Python suites for days under that label, so the full gate never ran.
+  - *Change:* a teammate now finds the root cause of each one.
+  - *Lesson:* a failure is not "environmental" until someone has proved it.
+- **Designed around a file with no content.** The `.gdoc` plan assumed Google
+  Drive's local `.gdoc` files held the document. They are only links, and the
+  owner caught it.
+  - *Lesson:* check what a data source actually contains before designing
+    around it.
+- **"Not now" did nothing with only one collector.** The tests covered several
+  collectors, not one.
+  - *Lesson:* test the single-item and empty cases, not only the typical one.
 - **Collectors went from request to installed in one pass:** canvas, redesign,
   then building the core and the Mac app in parallel. The core was built while
   the UI was still being polished, because it doesn't depend on layout. That
