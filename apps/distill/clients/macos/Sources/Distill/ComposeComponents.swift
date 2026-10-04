@@ -75,8 +75,14 @@ struct DropdownButton<Items: View>: View {
         .padding(.horizontal, 10)
         .frame(width: width, height: height)
         .frame(maxWidth: width == nil && action == nil && systemImage == nil ? .infinity : nil)
-        .background(RoundedRectangle(cornerRadius: radius).fill(active ? Theme.primaryTint : Color.white))
-        .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(active ? ActionsTheme.selectedStroke : Theme.border))
+        .background {
+            if radius * 2 >= height { Capsule().fill(active ? Theme.primaryTint : Color.white) }
+            else { RoundedRectangle(cornerRadius: radius).fill(active ? Theme.primaryTint : Color.white) }
+        }
+        .overlay {
+            if radius * 2 >= height { Capsule().strokeBorder(active ? ActionsTheme.selectedStroke : Theme.border) }
+            else { RoundedRectangle(cornerRadius: radius).strokeBorder(active ? ActionsTheme.selectedStroke : Theme.border) }
+        }
         .contentShape(Rectangle())
     }
 }

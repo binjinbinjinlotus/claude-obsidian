@@ -193,7 +193,7 @@ struct TypeListScreen: View {
         }
         let from = ActionList.noteTitle(item).map { "From \($0)" } ?? "Added by you"
         if item.status == .open && (item.body ?? "").isEmpty { return "\(from) · not written yet" }
-        if let copied = store.copiedAt[item.id] { return "\(from) · copied at \(ActionsClock.time(copied))" }
+        if item.status == .ready, let copied = store.copiedAt[item.id] ?? item.lastEvent("copied")?.at { return "\(from) · copied at \(ActionsClock.time(copied))" }
         return "\(from) · \(HistoryTime.phrase(item.createdAt))"
     }
 
@@ -210,7 +210,7 @@ struct TypeListScreen: View {
         if let e = item.error, e.code != "ai_failed", creates { return ("Not created", .error) }
         if item.status == .open && (item.body ?? "").isEmpty { return ("Not written", .muted) }
         if !creates {
-            if store.copiedAt[item.id] != nil { return ("Copied", .ready) }
+            if item.status == .ready && (store.copiedAt[item.id] != nil || item.lastEvent("copied") != nil) { return ("Copied", .ready) }
             if item.status == .ready { return (type.handler("send")?.available == true ? "Ready to send" : "Ready to paste", .ready) }
         }
         return ("Draft", .draft)

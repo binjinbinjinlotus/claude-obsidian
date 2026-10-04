@@ -434,12 +434,14 @@ public struct ToolbarFit: Equatable, Sendable {
             }
             return (k, room)
         }
-        for (sw, compact) in candidates {
+        // The right slot keeps its status text while anything else can give.
+        let full = candidates.filter { !$0.1 }
+        for (sw, compact) in full {
             let v = visible(sw, compact)
             if v.count == chips.count && v.room >= 0 { return ToolbarFit(searchWidth: sw, compactRight: compact, visibleChips: v.count) }
         }
-        // Not everything fits: the widest search that still shows "+N", the right slot full if possible.
-        for (sw, compact) in candidates.dropFirst() {
+        // Not everything fits: the widest search that still shows "+N"; the compact right slot last.
+        for (sw, compact) in full.dropFirst() + candidates.filter(\.1) {
             let v = visible(sw, compact)
             let needPlus = chips.isEmpty ? 0 : plus(chips.count - v.count) + gap
             if v.count > 0 || v.room >= needPlus { return ToolbarFit(searchWidth: sw, compactRight: compact, visibleChips: v.count) }
