@@ -530,6 +530,7 @@ struct ExternalCard: View {
         let site = type.connectionID.flatMap { store.engine?.settingsUI.connection($0)?.site }?.replacingOccurrences(of: "https://", with: "")
             ?? (type.connectionID == "atlassian" ? "your Atlassian site" : service)
         let connectedNow = type.handler("create")?.available ?? false
+        let connectionName = type.connectionID == "atlassian" ? "Atlassian" : service
         if error.needsSignIn && connectedNow {
             ActionCallout(icon: "checkmark.circle.fill", tint: Theme.limeInk, fill: ActionsTheme.doneFill, title: "Signed in to \(service)",
                           text: "\(site.prefix(1).uppercased() + site.dropFirst()) is connected. Your draft hasn't been sent yet.") {
@@ -539,14 +540,14 @@ struct ExternalCard: View {
             switch error.code {
             case "not_connected":
                 ActionCallout(icon: "link", tint: Theme.peachInk, title: "\(service) isn't connected",
-                              text: "Your draft is safe here. Sign in once and Distill can create \(things) on \(site).") {
-                    ActionButton(title: "Sign in to \(service) in your browser", icon: "safari", kind: .primary, height: 28) { store.openSettings("connections") }
+                              text: "Your draft is safe here. Set up the \(connectionName) connection once (an API token in Settings) and Distill can create \(things) on \(site).") {
+                    ActionButton(title: ToolbarConnection.setUpTitle, icon: "globe", kind: .primary, height: 28) { store.openSettings("connections") }
                     ActionButton(title: "Settings", kind: .plain, height: 28) { store.openSettings("connections") }
                 }
             case "auth_expired":
                 ActionCallout(icon: "clock.badge.exclamationmark", tint: Theme.peachInk, title: "Your \(service) sign-in expired",
-                              text: "\(error.message.isEmpty ? "" : error.message + " ")Your draft is safe. Sign in again, then retry.") {
-                    ActionButton(title: "Sign in again in your browser", icon: "safari", kind: .primary, height: 28) { store.openSettings("connections") }
+                              text: "\(error.message.isEmpty ? "" : error.message + " ")Your draft is safe. Paste a new API token in Settings → Connections, then retry.") {
+                    ActionButton(title: "Update the token", icon: "globe", kind: .primary, height: 28) { store.openSettings("connections") }
                     ActionButton(title: "Retry", icon: "arrow.clockwise", kind: .soft, height: 28) { store.perform(item, handler: "create") }
                 }
             case "refused":

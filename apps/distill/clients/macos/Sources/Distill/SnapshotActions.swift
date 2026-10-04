@@ -448,7 +448,7 @@ extension StatesSnapshot {
 
         e = actionsEngine(tab: "jira", select: "j1", disconnected: true)
         e.actions.items["j1"]?.error = ActionError(code: "not_connected", message: "Not connected")
-        ext("actions-jira-not-connected", "jira", "Not connected", "The draft waits; Sign in to Jira in your browser opens Settings → Connections.", e)
+        ext("actions-jira-not-connected", "jira", "Not connected", "The draft waits; Set up connection opens Settings → Connections to paste an API token.", e)
 
         e = actionsEngine(tab: "jira", select: "j2")
         ext("actions-jira-not-written", "jira", "Not written yet", "Write draft fills it in; nothing is sent to Jira.", e)
@@ -483,11 +483,11 @@ extension StatesSnapshot {
 
         e = actionsEngine(tab: "jira", select: "j1", disconnected: true)
         e.actions.items["j1"]?.error = ActionError(code: "auth_expired", message: "It expired on Sep 30 at 6:00 PM.")
-        ext("actions-jira-expired", "jira", "Sign-in expired", "The same browser sign-in, plus Retry.", e)
+        ext("actions-jira-expired", "jira", "Sign-in expired", "Update the token (Settings → Connections), plus Retry.", e)
 
         e = actionsEngine(tab: "jira", select: "j1")
         e.actions.items["j1"]?.error = ActionError(code: "not_connected", message: "Not connected")
-        ext("actions-jira-signed-in", "jira", "Signed in → Retry", "Back from the browser: connected, and Retry finishes what you started.", e)
+        ext("actions-jira-signed-in", "jira", "Signed in → Retry", "Connected in Settings meanwhile: Retry finishes what you started.", e)
 
         e = actionsEngine(tab: "jira", select: "j1")
         e.actions.items["j1"]?.error = ActionError(code: "refused", message: "Component is required in project PX.", field: "component")
@@ -510,25 +510,21 @@ extension StatesSnapshot {
 
         e = actionsEngine(tab: "confluence", select: "c1", disconnected: true)
         e.actions.items["c1"]?.error = ActionError(code: "not_connected", message: "Not connected")
-        ext("actions-confluence-not-connected", "confluence", "Not connected", "One Atlassian sign-in covers Jira and Confluence.", e)
+        ext("actions-confluence-not-connected", "confluence", "Not connected", "One Atlassian connection covers Jira and Confluence.", e)
 
         e = actionsEngine(tab: "confluence", select: "c3")
         ext("actions-confluence-created", "confluence", "Created", "A link to the published page until you complete it.", e)
 
         // File names are the schema's state ids (design/screens/actions.json).
-        let ids: [(tab: String, things: String, empty: String, connecting: String, hover: String, noMatch: String, completed: String, filter: String)] = [
-            ("jira", "tickets", "jira-frame-3", "jira-frame-4", "jira-frame-5", "jira-frame-6", "jira-card-completed", "actions-jira-filter"),
-            ("confluence", "pages", "confluence-frame-3", "confluence-frame-4", "confluence-frame-5", "confluence-frame-6", "confluence-card-completed", "actions-confluence-filter"),
+        let ids: [(tab: String, things: String, empty: String, hover: String, noMatch: String, completed: String, filter: String)] = [
+            ("jira", "tickets", "jira-frame-3", "jira-frame-5", "jira-frame-6", "jira-card-completed", "actions-jira-filter"),
+            ("confluence", "pages", "confluence-frame-3", "confluence-frame-5", "confluence-frame-6", "confluence-card-completed", "actions-confluence-filter"),
         ]
-        for (tab, things, emptyID, connectingID, hoverID, noMatchID, completedID, filterID) in ids {
+        for (tab, things, emptyID, hoverID, noMatchID, completedID, filterID) in ids {
             let screen = tab == "jira" ? "Actions · Jira tickets" : "Actions · Confluence pages"
             let created = tab == "jira" ? "j3" : "c3"
             e = actionsEngine(items: ActionFixtures.live().filter { $0.type != tab }, tab: tab, disconnected: true)
-            ext(emptyID, tab, "Not connected, nothing yet", "Connect now in the toolbar and in the empty state; it opens Settings → Connections.", e)
-
-            e = actionsEngine(items: ActionFixtures.live().filter { $0.type != tab }, tab: tab, disconnected: true)
-            e.settingsUI.signingIn.insert("atlassian")
-            ext(connectingID, tab, "Connecting", "Connecting… until the sign-in finishes; then the line reads the site · connected.", e)
+            ext(emptyID, tab, "Not connected, nothing yet", "Set up connection in the toolbar and in the empty state; it opens Settings → Connections. There is no Connecting state.", e)
 
             e = actionsEngine(tab: tab, select: tab == "jira" ? "j1" : "c1")
             e.actions.toast = ActionToast(text: "Completed", undo: {})

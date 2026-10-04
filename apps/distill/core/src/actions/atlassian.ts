@@ -177,7 +177,7 @@ export class AtlassianClient {
   /** One authenticated call for a handler. Maps failures to ActionError codes. */
   async call(method: string, path: string, body?: unknown): Promise<HttpOutcome & { site: string; rec: AtlassianRecord }> {
     const rec = this.record();
-    if (!rec) fail('not_connected', 'Jira and Confluence aren’t connected. Sign in, then retry; your draft is safe.');
+    if (!rec) fail('not_connected', 'Jira and Confluence aren’t connected. Paste an Atlassian API token in Settings → Connections, then retry; your draft is safe.');
     const site = rec!.site;
     let email: string | undefined;
     let token: string | undefined;
@@ -187,7 +187,7 @@ export class AtlassianClient {
     } catch {
       email = undefined;
     }
-    if (!email || !token) fail('not_connected', `${hostOf(site)} isn’t connected. Sign in, then retry; your draft is safe.`);
+    if (!email || !token) fail('not_connected', `${hostOf(site)} isn’t connected. Paste an Atlassian API token in Settings → Connections, then retry; your draft is safe.`);
     let res: HttpOutcome;
     try {
       res = await this.http(site, basic(email!, token!), method, path, body);
@@ -197,7 +197,7 @@ export class AtlassianClient {
     if (res.status === 401) {
       this.deps.file.setAtlassian({ ...rec!, expiredAt: isoDate(this.deps.now()) });
       this.deps.onChange?.();
-      fail('auth_expired', `Your sign-in to ${hostOf(site)} expired. Sign in again, then retry; your draft is safe.`);
+      fail('auth_expired', `${hostOf(site)} stopped accepting the API token.`);
     }
     if (res.status === 403) {
       fail('not_connected', `Your Atlassian account can’t do this on ${hostOf(site)}. Check its permissions, then retry.`);

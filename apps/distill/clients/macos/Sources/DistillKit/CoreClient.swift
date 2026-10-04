@@ -64,6 +64,8 @@ public final class CoreClient: Sendable {
     /// Regular calls; Ask has its own, longer limit.
     public static let defaultTimeout: TimeInterval = 30
     public static let askTimeout: TimeInterval = 15 * 60
+    /// POST /connect: the core gives Atlassian 30 s.
+    public static let connectTimeout: TimeInterval = 45
 
     public init(endpoint: CoreEndpoint, session: URLSession? = nil) {
         self.endpoint = endpoint
@@ -366,8 +368,10 @@ public final class CoreClient: Sendable {
     }
 
     /// Credentials go to the Keychain through the core; the request is never logged.
+    /// Waits longer than the core's own 30 s check with Atlassian, so a slow or
+    /// refused token comes back as the core's answer, not a client timeout.
     public func connect(_ id: String, _ request: ConnectRequest) async throws -> ConnectionInfo {
-        try await send("POST", "/v1/connections/\(Self.segment(id))/connect", body: request)
+        try await send("POST", "/v1/connections/\(Self.segment(id))/connect", body: request, timeout: Self.connectTimeout)
     }
 
     /// The page to open in the browser to sign in or create an API token.

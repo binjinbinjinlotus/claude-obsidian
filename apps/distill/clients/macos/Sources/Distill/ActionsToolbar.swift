@@ -99,19 +99,9 @@ struct ActionsToolbar<SortItems: View, Panel: View>: View {
         case .connection:
             HStack(spacing: 8) {
                 if !compact || connection == .connected { status }
-                switch connection {
-                case .connected: EmptyView()
-                case .disconnected:
-                    PrimaryButton(title: "Connect now", systemImage: "link", size: .mini, action: connect)
-                        .help("Opens Settings → Connections")
-                case .connecting:
-                    HStack(spacing: 6) {
-                        Spinner(color: .white, size: 10)
-                        Text("Connecting…").font(Theme.body(12, .semibold))
-                    }
-                    .foregroundStyle(.white).padding(.horizontal, 11).frame(height: 26)
-                    .background(Capsule().fill(Theme.primary)).fixedSize()
-                    .help("Finish signing in, in your browser")
+                if connection == .disconnected {
+                    PrimaryButton(title: ToolbarConnection.setUpTitle, systemImage: "link", size: .mini, action: connect)
+                        .help("Opens Settings → Connections to paste an API token")
                 }
             }
             .fixedSize()
@@ -142,7 +132,7 @@ struct ActionsToolbar<SortItems: View, Panel: View>: View {
         case .none: rightFull = 0; rightCompact = 0
         case .connection:
             let statusW = measure.text("\(connection == .connected ? site : service) · ", 12) + measure.text(connection == .connected ? "connected" : "not connected", 12, .bold) + 17
-            let button: CGFloat = connection == .connected ? 0 : measure.text(connection == .connecting ? "Connecting…" : "Connect now", 12, .semibold) + (connection == .connecting ? 39 : 39)
+            let button: CGFloat = connection == .connected ? 0 : measure.text(ToolbarConnection.setUpTitle, 12, .semibold) + 39
             rightFull = statusW + (button > 0 ? 8 + button : 0)
             rightCompact = connection == .connected ? statusW : button
         }
@@ -163,7 +153,12 @@ extension ActionsToolbar where Panel == EmptyView {
 }
 
 enum ToolbarRight: String { case sort, connection, none }
-enum ToolbarConnection: String { case connected, disconnected, connecting }
+/// Connected, or it needs setting up: there is no in-between state (the
+/// Atlassian connection is an API token pasted in Settings, never a background sign-in).
+enum ToolbarConnection: String {
+    case connected, disconnected
+    static let setUpTitle = "Set up connection"
+}
 
 /// Text widths for the toolbar's fit (system font, as Theme.body).
 enum ToolbarMeasure {

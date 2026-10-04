@@ -94,7 +94,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .models: return "Runner, model and effort for each job. Ask can still change them per question."
         case .actions: return "Distill finds actions in processed notes and Ask answers. Each action type can do some for you; the rest become to-dos."
         case .todo: return "How To do opens. Changes you make on the To do screen are remembered there."
-        case .connections: return "Sign-in happens in your browser. Distill keeps the access in your Keychain and never sees your password."
+        case .connections: return "Connected, or not set up yet: there is no in-between. Paste an Atlassian API token once; it goes to your Keychain."
         }
     }
 }
@@ -170,7 +170,7 @@ enum SettingsIndex {
         e(.todo, "Default sort", "Inside each group", "order due date priority"),
         e(.todo, "Keep action history", "Removed, completed, sent and done items", "retention days forever"),
         e(.todo, "Remind me of overdue to-dos", "One macOS notification each morning", "notification"),
-        e(.connections, "Atlassian", "Jira and Confluence: sign in with an API token", "jira confluence token sign in"),
+        e(.connections, "Atlassian", "Jira and Confluence: connect with an API token", "jira confluence api token sign in set up connection"),
         e(.connections, "Slack", "Not needed yet: Copy works without connecting"),
     ]
 

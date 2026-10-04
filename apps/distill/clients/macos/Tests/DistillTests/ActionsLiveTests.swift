@@ -113,7 +113,7 @@ final class ActionsLiveTests: XCTestCase {
         for tab in ["slack", "jira", "confluence"] {
             guard let type = store.type(tab) else { continue }
             var tl = TypeListUI()
-            // Filters on every tab: Jira and Confluence not connected is the tightest toolbar (status text + Connect now).
+            // Filters on every tab: Jira and Confluence not connected is the tightest toolbar (status text + Set up connection).
             if tab == "slack" { tl.filter.toggle("status", "Ready to paste"); tl.filter.toggle("label", "#none") }
             if tab == "jira" { tl.filter.toggle("status", "Draft"); tl.filter.toggle("project", "Operations"); tl.filter.toggle("assignee", "Priya Shah") }
             if tab == "confluence" { tl.filter.toggle("status", "Draft"); tl.filter.toggle("space", "Operations") }

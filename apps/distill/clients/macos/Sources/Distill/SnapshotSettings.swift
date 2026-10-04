@@ -93,40 +93,22 @@ extension StatesSnapshot {
         func atlassian(_ status: ConnectionInfo.Status, site: String? = nil, account: String? = nil, message: String? = nil) -> ConnectionInfo {
             ConnectionInfo(id: "atlassian", label: "Atlassian", status: status, site: site, account: account, message: message, usedBy: ["jira", "confluence"])
         }
-        connections("settings-connections-none", "Connections · not connected", "Slack not needed yet; Atlassian: Sign in in your browser.") {
+        connections("settings-connections-none", "Connections · not connected", "Slack not needed yet; Atlassian: the token form is open, Connect waits for all three fields.") {
             $0.connections = [atlassian(.notConnected)]
             $0.connectionsLoad = .loaded
         }
-        connections("settings-connections-signing-in", "Connections · signing in", "Browser opened: paste site, email and API token, then Connect.") {
+        connections("settings-connections-refused", "Connections · token refused", "Atlassian didn’t accept the token: still not connected, nothing saved, the form keeps what was typed.") {
             $0.connections = [atlassian(.notConnected, site: site)]
             $0.connectionsLoad = .loaded
-            $0.signingIn = ["atlassian"]
+            $0.connectionError = ["atlassian": .tokenRefused]
             $0.fixtureForm = ("jin@acme.test", "not-a-real-token")
-        }
-        connections("settings-connections-connecting", "Connections · connecting", "Connect pressed: the core checks the token.") {
-            $0.connections = [atlassian(.notConnected, site: site)]
-            $0.connectionsLoad = .loaded
-            $0.signingIn = ["atlassian"]
-            $0.connectionBusy = ["atlassian": "Connecting…"]
-            $0.fixtureForm = ("jin@acme.test", "")
-        }
-        connections("settings-connections-refused", "Connections · token refused", "Atlassian refused the token; the form stays with the message.") {
-            $0.connections = [atlassian(.notConnected, site: site)]
-            $0.connectionsLoad = .loaded
-            $0.signingIn = ["atlassian"]
-            $0.connectionError = ["atlassian": "Couldn’t sign in: Atlassian refused the email or API token."]
-            $0.fixtureForm = ("jin@acme.test", "")
         }
         connections("settings-connections-connected", "Connections · connected", "Site and account, Disconnect.") {
             $0.connections = [atlassian(.connected, site: site, account: "Jin Liu")]
             $0.connectionsLoad = .loaded
         }
-        connections("settings-connections-expired", "Connections · sign-in expired", "Token no longer accepted: Sign in in your browser again.") {
+        connections("settings-connections-expired", "Connections · sign-in expired", "Token no longer accepted: not connected, paste a new token.") {
             $0.connections = [atlassian(.expired, site: site, account: "Jin Liu")]
-            $0.connectionsLoad = .loaded
-        }
-        connections("settings-connections-error", "Connections · denied", "The sign-in was denied: Try again.") {
-            $0.connections = [atlassian(.error, site: site, message: "Atlassian said access was denied. Nothing changed. You can try again.")]
             $0.connectionsLoad = .loaded
         }
         connections("settings-connections-old-core", "Connections · older core", "The core has no connections routes: “Update the Distill core”.") {
