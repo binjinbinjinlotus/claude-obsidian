@@ -208,6 +208,30 @@ python3 fetch_meeting_notes.py <vault> <queue folder>
 - With no `--out`, the script writes into the queue folder.
 - Each run's output shows under the collector's runs.
 
+**The Keychain when Distill runs it.** You don't set anything up in Distill.
+Run step 3 once in Terminal, and every collector run reads the same Keychain
+items. This works for three reasons:
+
+- The run is you: Distill starts the script as your user, in your login
+  session, so it opens the same **login** keychain.
+- It finds the same Python: Distill picks `python3` from your login shell's
+  `PATH`, which is the one step 3 used. Check which that is:
+
+  ```sh
+  zsh -lc 'which python3'   # must match the python3 you used in step 3
+  ```
+
+  If it differs, redo step 3 with that exact path, for example
+  `/Library/Frameworks/Python.framework/Versions/3.13/bin/python3 SCRIPT --login`.
+- It never needs a browser: a run only refreshes the token and saves it back
+  to the Keychain.
+
+To check it, choose **Run now** on the collector. If macOS asks whether
+`python3` may use the Keychain, choose **Always Allow**. Otherwise later runs
+wait on that prompt until Distill stops them after 5 minutes. If the run says
+`Not signed in to Google` or `The Google sign-in expired`, run `--login` in
+Terminal, then choose **Run now** again.
+
 Distill can't pass extra options yet. To change `--days`, `--folder` or
 `--match`, edit the defaults in `main()` in the script, then allow the new
 version.
