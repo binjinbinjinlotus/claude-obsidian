@@ -206,9 +206,9 @@ QueueRowView (folder and Google Doc states) and QueueRefresh. Not built yet.
   to the batch (`Tea tasting trip/notes/day1-uji.md`). The prompt gets one
   block per folder item:
   `Folder source: <name>/ (12 files, 3 folders, 18.4 MB)`, then one line per
-  entry with the relative path and size (`.gdoc` entries say "Google Doc
-  link"), then "Treat these as one source; the paths and names are context."
-  `.gdoc` files inside follow the Google Doc rule below.
+  entry with the relative path and size (`.gdoc` entries say "Google Doc,
+  not read"), then "Treat these as one source; the paths and names are context."
+  `.gdoc` files inside are listed but never sent as sources (see below).
 - **Review:** sources list the folder once ("Tea tasting trip/ · folder · 12
   files · 3 folders"). Show files lists each file with the pages it was used
   in, or "not used". Changes cite files by their path inside the folder.
@@ -217,25 +217,28 @@ QueueRowView (folder and Google Doc states) and QueueRefresh. Not built yet.
 
 ### Google Doc items (.gdoc)
 
-- A `.gdoc` file (top level, or inside a folder item) is a Google Drive
-  pointer: JSON with `url` and `doc_id`, among other fields. The core parses
-  it. The title is the file name without `.gdoc`.
-- **Queue entry:** `kind: 'gdoc'`, `gdoc: { title, url, docId }`. If the
-  file has no `url` or `doc_id` (often because Drive hasn't synced it yet),
-  the entry gets `problem: 'no link inside'`.
-- **Row** (QueueRowView, kind gdoc): doc icon, the title, "Google Doc · link
-  only · added 2:55 AM", **Open in Google Docs** (opens `url`), and the hint
-  "Distill can't read Google Docs yet, so the vault gets the title and link.
-  To include the text, download it as .docx or PDF and drop that too."
-- **What the core does:** Distill has no Google access, and the runners are
-  not given one, so the core never fetches the document. In the batch it
-  replaces the `.gdoc` with a **link note** written to the job directory:
-  `# <title>`, `Google Doc: <url>`, `Doc id: <docId>`,
-  `From: <file name> (Google Drive)`, and "The document text was not
-  available to Distill." The AI may create or update a page with the link,
-  and is told never to invent the document's content. The original `.gdoc`
-  moves to the inbox like any file. Review marks the source "Google Doc ·
-  link only" ("Added as a link on Tea club; the text was not read").
-- **Later:** if a Google connection is added (Settings → Connections), the
-  core exports the doc as Markdown before the batch, the hint disappears,
-  and the row says "Google Doc · text included". Not designed further now.
+- A `.gdoc` file (at the top level, or inside a folder item) is only a
+  pointer: JSON with `url` and `doc_id`, among other fields. The document's
+  content is not on disk, so Distill cannot read it. The core parses the
+  pointer, and the title is the file name without `.gdoc`.
+- **Queue entry:** `kind: 'gdoc'`, `gdoc: { title, url, docId }`,
+  `waiting: 'google-drive'`. If the file has no `url` or `doc_id` (often
+  because Drive hasn't synced it yet), the entry gets
+  `problem: 'no link inside'` instead.
+- **Row** (QueueRowView, kind gdoc):
+  - doc icon and the title;
+  - "Google Doc · needs Google Drive access · added 2:55 AM";
+  - **Open in Google Docs**, which opens `url`;
+  - a **Waiting** pill (amber);
+  - the hint "Distill can't open Google Docs yet, so this waits here and
+    isn't processed. To include it now, download it as .docx or PDF and drop
+    that."
+- **Not processed.** The item is held out of every batch, Process now
+  included. It stays in the queue until the user removes it or Google Drive
+  access exists. It counts toward the queue count, but it never makes a
+  batch start on its own. A `.gdoc` inside a folder item is listed in the
+  tree as "not read" and is not given to the AI as a source. Review lists it
+  under the folder as "not read: needs Google Drive access".
+- **Google Drive fetch:** designed separately. The coordinator and the owner
+  are deciding it, including automatic collection of meeting notes. Until
+  then, no link note and no other ingestion of `.gdoc` content.

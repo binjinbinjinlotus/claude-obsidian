@@ -4683,8 +4683,10 @@
             "readyAt",
             "inBatch",
             "nextBatch",
-            "problem"
-          ]
+            "problem",
+            "waiting"
+          ],
+          "swiftPending": "status waiting (a Google Doc held until Google Drive access exists), designed 2026-10-04"
         },
         {
           "name": "statusText",
@@ -4744,7 +4746,7 @@
         "file": "QueueRowViewStates.dc.html",
         "title": "Queue row states",
         "heading": "QueueRowView",
-        "intro": "QueueRowViews.swift → <b>QueueRowView</b>. One row per queue item: a file, a <b>folder</b> (one item, not N files: folder icon, name, “12 files · 3 folders · 18.4 MB”; the chevron expands its tree, read-only) or a <b>Google Doc</b> (a .gdoc pointer: the doc’s title, “Google Doc · link only”, Open in Google Docs, and a hint while Distill can’t read Google Docs). Pill and × as for files; in a batch the row is locked. Props: title, meta, tileName, status, statusText, help, noteTile; designed, not in Swift yet: kind (file | folder | gdoc), expanded, tree (“name · size” items separated by |, two spaces per level, folders end with /), hint.",
+        "intro": "QueueRowViews.swift → <b>QueueRowView</b>. One row per queue item: a file, a <b>folder</b> (one item, not N files: folder icon, name, “12 files · 3 folders · 18.4 MB”; the chevron expands its tree, read-only) or a <b>Google Doc</b> (a .gdoc is only a pointer, so its content can’t be read here: the doc’s title, “Google Doc · needs Google Drive access”, a <b>Waiting</b> pill, Open in Google Docs, and a short hint; it is not processed). Pill and × as for files; in a batch the row is locked. Props: title, meta, tileName, status, statusText, help, noteTile; designed, not in Swift yet: kind (file | folder | gdoc), expanded, tree (“name · size” items separated by |, two spaces per level, folders end with /), hint.",
         "width": 1680,
         "cols": 2,
         "wrap": "<div style=\"width: 780px; padding: 6px; border-radius: 16px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
@@ -4787,7 +4789,7 @@
             "status": "ready",
             "kind": "folder",
             "expanded": true,
-            "tree": "notes/ · 3 files|  day1-uji.md · 4 KB|  day2-wazuka.md · 6 KB|  tasting-sheet.gdoc · link|photos/ · 8 files|  IMG_2041.HEIC · 2.1 MB|  … 7 more · 14.9 MB|receipts/ · 1 file|  tea-shop.pdf · 220 KB",
+            "tree": "notes/ · 3 files|  day1-uji.md · 4 KB|  day2-wazuka.md · 6 KB|  tasting-sheet.gdoc · not read|photos/ · 8 files|  IMG_2041.HEIC · 2.1 MB|  … 7 more · 14.9 MB|receipts/ · 1 file|  tea-shop.pdf · 220 KB",
             "width": 760
           },
           "size": [
@@ -4844,35 +4846,37 @@
           ]
         },
         {
-          "name": "Google Doc",
+          "name": "Google Doc: waits for Google Drive access",
           "props": {
             "title": "Q3 tea club plan",
-            "meta": "Google Doc · link only · added 2:55 AM",
+            "meta": "Google Doc · needs Google Drive access · added 2:55 AM",
             "tileName": "Q3 tea club plan.gdoc",
-            "status": "ready",
+            "status": "waiting",
+            "help": "Held out of batches until Distill has Google Drive access.",
             "kind": "gdoc",
-            "hint": "Distill can’t read Google Docs yet, so the vault gets the title and link. To include the text, download it as .docx or PDF and drop that too.",
+            "hint": "Distill can’t open Google Docs yet, so this waits here and isn’t processed. To include it now, download it as .docx or PDF and drop that.",
             "width": 760
           },
           "size": [
             "760px",
             "84px"
           ],
-          "caption": "Title = the .gdoc file name. The vault gets a link note: title, URL and doc id."
+          "caption": "Not processed, even by Process now. Remove it, or drop a .docx or PDF export instead."
         },
         {
-          "name": "Google Doc in a batch",
+          "name": "Google Doc while a batch runs",
           "props": {
             "title": "Q3 tea club plan",
-            "meta": "Google Doc · link only",
-            "status": "inBatch",
+            "meta": "Google Doc · needs Google Drive access",
+            "status": "waiting",
             "kind": "gdoc",
             "width": 760
           },
           "size": [
             "760px",
             "64px"
-          ]
+          ],
+          "caption": "It never joins a batch; it keeps waiting."
         },
         {
           "name": "Google Doc pointer unreadable",

@@ -25,7 +25,7 @@ const FOLDER = 'M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.
 const DOC = 'M6 3h9l5 5v13H6zM14 3v6h6M9 13h6M9 17h6';
 const FILE = 'M6 3h9l5 5v13H6zM14 3v6h6';
 const EXT = {"PDF": ["#FFE4D6", "#B03A0A"], "PNG": ["#E3EEFF", "#1F6FEB"], "JPG": ["#E3EEFF", "#1F6FEB"], "HEIC": ["#E3EEFF", "#1F6FEB"], "MD": ["#E9FBC9", "#3D6110"], "TXT": ["#E9FBC9", "#3D6110"], "DOCX": ["#DDF2FF", "#0B5C86"]};
-const S = {"ready": ["Ready", "#F3FDE4", "#3D6110"], "readyAt": ["Ready at 3:14 AM", "#F6F5F2", "#48463F"], "inBatch": ["In batch", "#E3EEFF", "#1F6FEB"], "nextBatch": ["Next batch", "#F6F5F2", "#48463F"], "problem": ["Couldn’t read", "#FFE4D6", "#B03A0A"]};
+const S = {"ready": ["Ready", "#F3FDE4", "#3D6110"], "readyAt": ["Ready at 3:14 AM", "#F6F5F2", "#48463F"], "inBatch": ["In batch", "#E3EEFF", "#1F6FEB"], "nextBatch": ["Next batch", "#F6F5F2", "#48463F"], "problem": ["Couldn’t read", "#FFE4D6", "#B03A0A"], "waiting": ["Waiting", "#FFF4D6", "#8A5A00"]};
 const kind = p.kind || 'file', st = S[p.status] || S.ready;
 const name = p.tileName || p.title || 'notes.md';
 const ext = (name.split('.').pop() || '').toUpperCase();

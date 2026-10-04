@@ -91,7 +91,7 @@ The first built-in is **Folder**:
 - **Run:** it copies every regular file at the top level of the source folder
   into the target vault's queue folder and leaves the original in place.
   `.gdoc` files are collected like files and become Google Doc items in the
-  queue. With Include subfolders on, each top-level subfolder is collected
+  queue, where they wait ("needs Google Drive access") and are not processed. With Include subfolders on, each top-level subfolder is collected
   as one folder item (rules below). With
   "Move it to the queue" the file leaves the source instead. Run history and
   per-file lines say "Copied" or "Moved" to match the setting ("Copied 3 files

@@ -97,11 +97,11 @@
       "c": "QueueRowView",
       "props": {
        "title": "Q3 tea club plan",
-       "meta": "Google Doc · link only · added 2:55 AM",
+       "meta": "Google Doc · needs Google Drive access · added 2:55 AM",
        "tileName": "Q3 tea club plan.gdoc",
-       "status": "ready",
+       "status": "waiting",
        "kind": "gdoc",
-       "hint": "Distill can’t read Google Docs yet, so the vault gets the title and link. To include the text, download it as .docx or PDF and drop that too."
+       "hint": "Distill can’t open Google Docs yet, so this waits here and isn’t processed. To include it now, download it as .docx or PDF and drop that."
       },
       "size": [
        "100%",
@@ -191,9 +191,9 @@
       "c": "QueueRowView",
       "props": {
        "title": "Q3 tea club plan",
-       "meta": "Google Doc · link only · added 3:43 AM",
+       "meta": "Google Doc · needs Google Drive access · added 3:43 AM",
        "tileName": "Q3 tea club plan.gdoc",
-       "status": "nextBatch",
+       "status": "waiting",
        "kind": "gdoc"
       },
       "size": [
@@ -304,7 +304,7 @@
        "status": "ready",
        "kind": "folder",
        "expanded": true,
-       "tree": "notes/ · 3 files|  day1-uji.md · 4 KB|  day2-wazuka.md · 6 KB|  tasting-sheet.gdoc · link|photos/ · 8 files|  IMG_2041.HEIC · 2.1 MB|  … 7 more · 14.9 MB|receipts/ · 1 file|  tea-shop.pdf · 220 KB"
+       "tree": "notes/ · 3 files|  day1-uji.md · 4 KB|  day2-wazuka.md · 6 KB|  tasting-sheet.gdoc · not read|photos/ · 8 files|  IMG_2041.HEIC · 2.1 MB|  … 7 more · 14.9 MB|receipts/ · 1 file|  tea-shop.pdf · 220 KB"
       },
       "size": [
        "100%",
@@ -315,11 +315,11 @@
       "c": "QueueRowView",
       "props": {
        "title": "Q3 tea club plan",
-       "meta": "Google Doc · link only · added 2:55 AM",
+       "meta": "Google Doc · needs Google Drive access · added 2:55 AM",
        "tileName": "Q3 tea club plan.gdoc",
-       "status": "ready",
+       "status": "waiting",
        "kind": "gdoc",
-       "hint": "Distill can’t read Google Docs yet, so the vault gets the title and link. To include the text, download it as .docx or PDF and drop that too."
+       "hint": "Distill can’t open Google Docs yet, so this waits here and isn’t processed. To include it now, download it as .docx or PDF and drop that."
       },
       "size": [
        "100%",
@@ -345,8 +345,8 @@
   },
   {
    "id": "queue-card-review",
-   "label": "Review: a folder and a Google Doc as sources",
-   "caption": "The folder is one source with its files listed under it, each with the pages it was used in.",
+   "label": "Review: a folder as one source",
+   "caption": "The folder is one source with its files listed under it, each with the pages it was used in. A .gdoc inside is listed as not read.",
    "card": {
     "height": 330,
     "bg": "#E4E1DB",
@@ -360,7 +360,7 @@
   {
    "id": "queue-card-history",
    "label": "History → Jobs: sources",
-   "caption": "Folder items keep their structure in the inbox; Google Docs keep their link.",
+   "caption": "A folder item keeps its structure in the inbox.",
    "card": {
     "height": 260,
     "bg": "#E4E1DB",
@@ -383,20 +383,6 @@
    },
    "body": {
     "frag": "card-ai"
-   }
-  },
-  {
-   "id": "queue-card-gdoc",
-   "label": "A Google Doc without Google access",
-   "caption": "Queued as a link note: title, URL, doc id, and the hint in the row.",
-   "card": {
-    "height": 270,
-    "bg": "#E4E1DB",
-    "pad": "22px",
-    "align": "center"
-   },
-   "body": {
-    "frag": "card-gdoc"
    }
   }
  ],
@@ -425,7 +411,7 @@
    "file": "QueueItems.dc.html",
    "title": "Queue · folders, Google Docs, Refresh and the queue check",
    "heading": "Queue · folders, Google Docs, Refresh",
-   "intro": "The queue now lists what is really in the queue folder. <b>Refresh</b> (next to Reveal in Finder) re-syncs at once, and the core checks by itself every 5 minutes (Settings → Batching) and when the window opens. A <b>folder</b> is one queue item: folder icon, name, “12 files · 3 folders”, total size; it expands to a read-only tree; when processed, its structure goes to the AI as context next to the files. A <b>.gdoc</b> is a Google Drive pointer: it shows as a Google Doc row with its title and link, and until Distill can read Google Docs it is queued as a link note (title, URL, doc id) with a hint.",
+   "intro": "The queue now lists what is really in the queue folder. <b>Refresh</b> (next to Reveal in Finder) re-syncs at once, and the core checks by itself every 5 minutes (Settings → Batching) and when the window opens. A <b>folder</b> is one queue item: folder icon, name, “12 files · 3 folders”, total size; it expands to a read-only tree; when processed, its structure goes to the AI as context next to the files. A <b>.gdoc</b> is only a pointer to a Google Doc, so its content can’t be read here: it shows as a Google Doc row, “needs Google Drive access”, with a <b>Waiting</b> pill and a short hint, and it is not processed. Fetching from Google Drive is being designed separately.",
    "width": 2520,
    "sections": [
     {
@@ -433,8 +419,7 @@
       "queue-card-settings",
       "queue-card-review",
       "queue-card-history",
-      "queue-card-ai",
-      "queue-card-gdoc"
+      "queue-card-ai"
      ],
      "cols": 3
     }

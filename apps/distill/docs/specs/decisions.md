@@ -34,16 +34,17 @@ supersede it with a new entry.
     change inside. In the batch the folder moves whole to the inbox, every
     file is a source by its relative path, and a tree block (paths, names,
     sizes) goes into the prompt.
-  - **A .gdoc becomes a link note in v1.** Distill and its runners have no
-    Google access, so the core never fetches the doc. It queues a note with
-    the title, URL and doc id, tells the AI not to invent content, and shows
-    the hint "download as .docx or PDF to include the text". A Google
-    connection is left for later.
+  - **A .gdoc waits; it is not processed** (coordinator, 2026-10-04,
+    superseding a first draft that queued it as a link note). A local .gdoc
+    is only a pointer, so its content can't be read. The row says "Google
+    Doc · needs Google Drive access", has a Waiting pill and a short hint,
+    and is held out of every batch, Process now included. Google Drive
+    fetching is being decided separately.
   - **The Folder collector's Include subfolders is on by default.** The
     dedupe unit is the file hash. A subfolder is collected when any file in
     it is new or changed. In copy mode only the new and changed files are
     copied, and the manifest keeps the full tree. The collector also
-    collects .gdoc files.
+    collects .gdoc files, which then wait in the queue.
   - **QueueRowView is the canvas component for queue rows** and maps to the
     Swift view of the same name; kind, expanded, tree and hint are
     `swiftPending`. The legacy QueueRows board is not migrated; the
