@@ -25,7 +25,7 @@ struct TaskDefaultsSettings: View {
                         Text("Writing and improving are set per action type in Actions").font(Theme.body(11)).foregroundStyle(Theme.muted)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    Button("Open Actions ›") { engine.settingsUI.show(SettingsTarget(.actions)) }
+                    Button("Open Actions ›") { engine.settingsUI.select(SettingsTarget(.actions)) }
                         .buttonStyle(.plain).font(Theme.body(13, .semibold)).foregroundStyle(Theme.primary)
                 }
                 .padding(.horizontal, 14).padding(.vertical, 12)
@@ -40,17 +40,26 @@ struct TaskDefaultsSettings: View {
         }
     }
 
+    /// Title beside the pickers when the page is wide enough; in a narrower
+    /// window (under about 1000 pt) the pickers move under the title.
     private func row(_ task: AITask) -> some View {
         let (name, note) = SettingsEdits.taskTitle(task)
-        return HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name).font(Theme.body(13, .bold))
-                Text(note).font(Theme.body(11)).foregroundStyle(Theme.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+        let title = VStack(alignment: .leading, spacing: 2) {
+            Text(name).font(Theme.body(13, .bold))
+            Text(note).font(Theme.body(11)).foregroundStyle(Theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                title.frame(width: 190, alignment: .leading)
+                pickers(task, name)
+                Spacer(minLength: 0)
             }
-            .frame(width: 190, alignment: .leading)
-            pickers(task, name)
-            Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 8) {
+                title
+                pickers(task, name)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)

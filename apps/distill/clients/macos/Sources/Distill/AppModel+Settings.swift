@@ -42,18 +42,62 @@ final class SettingsStore: ObservableObject {
         return s
     }
 
-    /// Shows a section ("connections", "actions/jira"); unknown ids are ignored.
-    func open(_ id: String) {
-        guard let t = SettingsTarget(id: id) else { return }
+    // MARK: Scroll memory
+    //
+    // A page you haven't visited in this Settings session opens at the top of
+    // its section; one you have reopens where you left it. Search results and
+    // deep links from other screens always go to the section. In memory only:
+    // `closed()` (the window closing) and quitting forget everything.
+
+    /// Where the next shown page lands. Decided when the page is asked for,
+    /// because a freshly built scroll view reports 0 before it is restored.
+    enum Landing: Equatable {
+        /// The section's heading (offset 0 for a group's first section and for type pages).
+        case sectionTop
+        /// A remembered offset from the top.
+        case offset(CGFloat)
+    }
+
+    /// Set until the page has scrolled to it; while set, scrolling isn't recorded.
+    var landing: Landing?
+    /// Where each page visited in this session was left (offset from the top).
+    private(set) var offsets: [SettingsTarget: CGFloat] = [:]
+
+    /// The section nav and links inside Settings: back where you left it, or the section's top.
+    func select(_ t: SettingsTarget) {
         query = ""
+        landing = landing(for: t)
         target = t
         scrollRequest += 1
     }
 
+    /// Search results and deep links ("connections", "actions/jira"): the section itself, ignoring memory.
     func show(_ t: SettingsTarget) {
         query = ""
+        landing = .sectionTop
         target = t
         scrollRequest += 1
+    }
+
+    /// Shows a section ("connections", "actions/jira"); unknown ids are ignored.
+    func open(_ id: String) {
+        guard let t = SettingsTarget(id: id) else { return }
+        show(t)
+    }
+
+    func landing(for t: SettingsTarget) -> Landing { offsets[t].map { .offset($0) } ?? .sectionTop }
+
+    /// The current page scrolled to `y` (by the user, or by landing).
+    func remember(_ y: CGFloat) {
+        guard landing == nil, query.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        offsets[target] = y
+    }
+
+    /// The Settings window closed: forget positions and prompt-reset undos.
+    func closed() {
+        offsets = [:]
+        landing = nil
+        promptUndo = [:]
     }
 
     func type(_ id: String) -> SettingsActionType? { actionTypes.first { $0.id == id } }
