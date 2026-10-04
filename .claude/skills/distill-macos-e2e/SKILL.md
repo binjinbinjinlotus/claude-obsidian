@@ -28,8 +28,9 @@ When a new miss turns up (you find it, or the user does), add it to
 
 ## The framework
 
-Work through these phases. Decide yourself how deep each one goes for the
-change at hand.
+A default arc, not a checklist: reorder, skip, merge or add phases as the
+change needs, and decide how deep each goes. The commands below are local
+facts (what exists here), not the only way to test.
 
 ### 1. Scope from the design
 - The design canvas is the spec:
@@ -70,10 +71,10 @@ change at hand.
 Snapshots and unit tests are not the app (see below). Exercise the built app
 itself:
 
-- **Launch it on the temp state.** Run
-  `DISTILL_STATE_DIR=T build/Distill.app/Contents/MacOS/Distill`. Stop the
-  installed app first, because both use the bundle id
-  `com.claude-obsidian.distill`.
+- **Launch a copy on the temp state.** Copy the built binary under its own
+  name and run it with `DISTILL_STATE_DIR=T`. The installed app and the build
+  share the bundle id `com.claude-obsidian.distill` and the process name
+  "Distill", so anything that targets "Distill" may hit the user's app.
 - **Never let input reach the user's own Distill.** Twice, keystrokes and
   resizes sent to "Distill" by process name hit the user's installed app: it
   opened their Settings and changed the window size. Around the same time
@@ -187,10 +188,15 @@ user runs.**
   missing in lists. Try ⌘N, Esc, ⏎ and Tab in every new list or editor.
 
 ## Boundaries
-- Use throwaway vaults and a temp `DISTILL_STATE_DIR` only. Agents never
-  approve vault changes.
+These are the only hard lines, each for a reason. Everything else above is
+yours to adapt.
+- Use throwaway vaults and a temp `DISTILL_STATE_DIR` only: the user's vault
+  and app state are their real knowledge base and history. Agents don't
+  approve vault changes; approval is the user's.
 - Don't start local HTTP servers, browser previews or Playwright pages for
-  the UI. The user checks the real app and the canvas.
+  the UI. The user reviews only the real app and the canvas, and finds stray
+  local previews disruptive.
 - Secrets stay in the Keychain, never in files, logs or screenshots.
-- UI changes go to the canvas before code. If testing turns up a design gap,
-  raise it; don't patch the UI past the design.
+- UI changes go to the canvas before code, because the user reviews designs
+  there first. If testing turns up a design gap, raise it rather than patching
+  the UI past the design.
