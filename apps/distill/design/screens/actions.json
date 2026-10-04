@@ -1070,7 +1070,7 @@
   {
    "id": "actions-jira-not-connected",
    "base": "jira",
-   "label": "B · Jira not connected: Connect now in the toolbar; the draft waits",
+   "label": "B · Jira not connected: Set up connection in the toolbar; the draft waits",
    "set": {
     "toolbar.connection": "disconnected",
     "list": {
@@ -1085,7 +1085,7 @@
   {
    "id": "jira-frame-3",
    "base": "jira",
-   "label": "C · Not connected, no tickets yet: Connect now in the toolbar and in the empty state (it opens Settings → Connections, the token sign-in)",
+   "label": "C · Not connected, no tickets yet: Set up connection in the toolbar and in the empty state (it opens Settings → Connections to paste an API token). There is no Connecting state: it is connected, or it needs setting up",
    "set": {
     "layout": "jira-pane",
     "toolbar.connection": "disconnected",
@@ -1096,22 +1096,9 @@
    }
   },
   {
-   "id": "jira-frame-4",
-   "base": "jira",
-   "label": "D · Connecting: the button shows Connecting… until the sign-in finishes; then the line reads acme.atlassian.net · connected",
-   "set": {
-    "layout": "jira-pane",
-    "toolbar.connection": "connecting",
-    "list": null,
-    "detail": {
-     "frag": "jira-f3-detail"
-    }
-   }
-  },
-  {
    "id": "jira-frame-5",
    "base": "jira",
-   "label": "E · Hover a row: ✓ Complete and ⋯, on drafts and created tickets alike. Completing a created one doesn’t change it in Jira (toast: Completed · Undo)",
+   "label": "D · Hover a row: ✓ Complete and ⋯, on drafts and created tickets alike. Completing a created one doesn’t change it in Jira (toast: Completed · Undo)",
    "set": {
     "layout": "jira-list-detail-toast",
     "list.hover": 2,
@@ -1123,7 +1110,7 @@
   {
    "id": "jira-frame-6",
    "base": "jira",
-   "label": "F · No results for the filters: Clear filters",
+   "label": "E · No results for the filters: Clear filters",
    "set": {
     "layout": "jira-pane",
     "toolbar": {
@@ -1260,7 +1247,7 @@
   {
    "id": "jira-card-jira-isn-t-connected",
    "label": "Jira isn’t connected",
-   "caption": "Not connected: what failed, that the draft is safe, and one next step. Sign in opens Jira in your browser; Distill never asks for a password.",
+   "caption": "Not connected: what failed, that the draft is safe, and one next step. Set up connection opens Settings → Connections, where you paste an Atlassian API token once.",
    "card": {
     "height": 610,
     "bg": "#E4E1DB",
@@ -1269,20 +1256,6 @@
    },
    "body": {
     "frag": "jira-c14-jira-isn-t-connected"
-   }
-  },
-  {
-   "id": "jira-card-signing-in-in-the",
-   "label": "Signing in, in the browser",
-   "caption": "While the browser is open the card waits. Open the page again reopens the same sign-in; Cancel goes back to Not connected.",
-   "card": {
-    "height": 610,
-    "bg": "#E4E1DB",
-    "pad": "22px",
-    "align": "center"
-   },
-   "body": {
-    "frag": "jira-c15-signing-in-in-the"
    }
   },
   {
@@ -1377,7 +1350,7 @@
   {
    "id": "actions-confluence-not-connected",
    "base": "confluence",
-   "label": "B · Confluence not connected: Connect now in the toolbar; the draft waits",
+   "label": "B · Confluence not connected: Set up connection in the toolbar; the draft waits",
    "set": {
     "toolbar.connection": "disconnected",
     "list": {
@@ -1392,7 +1365,7 @@
   {
    "id": "confluence-frame-3",
    "base": "confluence",
-   "label": "C · Not connected, no pages yet: Connect now in the toolbar and in the empty state (it opens Settings → Connections, the token sign-in)",
+   "label": "C · Not connected, no pages yet: Set up connection in the toolbar and in the empty state (it opens Settings → Connections to paste an API token). There is no Connecting state: it is connected, or it needs setting up",
    "set": {
     "layout": "jira-pane",
     "toolbar.connection": "disconnected",
@@ -1403,22 +1376,9 @@
    }
   },
   {
-   "id": "confluence-frame-4",
-   "base": "confluence",
-   "label": "D · Connecting: the button shows Connecting… until the sign-in finishes; then the line reads acme.atlassian.net · connected",
-   "set": {
-    "layout": "jira-pane",
-    "toolbar.connection": "connecting",
-    "list": null,
-    "detail": {
-     "frag": "confluence-f3-detail"
-    }
-   }
-  },
-  {
    "id": "confluence-frame-5",
    "base": "confluence",
-   "label": "E · Hover a row: ✓ Complete and ⋯, on drafts and created pages alike. Completing a created one doesn’t change it in Confluence (toast: Completed · Undo)",
+   "label": "D · Hover a row: ✓ Complete and ⋯, on drafts and created pages alike. Completing a created one doesn’t change it in Confluence (toast: Completed · Undo)",
    "set": {
     "layout": "jira-list-detail-toast",
     "list.hover": 2,
@@ -1430,7 +1390,7 @@
   {
    "id": "confluence-frame-6",
    "base": "confluence",
-   "label": "F · No results for the filters: Clear filters",
+   "label": "E · No results for the filters: Clear filters",
    "set": {
     "layout": "jira-pane",
     "toolbar": {
@@ -1567,7 +1527,7 @@
   {
    "id": "confluence-card-confluence-isn-t-connected",
    "label": "Confluence isn’t connected",
-   "caption": "Not connected: what failed, that the draft is safe, and one next step. Sign in opens Confluence in your browser; Distill never asks for a password.",
+   "caption": "Not connected: what failed, that the draft is safe, and one next step. Set up connection opens Settings → Connections, where you paste an Atlassian API token once.",
    "card": {
     "height": 610,
     "bg": "#E4E1DB",
@@ -1576,20 +1536,6 @@
    },
    "body": {
     "frag": "confluence-c14-confluence-isn-t-connected"
-   }
-  },
-  {
-   "id": "confluence-card-signing-in-in-the",
-   "label": "Signing in, in the browser",
-   "caption": "While the browser is open the card waits. Open the page again reopens the same sign-in; Cancel goes back to Not connected.",
-   "card": {
-    "height": 610,
-    "bg": "#E4E1DB",
-    "pad": "22px",
-    "align": "center"
-   },
-   "body": {
-    "frag": "confluence-c15-signing-in-in-the"
    }
   },
   {
@@ -1926,7 +1872,7 @@
    "file": "ActionsJira.dc.html",
    "title": "Actions · Jira tickets",
    "heading": "Actions · Jira tickets",
-   "intro": "Jira tickets are drafts you check, then create with one button. Distill never creates a ticket during note processing. A draft comes from a note (written when the note is processed, or when you ask) or from To do → Send to, and shows its context. Once created, the ticket keeps its key, link and status from Jira until you complete it here (or it is done there). Sign-in happens in your browser; errors keep the draft safe and offer one next step.",
+   "intro": "Jira tickets are drafts you check, then create with one button. Distill never creates a ticket during note processing. A draft comes from a note (written when the note is processed, or when you ask) or from To do → Send to, and shows its context. Once created, the ticket keeps its key, link and status from Jira until you complete it here (or it is done there). Connect once in Settings → Connections with an API token; errors keep the draft safe and offer one next step.",
    "width": 2520,
    "sections": [
     {
@@ -1938,8 +1884,7 @@
     },
     {
      "row": [
-      "jira-frame-3",
-      "jira-frame-4"
+      "jira-frame-3"
      ],
      "style": "display: flex; gap: 40px"
     },
@@ -1964,7 +1909,6 @@
       "actions-jira-creating",
       "actions-jira-created",
       "jira-card-jira-isn-t-connected",
-      "jira-card-signing-in-in-the",
       "actions-jira-signed-in",
       "actions-jira-expired",
       "actions-jira-refused",
@@ -1980,7 +1924,7 @@
    "file": "ActionsConfluence.dc.html",
    "title": "Actions · Confluence pages",
    "heading": "Actions · Confluence pages",
-   "intro": "Confluence pages follow the same lifecycle as Jira tickets: a draft with space and parent page, Create in Confluence only when you press it, then a link to the published page until you complete it. Same context, editing with AI improvement and Undo, History, and browser sign-in. One Atlassian sign-in covers Jira and Confluence on the same site.",
+   "intro": "Confluence pages follow the same lifecycle as Jira tickets: a draft with space and parent page, Create in Confluence only when you press it, then a link to the published page until you complete it. Same context, editing with AI improvement and Undo, History, and the same Atlassian connection. One connection covers Jira and Confluence on the same site.",
    "width": 2520,
    "sections": [
     {
@@ -1992,8 +1936,7 @@
     },
     {
      "row": [
-      "confluence-frame-3",
-      "confluence-frame-4"
+      "confluence-frame-3"
      ],
      "style": "display: flex; gap: 40px"
     },
@@ -2018,7 +1961,6 @@
       "confluence-card-creating-in-confluence",
       "actions-confluence-created",
       "confluence-card-confluence-isn-t-connected",
-      "confluence-card-signing-in-in-the",
       "confluence-card-signed-in-retry",
       "confluence-card-sign-in-expired",
       "confluence-card-confluence-refused-it",

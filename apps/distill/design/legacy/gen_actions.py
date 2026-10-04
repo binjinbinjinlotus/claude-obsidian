@@ -1527,22 +1527,39 @@ def settings_board():
                       + srow('Keep action history', 'Removed, completed, sent and done items', seg(['30 days', '90 days', '1 year', 'Forever'], '90 days'))
                       + srow('Remind me of overdue to-dos', 'One macOS notification each morning', toggle(False) + select('9:00 AM', 100)))
 
-    f8 = settings_win('Connections', sh1('Connections', 'Sign-in happens in your browser. Distill keeps the access in your Keychain and never sees your password.')
+    def tinput(label_text, ph, val=''):
+        v = f'<span style="font-size: 13px; color: {INK}">{val}</span>' if val else f'<span style="font-size: 13px; color: {FAINT}">{ph}</span>'
+        return (f'<div style="display: flex; align-items: center; gap: 12px"><span style="width: 80px; font-size: 13px; font-weight: 600; color: {MUTED}">{label_text}</span>'
+                f'<div style="flex-grow: 1; height: 30px; border-radius: 9px; background: #FFFFFF; box-shadow: 0 0 0 1px {LINE}; display: flex; align-items: center; padding: 0 10px">{v}</div></div>')
+
+    def atl_card(state, extra, act):
+        badges = f'<div style="display: flex">{tbadge("jira", 34)}<span style="margin-left: -8px">{tbadge("conf", 34)}</span></div>'
+        st = {'ok': pill(ic('check', 11, LIME_INK, 2.6) + 'Connected', LIME_BG, LIME_INK, 22, 11, 700), 'off': pill('Not connected', PANEL, MUTED, 22, 11, 700)}[state]
+        sub = 'acme.atlassian.net · as jin@acme.com' if state == 'ok' else 'One connection for Jira and Confluence on one Atlassian site'
+        return (f'<div style="display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border-radius: 16px; box-shadow: 0 0 0 1px {LINE}">'
+                f'<div style="display: flex; align-items: center; gap: 12px">{badges}<div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 14px; font-weight: 700">Jira and Confluence</span><span style="font-size: 12px; color: {MUTED}">{sub}</span></div>{st}{act}</div>{extra}</div>')
+
+    conn_sub = 'Connected, or not set up yet: there is no in-between. Paste an Atlassian API token once; it goes to your Keychain.'
+    form = (f'<div style="display: flex; flex-direction: column; gap: 8px; padding-left: 46px">'
+            + tinput('Site', 'https://your-site.atlassian.net') + tinput('Email', 'you@example.com') + tinput('API token', 'Paste the token')
+            + f'<div style="display: flex; align-items: center; gap: 8px; padding-left: 92px">{btn("Connect", "primary", 30, 12, disabled=True)}{btn("Get an API token", "secondary", 30, 12, "ext")}</div></div>')
+    filled = (f'<div style="display: flex; flex-direction: column; gap: 8px; padding-left: 46px">'
+              + tinput('Site', '', 'https://acme.atlassian.net') + tinput('Email', '', 'jin@acme.com') + tinput('API token', '', '••••••••••••••••••••')
+              + banner('error', 'Atlassian didn’t accept this token', 'Check the site and email, or create a new token. Nothing was saved.')
+              + f'<div style="display: flex; align-items: center; gap: 8px; padding-left: 92px">{btn("Connect", "primary", 30, 12)}{btn("Get an API token", "secondary", 30, 12, "ext")}</div></div>')
+    f8 = settings_win('Connections', sh1('Connections', conn_sub)
                       + crow('slack', 'off', 'Not needed while Slack messages are copy-only', '', btn('Connect', 'secondary', 30, 12, 'globe', disabled=True))
-                      + crow('jira', 'ok', 'acme.atlassian.net · as Jin Liu · since Sep 12', f'<div style="display: flex; gap: 8px; padding-left: 46px">{select("Default project: PX · Project X", 250)}{select("Issue type: Task", 150)}</div>', btn('Disconnect', 'danger', 30, 12))
-                      + crow('conf', 'exp', 'acme.atlassian.net/wiki · expired Sep 30 at 6:00 PM', f'<div style="display: flex; gap: 8px; padding-left: 46px">{select("Default space: Project X", 220)}{select("Parent: Incident reviews", 200)}</div>', btn('Sign in via browser', 'primary', 30, 12, 'globe'))
-                      + f'<span style="font-size: 12px; color: {MUTED}">Jira and Confluence on the same Atlassian site use one sign-in; signing in to one connects both.</span>')
-    f9 = settings_win('Connections', sh1('Connections', 'Sign-in happens in your browser. Distill keeps the access in your Keychain and never sees your password.')
+                      + atl_card('ok', f'<div style="display: flex; gap: 8px; padding-left: 46px">{select("Default project: PX · Project X", 250)}{select("Issue type: Task", 150)}{select("Default space: Project X", 220)}</div>', btn('Disconnect', 'danger', 30, 12)))
+    f9 = settings_win('Connections', sh1('Connections', conn_sub)
                       + crow('slack', 'off', 'Not needed while Slack messages are copy-only', '', btn('Connect', 'secondary', 30, 12, 'globe', disabled=True))
-                      + crow('jira', 'wait', 'acme.atlassian.net', banner('wait', 'Finish signing in, in your browser', 'We opened acme.atlassian.net in Safari. Allow Distill there; this page updates by itself.', btn('Open the page again', 'secondary', 28, 12, 'ext') + btn('Cancel', 'soft', 28, 12)), '')
-                      + crow('conf', 'off', 'Connects with Jira (same site)', '', btn('Sign in via browser', 'secondary', 30, 12, 'globe', disabled=True))
-                      + banner('error', 'Couldn’t sign in to Jira', 'The browser said access was denied. Nothing changed. You can try again.', btn('Try again', 'secondary', 28, 12)).replace('<div style="display: flex; gap: 10px', '<div style="opacity: .55; display: flex; gap: 10px', 1)
-                      + f'<span style="font-size: 12px; color: {MUTED}">Faded: what shows instead if the browser sign-in is denied.</span>')
+                      + atl_card('off', form, '')
+                      + f'<span style="font-size: 12px; color: {MUTED}">The form is open whenever it isn’t connected. Connect turns on once all three are filled; Get an API token opens Atlassian’s token page in your browser.</span>')
+    f9b = settings_win('Connections', sh1('Connections', conn_sub) + atl_card('off', filled, ''))
     frames = [(f1, '1 · Default: section navigation, search on top'), (f2, '2 · Typing “prompt”: results by section, matches highlighted; nav shows counts and dims the rest'),
               (f3, '3 · No settings match'), (f4, '4 · Actions: where actions come from (notes and Ask answers: detect to-dos, detect action types, confirm, all on by default), the finding model, and every action type'),
               (f5, '5 · Actions › Slack message: when to write, models, create and improve prompts at their defaults'),
               (f6, '6 · Actions › Jira ticket: an edited create prompt (Edited, Reset to default enabled) and the reset confirmation'),
-              (f7, '7 · To-do defaults'), (f8, '8 · Connections: connected, not needed yet, sign-in expired'), (f9, '9 · Connections: signing in, in the browser')]
+              (f7, '7 · To-do defaults'), (f8, '8 · Connections: Jira and Confluence connected; Slack not needed yet'), (f9, '9 · Connections: not connected — the token form is right there, no waiting state'), (f9b, '9b · Connections: Atlassian refused the token; still not connected, nothing saved')]
     frames.append((settings_win('Actions', f'<span style="font-size: 12px; color: {BLUE}; font-weight: 600">‹ Actions</span>' + sh1('Where actions come from', 'Each source has its own detection and confirmation. Defaults are shown on the right of each row.') + sources_settings()), '10 · Actions › Where actions come from: notes and Ask answers, each with detect to-dos, detect action types, and confirm (default on)'))
     frames.append((settings_win('Models for tasks', sh1('Models for tasks', 'One place for every model choice. Action types link here and back.')
                                 + ''.join(srow(n, d, model_ctl(m, e), border=(i > 0)) for i, (n, d, m, e) in enumerate([
@@ -1556,7 +1573,7 @@ def settings_board():
     body = rows
     intro = ('Settings now has a section list on the left, grouped into General, AI and Actions, with a search field on top. Typing filters to matching settings across all sections, highlights the words, '
              'and shows counts in the list; Esc clears. New sections: <b>Actions</b> (find actions; per type: on/off, when to write, models for writing and for improving after an edit, and the create and improve prompts with Reset to default), '
-             '<b>To-do defaults</b>, and <b>Connections</b> (sign in via browser, site, default project or space, disconnect).')
+             '<b>To-do defaults</b>, and <b>Connections</b> (one Atlassian API token, site, default project or space, disconnect; connected or not, never “connecting”).')
     return board('SettingsNav.dc.html', 'Settings · sections and search', 'Settings · sections, search, Actions', intro, body, 2520)
 
 

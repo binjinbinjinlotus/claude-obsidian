@@ -3466,8 +3466,7 @@
           "default": "connected",
           "options": [
             "connected",
-            "disconnected",
-            "connecting"
+            "disconnected"
           ]
         },
         {
@@ -3490,7 +3489,7 @@
         "file": "ActionsToolbarStates.dc.html",
         "title": "Actions toolbar states",
         "heading": "ActionsToolbar",
-        "intro": "One toolbar for every Actions tab: [search] [Filter ▾ · N] [active filter chips] … [right slot]. It stays one line: chips that don’t fit collapse into “+N” (opens the Filter panel) before anything wraps. Right slot: group/sort (To do), Newest first ▾ (Slack, History), connection status and Connect now (Jira, Confluence). No Swift view yet: add <b>ActionsToolbar</b>. Props: search, placeholder, focus, searchWidth, chips (“|”), visibleChips, right (sort | connection | none), sortTitle, connection (connected | disconnected | connecting), site, service, width.",
+        "intro": "One toolbar for every Actions tab: [search] [Filter ▾ · N] [active filter chips] … [right slot]. It stays one line: chips that don’t fit collapse into “+N” (opens the Filter panel) before anything wraps. Right slot: group/sort (To do), Newest first ▾ (Slack, History), connection status, or Set up connection when not connected (Jira, Confluence). No Swift view yet: add <b>ActionsToolbar</b>. Props: search, placeholder, focus, searchWidth, chips (“|”), visibleChips, right (sort | connection | none), sortTitle, connection (connected | disconnected), site, service, width.",
         "width": 1920,
         "cols": 2
       },
@@ -3560,21 +3559,7 @@
             "820px",
             "30px"
           ],
-          "caption": "Connect now opens Settings → Connections (token sign-in)"
-        },
-        {
-          "name": "Jira, connecting",
-          "props": {
-            "placeholder": "Search tickets",
-            "right": "connection",
-            "connection": "connecting",
-            "width": 820
-          },
-          "size": [
-            "820px",
-            "30px"
-          ],
-          "caption": "While the browser sign-in is open"
+          "caption": "Set up connection opens Settings → Connections (API token). No in-between state: connected, or set it up."
         },
         {
           "name": "Jira, connected",

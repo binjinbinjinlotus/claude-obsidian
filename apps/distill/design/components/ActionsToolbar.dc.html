@@ -12,8 +12,7 @@
 <sc-if value="{{isSort}}" hint-placeholder-val="{{ true }}"><dc-import name="DropdownButton" title="{{sortTitle}}" system-image="arrow.up.arrow.down" height="30" radius="15" hint-size="110px,30px"></dc-import></sc-if>
 <sc-if value="{{isConn}}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0">
 <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: #6B6862"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="{{connInk}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{connIcon}}"></path></svg><span>{{connSite}} · <b style="font-weight: 700; color: {{connInk}}">{{connState}}</b></span></span>
-<sc-if value="{{disconnected}}" hint-placeholder-val="{{ false }}"><dc-import name="PrimaryButton" title="Connect now" system-image="link" size="mini" hint-size="110px,26px"></dc-import></sc-if>
-<sc-if value="{{connecting}}" hint-placeholder-val="{{ false }}"><dc-import name="PrimaryButton" title="Connecting…" system-image="progress.indicator" size="mini" hint-size="110px,26px"></dc-import></sc-if>
+<sc-if value="{{disconnected}}" hint-placeholder-val="{{ false }}"><dc-import name="PrimaryButton" title="Set up connection" system-image="link" size="mini" hint-size="110px,26px"></dc-import></sc-if>
 </span></sc-if>
 </div>
 </x-dc>
@@ -25,7 +24,7 @@ const vis = p.visibleChips === undefined || p.visibleChips === '' ? chipsAll.len
 const shown = chipsAll.slice(0, vis), hidden = chipsAll.length - shown.length;
 const focus = on(p.focus, false), q = p.search || '';
 const conn = p.connection || 'connected';
-const ICON = { connected: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18', disconnected: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M9 9l6 6M15 9l-6 6', connecting: 'M12 3a9 9 0 1 1-9 9' };
+const ICON = { connected: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18', disconnected: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M9 9l6 6M15 9l-6 6' };
 return { w: px(p.width, '100%'), sw: num(p.searchWidth, 190) + 'px', focus, sText: q || p.placeholder || 'Search', sInk: q ? '#1D1C1A' : '#9B978F',
   sBg: focus ? '#FFFFFF' : '#F6F5F2', sRing: focus ? '0 0 0 2px #1F6FEB' : 'none',
   filterTitle: chipsAll.length ? 'Filter · ' + chipsAll.length : 'Filter', active: chipsAll.length ? 'true' : 'false',
@@ -34,5 +33,5 @@ return { w: px(p.width, '100%'), sw: num(p.searchWidth, 190) + 'px', focus, sTex
   connSite: conn === 'connected' ? (p.site || 'acme.atlassian.net') : (p.service || 'Atlassian'),
   connState: conn === 'connected' ? 'connected' : 'not connected',
   connInk: conn === 'connected' ? '#3D6110' : '#B03A0A', connIcon: conn === 'connected' ? ICON.connected : ICON.disconnected,
-  disconnected: conn === 'disconnected', connecting: conn === 'connecting' };
+  disconnected: conn === 'disconnected' };
 </script>
