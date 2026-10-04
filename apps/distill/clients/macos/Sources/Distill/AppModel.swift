@@ -41,6 +41,7 @@ final class AppModel: ObservableObject {
     var refreshResetTask: Task<Void, Never>?
     var flashTask: Task<Void, Never>?
     var lastWindowScan: Date?
+    var windowScanPending = false
     /// Ask chats, the Ask screen and the quick ask window (AskModel.swift).
     lazy var ask = AskModel(engine: self)
 
@@ -120,6 +121,7 @@ final class AppModel: ObservableObject {
                 self.attach(CoreClient(endpoint: endpoint))
                 try await self.refreshAll()
                 self.connection = .connected
+                self.runPendingWindowScan() // the window became active before the core answered
             } catch {
                 guard let self, !Task.isCancelled else { return }
                 self.connection = .unreachable("\(error)")

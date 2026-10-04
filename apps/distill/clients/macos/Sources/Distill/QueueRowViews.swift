@@ -54,9 +54,14 @@ struct QueueRowView: View {
                 HStack(spacing: 6) {
                     Text(title).font(Theme.body(14, .semibold)).lineLimit(1).truncationMode(.middle)
                     if kind == .folder, !tree.isEmpty {
-                        Image(systemName: isOpen ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.faint)
-                            .accessibilityHidden(true)
+                        Button(action: toggle) {
+                            Image(systemName: isOpen ? "chevron.down" : "chevron.right")
+                                .font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.faint)
+                                .frame(width: 16, height: 16).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(isOpen ? "Hide what is inside" : "Show what is inside")
+                        .accessibilityLabel(isOpen ? "Hide what is inside \(title)" : "Show what is inside \(title)")
                     }
                 }
                 if let onOpenLink {
@@ -81,8 +86,6 @@ struct QueueRowView: View {
                 Color.clear.frame(width: 30, height: 30) // keeps pills aligned on locked rows
             }
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityAction(named: isOpen ? "Hide what is inside" : "Show what is inside") { if kind == .folder { toggle() } }
     }
 
     private var metaText: some View {

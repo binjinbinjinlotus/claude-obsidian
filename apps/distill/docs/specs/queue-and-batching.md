@@ -357,7 +357,10 @@ fields, `QueueTreeEntry`, `QueueScanResult`, status scan times, `Job.folders`,
   banner and no "checked at".
 - **Window scan:** `POST /v1/queue/scan {trigger: window}` when the main
   window becomes key (never the quick panels or Settings), at most every 15 s,
-  only with a live core.
+  only with a live core. At launch the window is key before the core answers,
+  so the scan runs once it connects.
+- **Folder rows** expand from a click on the name or the chevron, which is a
+  button ("Show what is inside …") for VoiceOver and keyboard users.
 - **Title:** "N items in the queue" ("1 item"); a folder is one item, and a
   running batch counts a folder once ("3 in this batch").
 - **Rows:** a folder row has the folder tile, the chevron (only when it has a

@@ -45,13 +45,20 @@ extension AppModel {
     /// The main window became active: a full scan (folders walked again), throttled; the result
     /// moves "checked at" and the list but shows no result text.
     func scanQueueOnWindowActive(now: Date = Date()) {
-        guard launcher != nil, isConnected, let client else { return }
+        guard launcher != nil else { return }
+        guard isConnected, let client else { windowScanPending = true; return }
+        windowScanPending = false
         if let last = lastWindowScan, now.timeIntervalSince(last) < Self.windowScanSpacing { return }
         lastWindowScan = now
         Task { [weak self] in
             guard let result = try? await client.scanQueue(trigger: .window) else { return }
             self?.applyScan(result)
         }
+    }
+
+    /// At launch the window is key before the core answers: scan once it is connected.
+    func runPendingWindowScan() {
+        if windowScanPending { scanQueueOnWindowActive() }
     }
 
     /// A scan result from Refresh, the window scan or the `queue.scanned` event (any trigger).
