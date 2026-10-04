@@ -317,8 +317,9 @@ Code: `scanQueueFolder`, `walkFolder`, `folderTreeEntries`,
   'google-drive'`; never batched. The link must be https on
   `docs.google.com` or `drive.google.com`; with no usable `url`, it is
   built from a valid `doc_id` (`https://docs.google.com/document/d/<id>/edit`).
-  Anything else, malformed JSON or a file over 64 KB is `kind: 'file'`
-  with `problem: 'no link inside'`, so the JSON never reaches a runner. The
+  Anything else, malformed JSON or a file over 64 KB stays `kind: 'gdoc'`
+  with `problem: 'no link inside'`, no `gdoc` object and no `waiting` (the
+  row takes its title from `name`); it is held out like any problem. The
   `email` field is never read out (not in entries, events, logs or prompts).
   The wait rule still applies to the pointer file's mtime, but it is
   irrelevant while the item waits.

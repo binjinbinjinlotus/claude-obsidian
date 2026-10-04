@@ -248,6 +248,24 @@ describe('a folder in a batch', () => {
     // The batch counts the folder as one source.
     const progress = h!.events.filter((e) => e.type === 'progress').map((e) => (e as { progress: { message: string } }).progress.message);
     assert.ok(progress.includes('Reading 2 sources into vault'), progress.join(' | '));
+    // job.folders is stored (jobs.json), so History survives a restart.
+    const stored = JSON.parse(fs.readFileSync(path.join(tmp, 'state', 'jobs.json'), 'utf8')) as { id: string; folders?: string[] }[];
+    assert.deepEqual(stored.find((j) => j.id === job.id)?.folders, [rel]);
+  });
+
+  test('when the queue is the inbox, a folder is batched in place and then counts as taken', async () => {
+    const vault = path.join(tmp, 'vault');
+    const { engine, runner } = setup({ settings: { vaults: [{ path: vault, queueDirectory: path.join(vault, 'inbox') }] } });
+    put(path.join(vault, 'inbox', 'Trip'), 'notes/a.md', '# A');
+    assert.equal(byName(engine.listQueue(), 'Trip')!.kind, 'folder');
+    const job = (await engine.processQueue({ force: true }))!;
+    await engine.whenIdle();
+    assert.deepEqual(job.folders, ['inbox/Trip']);
+    assert.deepEqual(job.files, ['inbox/Trip/notes/a.md']);
+    assert.ok(fs.existsSync(path.join(vault, 'inbox', 'Trip', 'notes', 'a.md')), 'stays in place');
+    assert.match(runner.requests[0]!.prompt, /In inbox\/:\nFolder source: Trip\//);
+    assert.equal(byName(engine.listQueue(), 'Trip'), undefined, 'taken: no longer in the queue');
+    assert.equal(await engine.processQueue({ force: true }), null);
   });
 
   test('a collector manifest: files seen before are listed but are not sources', async () => {
@@ -301,7 +319,8 @@ describe('.gdoc pointers', () => {
     assert.equal(doc.waiting, 'google-drive');
     assert.equal(doc.problem, undefined);
     const broken = byName(entries, 'Broken.gdoc')!;
-    assert.equal(broken.kind, 'file');
+    assert.equal(broken.kind, 'gdoc', 'still a Google Doc row ("Google Doc · no link inside")');
+    assert.equal(broken.gdoc, undefined);
     assert.equal(broken.problem, 'no link inside');
     assert.equal(broken.waiting, undefined);
     assert.ok(!JSON.stringify(entries).includes('me@example.com'));

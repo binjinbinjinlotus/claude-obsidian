@@ -317,6 +317,12 @@ describe('Folder collector', () => {
     // Forget all covers nested files too.
     const forgotten = await env.svc.forgetCollected(c.id);
     assert.equal(forgotten.length, 5);
+
+    // Folder lines survive a core restart (the run history is read back from disk).
+    const reloaded = env.make();
+    const back = (await reloaded.listCollectorRuns(c.id)).find((r) => r.id === changed.id)!;
+    const l3 = back.files!.find((f) => f.name === 'Tea trip/')!;
+    assert.deepEqual([l3.kind, l3.fileCount, l3.newCount, l3.queueName], ['folder', 3, 1, 'Tea trip 2']);
   });
 
   test('subfolders: move takes the whole folder; still changing waits; too big and too deep are skipped', async () => {

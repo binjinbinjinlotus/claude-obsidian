@@ -236,6 +236,12 @@ export function decodeRun(v: unknown, now = new Date()): CollectorRun | undefine
       if (reason) file.reason = reason;
       if (queueName) file.queueName = queueName;
       if (size !== undefined) file.size = size;
+      // v5: folder items.
+      if (f.kind === 'folder' || f.kind === 'file') file.kind = f.kind;
+      const fileCount = num(f.fileCount);
+      const newCount = num(f.newCount);
+      if (fileCount !== undefined) file.fileCount = fileCount;
+      if (newCount !== undefined) file.newCount = newCount;
       return [file];
     });
   }

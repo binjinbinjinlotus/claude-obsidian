@@ -622,7 +622,8 @@ export function toQueueEntry(
   notes: Set<string> = new Set(),
   firstSeenMs?: number,
 ): QueueEntry {
-  const kind = e.folder ? 'folder' : notes.has(e.path) ? 'note' : e.gdoc && !('problem' in e.gdoc) ? 'gdoc' : 'file';
+  // Every .gdoc is a Google Doc row; one with no usable link also carries problem 'no link inside'.
+  const kind = e.folder ? 'folder' : notes.has(e.path) ? 'note' : e.gdoc ? 'gdoc' : 'file';
   const settled = kind === 'note' || isSettled(e, settleSeconds, now);
   const entry: QueueEntry = {
     path: e.path,
