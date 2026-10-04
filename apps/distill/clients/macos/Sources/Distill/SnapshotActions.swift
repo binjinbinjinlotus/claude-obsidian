@@ -198,6 +198,9 @@ enum ActionFixtures {
         e.actions.loadFixture(types: types(disconnected: disconnected, slackOff: slackOff), items: items ?? (live() + history()))
         e.actions.tab = tab
         if let select { e.actions.selected[tab] = select }
+        // The canvas site: "acme.atlassian.net · connected", or acme named while not connected.
+        e.settingsUI.connections = [ConnectionInfo(id: "atlassian", label: "Atlassian", status: disconnected ? .notConnected : .connected,
+                                                   site: "https://acme.atlassian.net", account: disconnected ? nil : "Jin Liu")]
     }
 }
 

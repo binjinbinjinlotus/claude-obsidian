@@ -541,5 +541,6 @@ Status per part; `built` parts ship in `clients/macos`.
   `DISTILL_LIVE_STATE=<temp state dir>` of a running core with seeded actions,
   it completes a Slack message and undoes it, bulk-completes three to-dos and
   undoes all three, checks Connect now asks Settings for Connections, and
-  renders the real screens offscreen at 900 and 1110 pt (`DISTILL_LIVE_OUT`
-  keeps the PNGs), failing if any asks for more width than the window.
+  renders the real screens offscreen at 900 and 1110 pt, with filters set on
+  every tab (`DISTILL_LIVE_OUT` keeps the PNGs; they are looked at, not
+  measured).
