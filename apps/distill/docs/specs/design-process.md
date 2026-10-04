@@ -172,6 +172,8 @@ Swift view of the same name, in `clients/macos/Sources/Distill/`. Built
 | LinkButton | `LinkButton` | AskParts.swift |
 | CollectorRow | `CollectorRow` (plus `runEnabled`, `onSelect`, `onRun` and a ⋯ menu) | CollectorsComponents.swift |
 | QueuePath | `QueuePath` (`path` is absolute; the view shows `~`; plus `onCreate`) | CollectorsComponents.swift |
+| QueueRowView | `QueueRowView` (`kind`, `expanded`, `tree` as `QueueTree.lines`, `hint`; plus `flash`, `onRemove`, `onReveal`, `onOpenLink`) | QueueRowViews.swift |
+| QueueRefresh | `QueueRefresh` (`state` is a `QueueRefreshState`; `found` and `error` read from it; plus `onRefresh`) | QueueRowViews.swift |
 | ScheduleField | `ScheduleField` (a `ScheduleDraft` binding; `preset`, `time` and `cron` read from it) | CollectorsComponents.swift |
 | RunLogEntry | `RunLogEntry` (`lines` is an array; plus `onToggle`) | CollectorsComponents.swift |
 | ScriptConsent | `ScriptConsent` (plus `problem`, `busy` and the button actions) | CollectorsComponents.swift |

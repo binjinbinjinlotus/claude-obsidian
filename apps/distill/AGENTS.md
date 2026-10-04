@@ -25,7 +25,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [AI runners](docs/specs/ai-runners.md) | built (Codex sandbox unverified) |
 | [Claude runner](docs/specs/claude-runner.md) | built |
 | [Approval and review](docs/specs/approval-and-review.md) | built |
-| [Queue and batching](docs/specs/queue-and-batching.md) | built (folder items, .gdoc waiting, queue scan: core, API, CLI; Mac UI not yet) |
+| [Queue and batching](docs/specs/queue-and-batching.md) | built (folder items, .gdoc waiting, queue scan: core, API, CLI and Mac UI) |
 | [Intake: paste and drop](docs/specs/intake-paste-drop.md) | built |
 | [Vaults and settings](docs/specs/vaults-and-settings.md) | built |
 | [Job kinds](docs/specs/job-kinds.md) | built |

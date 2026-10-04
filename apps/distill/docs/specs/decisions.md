@@ -17,6 +17,35 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Queue folders, Google Docs, Refresh and the queue check built in the Mac
+  app (mac-queue-items, canvas v64).** Specs: [Queue and
+  batching](queue-and-batching.md) → "Built in the Mac app",
+  [Collectors](collectors.md) → "Include subfolders". Decisions taken while
+  building:
+  - **Refresh shows a result only when pressed.** Window and periodic scans
+    (`queue.scanned`) move "checked at" and the list silently; a result after
+    every focus change would be noise.
+  - **Window scan on the main window only, every 15 s at most,** so the quick
+    panels, Settings and fast window switching don't rescan.
+  - **"Used in" is a heuristic.** The core keeps no source → page map, so
+    Review matches each file's vault path or its path from the batch folder in
+    the changed pages' text (bundle writes while waiting, vault pages once
+    applied). "Not used" only when every page was read. A core field would
+    make it exact.
+  - **The tree follows the spec's 5 entries per folder,** not the board's
+    one-photo example. Too deep and Empty folder get their own pills; other
+    Refresh results read "1 new item found · 1 item gone" and "2 items
+    changed".
+  - **Folder rows in a running batch and in History read the folder from the
+    vault's inbox** (read-only walk, like the core's), since a job keeps only
+    `folders` and `files`.
+  - **Only https links on docs.google.com or drive.google.com open** from a
+    .gdoc row, a second check after the core's.
+  - **Remove of a folder asks first** (a system confirmation, Move to Trash);
+    files keep the one-click ×.
+  - **Collector run lines follow the board** ("Tea tasting trip/ (folder · 5
+    new of 12 files)"), and a run with a subfolder counts items.
+
 - **Queue folders, Google Docs and the queue scan built in the core, API
   and CLI (core-queue).** Specs: [Queue and batching](queue-and-batching.md)
   → "Built in the core", [Collectors](collectors.md) → "Built: subfolders and
