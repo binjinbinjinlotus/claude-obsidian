@@ -37,6 +37,8 @@ struct CollectorEditForm: View {
     @EnvironmentObject var engine: AppModel
     @ObservedObject var store: CollectorsStore
     let collector: Collector
+    /// The form's width: below 460 pt the labels go above the fields.
+    @State private var width: CGFloat = 600
 
     private var draft: Binding<CollectorDraft> {
         Binding(get: { store.editing ?? CollectorDraft() }, set: { store.editing = $0 })
@@ -50,7 +52,7 @@ struct CollectorEditForm: View {
         VStack(alignment: .leading, spacing: c.isScript ? 13 : 14) {
             SectionLabel("EDIT SETTINGS", color: Theme.primary)
             if c.isFolder {
-                AdvancedRow(label: "From", labelWidth: labelWidth) {
+                AdvancedRow(label: "From", labelWidth: labelWidth, stacked: width < 460) {
                     HStack(spacing: 8) {
                         CollectorPathField(text: draft.folderPath, systemImage: "folder", width: 240)
                         SoftButton(title: "Choose…", fill: .white, size: .small, stroke: true) {
@@ -59,16 +61,22 @@ struct CollectorEditForm: View {
                     }
                     Hint("Every file at the top of the folder. Hidden files, subfolders and files still changing are left alone.")
                 }
-                AdvancedRow(label: "After collecting", labelWidth: labelWidth) {
-                    SegmentedPills(options: [("copy", "Keep the original (copy)"), ("move", "Move it to the queue")],
-                                   selection: draft.afterCollect, height: 28)
+                AdvancedRow(label: "After collecting", labelWidth: labelWidth, stacked: width < 460) {
+                    ViewThatFits(in: .horizontal) {
+                        SegmentedPills(options: [("copy", "Keep the original (copy)"), ("move", "Move it to the queue")],
+                                       selection: draft.afterCollect, height: 28)
+                        DropdownButton(title: d.afterCollect == "move" ? "Move it to the queue" : "Keep the original (copy)", height: 30) {
+                            Button("Keep the original (copy)") { store.editing?.afterCollect = "copy" }
+                            Button("Move it to the queue") { store.editing?.afterCollect = "move" }
+                        }
+                    }
                 }
-                AdvancedRow(label: "Into", labelWidth: labelWidth) {
+                AdvancedRow(label: "Into", labelWidth: labelWidth, stacked: width < 460) {
                     VaultDropdown(vaults: engine.settings.vaults, selection: draft.vaultPath)
                     if let q = store.queuePath(d.vaultPath) { QueuePath(path: q, size: "compact") }
                 }
             } else {
-                AdvancedRow(label: "Script", labelWidth: labelWidth) {
+                AdvancedRow(label: "Script", labelWidth: labelWidth, stacked: width < 460) {
                     SegmentedPills(options: [(false, "File"), (true, "Inline code")], selection: draft.scriptInline, height: 28)
                     if d.scriptInline {
                         CodeEditor(text: draft.code)
@@ -82,7 +90,7 @@ struct CollectorEditForm: View {
                     }
                 }
             }
-            AdvancedRow(label: "Schedule", labelWidth: labelWidth) {
+            AdvancedRow(label: "Schedule", labelWidth: labelWidth, stacked: width < 460) {
                 ScheduleField(draft: draft.schedule, preview: preview(d.schedule, valid: valid), next: next(d.schedule, valid: valid),
                               invalid: valid == false)
             }
@@ -99,14 +107,14 @@ struct CollectorEditForm: View {
                 .buttonStyle(.plain)
                 .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
                 if d.advancedOpen {
-                    AdvancedRow(label: "Run with", labelWidth: labelWidth) { InterpreterDropdown(selection: draft.interpreter) }
-                    AdvancedRow(label: "Timeout", labelWidth: labelWidth) {
+                    AdvancedRow(label: "Run with", labelWidth: labelWidth, stacked: width < 460) { InterpreterDropdown(selection: draft.interpreter) }
+                    AdvancedRow(label: "Timeout", labelWidth: labelWidth, stacked: width < 460) {
                         DropdownButton(title: Self.timeoutTitle(d.timeoutSeconds), width: 130, height: 30) {
                             ForEach(Self.timeouts, id: \.self) { s in Button(Self.timeoutTitle(s)) { store.editing?.timeoutSeconds = s } }
                         }
                         Hint("Stopped after this. Files it wrote stay in the queue.")
                     }
-                    AdvancedRow(label: "Cron", labelWidth: labelWidth) {
+                    AdvancedRow(label: "Cron", labelWidth: labelWidth, stacked: width < 460) {
                         TextField("m h dom mon dow", text: Binding(get: { d.schedule.cron }, set: { store.editing?.schedule.setCron($0) }))
                             .textFieldStyle(.plain).font(.system(size: 12, design: .monospaced))
                             .padding(.horizontal, 10).frame(width: 140, height: 30)
@@ -114,7 +122,7 @@ struct CollectorEditForm: View {
                             .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(valid == false ? Color(hex: 0xFF9A6B) : Theme.border))
                         Hint("The schedule above as cron. Editing it switches the schedule to Custom.")
                     }
-                    AdvancedRow(label: "It gets", labelWidth: labelWidth) {
+                    AdvancedRow(label: "It gets", labelWidth: labelWidth, stacked: width < 460) {
                         ScriptGets(vault: c.vaultPath, queue: store.queuePath(c.vaultPath) ?? "")
                     }
                 }
@@ -132,6 +140,7 @@ struct CollectorEditForm: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width = $0 }
         .background(RoundedRectangle(cornerRadius: 14).fill(Color.white))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(CollectorsTheme.selectedStroke))
     }

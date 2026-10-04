@@ -147,7 +147,7 @@ struct CollectorDetailPane: View {
                     if store.page == .allRuns {
                         CollectorAllRuns(store: store, collector: c)
                     } else {
-                        CollectorDetail(store: store, collector: c)
+                        CollectorDetail(store: store, collector: c).id(c.id)
                     }
                 }
             }
@@ -662,12 +662,22 @@ struct SectionLabel: View {
 struct AdvancedRow<Content: View>: View {
     let label: String
     var labelWidth: CGFloat = 100
+    /// The label above the field (a narrow pane).
+    var stacked = false
     @ViewBuilder var content: Content
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 14) {
-            Text(label).font(Theme.body(12.5)).foregroundStyle(Theme.muted).frame(width: labelWidth, alignment: .leading)
-            VStack(alignment: .leading, spacing: 6) { content }.frame(maxWidth: .infinity, alignment: .leading)
+        if stacked {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(label).font(Theme.body(12.5)).foregroundStyle(Theme.muted)
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: 14) {
+                Text(label).font(Theme.body(12.5)).foregroundStyle(Theme.muted).frame(width: labelWidth, alignment: .leading)
+                VStack(alignment: .leading, spacing: 6) { content }.frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
 }

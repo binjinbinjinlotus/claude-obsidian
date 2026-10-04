@@ -375,19 +375,19 @@ public struct CollectorText: Sendable {
     }
 
     /// The whole run list with long stretches of quiet runs collapsed:
-    /// three or more "Nothing new" runs in a row become one "N runs with nothing new" entry.
+    /// three or more "Nothing new" runs in a row on the same day become one "N runs with nothing new" entry.
     public enum RunRow: Equatable, Sendable {
         case run(CollectorRun)
         case quiet(count: Int, newest: Date)
     }
 
-    public static func collapse(_ runs: [CollectorRun], keepFirst: Int = 3) -> [RunRow] {
+    public static func collapse(_ runs: [CollectorRun], keepFirst: Int = 3, calendar: Calendar = .current) -> [RunRow] {
         var out: [RunRow] = []
         var i = 0
         while i < runs.count {
             if i >= keepFirst, runs[i].result == .nothing {
                 var j = i
-                while j < runs.count, runs[j].result == .nothing { j += 1 }
+                while j < runs.count, runs[j].result == .nothing, calendar.isDate(runs[j].startedAt, inSameDayAs: runs[i].startedAt) { j += 1 }
                 if j - i >= 3 {
                     out.append(.quiet(count: j - i, newest: runs[i].startedAt))
                     i = j

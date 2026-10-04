@@ -146,7 +146,7 @@ final class CollectorsStore: ObservableObject {
     @Published var collected: CollectedSheet?
     @Published var renaming: String?
     @Published var confirmDelete: String?
-    /// Script code read from a file source for the consent card, by path.
+    /// Script code read from a file source for the consent card, by path and hash.
     @Published var fileCode: [String: String] = [:]
     @Published var checks: [String: ScheduleCheck] = [:]
     /// Commands in flight by collector id ("run", "stop", "allow", "save", …).
@@ -437,9 +437,12 @@ final class CollectorsStore: ObservableObject {
         guard let s = c.script else { return nil }
         if let code = s.source.inlineCode { return code }
         guard let path = s.source.filePath else { return nil }
-        if let cached = fileCode[path] { return cached }
+        // Keyed by the core's current hash too: a script edited on disk is read again, so the
+        // consent card never shows an older version than the one Allow would allow.
+        let key = path + "|" + (c.status?.currentSha256 ?? "")
+        if let cached = fileCode[key] { return cached }
         let text = (try? String(contentsOfFile: path, encoding: .utf8)).map { String($0.prefix(64 * 1024)) }
-        if let text { DispatchQueue.main.async { self.fileCode[path] = text } }
+        if let text { DispatchQueue.main.async { self.fileCode[key] = text } }
         return text
     }
 

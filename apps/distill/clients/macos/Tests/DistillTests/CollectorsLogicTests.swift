@@ -85,4 +85,20 @@ final class CollectorsLogicTests: XCTestCase {
         XCTAssertEqual(s.runs["b"]?.first?.result, .nothing)
         XCTAssertNil(s.output["r"])
     }
+
+    func testConsentCodeIsReadAgainWhenTheScriptChanges() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("distill-consent-\(UUID().uuidString).zsh")
+        defer { try? FileManager.default.removeItem(at: file) }
+        try "echo v1\n".write(to: file, atomically: true, encoding: .utf8)
+        let s = AppModel(fixtureSettings: Settings(), jobs: [], queue: [], status: nil).collectors
+        var c = Collector(id: "s", kind: .script, name: "S", vaultPath: "/v",
+                          script: ScriptCollectorSettings(source: .file(file.path), interpreter: .zsh))
+        c.status = CollectorStatus(currentSha256: "aaa", needsConsent: true)
+        XCTAssertEqual(s.code(c), "echo v1\n")
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05)) // the cache fills
+        XCTAssertEqual(s.code(c), "echo v1\n")
+        try "echo v2\n".write(to: file, atomically: true, encoding: .utf8)
+        c.status?.currentSha256 = "bbb"
+        XCTAssertEqual(s.code(c), "echo v2\n", "a new hash reads the file again")
+    }
 }

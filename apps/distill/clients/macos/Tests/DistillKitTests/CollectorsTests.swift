@@ -255,7 +255,7 @@ final class CollectorsTests: XCTestCase {
 
     func testQuietRunsCollapse() {
         let runs = (0..<8).map { i in CollectorRun(id: "r\(i)", collectorId: "c", startedAt: date(4, 9 - i), result: i == 1 ? .success : .nothing) }
-        let rows = CollectorText.collapse(runs)
+        let rows = CollectorText.collapse(runs, calendar: cal)
         XCTAssertEqual(rows.count, 4)
         XCTAssertEqual(rows.last, .quiet(count: 5, newest: date(4, 6)))
     }

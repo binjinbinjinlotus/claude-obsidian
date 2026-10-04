@@ -445,6 +445,15 @@ struct ScriptConsent: View {
         .background(RoundedRectangle(cornerRadius: 10).fill(Color(hex: 0xF3FDE4)))
     }
 
+    private var commandText: some View {
+        Text("\(interpreter) \(source)").font(.system(size: 11.5, design: .monospaced)).foregroundStyle(Theme.ink)
+            .lineLimit(1).truncationMode(.middle)
+    }
+
+    private var hashText: some View {
+        Text(hash).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.faint).lineLimit(1).fixedSize()
+    }
+
     private var card: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
@@ -460,10 +469,17 @@ struct ScriptConsent: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            HStack(spacing: 8) {
-                Text("\(interpreter) \(source)").font(.system(size: 11.5, design: .monospaced)).foregroundStyle(Theme.ink)
-                    .lineLimit(1).truncationMode(.middle).frame(maxWidth: .infinity, alignment: .leading)
-                Text(hash).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Theme.faint).lineLimit(1).fixedSize()
+            // The command and its hash side by side; in a narrow pane the hash goes under it.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    commandText.fixedSize()
+                    Spacer(minLength: 0)
+                    hashText
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    commandText.frame(maxWidth: .infinity, alignment: .leading)
+                    hashText
+                }
             }
             .padding(.horizontal, 10).padding(.vertical, 7)
             .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))

@@ -498,7 +498,7 @@ Built 2026-10-04 from canvas v63.
   hashes. When the core can't read the script (no hash), Allow is off and the
   card shows `scriptProblem`.
 - **Sheets** are drawn in the window over a dimmed backdrop (as on the boards),
-  not as system sheets. Esc closes them.
+  not as system sheets. Cancel and the close button dismiss them (Esc is wired with `.onExitCommand` and a cancel shortcut, not yet checked in the running app).
 - **Queue path:** under the schedule line on every Queue title. Create folder
   makes the active vault's queue folder from the app (`mkdir -p` of the same
   path the core creates when files are added); no core change.
@@ -514,7 +514,7 @@ Where the app differs from the boards (also in [Decisions](decisions.md)):
   7:00"), so the 12-hour clock isn't ambiguous.
 - Below about 760 pt of content width (a 900 pt window) the list column
   narrows from 300 to 240 pt, and the title row puts the switch, Run now and ⋯
-  under the name instead of cutting the name.
+  under the name instead of cutting the name. The Edit form puts its labels above the fields below 460 pt, "After collecting" becomes a menu when the two pills don't fit, and the consent card puts the hash under the command.
 - Not built: the "Collected by … at …" line on queue rows (card "In the
   queue"): `QueueEntry` doesn't say which collector brought a file. It needs a
   core field. The ⋯ menu is a system menu, so the "⋯ menu" card has no

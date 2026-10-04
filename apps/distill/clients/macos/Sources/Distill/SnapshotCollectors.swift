@@ -214,14 +214,17 @@ extension StatesSnapshot {
         e = engine()
         _ = F.load(e, [F.phone(), F.inbox(), F.pocket()])
         shot("collectors-folder-missing", "J · Error: folder missing", "Choose folder… or Create it; this one moves files.", e)
+        shot("collectors-folder-missing-900", "J · Error: folder missing", "Choose folder… or Create it; this one moves files.", e, size: narrow)
 
         e = engine()
         _ = F.load(e, [F.inbox(), F.scans(noPermission: true)], select: "scans")
         shot("collectors-folder-no-permission", "K · Error: no permission", "Choose again… so macOS asks, or Open Privacy settings.", e)
+        shot("collectors-folder-no-permission-900", "K · Error: no permission", "Choose again… so macOS asks, or Open Privacy settings.", e, size: narrow)
 
         e = engine()
         _ = F.load(e, F.base, select: "kindle")
         shot("collectors-script-consent", "M · New script asks once", "ScriptConsent with the code; nothing runs before Allow and turn on.", e)
+        shot("collectors-script-consent-900", "M · New script asks once", "ScriptConsent with the code; nothing runs before Allow and turn on.", e, size: narrow)
 
         e = engine()
         _ = F.load(e, F.base, select: "pocket")
@@ -233,6 +236,7 @@ extension StatesSnapshot {
         s.startEdit(s.collector("pocket")!)
         s.editing?.advancedOpen = true
         shot("collectors-script-edit", "O · Edit, Advanced open", "Interpreter, timeout, cron and what the script gets.", e)
+        shot("collectors-script-edit-900", "O · Edit, Advanced open", "Interpreter, timeout, cron and what the script gets.", e, size: narrow)
 
         e = engine()
         s = F.load(e, F.base, select: "pocket")
@@ -248,10 +252,12 @@ extension StatesSnapshot {
         s.live["pocket"] = live
         s.output["pl"] = ("Fetching articles since Oct 4, 7:00 AM…\nWrote 1 file to \(F.home)/Documents/Distill Queue/Research\n", "")
         shot("collectors-script-running", "Q · Script running", "Live output in the status card; Stop.", e)
+        shot("collectors-script-running-900", "Q · Script running", "Live output in the status card; Stop.", e, size: narrow)
 
         e = engine()
         _ = F.load(e, F.base, select: "slack")
         shot("collectors-script-failed", "R · Error: the script failed", "Exit 1 with stderr in the status card.", e)
+        shot("collectors-script-failed-900", "R · Error: the script failed", "Exit 1 with stderr in the status card.", e, size: narrow)
 
         e = engine()
         var changed = F.base
@@ -263,6 +269,38 @@ extension StatesSnapshot {
         s = F.load(e, changed, select: "pocket")
         s.runs["pocket"] = [changed[1].status!.lastRun!] + Array(F.pocketRuns().prefix(1))
         shot("collectors-script-changed", "S · Script changed since you allowed it", "Paused; Allow this version.", e)
+        shot("collectors-script-changed-900", "S · Script changed since you allowed it", "Paused; Allow this version.", e, size: narrow)
+
+        // Long content: a long name, a long source path, and 130 collected files with long names.
+        e = engine()
+        var long = F.base
+        long[0].name = "Phone uploads from the shared family iCloud album (weekly)"
+        long[0].folder?.source = F.home + "/Library/Mobile Documents/com~apple~CloudDocs/Family/Phone uploads/Shared album exports"
+        s = F.load(e, long)
+        var many = CollectedSheet(collectorID: "inbox", loading: false)
+        many.files = (0..<130).map { i in
+            CollectedFile(sha256: String(format: "%064d", i), name: "2026-10-\(String(format: "%02d", i % 28 + 1)) very long scanned receipt name number \(i) from the shared album.pdf",
+                          sourcePath: F.home + "/x\(i).pdf", size: 1000, mtime: CoreDate.format(F.at(9)), collectedAt: CoreDate.format(F.at(9, daysAgo: i / 10)),
+                          collectorId: "inbox", queueName: "x.pdf")
+        }
+        shot("collectors-long-name", "Long name and path", "A long collector name and source path in the list and the detail.", e)
+        shot("collectors-long-name-900", "Long name and path · 900 pt", "The same at the minimum width.", e, size: narrow)
+        s.collected = many
+        shot("collectors-collected-long", "Already collected · 130 files", "The list scrolls inside the sheet; long names truncate in the middle.", e)
+
+        // QueuePath states (the Queue screen draws the folder it finds; these force each state).
+        e = engine()
+        let q = (e.activeVault?.queueDirectory ?? F.home + "/Documents/Distill Queue/Research")
+        natural("collectors-queuepath-states", f, "Queue path", "QueuePath states", "Default, copied, missing (Create folder), compact and a long path.", e) {
+            VStack(alignment: .leading, spacing: 12) {
+                QueuePath(path: q)
+                QueuePath(path: q, state: "copied")
+                QueuePath(path: q, state: "missing", onCreate: {})
+                QueuePath(path: q, label: "Lands in", size: "compact")
+                QueuePath(path: F.home + "/Library/Mobile Documents/com~apple~CloudDocs/Distill Queue/Research", width: 420)
+            }
+            .padding(16).frame(width: 560, alignment: .leading).background(Color.white)
+        }
 
         e = engine()
         s = F.load(e, [])
