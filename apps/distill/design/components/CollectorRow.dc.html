@@ -16,7 +16,7 @@ const S = {"on": ["#F3FDE4", "#3D6110"], "off": ["#F6F5F2", "#6B6862"], "running
 const k = K[p.kind] || K.folder, s = S[p.statusKind] || S.on;
 const sel = on(p.selected, false), hover = on(p.hover, false), bad = p.statusKind === 'error' || p.statusKind === 'consent';
 return { w: px(p.width, '100%'), tBg: k[0], tInk: k[1], tD: k[2], title: p.title || 'Distill Inbox',
-  summary: p.summary || 'Moved 3 · skipped 2 already collected · 9:00 AM', sumInk: bad ? s[1] : '#6B6862',
+  summary: p.summary || 'Copied 3 · skipped 2 already collected · 9:00 AM', sumInk: bad ? s[1] : '#6B6862',
   status: p.status || 'On', sBg: s[0], sInk: s[1], busy: p.statusKind === 'running' ? 'true' : 'false',
   bg: sel ? '#F2F7FF' : hover ? '#F6F5F2' : 'transparent', ring: sel ? 'inset 0 0 0 1.5px #BFD5FA' : 'none',
   hover, op: p.statusKind === 'off' && !sel ? 0.7 : 1 };

@@ -52,12 +52,18 @@ clients. Tokens go to the Keychain, like runner keys.
 
 The first built-in is **Folder**:
 
-- **Settings:** the source folder (default `~/Distill Inbox`, created on
-  first save if it is missing), the target vault (the active vault by
-  default), and the schedule (default every hour).
-- **Run:** it moves every regular file at the top level of the source folder
-  into the target vault's queue folder. "Moves" means the file leaves the
-  source.
+- **Settings:**
+  - the source folder (default `~/Distill Inbox`, created on first save if it
+    is missing);
+  - **After collecting:** "Keep the original (copy)" (the default) or "Move
+    it to the queue";
+  - the target vault (the active vault by default);
+  - the schedule (default every hour).
+- **Run:** it copies every regular file at the top level of the source folder
+  into the target vault's queue folder and leaves the original in place. With
+  "Move it to the queue" the file leaves the source instead. Run history and
+  per-file lines say "Copied" or "Moved" to match the setting ("Copied 3 files
+  · skipped 2 already collected").
 - **It leaves these where they are:**
   - hidden files (names starting with `.`) and macOS metadata such as
     `.DS_Store` and `Icon\r`;
@@ -66,18 +72,18 @@ The first built-in is **Folder**:
     (`settleSeconds`, 10 minutes by default; the same rule as batching). It is
     shown as "Waiting · still changing", and a later run picks it up.
   - **files already collected**: see the ledger below. These are shown as
-    "Skipped · already collected" and stay in the source folder.
+    "Skipped · already collected" and are not taken again.
 - **Name clashes:** if the queue folder already has a file with that name,
-  the moved file gets " 2", " 3", and so on before its extension. The
+  the incoming file gets " 2", " 3", and so on before its extension. The
   existing file is never replaced.
 - **Errors:**
-  - Source folder missing: the run fails, nothing moves, and the user is
+  - Source folder missing: the run fails, nothing is collected, and the user is
     offered Choose…, Create folder or Turn off.
   - No permission (macOS privacy): the run fails, and the user is offered
     Choose again… (so macOS asks) or Open System Settings.
   - Target queue folder missing: the run fails, and the user is offered
     Create folder (the same path).
-  - One file that fails to move: the error is logged on its line, and the
+  - One file that fails to copy or move: the error is logged on its line, and the
     rest of the run continues.
 
 ### Custom collectors
@@ -99,20 +105,33 @@ job.
   the user-data rules in [User data](user-data.md). Each entry holds the
   source path, size, mtime, sha256, collected-at time, collector id, and the
   queue file name.
-- **The ledger is keyed by content (sha256).** A file whose sha256 is already
-  in the vault's ledger is skipped and left where it is, whatever its name
-  and wherever it came from. So "gyokuro copy.md" with the same bytes is
-  skipped too, and a file the user puts back after it was collected is not
-  collected again.
-- Same path with new content is a new file and is collected again; the ledger
-  gets a second entry for that path.
+- **Why it matters:** with copy as the default, the originals stay in the
+  folder, so the ledger is the only thing that stops every run from copying
+  the same files again.
+- **Dedupe is by content (the owner's choice, 2026-10-04).** A file whose
+  sha256 is already in the vault's ledger is skipped and left where it is,
+  whatever its name and wherever it came from. Two examples:
+  - **An edited file is collected again.** `tasting-notes.md` was collected
+    on Monday; the user edits it on Tuesday. Its content is new, so the next
+    run collects it again (the ledger gets a second entry for that path).
+  - **An identical copy under another name is skipped.** `gyokuro copy.md`
+    has the same bytes as the collected `gyokuro.md`, so it is shown as
+    "Skipped · already collected".
+- **Already collected is visible.** The Folder detail shows "Already
+  collected: 128 files" (the ledger entries whose source is this collector's
+  folder) with **View…**. That opens a list of collected files: name, size and
+  when, newest first, with search. Each row has **Forget**: it removes that
+  entry, so the next run collects the file again if it is still in the
+  folder. The row reads "Forgotten · the next run collects it again" with
+  Undo until the sheet closes. **Forget all…** asks for confirmation first.
+  The ledger stores name, size, mtime and sha256, never file content.
 - Hashing is cheap to avoid: if path, size and mtime all equal an entry, the
   run treats the file as already collected without hashing it. Otherwise it
-  hashes before moving.
+  hashes before copying or moving.
 - The ledger outlives the collector. Deleting a Folder collector keeps its
   ledger, so a new Folder collector on the same folder does not take old
-  files again. A **Forget collected files** action, behind a confirmation,
-  is the only way to clear it.
+  files again. Forget (per file) and Forget all… are the only ways to change
+  it.
 - Custom scripts are not deduped by Distill: they own what they write. Files
   that appear in the queue during a script run are recorded only in that
   run's record (`runs/<collector-id>.jsonl`), never in the ledger, so they
@@ -139,8 +158,8 @@ job.
   are accepted and shown as their preset.
 - The core's scheduler wakes for the earliest next run across collectors.
   The schedule is independent of the batch schedule. A collected file waits
-  for the next batch; when a file that has already settled is moved, it keeps
-  its mtime, so it is ready at once.
+  for the next batch. A settled file keeps its mtime when copied (the copy
+  preserves it) or moved, so it is ready at once.
 - **Missed runs** (the Mac was asleep or the core was off): one catch-up run
   at wake or start, never one per missed tick.
 - **Overlap:** if a collector is still running at its next tick, that tick is
@@ -244,7 +263,7 @@ type CollectorKind = 'folder' | 'script';           // built-ins add kinds via t
 interface Collector {
   id: string; kind: CollectorKind; name: string; vaultPath: string;
   enabled: boolean; schedule: { cron: string; preset?: 'every15' | 'hourly' | 'daily' | 'weekdays' | 'custom' };
-  folder?: { source: string };                       // kind folder
+  folder?: { source: string; afterCollect: 'copy' | 'move' };  // kind folder; 'copy' by default
   script?: { source: { file: string } | { inline: string }; interpreter: 'zsh' | 'python3' | 'node';
              timeoutSeconds: number; allowedSha256?: string; allowedAt?: string };
   createdAt: string; updatedAt: string;
@@ -254,7 +273,7 @@ interface CollectorRun {
   startedAt: string; endedAt?: string;
   result: 'running' | 'success' | 'nothing' | 'failed' | 'timedout' | 'skipped' | 'notTrusted';
   exitCode?: number; filesAdded: string[];
-  files?: { name: string; outcome: 'moved' | 'skipped' | 'waiting' | 'error'; reason?: string }[];
+  files?: { name: string; outcome: 'copied' | 'moved' | 'skipped' | 'waiting' | 'error'; reason?: string }[];
   stdoutTail?: string; stderrTail?: string;
 }
 ```
@@ -270,6 +289,8 @@ interface CollectorRun {
     hash;
   - `DELETE /collectors/:id/consent`
   - `GET /collectors/:id/runs`
+  - `GET /collectors/:id/collected?query=` (Already collected, newest first)
+  - `DELETE /collectors/:id/collected/:sha256` (Forget one; `DELETE /collectors/:id/collected` forgets all)
 - Events: `collector.run.started`, `collector.run.output` (throttled),
   `collector.run.finished`, `collector.changed`.
 - Collectors are stored in `<state>/collectors.json`, with additive schema
@@ -278,23 +299,12 @@ interface CollectorRun {
 
 ## Open questions
 
-See the 2026-10-04 entry in [Decisions](decisions.md) for the defaults
-chosen. The questions still open for the user each have a recommendation:
+The owner answered the questions from the first draft on 2026-10-04 (see
+[Decisions](decisions.md)):
 
-1. **Per-vault or global list?** The design shows a global list, with a
-   target vault on each collector (defaulting to the active vault).
-   Recommended: keep it global, so one inbox folder can feed a chosen vault
-   without switching vaults.
-2. **Should Folder ever copy instead of move**, for example from a synced
-   folder the user wants to keep? Recommended: always move in v1, and add
-   "Copy, keep the originals" later only if asked. Moving is what makes the
-   source folder an inbox.
-3. **Dedupe by content or by path and content?** By content, a file the user
-   re-drops into `~/Distill Inbox` on purpose stays skipped. Recommended:
-   dedupe by content, with a per-file "Collect anyway" in the run history for
-   the rare re-drop.
-4. **Queue path display.** The design shows `~/Documents/Distill
-   Queue/Research`, with the absolute path on hover and on Copy path. The
-   user asked for the "full path". Recommended: keep `~` (shorter, still
-   unambiguous), but switch to the absolute `/Users/…` path if the user
-   meant it literally.
+- one list for all vaults, each collector picking its target vault;
+- Folder copies by default, with Move as an option;
+- dedupe is by content (above);
+- the queue path is shown with `~`, and hover and Copy give the full path.
+
+None is open now.

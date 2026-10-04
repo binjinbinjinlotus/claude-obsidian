@@ -30,7 +30,7 @@ const lines = raw.map((t) => {
   const skip = /^Skipped|^Waiting|^Ignored/.test(what);
   return { text: t, what, name, ink: skip ? '#8A5A00' : '#3D6110', term: kind === 'stderr' && !/^\$/.test(t) ? '#FFB894' : '#E8E6E1' };
 });
-return { w: px(p.width, '100%'), time: p.time || '9:00 AM', summary: p.summary || 'Moved 3 files · skipped 2 already collected',
+return { w: px(p.width, '100%'), time: p.time || '9:00 AM', summary: p.summary || 'Copied 3 files · skipped 2 already collected',
   sumInk: p.result === 'failed' ? '#B03A0A' : p.result === 'timedout' ? '#8A5A00' : '#48463F', meta: p.meta === undefined || p.meta === null ? '1.2 s' : p.meta,
   dotBg: r[0], dotInk: r[1], dotD: r[2], spin: p.result === 'running', still: p.result !== 'running',
   expandable: raw.length > 0, chev: exp ? 'M6 9l6 6 6-6' : 'M9 6l6 6-6 6', bg: exp ? '#F6F5F2' : 'transparent',

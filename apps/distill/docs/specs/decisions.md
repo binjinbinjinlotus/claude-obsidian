@@ -17,6 +17,26 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Collectors: the owner's answers.** These supersede the defaults in the
+  "Collectors (designed, not built)" entry below where they differ. Spec:
+  [Collectors](collectors.md).
+  - **One list for all vaults.** Each collector picks its target vault.
+  - **Folder copies by default and leaves the original in place.** Moving
+    is optional: the Folder detail has "After collecting: Keep the original
+    (copy) / Move it to the queue", with Keep as the default. Run history
+    and per-file lines say Copied or Moved to match. This replaces "Folder
+    always moves".
+  - **Already collected is visible.** Because originals stay in the folder,
+    the ledger is what stops repeat copies. The detail shows "Already
+    collected: 128 files" with View…, and each file in that list can be
+    forgotten so it is collected again.
+  - **Dedupe by content is the owner's choice, not a default.** An edited
+    file (same name, new content) is collected again. An identical copy
+    under another name is skipped. Forget in the Already collected list
+    lets a file be collected again.
+  - **The queue path is shown as `~/…`.** The full path is on hover and on
+    Copy path.
+
 - **Collectors (designed, not built): defaults chosen for the open
   questions.** Spec: [Collectors](collectors.md). Canvas: row "7 ·
   Collectors" (Collectors, CollectorsScript) and the queue path on Queue
