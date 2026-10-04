@@ -168,14 +168,16 @@ struct CollectorDetail: View {
     private var c: Collector { collector }
     private var text: CollectorText { store.text }
     private var editing: Bool { store.editing != nil && store.current?.id == c.id }
-    private var consentAsk: Bool { c.needsConsent && !text.scriptChanged(c) }
+    private var consentAsk: Bool { c.needsConsent && !text.scriptChanged(c) && !store.consentDeferred.contains(c.id) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             titleRow
             if store.renaming != nil { renameRow }
             if store.confirmDelete == c.id { deleteRow }
-            if c.needsConsent {
+            if c.needsConsent && store.consentDeferred.contains(c.id) {
+                deferredConsent
+            } else if c.needsConsent {
                 consent
             } else if !editing {
                 CollectorStatusCard(store: store, collector: c)
@@ -300,8 +302,20 @@ struct CollectorDetail: View {
                              busy: store.busy[c.id] == "allow",
                              onAllow: { store.allow(c) },
                              onSecond: {
-                                 if text.scriptChanged(c) { showCode.toggle() } else if let other = store.collectors.first(where: { $0.id != c.id }) { store.select(other.id) }
+                                 if text.scriptChanged(c) { showCode.toggle() } else { store.consentDeferred.insert(c.id) }
                              })
+    }
+
+    /// "Not now": the collector stays off and the card folds to one quiet line until the user reviews it.
+    private var deferredConsent: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "pause.circle").foregroundStyle(Theme.muted)
+            Text("Not allowed yet · it stays off until you allow it.").font(Theme.body(13)).foregroundStyle(Theme.muted)
+            Spacer(minLength: 8)
+            LinkButton(title: "Review and allow") { store.consentDeferred.remove(c.id) }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Theme.panel))
     }
 
     static func abbrev(_ sha: String) -> String { String(sha.prefix(4)) + "…" + String(sha.suffix(4)) }

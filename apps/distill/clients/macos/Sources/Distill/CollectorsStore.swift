@@ -142,6 +142,8 @@ final class CollectorsStore: ObservableObject {
     /// The settings form, for the selected collector.
     @Published var editing: CollectorDraft?
     @Published var advancedOpen = false
+    /// Scripts whose consent card was put aside with "Not now" (this app session only).
+    @Published var consentDeferred: Set<String> = []
     @Published var adding: AddDraft?
     @Published var collected: CollectedSheet?
     @Published var renaming: String?
