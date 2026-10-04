@@ -517,7 +517,7 @@
    "file": "Collectors.dc.html",
    "title": "Collectors · list, add, Folder collector",
    "heading": "Collectors · built-in Folder",
-   "intro": "Collectors fill the queue on a schedule: <b>Folder</b> (built in) or a <b>custom script</b>. The detail answers one question at a glance, “is it working, and what did it last do?”: a status card, a compact read-only settings block (Edit turns it into a form in place), and the last three runs. Healthy rows in the list have no pill; only Running, Failed and Needs your OK do. Adding is three short steps with defaults (Folder: <code>~/Distill Inbox</code>, Keep the original, every hour, the active vault). Folder copies by default and remembers what it took (by content), shown as the <b>Already collected</b> link with Forget.",
+   "intro": "Collectors fill the queue on a schedule: <b>Folder</b> (built in) or a <b>custom script</b>. The detail answers one question at a glance, “is it working, and what did it last do?”: a status card, a compact read-only settings block (Edit turns it into a form in place), and the last three runs. Healthy rows in the list have no pill; only Running, Failed and Needs your OK do. Adding is three short steps with defaults (Folder: <code>~/Distill Inbox</code>, Keep the original, every hour, the active vault). Folder copies by default and remembers what it took (by content), shown as the <b>Already collected</b> link with Forget. It also collects Google Docs (.gdoc) and, with <b>Include subfolders</b> (on by default), each subfolder as one folder item.",
    "width": 2520,
    "sections": [
     {

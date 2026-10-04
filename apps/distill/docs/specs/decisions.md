@@ -17,6 +17,40 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Queue: folders, Google Docs, Refresh and the queue check (owner
+  request; designed, built next).** Specs: [Queue and
+  batching](queue-and-batching.md) → "Folders, Google Docs and syncing", and
+  [Collectors](collectors.md). Open points decided by default:
+  - **Sync is a periodic rescan, not a file watcher.** It runs every 5
+    minutes by default, when the window becomes active, and on Refresh.
+    Watchers miss events on synced folders. The setting lives on Settings →
+    Batching: Every minute, 5 min, 15 min, 1 hour or Off.
+  - **Refresh sits next to the queue path** (Copy path · Reveal in Finder ·
+    Refresh), because it re-syncs that folder. Its result shows for 4 s,
+    then "checked at …".
+  - **A top-level folder is one item.** Limits are 200 files and 500 MB; a
+    bigger folder gets the problem "Too big", even for Process now. A folder
+    counts as one item and one source. The settle wait uses the newest
+    change inside. In the batch the folder moves whole to the inbox, every
+    file is a source by its relative path, and a tree block (paths, names,
+    sizes) goes into the prompt.
+  - **A .gdoc waits; it is not processed** (coordinator, 2026-10-04,
+    superseding a first draft that queued it as a link note). A local .gdoc
+    is only a pointer, so its content can't be read. The row says "Google
+    Doc · needs Google Drive access", has a Waiting pill and a short hint,
+    and is held out of every batch, Process now included. Google Drive
+    fetching is being decided separately.
+  - **The Folder collector's Include subfolders is on by default.** The
+    dedupe unit is the file hash. A subfolder is collected when any file in
+    it is new or changed. In copy mode only the new and changed files are
+    copied, and the manifest keeps the full tree. The collector also
+    collects .gdoc files, which then wait in the queue.
+  - **QueueRowView is the canvas component for queue rows** and maps to the
+    Swift view of the same name; kind, expanded, tree and hint are
+    `swiftPending`. The legacy QueueRows board is not migrated; the
+    QueueRowView states board supersedes it for folder and Google Doc
+    rows.
+
 - **Collectors macOS UI built (mac-collectors).** From canvas v63; spec
   [Collectors](collectors.md) → "macOS app (built)". Decisions taken while
   building:

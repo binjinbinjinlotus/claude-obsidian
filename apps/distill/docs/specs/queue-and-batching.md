@@ -1,7 +1,7 @@
 ---
 title: Queue and batching
 status: built
-updated: 2026-10-02
+updated: 2026-10-04
 ---
 
 # Queue and batching
@@ -16,6 +16,9 @@ schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
   `~/Documents/Distill Queue/<vault name>`. It may also be the vault's `inbox/`.
 - Pending files: top-level, non-hidden regular files. Folders are left alone.
   Partial downloads are skipped (`.crdownload .part .download .tmp .partial`).
+  **Designed 2026-10-04:** top-level folders become folder items and `.gdoc`
+  files become Google Doc items; see "Folders, Google Docs and syncing"
+  below.
 - Settle delay (`settleSeconds`, default 600 s = 10 minutes in the TS core;
   configurable in Settings → Batch; an explicit value is always honored): a
   file must be unmodified that long
@@ -140,3 +143,102 @@ inside a turn, so reading and drafting are not told apart while the turn
 runs. Reply and Allow turns start a new run of the same key at `Drafting page
 changes`. Failed and cancelled batches finish with `Failed` (and `error`) or
 `Cancelled`.
+
+## Folders, Google Docs and syncing (designed 2026-10-04)
+
+Canvas: Main, MainLoading, MainEmpty, MainFolder, QueueItems; components
+QueueRowView (folder and Google Doc states) and QueueRefresh. Not built yet.
+
+### Sync: Refresh and the queue check
+
+- Today a folder the user moves into the queue folder by hand never shows
+  up, because the core lists only regular files. That is fixed by folder
+  items (below). A rescan also runs on its own.
+- **Queue check:** the core rescans the active queue folder every
+  `queueScanMinutes` (new setting, default 5; one of 1, 5, 15, 60, or 0 for
+  Off). It also rescans when the app window becomes active and after Refresh.
+  The scan works like `queueList` and emits the queue only when an entry was
+  added, removed or changed. A file-system watcher is not used, so the
+  behaviour is the same for synced folders (iCloud, Google Drive), where
+  events are unreliable.
+- **Refresh** (Queue screen, after Copy path and Reveal in Finder):
+  `POST /v1/queue/scan` runs the scan now and returns
+  `{ added: n, removed: n, checkedAt }`.
+  - The button shows "Checking…" (disabled) while the scan runs.
+  - Then, for 4 seconds, it shows one result: "2 new items found" (green),
+    "1 item gone", "Nothing new", or "Can't read the queue folder" (peach).
+  - Afterwards it shows "checked at 3:41 AM", the last scan of any kind.
+  - New rows flash once.
+- **Settings → Batching**, a new last row: "Check the queue folder for
+  changes: Every 5 min ▾" (Every minute, Every 5 min, Every 15 min, Every
+  hour, Off). Off leaves Refresh and the check when the window opens. Stored
+  as `settings.queueScanMinutes`. It is additive and decoded leniently, like
+  every setting.
+
+### Folder items
+
+- **What counts:** a non-hidden directory at the top level of the queue
+  folder is **one queue item**, of kind `folder`. Symlinks are left alone.
+  Hidden files and `.DS_Store` inside are ignored. Nested folders belong to
+  the item; they are never separate items.
+- **Queue entry** (`QueueEntry`, additive fields): `kind: 'folder'`,
+  `fileCount`, `folderCount`, `size` (total bytes), and `tree`. `tree` is a
+  list of `{ path, size, kind: 'file' | 'dir' | 'gdoc' }` sorted by path.
+  The core caps it at 500 entries; `treeTruncated` is true when it cut the
+  list.
+- **Row** (QueueRowView, kind folder): folder icon, the folder name, and
+  "12 files · 3 folders · 18.4 MB · moved in at 2:40 AM". The chevron (or a
+  click on the row) expands a read-only tree. Each folder shows its first 5
+  entries, then "… N more"; folders show their file count and files their
+  size. The pill and × work as for files. Remove moves the whole folder to
+  the Trash.
+- **Settle:** a folder is ready when no file inside changed within
+  `settleSeconds`, counted from the newest mtime of any file in it. The row
+  says "a file changed at 3:05 AM" and the pill "Ready at 3:15 AM".
+- **Limits:** up to **200 files and 500 MB** per folder item. A bigger
+  folder gets `problem: 'too big'` (pill "Too big", tooltip "Split it into
+  smaller folders") and stays out of batches until the user splits or
+  removes it. Process now does not override this.
+- **Counting:** a folder counts as one item in the sidebar count, the title
+  ("4 items in the queue") and "N sources" in the batch.
+- **Batch:** the whole folder moves to `inbox/<date>/` keeping its
+  structure. Every file inside is a source, addressed by its path relative
+  to the batch (`Tea tasting trip/notes/day1-uji.md`). The prompt gets one
+  block per folder item:
+  `Folder source: <name>/ (12 files, 3 folders, 18.4 MB)`, then one line per
+  entry with the relative path and size (`.gdoc` entries say "Google Doc,
+  not read"), then "Treat these as one source; the paths and names are context."
+  `.gdoc` files inside are listed but never sent as sources (see below).
+- **Review:** sources list the folder once ("Tea tasting trip/ · folder · 12
+  files · 3 folders"). Show files lists each file with the pages it was used
+  in, or "not used". Changes cite files by their path inside the folder.
+- **History → Jobs:** the folder is one source row with its file count and
+  inbox location. It expands to the same read-only tree.
+
+### Google Doc items (.gdoc)
+
+- A `.gdoc` file (at the top level, or inside a folder item) is only a
+  pointer: JSON with `url` and `doc_id`, among other fields. The document's
+  content is not on disk, so Distill cannot read it. The core parses the
+  pointer, and the title is the file name without `.gdoc`.
+- **Queue entry:** `kind: 'gdoc'`, `gdoc: { title, url, docId }`,
+  `waiting: 'google-drive'`. If the file has no `url` or `doc_id` (often
+  because Drive hasn't synced it yet), the entry gets
+  `problem: 'no link inside'` instead.
+- **Row** (QueueRowView, kind gdoc):
+  - doc icon and the title;
+  - "Google Doc · needs Google Drive access · added 2:55 AM";
+  - **Open in Google Docs**, which opens `url`;
+  - a **Waiting** pill (amber);
+  - the hint "Distill can't open Google Docs yet, so this waits here and
+    isn't processed. To include it now, download it as .docx or PDF and drop
+    that."
+- **Not processed.** The item is held out of every batch, Process now
+  included. It stays in the queue until the user removes it or Google Drive
+  access exists. It counts toward the queue count, but it never makes a
+  batch start on its own. A `.gdoc` inside a folder item is listed in the
+  tree as "not read" and is not given to the AI as a source. Review lists it
+  under the folder as "not read: needs Google Drive access".
+- **Google Drive fetch:** designed separately. The coordinator and the owner
+  are deciding it, including automatic collection of meeting notes. Until
+  then, no link note and no other ingestion of `.gdoc` content.
