@@ -1,0 +1,14 @@
+<!-- LabelChip: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<span style="height: {{h}}; display: inline-flex; align-items: center; gap: 4px; padding: 0 {{padR}} 0 10px; border-radius: {{r}}; background: {{fill}}; color: {{ink}}; border: {{border}}; font-size: 12px; font-weight: 600; white-space: nowrap; box-sizing: border-box">{{text}}<sc-if value="{{newTag}}" hint-placeholder-val="{{ false }}"><span style="font-size: 10px; font-weight: 700; opacity: .7">new</span></sc-if><sc-if value="{{removable}}" hint-placeholder-val="{{ false }}"><span style="width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 400">×</span></sc-if></span>
+</x-dc>
+<script type="text/x-dc-logic">
+const num = (v, d) => (v === undefined || v === null || v === '' || isNaN(Number(v))) ? d : Number(v);
+const style = p.style || 'plain';
+const S = { suggestedExisting: ['#3D6110', '#F3FDE4', '1.5px dashed #B9F06A'], suggestedNew: ['#B03A0A', '#FFF4EE', '1.5px dashed #FFB894'],
+            plain: ['#1F6FEB', '#E3EEFF', 'none'], muted: ['#9B978F', '#F6F5F2', '1.5px dashed #ECEAE5'] }[style] || ['#1F6FEB', '#E3EEFF', 'none'];
+const h = num(p.height, 26), removable = on(p.removable, false);
+return { text: (on(p.sparkle, false) ? '✦ ' : '') + '#' + (p.labelName || 'tea'), ink: S[0], fill: S[1], border: S[2], h: h + 'px', r: h / 2 + 'px',
+  newTag: style === 'suggestedNew' && on(p.showNewTag, true), removable, padR: removable ? '4px' : '10px' };
+</script>

@@ -1,0 +1,2067 @@
+{
+ "$doc": "Imported from the published canvas by tools/import_board.py, then edited by hand. Bases: one per tab; states: overrides on a base (frames) or cards; boards: ordered sections. Fragments (screens/actions/*.html) are bespoke markup that is not a component yet.",
+ "row": 13625,
+ "templates": {
+  "header": "<header style=\"display: flex; align-items: flex-start; gap: 12px; padding: 28px 32px 0\">\n<div style=\"display: flex; flex-direction: column; gap: 5px; flex-grow: 1\"><span style=\"font-size: 11px; font-weight: 800; letter-spacing: .06em; color: #9B978F\">ACTIONS</span><h1 style=\"margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 30px; letter-spacing: -0.03em; line-height: 1.05\">{title}</h1>\n<span style=\"font-size: 13px; color: #6B6862\">{sub}</span></div>{right}</header>"
+ },
+ "layouts": {
+  "todo-list-detail": "{header}<div style=\"padding: 14px 32px 8px\">{toolbar}</div><div style=\"flex-grow: 1; display: flex; gap: 8px; padding: 0 0 0 20px; min-height: 0; overflow: hidden\"><div style=\"flex-grow: 1; min-width: 0; overflow: hidden; padding-right: 8px\">{list}</div>{detail}</div>",
+  "todo-list-detail-2": "{header}<div style=\"padding: 14px 32px 8px\">{toolbar}</div><div style=\"flex-grow: 1; display: flex; gap: 8px; padding: 0 0 0 20px; min-height: 0; overflow: hidden\"><div style=\"flex-grow: 1; min-width: 0; overflow: hidden; padding-right: 8px\">{list}</div></div>",
+  "slack-list-detail": "{header}<div style=\"padding: 14px 32px 10px\">{toolbar}</div><div style=\"flex-grow: 1; display: flex; gap: 18px; padding: 0 24px 0 20px; min-height: 0; overflow: hidden; position: relative\"><div style=\"width: 330px; flex-shrink: 0\">{list}</div><div style=\"flex-grow: 1; min-width: 0; overflow: hidden; padding: 2px 2px 20px\">{detail}</div></div>",
+  "slack-list-detail-toast": "{header}<div style=\"padding: 14px 32px 10px\">{toolbar}</div><div style=\"flex-grow: 1; display: flex; gap: 18px; padding: 0 24px 0 20px; min-height: 0; overflow: hidden; position: relative\"><div style=\"width: 330px; flex-shrink: 0\">{list}</div><div style=\"flex-grow: 1; min-width: 0; overflow: hidden; padding: 2px 2px 20px\">{detail}</div><div style=\"position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%)\">{toast}</div></div>",
+  "slack-pane": "{header}<div style=\"padding: 14px 32px 10px\">{toolbar}</div><div style=\"flex-grow: 1; padding: 0 32px\">{detail}</div>",
+  "jira-list-detail": "{header}<div style=\"padding: 14px 32px 8px\">{toolbar}</div><div style=\"flex-grow: 1; display: flex; gap: 18px; padding: 0 24px 0 20px; min-height: 0; overflow: hidden; position: relative\"><div style=\"width: 330px; flex-shrink: 0\">{list}</div><div style=\"flex-grow: 1; min-width: 0; overflow: hidden; padding: 2px 2px 20px\">{detail}</div></div>",
+  "jira-pane": "{header}<div style=\"padding: 14px 32px 8px\">{toolbar}</div><div style=\"flex-grow: 1; padding: 0 32px\">{detail}</div>",
+  "jira-list-detail-toast": "{header}<div style=\"padding: 14px 32px 8px\">{toolbar}</div><div style=\"flex-grow: 1; display: flex; gap: 18px; padding: 0 24px 0 20px; min-height: 0; overflow: hidden; position: relative\"><div style=\"width: 330px; flex-shrink: 0\">{list}</div><div style=\"flex-grow: 1; min-width: 0; overflow: hidden; padding: 2px 2px 20px\">{detail}</div><div style=\"position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%)\">{toast}</div></div>",
+  "history-list-detail": "<div style=\"display: flex; height: 100%\"><div style=\"width: 370px; flex-shrink: 0; border-right: 1px solid #ECEAE5; padding: 26px 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; overflow: hidden\"><div style=\"display: flex; flex-direction: column; gap: 2px\"><span style=\"font-size: 11px; font-weight: 800; letter-spacing: .06em; color: #9B978F\">HISTORY</span><span style=\"font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 28px\">Actions</span></div>{toolbar}<div style=\"display: flex; flex-direction: column; gap: 1px\">{list}</div></div><div style=\"flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; padding: 26px 30px; box-sizing: border-box; overflow: hidden\">{detail}</div></div>"
+ },
+ "lists": {
+  "slack": [
+   {
+    "head": "MESSAGES"
+   },
+   {
+    "type": "slack",
+    "title": "Message to Mei Tanaka",
+    "source": "From Tea club planning · today at 3:44 PM",
+    "status": "Ready to paste",
+    "statusKind": "ready"
+   },
+   {
+    "type": "slack",
+    "title": "Message to #project-x",
+    "source": "From Auth retry bug · not written yet",
+    "status": "Not written",
+    "statusKind": "muted"
+   },
+   {
+    "type": "slack",
+    "title": "Message to Tom Kim",
+    "source": "From Q3 architecture sync · copied at 3:52 PM",
+    "status": "Copied",
+    "statusKind": "ready"
+   }
+  ],
+  "jira": [
+   {
+    "head": "DRAFTS"
+   },
+   {
+    "type": "jira",
+    "title": "Cap payment client retries at 3 with exponential backoff",
+    "source": "From Auth retry bug · created today at 3:50 PM",
+    "status": "Draft"
+   },
+   {
+    "type": "jira",
+    "title": "Write a runbook entry for payment client timeouts",
+    "source": "From Q3 architecture sync · not written yet",
+    "status": "Not written",
+    "statusKind": "muted"
+   },
+   {
+    "head": "CREATED IN JIRA"
+   },
+   {
+    "type": "jira",
+    "title": "PX-482 Add an alert for retry storms on the auth service",
+    "source": "Created today at 3:51 PM · In progress in Jira",
+    "status": "Created",
+    "statusKind": "created"
+   }
+  ],
+  "jira-2": [
+   {
+    "head": "DRAFTS"
+   },
+   {
+    "type": "jira",
+    "title": "Cap payment client retries at 3 with exponential backoff",
+    "source": "From Auth retry bug · created today at 3:50 PM",
+    "status": "Not created",
+    "statusKind": "error"
+   },
+   {
+    "type": "jira",
+    "title": "Write a runbook entry for payment client timeouts",
+    "source": "From Q3 architecture sync · not written yet",
+    "status": "Not written",
+    "statusKind": "muted"
+   },
+   {
+    "head": "CREATED IN JIRA"
+   },
+   {
+    "type": "jira",
+    "title": "PX-482 Add an alert for retry storms on the auth service",
+    "source": "Created today at 3:51 PM · In progress in Jira",
+    "status": "Created",
+    "statusKind": "created"
+   }
+  ],
+  "confluence": [
+   {
+    "head": "DRAFTS"
+   },
+   {
+    "type": "confluence",
+    "title": "Incident review: INC-212 auth retry storm",
+    "source": "From Incident review prep · created today at 1:12 PM",
+    "status": "Draft"
+   },
+   {
+    "type": "confluence",
+    "title": "Tea club: brewing temperatures cheat sheet",
+    "source": "From Gyokuro at 60 °C · not written yet",
+    "status": "Not written",
+    "statusKind": "muted"
+   },
+   {
+    "head": "CREATED IN CONFLUENCE"
+   },
+   {
+    "type": "confluence",
+    "title": "On-call handoff checklist",
+    "source": "Created today at 3:51 PM · Published in Confluence",
+    "status": "Created",
+    "statusKind": "created"
+   }
+  ],
+  "confluence-2": [
+   {
+    "head": "DRAFTS"
+   },
+   {
+    "type": "confluence",
+    "title": "Incident review: INC-212 auth retry storm",
+    "source": "From Incident review prep · created today at 1:12 PM",
+    "status": "Not created",
+    "statusKind": "error"
+   },
+   {
+    "type": "confluence",
+    "title": "Tea club: brewing temperatures cheat sheet",
+    "source": "From Gyokuro at 60 °C · not written yet",
+    "status": "Not written",
+    "statusKind": "muted"
+   },
+   {
+    "head": "CREATED IN CONFLUENCE"
+   },
+   {
+    "type": "confluence",
+    "title": "On-call handoff checklist",
+    "source": "Created today at 3:51 PM · Published in Confluence",
+    "status": "Created",
+    "statusKind": "created"
+   }
+  ],
+  "history": [
+   {
+    "head": "TODAY",
+    "style": "plain"
+   },
+   {
+    "type": "slack",
+    "title": "Message to #project-x about retries",
+    "source": "today at 4:02 PM",
+    "status": "Removed",
+    "statusKind": "removed",
+    "mode": "history"
+   },
+   {
+    "type": "todo",
+    "title": "Book the tasting room for Saturday",
+    "source": "today at 3:58 PM",
+    "status": "Completed",
+    "statusKind": "completed",
+    "mode": "history"
+   },
+   {
+    "type": "jira",
+    "title": "PX-482 Add an alert for retry storms",
+    "source": "by you today at 3:55 PM · still In progress in Jira",
+    "status": "Completed",
+    "statusKind": "completed",
+    "mode": "history"
+   },
+   {
+    "type": "todo",
+    "title": "Cap payment client retries at 3 with backoff",
+    "source": "to Jira tickets today at 3:50 PM",
+    "status": "Sent",
+    "statusKind": "sent",
+    "mode": "history"
+   },
+   {
+    "head": "YESTERDAY",
+    "style": "plain"
+   },
+   {
+    "type": "slack",
+    "title": "Message to Mei about the kyusu",
+    "source": "marked as sent yesterday at 6:12 PM",
+    "status": "Sent",
+    "statusKind": "sent",
+    "mode": "history"
+   },
+   {
+    "type": "confluence",
+    "title": "On-call handoff checklist",
+    "source": "by you yesterday at 5:40 PM",
+    "status": "Completed",
+    "statusKind": "completed",
+    "mode": "history"
+   },
+   {
+    "head": "SEP 30",
+    "style": "plain"
+   },
+   {
+    "type": "todo",
+    "title": "Order tasting cups for the club",
+    "source": "Sep 30 at 9:14 AM",
+    "status": "Removed",
+    "statusKind": "removed",
+    "mode": "history"
+   }
+  ]
+ },
+ "bases": {
+  "todo": {
+   "window": {
+    "width": 1200,
+    "height": 760
+   },
+   "sidebar": {
+    "section": "actions",
+    "sub": "todo",
+    "height": 720
+   },
+   "layout": "todo-list-detail",
+   "regions": {
+    "header": {
+     "t": "header",
+     "vars": {
+      "title": "To do",
+      "sub": "Found in your notes · last found today at 3:44 PM in <b style=\"color: #1D1C1A; font-weight: 600\">Tea club planning</b>",
+      "right": [
+       {
+        "c": "SoftButton",
+        "props": {
+         "title": "History",
+         "tint": "#1D1C1A",
+         "fill": "#FFFFFF",
+         "stroke": "#ECEAE5",
+         "systemImage": "clock",
+         "size": "small"
+        },
+        "size": [
+         "96px",
+         "30px"
+        ]
+       },
+       {
+        "c": "PrimaryButton",
+        "props": {
+         "title": "Add to-do",
+         "systemImage": "plus",
+         "size": "small"
+        },
+        "size": [
+         "111px",
+         "30px"
+        ]
+       }
+      ]
+     }
+    },
+    "toolbar": {
+     "c": "ActionsToolbar",
+     "props": {
+      "placeholder": "Search to-dos"
+     },
+     "size": [
+      "100%",
+      "30px"
+     ]
+    },
+    "list": {
+     "frag": "todo-f0-list"
+    },
+    "detail": {
+     "frag": "todo-f0-detail"
+    }
+   }
+  },
+  "slack": {
+   "window": {
+    "width": 1200,
+    "height": 760
+   },
+   "sidebar": {
+    "section": "actions",
+    "sub": "slack",
+    "height": 720
+   },
+   "layout": "slack-list-detail",
+   "regions": {
+    "header": {
+     "t": "header",
+     "vars": {
+      "title": "Slack messages",
+      "sub": "Found in your notes · last found today at 3:44 PM in <b style=\"color: #1D1C1A; font-weight: 600\">Tea club planning</b>",
+      "right": [
+       {
+        "c": "SoftButton",
+        "props": {
+         "title": "History",
+         "tint": "#1D1C1A",
+         "fill": "#FFFFFF",
+         "stroke": "#ECEAE5",
+         "systemImage": "clock",
+         "size": "small"
+        },
+        "size": [
+         "96px",
+         "30px"
+        ]
+       }
+      ]
+     }
+    },
+    "toolbar": {
+     "c": "ActionsToolbar",
+     "props": {
+      "placeholder": "Search messages",
+      "sortTitle": "Newest first"
+     },
+     "size": [
+      "100%",
+      "30px"
+     ]
+    },
+    "list": {
+     "selected": 0,
+     "list": "slack"
+    },
+    "detail": {
+     "frag": "slack-f0-detail"
+    }
+   }
+  },
+  "jira": {
+   "window": {
+    "width": 1200,
+    "height": 760
+   },
+   "sidebar": {
+    "section": "actions",
+    "sub": "jira",
+    "height": 720
+   },
+   "layout": "jira-list-detail",
+   "regions": {
+    "header": {
+     "t": "header",
+     "vars": {
+      "title": "Jira tickets",
+      "sub": "Found in your notes · last found today at 3:44 PM in <b style=\"color: #1D1C1A; font-weight: 600\">Tea club planning</b>",
+      "right": [
+       {
+        "c": "SoftButton",
+        "props": {
+         "title": "History",
+         "tint": "#1D1C1A",
+         "fill": "#FFFFFF",
+         "stroke": "#ECEAE5",
+         "systemImage": "clock",
+         "size": "small"
+        },
+        "size": [
+         "96px",
+         "30px"
+        ]
+       }
+      ]
+     }
+    },
+    "toolbar": {
+     "c": "ActionsToolbar",
+     "props": {
+      "placeholder": "Search tickets",
+      "searchWidth": 180,
+      "right": "connection"
+     },
+     "size": [
+      "100%",
+      "30px"
+     ]
+    },
+    "list": {
+     "selected": 0,
+     "list": "jira"
+    },
+    "detail": {
+     "frag": "jira-f0-detail"
+    }
+   }
+  },
+  "confluence": {
+   "window": {
+    "width": 1200,
+    "height": 760
+   },
+   "sidebar": {
+    "section": "actions",
+    "sub": "confluence",
+    "height": 720
+   },
+   "layout": "jira-list-detail",
+   "regions": {
+    "header": {
+     "t": "header",
+     "vars": {
+      "title": "Confluence pages",
+      "sub": "Found in your notes · last found today at 3:44 PM in <b style=\"color: #1D1C1A; font-weight: 600\">Tea club planning</b>",
+      "right": [
+       {
+        "c": "SoftButton",
+        "props": {
+         "title": "History",
+         "tint": "#1D1C1A",
+         "fill": "#FFFFFF",
+         "stroke": "#ECEAE5",
+         "systemImage": "clock",
+         "size": "small"
+        },
+        "size": [
+         "96px",
+         "30px"
+        ]
+       }
+      ]
+     }
+    },
+    "toolbar": {
+     "c": "ActionsToolbar",
+     "props": {
+      "placeholder": "Search pages",
+      "searchWidth": 180,
+      "right": "connection"
+     },
+     "size": [
+      "100%",
+      "30px"
+     ]
+    },
+    "list": {
+     "selected": 0,
+     "list": "confluence"
+    },
+    "detail": {
+     "frag": "confluence-f0-detail"
+    }
+   }
+  },
+  "history": {
+   "window": {
+    "width": 1200,
+    "height": 760
+   },
+   "sidebar": {
+    "section": "history",
+    "sub": "actions",
+    "height": 720
+   },
+   "layout": "history-list-detail",
+   "regions": {
+    "toolbar": {
+     "c": "ActionsToolbar",
+     "props": {
+      "placeholder": "Search history",
+      "searchWidth": 200,
+      "right": "none"
+     },
+     "size": [
+      "100%",
+      "30px"
+     ]
+    },
+    "list": {
+     "selected": 0,
+     "hover": 2,
+     "list": "history"
+    },
+    "detail": {
+     "frag": "history-f0-detail"
+    }
+   }
+  }
+ },
+ "states": [
+  {
+   "id": "actions-todo",
+   "base": "todo",
+   "label": "A · To do, grouped by due date, one item open"
+  },
+  {
+   "id": "actions-todo-sendto",
+   "base": "todo",
+   "label": "B · Send to: pick the action type that should handle it",
+   "set": {
+    "list": {
+     "frag": "todo-f1-list"
+    },
+    "detail": {
+     "frag": "todo-f1-detail"
+    },
+    "overlay": {
+     "frag": "todo-f1-overlay"
+    }
+   }
+  },
+  {
+   "id": "actions-todo-select",
+   "base": "todo",
+   "label": "C · Select several (click the boxes, ⇧-click a range, ⌘A): one bar for all of them",
+   "set": {
+    "layout": "todo-list-detail-2",
+    "toolbar.chips": "#project-x",
+    "list": {
+     "frag": "todo-f2-list"
+    },
+    "detail": null,
+    "overlay": {
+     "frag": "todo-f2-overlay"
+    }
+   }
+  },
+  {
+   "id": "actions-todo-by-note",
+   "base": "todo",
+   "label": "D · Group by source note: every to-do from one note together",
+   "set": {
+    "layout": "todo-list-detail-2",
+    "toolbar.sortTitle": "Source note",
+    "list": {
+     "frag": "todo-f3-list"
+    },
+    "detail": null
+   }
+  },
+  {
+   "id": "actions-todo-filter-due",
+   "base": "todo",
+   "label": "E · Filter: one menu for every filter (open, choosing Due: Today; the list updates as you pick)",
+   "set": {
+    "layout": "todo-list-detail-2",
+    "toolbar.chips": "Due: Today",
+    "list": {
+     "frag": "todo-f4-list"
+    },
+    "detail": null,
+    "overlay": {
+     "c": "FilterPanel",
+     "props": {
+      "due": "Today",
+      "height": 520
+     },
+     "size": [
+      "300px",
+      "520px"
+     ],
+     "at": {
+      "left": 448,
+      "top": 150
+     }
+    }
+   }
+  },
+  {
+   "id": "actions-todo-filter-person",
+   "base": "todo",
+   "label": "F · Two filters set: Filter · 2 and one chip each (× clears it; clicking a chip opens the menu at its section)",
+   "set": {
+    "toolbar.chips": "Person: You|#project-x",
+    "list": {
+     "frag": "todo-f5-list"
+    },
+    "detail": {
+     "frag": "todo-f1-detail"
+    }
+   }
+  },
+  {
+   "id": "todo-frame-7",
+   "base": "todo",
+   "label": "G · A narrow window (890 pt): still one line; chips that don’t fit collapse into +4 (it opens the Filter panel)",
+   "set": {
+    "window": {
+     "width": 890,
+     "height": 760
+    },
+    "layout": "todo-list-detail-2",
+    "toolbar.searchWidth": 160,
+    "toolbar.chips": "Status: All|Due: This week|Person: You|#project-x|#tea",
+    "toolbar.visibleChips": 1,
+    "list": {
+     "frag": "todo-f6-list"
+    },
+    "detail": null
+   }
+  },
+  {
+   "id": "todo-card-filter-menu",
+   "label": "Filter menu",
+   "caption": "One Filter button replaces the row of filter menus. Its panel holds every filter: Status (one choice), Due, Person (with search), Label, Source note, Priority and More (added by, vault, this batch). Long sections show the top 5, then Show all. Choices apply at once; Done closes it, Clear all goes back to Status: Open.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "todo-c7-filter-menu"
+   }
+  },
+  {
+   "id": "todo-card-opened-from-a-chip",
+   "label": "Opened from a chip",
+   "caption": "Each active filter is a chip after the button. Clicking a chip opens the panel scrolled to its section; × on the chip clears just that filter. The button counts the chips.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "todo-c8-opened-from-a-chip"
+   }
+  },
+  {
+   "id": "todo-card-status-all-shows-a",
+   "label": "Status: All shows a chip",
+   "caption": "Status: Open is the default and has no chip. Any other status (Completed, All) appears as a chip like every other filter, and counts in Filter · N.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "todo-c9-status-all-shows-a"
+   }
+  },
+  {
+   "id": "actions-todo-group-sort",
+   "label": "Group and sort",
+   "caption": "Group by due date (default), source note, label, person, priority or created; or no groups. Sort applies inside groups. Defaults live in Settings → To-do defaults; changes here are remembered.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "todo-c10-group-and-sort"
+   }
+  },
+  {
+   "id": "actions-todo-search",
+   "label": "Search",
+   "caption": "Search matches titles, notes, people, labels and the quoted excerpt, as you type. A match outside the title shows the line it came from. Esc clears.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "todo-c11-search"
+   }
+  },
+  {
+   "id": "actions-todo-add",
+   "label": "Add by hand",
+   "caption": "Add to-do opens a new row at the top. Only the title is needed. Labels you are filtering by are filled in. Hand-made to-dos say “Added by you” instead of a note link.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "todo-c12-add-by-hand"
+   }
+  },
+  {
+   "id": "actions-todo-edit",
+   "label": "Edit",
+   "caption": "The pencil (or double-click, or Return) makes every field editable in place. It saves as you type. To-dos have no AI pass after editing; only drafts for action types do.",
+   "card": {
+    "height": 470,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "todo-c13-edit"
+   }
+  },
+  {
+   "id": "actions-todo-complete",
+   "label": "Complete",
+   "caption": "Clicking the circle completes it: struck through for 2 seconds, then it leaves the list and goes to History as Completed. Undo or ⌘Z brings it back. Status → Completed shows them too.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "todo-c14-complete"
+   }
+  },
+  {
+   "id": "actions-todo-remove",
+   "label": "Remove",
+   "caption": "Remove (Delete key or the trash) takes it out without asking. Nothing is lost: it goes to History as Removed, where Restore puts it back.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "todo-c15-remove"
+   }
+  },
+  {
+   "id": "actions-todo-sent",
+   "label": "Sent to an action type",
+   "caption": "After Send to, the to-do leaves this list and lives in that action type’s list, following its lifecycle. Undo moves it back unchanged. Open jumps to the new draft.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "todo-c16-sent-to-an-action"
+   }
+  },
+  {
+   "id": "actions-todo-empty",
+   "label": "Nothing to do",
+   "caption": "Empty To do. The sub-item stays; its count disappears. The Actions total still includes drafts waiting in the other sub-items.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "todo-c17-nothing-to-do"
+   }
+  },
+  {
+   "id": "actions-todo-no-match",
+   "label": "No match for the filters",
+   "caption": "Different from empty: it names the filters, offers Clear filters, and says when hidden items (completed) would match.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "todo-c18-no-match-for-the"
+   }
+  },
+  {
+   "id": "actions-todo-finding",
+   "label": "Finding actions after a batch",
+   "caption": "Right after a batch is applied, a strip at the top says which model is reading how many notes, with the start time. New items fade in where they sort; existing ones don’t move. Shimmer rows only stand in for items still coming.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "todo-c19-finding-actions-after-a"
+   }
+  },
+  {
+   "id": "actions-todo-first-load",
+   "label": "First load",
+   "caption": "Opening Actions before the core answers shows shimmer rows (the shared loading pattern), never an empty state.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "todo-c20-first-load"
+   }
+  },
+  {
+   "id": "actions-todo-error",
+   "label": "Couldn’t find actions",
+   "caption": "Errors say what failed, what is safe, and one next step. Try again reruns only the action step for that note.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "todo-c21-couldn-t-find-actions"
+   }
+  },
+  {
+   "id": "actions-sidebar-collapsed",
+   "label": "Sidebar count",
+   "caption": "<b>Why “Actions”, not “To do”:</b> the screen holds To do and every action type’s list (Slack messages, Jira tickets, Confluence pages, and later Email). Its sub-items (To do, Slack messages, Jira tickets, Confluence pages) show only while Actions is open, each counting what is waiting on you: open to-dos and drafts ready to copy or create (6 + 1 + 1 + 1). Collapsed, Actions shows the total, 9.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "todo-c22-sidebar-count"
+   }
+  },
+  {
+   "id": "actions-slack",
+   "base": "slack",
+   "label": "A · Slack messages: the list on the left, the selected message on the right (primary action Copy, on the right; Complete beside it)"
+  },
+  {
+   "id": "slack-frame-2",
+   "base": "slack",
+   "label": "B · Hover a row: ✓ Complete and ⋯. Here “Message to Tom Kim” was just completed (toast: Completed · Undo); the open one was polished by Sonnet",
+   "set": {
+    "layout": "slack-list-detail-toast",
+    "list.hover": 2,
+    "detail": {
+     "frag": "slack-f1-detail"
+    },
+    "toast": {
+     "frag": "slack-f1-toast"
+    }
+   }
+  },
+  {
+   "id": "slack-frame-3",
+   "base": "slack",
+   "label": "C · Empty: one primary action",
+   "set": {
+    "layout": "slack-pane",
+    "list": null,
+    "detail": {
+     "frag": "slack-f2-detail"
+    }
+   }
+  },
+  {
+   "id": "slack-frame-4",
+   "base": "slack",
+   "label": "D · No results for the filters: Clear filters",
+   "set": {
+    "layout": "slack-pane",
+    "toolbar.chips": "Ready to paste|#tea-club",
+    "list": null,
+    "detail": {
+     "frag": "slack-f3-detail"
+    }
+   }
+  },
+  {
+   "id": "slack-card-written-when-the-note",
+   "label": "Written when the note is processed",
+   "caption": "Default. The message is ready to paste: recipient, text, and where it came from with the exact lines and why it needs sending. The tab count includes it.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "slack-c4-written-when-the-note"
+   }
+  },
+  {
+   "id": "slack-card-not-written-yet",
+   "label": "Not written yet",
+   "caption": "When Settings → Actions → Slack message is set to “Only when I ask”, Distill only notes that a message is needed. Create message writes it.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "slack-c5-not-written-yet"
+   }
+  },
+  {
+   "id": "slack-card-writing",
+   "label": "Writing",
+   "caption": "Writing names the model and can be cancelled. Copy waits until the text is there. Send in Slack stays a dashed “later” slot.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "slack-c6-writing"
+   }
+  },
+  {
+   "id": "actions-slack-editing",
+   "label": "Editing",
+   "caption": "Edit (pencil, or double-click the text) opens the shared Markdown editor with the compact style bar. @mentions and **bold** use Slack’s own marks when copied.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "slack-c7-editing"
+   }
+  },
+  {
+   "id": "actions-slack-polishing",
+   "label": "Polishing after your edit",
+   "caption": "Done runs the improve prompt for Slack messages (grammar and spelling, keep your words). The text dims with a shimmer; Cancel keeps your version as is.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "slack-c8-polishing-after-your-edit"
+   }
+  },
+  {
+   "id": "actions-slack-improved",
+   "label": "Polished, with Undo",
+   "caption": "Changed bits are tinted for a few seconds. Undo (⌘Z) returns your exact edit. Show changes lists them. Turn this off per type in Settings.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "slack-c9-polished-with-undo"
+   }
+  },
+  {
+   "id": "actions-slack-copied",
+   "label": "Copied",
+   "caption": "Copy puts the text on the clipboard in Slack format. The button reads Copied for 2 seconds. Copying is not sending, so a prompt asks to mark it as sent.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "slack-c10-copied"
+   }
+  },
+  {
+   "id": "actions-slack-recipient",
+   "label": "Recipient",
+   "caption": "The person or channel comes from the note. Click it to pick another; Distill doesn’t look anything up in Slack yet, so names are typed freely.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "slack-c11-recipient"
+   }
+  },
+  {
+   "id": "actions-slack-removed",
+   "label": "Removed",
+   "caption": "Remove (trash or Delete) takes it out of the list right away. It goes to History → Actions as Removed; Restore puts it back exactly as it was.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "slack-c12-removed"
+   }
+  },
+  {
+   "id": "slack-card-completed",
+   "label": "Completed",
+   "caption": "Complete (✓ on the row, or in the detail footer) means you’ve handled it, whatever happened in Slack. It leaves the list and goes to History → Actions as Completed, with Restore. Undo in the toast brings it straight back.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "slack-c13-completed"
+   }
+  },
+  {
+   "id": "actions-slack-sent",
+   "label": "Marked as sent",
+   "caption": "Mark as sent (also in the ⋯ menu) ends the message’s life here: it leaves the list and goes to History as Sent, with the time you marked it.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "slack-c14-marked-as-sent"
+   }
+  },
+  {
+   "id": "slack-card-later-send-in-slack",
+   "label": "Later: Send in Slack",
+   "caption": "Design for later, not built now: once Slack is connected for sending, the dashed slot becomes a real Send in Slack button and sending moves it to History as Sent automatically. Copy stays.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "slack-c15-later-send-in-slack"
+   }
+  },
+  {
+   "id": "actions-slack-off",
+   "label": "Turned off",
+   "caption": "An action type that is turned off has no sub-item. Its actions fall back to To do. This frame shows what a link to an off type opens.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "slack-c16-turned-off"
+   }
+  },
+  {
+   "id": "actions-jira",
+   "base": "jira",
+   "label": "A · Jira tickets: drafts you check, and tickets already created"
+  },
+  {
+   "id": "actions-jira-not-connected",
+   "base": "jira",
+   "label": "B · Jira not connected: Connect now in the toolbar; the draft waits",
+   "set": {
+    "toolbar.connection": "disconnected",
+    "list": {
+     "selected": 0,
+     "list": "jira-2"
+    },
+    "detail": {
+     "frag": "jira-f1-detail"
+    }
+   }
+  },
+  {
+   "id": "jira-frame-3",
+   "base": "jira",
+   "label": "C · Not connected, no tickets yet: Connect now in the toolbar and in the empty state (it opens Settings → Connections, the token sign-in)",
+   "set": {
+    "layout": "jira-pane",
+    "toolbar.connection": "disconnected",
+    "list": null,
+    "detail": {
+     "frag": "jira-f2-detail"
+    }
+   }
+  },
+  {
+   "id": "jira-frame-4",
+   "base": "jira",
+   "label": "D · Connecting: the button shows Connecting… until the sign-in finishes; then the line reads acme.atlassian.net · connected",
+   "set": {
+    "layout": "jira-pane",
+    "toolbar.connection": "connecting",
+    "list": null,
+    "detail": {
+     "frag": "jira-f3-detail"
+    }
+   }
+  },
+  {
+   "id": "jira-frame-5",
+   "base": "jira",
+   "label": "E · Hover a row: ✓ Complete and ⋯, on drafts and created tickets alike. Completing a created one doesn’t change it in Jira (toast: Completed · Undo)",
+   "set": {
+    "layout": "jira-list-detail-toast",
+    "list.hover": 2,
+    "toast": {
+     "frag": "jira-f4-toast"
+    }
+   }
+  },
+  {
+   "id": "jira-frame-6",
+   "base": "jira",
+   "label": "F · No results for the filters: Clear filters",
+   "set": {
+    "layout": "jira-pane",
+    "toolbar": {
+     "c": "ActionsToolbar",
+     "props": {
+      "chips": "Draft|PX · Project X",
+      "placeholder": "Search tickets",
+      "searchWidth": 180,
+      "right": "connection"
+     },
+     "size": [
+      "100%",
+      "30px"
+     ]
+    },
+    "list": null,
+    "detail": {
+     "frag": "jira-f5-detail"
+    }
+   }
+  },
+  {
+   "id": "jira-card-draft-written-when-the",
+   "label": "Draft, written when the note was processed",
+   "caption": "The draft has the fields Jira needs, the description in Markdown, and its context. Nothing is in Jira yet: creating is always a button press, never part of note processing.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "jira-c6-draft-written-when-the"
+   }
+  },
+  {
+   "id": "actions-jira-not-written",
+   "label": "Not written yet",
+   "caption": "With “Write drafts: only when I ask”, the card only says a ticket is needed. Write draft fills it in. Send to from To do writes the draft right away.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "jira-c7-not-written-yet"
+   }
+  },
+  {
+   "id": "actions-jira-writing",
+   "label": "Writing the draft",
+   "caption": "Writing the draft names the model and can be cancelled. Create waits until it’s done.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "jira-c8-writing-the-draft"
+   }
+  },
+  {
+   "id": "actions-jira-editing",
+   "label": "Editing",
+   "caption": "Edit makes the fields pickers and the description the shared Markdown editor with the compact style bar.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "jira-c9-editing"
+   }
+  },
+  {
+   "id": "actions-jira-improving",
+   "label": "Improving after your edit",
+   "caption": "Done runs the improve prompt for jira tickets (Sonnet by default): clearer text, fills gaps, keeps what you wrote. Cancel keeps your edit.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "jira-c10-improving-after-your-edit"
+   }
+  },
+  {
+   "id": "actions-jira-improved",
+   "label": "Improved, with Undo",
+   "caption": "Changes are tinted for a few seconds. Undo (⌘Z) returns your exact edit; Show changes lists them.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "jira-c11-improved-with-undo"
+   }
+  },
+  {
+   "id": "actions-jira-creating",
+   "label": "Creating in Jira",
+   "caption": "Create in Jira sends the draft. The card is locked while it runs; it can’t be cancelled halfway.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "jira-c12-creating-in-jira"
+   }
+  },
+  {
+   "id": "actions-jira-created",
+   "label": "Created in Jira",
+   "caption": "Created: the ticket link and its status as Jira reports it, with the clock time it was checked (never a ticking counter). Refresh checks again. It stays until you complete it (or it’s done there).",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "jira-c13-created-in-jira"
+   }
+  },
+  {
+   "id": "jira-card-jira-isn-t-connected",
+   "label": "Jira isn’t connected",
+   "caption": "Not connected: what failed, that the draft is safe, and one next step. Sign in opens Jira in your browser; Distill never asks for a password.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "jira-c14-jira-isn-t-connected"
+   }
+  },
+  {
+   "id": "jira-card-signing-in-in-the",
+   "label": "Signing in, in the browser",
+   "caption": "While the browser is open the card waits. Open the page again reopens the same sign-in; Cancel goes back to Not connected.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "jira-c15-signing-in-in-the"
+   }
+  },
+  {
+   "id": "actions-jira-signed-in",
+   "label": "Signed in → Retry",
+   "caption": "Back from the browser: connected, and Retry finishes what you started.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "jira-c16-signed-in-retry"
+   }
+  },
+  {
+   "id": "actions-jira-expired",
+   "label": "Sign-in expired",
+   "caption": "Sign-in expired: the same browser flow, plus Retry in case it was renewed in Settings → Connections.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "jira-c17-sign-in-expired"
+   }
+  },
+  {
+   "id": "actions-jira-refused",
+   "label": "Jira refused it",
+   "caption": "Jira refused it: its reason in plain words, and the field to fix is marked.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "jira-c18-jira-refused-it"
+   }
+  },
+  {
+   "id": "actions-jira-unreachable",
+   "label": "Can’t reach Jira",
+   "caption": "Can’t reach Jira: nothing was created, the draft is safe, Retry.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "jira-c19-can-t-reach-jira"
+   }
+  },
+  {
+   "id": "actions-jira-removed",
+   "label": "Removed",
+   "caption": "Remove takes a draft out right away; it goes to History → Actions as Removed. Removing a created ticket removes it from Distill only, never from Jira, and the toast says so.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "jira-c20-removed"
+   }
+  },
+  {
+   "id": "jira-card-completed",
+   "label": "Completed",
+   "caption": "Complete (✓ on the row, or in the footer) means you’ve handled it. It is not Jira’s status: an item can still be open in Jira and be completed here. It goes to History → Actions as Completed, with Restore. When Jira reports it done (status category Done), it is completed for you.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "jira-c21-completed"
+   }
+  },
+  {
+   "id": "actions-confluence",
+   "base": "confluence",
+   "label": "A · Confluence pages: drafts you check, and pages already created"
+  },
+  {
+   "id": "actions-confluence-not-connected",
+   "base": "confluence",
+   "label": "B · Confluence not connected: Connect now in the toolbar; the draft waits",
+   "set": {
+    "toolbar.connection": "disconnected",
+    "list": {
+     "selected": 0,
+     "list": "confluence-2"
+    },
+    "detail": {
+     "frag": "confluence-f1-detail"
+    }
+   }
+  },
+  {
+   "id": "confluence-frame-3",
+   "base": "confluence",
+   "label": "C · Not connected, no pages yet: Connect now in the toolbar and in the empty state (it opens Settings → Connections, the token sign-in)",
+   "set": {
+    "layout": "jira-pane",
+    "toolbar.connection": "disconnected",
+    "list": null,
+    "detail": {
+     "frag": "confluence-f2-detail"
+    }
+   }
+  },
+  {
+   "id": "confluence-frame-4",
+   "base": "confluence",
+   "label": "D · Connecting: the button shows Connecting… until the sign-in finishes; then the line reads acme.atlassian.net · connected",
+   "set": {
+    "layout": "jira-pane",
+    "toolbar.connection": "connecting",
+    "list": null,
+    "detail": {
+     "frag": "confluence-f3-detail"
+    }
+   }
+  },
+  {
+   "id": "confluence-frame-5",
+   "base": "confluence",
+   "label": "E · Hover a row: ✓ Complete and ⋯, on drafts and created pages alike. Completing a created one doesn’t change it in Confluence (toast: Completed · Undo)",
+   "set": {
+    "layout": "jira-list-detail-toast",
+    "list.hover": 2,
+    "toast": {
+     "frag": "confluence-f4-toast"
+    }
+   }
+  },
+  {
+   "id": "confluence-frame-6",
+   "base": "confluence",
+   "label": "F · No results for the filters: Clear filters",
+   "set": {
+    "layout": "jira-pane",
+    "toolbar": {
+     "c": "ActionsToolbar",
+     "props": {
+      "chips": "Draft|Operations",
+      "placeholder": "Search pages",
+      "searchWidth": 180,
+      "right": "connection"
+     },
+     "size": [
+      "100%",
+      "30px"
+     ]
+    },
+    "list": null,
+    "detail": {
+     "frag": "confluence-f5-detail"
+    }
+   }
+  },
+  {
+   "id": "confluence-card-draft-written-when-the",
+   "label": "Draft, written when the note was processed",
+   "caption": "The draft has the fields Confluence needs, the description in Markdown, and its context. Nothing is in Confluence yet: creating is always a button press, never part of note processing.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "confluence-c6-draft-written-when-the"
+   }
+  },
+  {
+   "id": "confluence-card-not-written-yet",
+   "label": "Not written yet",
+   "caption": "With “Write drafts: only when I ask”, the card only says a page is needed. Write draft fills it in. Send to from To do writes the draft right away.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "confluence-c7-not-written-yet"
+   }
+  },
+  {
+   "id": "confluence-card-writing-the-draft",
+   "label": "Writing the draft",
+   "caption": "Writing the draft names the model and can be cancelled. Create waits until it’s done.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "confluence-c8-writing-the-draft"
+   }
+  },
+  {
+   "id": "confluence-card-editing",
+   "label": "Editing",
+   "caption": "Edit makes the fields pickers and the description the shared Markdown editor with the compact style bar.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "confluence-c9-editing"
+   }
+  },
+  {
+   "id": "confluence-card-improving-after-your-edit",
+   "label": "Improving after your edit",
+   "caption": "Done runs the improve prompt for confluence pages (Sonnet by default): clearer text, fills gaps, keeps what you wrote. Cancel keeps your edit.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "confluence-c10-improving-after-your-edit"
+   }
+  },
+  {
+   "id": "confluence-card-improved-with-undo",
+   "label": "Improved, with Undo",
+   "caption": "Changes are tinted for a few seconds. Undo (⌘Z) returns your exact edit; Show changes lists them.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "confluence-c11-improved-with-undo"
+   }
+  },
+  {
+   "id": "confluence-card-creating-in-confluence",
+   "label": "Creating in Confluence",
+   "caption": "Create in Confluence sends the draft. The card is locked while it runs; it can’t be cancelled halfway.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "confluence-c12-creating-in-confluence"
+   }
+  },
+  {
+   "id": "actions-confluence-created",
+   "label": "Created in Confluence",
+   "caption": "Created: the page link and its status as Confluence reports it, with the clock time it was checked (never a ticking counter). Refresh checks again. It stays until you complete it (or it’s done there).",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "confluence-c13-created-in-confluence"
+   }
+  },
+  {
+   "id": "confluence-card-confluence-isn-t-connected",
+   "label": "Confluence isn’t connected",
+   "caption": "Not connected: what failed, that the draft is safe, and one next step. Sign in opens Confluence in your browser; Distill never asks for a password.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "confluence-c14-confluence-isn-t-connected"
+   }
+  },
+  {
+   "id": "confluence-card-signing-in-in-the",
+   "label": "Signing in, in the browser",
+   "caption": "While the browser is open the card waits. Open the page again reopens the same sign-in; Cancel goes back to Not connected.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "confluence-c15-signing-in-in-the"
+   }
+  },
+  {
+   "id": "confluence-card-signed-in-retry",
+   "label": "Signed in → Retry",
+   "caption": "Back from the browser: connected, and Retry finishes what you started.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "confluence-c16-signed-in-retry"
+   }
+  },
+  {
+   "id": "confluence-card-sign-in-expired",
+   "label": "Sign-in expired",
+   "caption": "Sign-in expired: the same browser flow, plus Retry in case it was renewed in Settings → Connections.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "confluence-c17-sign-in-expired"
+   }
+  },
+  {
+   "id": "confluence-card-confluence-refused-it",
+   "label": "Confluence refused it",
+   "caption": "Confluence refused it: its reason in plain words, and the field to fix is marked.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "confluence-c18-confluence-refused-it"
+   }
+  },
+  {
+   "id": "confluence-card-can-t-reach-confluence",
+   "label": "Can’t reach Confluence",
+   "caption": "Can’t reach Confluence: nothing was created, the draft is safe, Retry.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "confluence-c19-can-t-reach-confluence"
+   }
+  },
+  {
+   "id": "confluence-card-removed",
+   "label": "Removed",
+   "caption": "Remove takes a draft out right away; it goes to History → Actions as Removed. Removing a created page removes it from Distill only, never from Confluence, and the toast says so.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "confluence-c20-removed"
+   }
+  },
+  {
+   "id": "confluence-card-completed",
+   "label": "Completed",
+   "caption": "Complete (✓ on the row, or in the footer) means you’ve handled it. It is not Confluence’s status: an item can still be open in Confluence and be completed here. It goes to History → Actions as Completed, with Restore. When Confluence reports it done, it is completed for you.",
+   "card": {
+    "height": 610,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "confluence-c21-completed"
+   }
+  },
+  {
+   "id": "actions-history",
+   "base": "history",
+   "label": "A · History → Actions: a removed message open; hovering a completed ticket shows Restore and ⋯"
+  },
+  {
+   "id": "actions-history-sent",
+   "base": "history",
+   "label": "B · A sent to-do: its whole path, and where it lives now",
+   "set": {
+    "list.selected": 3,
+    "list.hover": null,
+    "detail": {
+     "frag": "history-f1-detail"
+    }
+   }
+  },
+  {
+   "id": "actions-history-filter",
+   "label": "Filter: what happened",
+   "caption": "The same single Filter menu as To do, with its own sections: TYPE, OUTCOME (shown), DATE and SOURCE. Each set filter is a chip after the button (here “Removed ×”). Search covers titles, text and notes.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "history-c2-filter-what-happened"
+   }
+  },
+  {
+   "id": "actions-history-restored",
+   "label": "Restored",
+   "caption": "Restore (on row hover, or in the detail) puts a removed or completed item back in the list it came from, with its text, edits and context. Its History entry goes away.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "history-c3-restored"
+   }
+  },
+  {
+   "id": "actions-history-note-gone",
+   "label": "Restore when the note is gone",
+   "caption": "Restoring never fails because of what changed since. It says what is missing and keeps what it can.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "history-c4-restore-when-the-note"
+   }
+  },
+  {
+   "id": "actions-history-type-off",
+   "label": "Restore when the type is off",
+   "caption": "If the item’s action type was turned off, it can come back as a to-do so nothing is stranded.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "history-c5-restore-when-the-type"
+   }
+  },
+  {
+   "id": "actions-history-delete",
+   "label": "Delete forever",
+   "caption": "The only step in Actions that asks first, because it can’t be undone.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "history-c6-delete-forever"
+   }
+  },
+  {
+   "id": "actions-history-empty",
+   "label": "Nothing in History yet",
+   "caption": "Empty History → Actions: one primary action, like every Actions tab.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "history-c7-nothing-in-history-yet"
+   }
+  },
+  {
+   "id": "history-card-no-results-for-the",
+   "label": "No results for the filters",
+   "caption": "The same toolbar and Filter menu as every Actions tab (Type, Outcome, Date, Source). Clear filters goes back to everything.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "history-c8-no-results-for-the"
+   }
+  },
+  {
+   "id": "actions-history-job",
+   "label": "Jobs link to what they found",
+   "caption": "History → Jobs: each finished job says what actions it found and links to them, filtered to that job’s notes.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "history-c9-jobs-link-to-what"
+   }
+  },
+  {
+   "id": "history-card-how-long-history-keeps",
+   "label": "How long History keeps items",
+   "caption": "Retention is a setting (90 days by default). Items are never cleared silently while you are looking at them.",
+   "card": {
+    "height": 430,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "history-c10-how-long-history-keeps"
+   }
+  }
+ ],
+ "boards": [
+  {
+   "file": "ActionsTodo.dc.html",
+   "title": "Actions · To do",
+   "heading": "Actions · To do",
+   "intro": "Distill adds a <b>To do</b> for every action in a processed note that needs you to do something and that no action type can do for you. To do is the first sub-item of the new <b>Actions</b> sidebar item. Filter by status, due date, person, label, source note, priority and created; search; group and sort; add, edit, complete, remove, and select several. The sidebar item is called <b>Actions</b>, not To do, because it also holds every action type’s list. <b>Send to</b> hands a to-do to an action type (Jira ticket, Confluence page, Slack message): it leaves this list and lives in that list. Completed, removed and sent items go to History → Actions, where they can be restored.",
+   "width": 2520,
+   "sections": [
+    {
+     "row": [
+      "actions-todo",
+      "actions-todo-sendto"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "row": [
+      "actions-todo-select",
+      "actions-todo-by-note"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "row": [
+      "actions-todo-filter-due",
+      "actions-todo-filter-person"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "frame": "todo-frame-7"
+    },
+    {
+     "title": "Filters, management and states"
+    },
+    {
+     "grid": [
+      "todo-card-filter-menu",
+      "todo-card-opened-from-a-chip",
+      "todo-card-status-all-shows-a",
+      "actions-todo-group-sort",
+      "actions-todo-search",
+      "actions-todo-add",
+      "actions-todo-edit",
+      "actions-todo-complete",
+      "actions-todo-remove",
+      "actions-todo-sent",
+      "actions-todo-empty",
+      "actions-todo-no-match",
+      "actions-todo-finding",
+      "actions-todo-first-load",
+      "actions-todo-error",
+      "actions-sidebar-collapsed"
+     ],
+     "cols": 4
+    }
+   ]
+  },
+  {
+   "file": "ActionsSlack.dc.html",
+   "title": "Actions · Slack messages",
+   "heading": "Actions · Slack messages",
+   "intro": "A Slack message is an action Distill can do for you: it writes the message so you only paste it. Today the handler is <b>Copy</b>; <b>Send in Slack</b> is a reserved, disabled slot. Each message shows who it is for, the text ready to paste, and its context (the note, the quoted lines, and why it needs sending). Editing uses the shared Markdown editor; when you finish, the AI polishes grammar (Sonnet by default) and you can Undo. Removed and sent messages go to History.",
+   "width": 2520,
+   "sections": [
+    {
+     "row": [
+      "actions-slack",
+      "slack-frame-2"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "row": [
+      "slack-frame-3",
+      "slack-frame-4"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "title": "Every state of a Slack message"
+    },
+    {
+     "grid": [
+      "slack-card-written-when-the-note",
+      "slack-card-not-written-yet",
+      "slack-card-writing",
+      "actions-slack-editing",
+      "actions-slack-polishing",
+      "actions-slack-improved",
+      "actions-slack-copied",
+      "actions-slack-recipient",
+      "actions-slack-removed",
+      "slack-card-completed",
+      "actions-slack-sent",
+      "slack-card-later-send-in-slack",
+      "actions-slack-off"
+     ],
+     "cols": 4
+    }
+   ]
+  },
+  {
+   "file": "ActionsJira.dc.html",
+   "title": "Actions · Jira tickets",
+   "heading": "Actions · Jira tickets",
+   "intro": "Jira tickets are drafts you check, then create with one button. Distill never creates a ticket during note processing. A draft comes from a note (written when the note is processed, or when you ask) or from To do → Send to, and shows its context. Once created, the ticket keeps its key, link and status from Jira until you complete it here (or it is done there). Sign-in happens in your browser; errors keep the draft safe and offer one next step.",
+   "width": 2520,
+   "sections": [
+    {
+     "row": [
+      "actions-jira",
+      "actions-jira-not-connected"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "row": [
+      "jira-frame-3",
+      "jira-frame-4"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "row": [
+      "jira-frame-5",
+      "jira-frame-6"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "title": "Every state of a ticket"
+    },
+    {
+     "grid": [
+      "jira-card-draft-written-when-the",
+      "actions-jira-not-written",
+      "actions-jira-writing",
+      "actions-jira-editing",
+      "actions-jira-improving",
+      "actions-jira-improved",
+      "actions-jira-creating",
+      "actions-jira-created",
+      "jira-card-jira-isn-t-connected",
+      "jira-card-signing-in-in-the",
+      "actions-jira-signed-in",
+      "actions-jira-expired",
+      "actions-jira-refused",
+      "actions-jira-unreachable",
+      "actions-jira-removed",
+      "jira-card-completed"
+     ],
+     "cols": 4
+    }
+   ]
+  },
+  {
+   "file": "ActionsConfluence.dc.html",
+   "title": "Actions · Confluence pages",
+   "heading": "Actions · Confluence pages",
+   "intro": "Confluence pages follow the same lifecycle as Jira tickets: a draft with space and parent page, Create in Confluence only when you press it, then a link to the published page until you complete it. Same context, editing with AI improvement and Undo, History, and browser sign-in. One Atlassian sign-in covers Jira and Confluence on the same site.",
+   "width": 2520,
+   "sections": [
+    {
+     "row": [
+      "actions-confluence",
+      "actions-confluence-not-connected"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "row": [
+      "confluence-frame-3",
+      "confluence-frame-4"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "row": [
+      "confluence-frame-5",
+      "confluence-frame-6"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "title": "Every state of a page"
+    },
+    {
+     "grid": [
+      "confluence-card-draft-written-when-the",
+      "confluence-card-not-written-yet",
+      "confluence-card-writing-the-draft",
+      "confluence-card-editing",
+      "confluence-card-improving-after-your-edit",
+      "confluence-card-improved-with-undo",
+      "confluence-card-creating-in-confluence",
+      "actions-confluence-created",
+      "confluence-card-confluence-isn-t-connected",
+      "confluence-card-signing-in-in-the",
+      "confluence-card-signed-in-retry",
+      "confluence-card-sign-in-expired",
+      "confluence-card-confluence-refused-it",
+      "confluence-card-can-t-reach-confluence",
+      "confluence-card-removed",
+      "confluence-card-completed"
+     ],
+     "cols": 4
+    }
+   ]
+  },
+  {
+   "file": "ActionsHistory.dc.html",
+   "title": "Actions · History",
+   "heading": "Actions · History",
+   "intro": "Everything that leaves an Actions list lands in <b>History → Actions</b>, a third sub-item under History, next to Jobs and Ask chats: completed items of every type (to-dos, messages, tickets, pages), removed items, to-dos sent to another type, and Slack messages marked as sent. It uses the same toolbar and rows as the other Actions tabs. Times are clock times. <b>Restore</b> brings removed and completed items back to the list they came from. Sent items show their path and link to where they live now.",
+   "width": 2520,
+   "sections": [
+    {
+     "row": [
+      "actions-history",
+      "actions-history-sent"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "title": "Filters, restore and edge cases"
+    },
+    {
+     "grid": [
+      "actions-history-filter",
+      "actions-history-restored",
+      "actions-history-note-gone",
+      "actions-history-type-off",
+      "actions-history-delete",
+      "actions-history-empty",
+      "history-card-no-results-for-the",
+      "actions-history-job",
+      "history-card-how-long-history-keeps"
+     ],
+     "cols": 4
+    }
+   ]
+  }
+ ]
+}

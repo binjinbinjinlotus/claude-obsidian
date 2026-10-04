@@ -3,7 +3,7 @@ type: spec
 title: Decisions
 status: built
 created: 2026-10-02
-updated: 2026-10-02
+updated: 2026-10-03
 tags:
   - distill
   - decisions
@@ -14,6 +14,28 @@ tags:
 Newest first. Each entry: what was decided, why, and where it lives. Add an
 entry in the same change that makes a decision; never rewrite an old one —
 supersede it with a new entry.
+
+## 2026-10-03
+
+- **The schema owns the Actions boards from canvas v57:** ActionsTodo,
+  ActionsSlack, ActionsJira, ActionsConfluence and ActionsHistory render from
+  `design/screens/actions.json`; edits go there (and to its fragments), never
+  to `gen_actions.py`, which must not regenerate them. Fragments (bespoke
+  markup in `screens/actions/`) are an allowed migration step; each becomes a
+  component when it is next touched. ActionsOverview and ActionsAsk stay
+  legacy for now.
+- **The design is a schema in the repo (`apps/distill/design/`):** the
+  canvas is rendered from `tokens.json` (generated from Theme.swift),
+  `components.json` + `components/<Name>.dc.html` (one entry per Swift view)
+  and `screens/*.json` (base screens, states as overrides, boards as ordered
+  state lists) by `render.py`. Why: every state was a hand-generated copy
+  made by unversioned scratchpad scripts, so one change meant regenerating
+  and checking many copies. `test_design.py` (in `make test`) fails when a
+  component, prop or token drifts from Swift. A prop the view derives is
+  `"swift": false` with a `why`; a prop designed but not built is
+  `"swiftPending"`. The old generators live in `design/legacy/` until their
+  boards move over. Publishing stays manual (the lead). See
+  [Design process](design-process.md).
 
 ## 2026-10-02
 
