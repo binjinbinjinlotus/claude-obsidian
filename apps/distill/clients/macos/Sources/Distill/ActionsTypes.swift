@@ -289,10 +289,11 @@ struct MessageCard: View {
             Spacer(minLength: 8)
             if later, !notWritten, let send, !send.available { LaterSlot(title: send.label == "send" ? "Send in Slack" : send.label) }
             SoftButton(title: "Complete", size: .small, systemImage: "checkmark") { store.complete(item) }
+                .fixedSize()
                 .disabled(busy).opacity(busy ? 0.45 : 1)
                 .help("Complete (you’ve handled it)")
             if notWritten {
-                PrimaryButton(title: "Create message", size: .small) { store.draft(item) }
+                PrimaryButton(title: "Create message", size: .small) { store.draft(item) }.fixedSize()
             } else if let send, send.available {
                 if type.handler("copy") != nil {
                     SoftButton(title: flash ? "Copied" : "Copy", size: .small, systemImage: flash ? "checkmark" : "doc.on.doc") { store.copy(item) }
@@ -304,6 +305,7 @@ struct MessageCard: View {
                     SoftButton(title: "Copied", tint: Theme.limeInk, fill: ActionsTheme.doneFill, size: .small, systemImage: "checkmark") { store.copy(item) }
                 } else {
                     PrimaryButton(title: "Copy", systemImage: "doc.on.doc", size: .small, enabled: !busy && !(item.body ?? "").isEmpty) { store.copy(item) }
+                        .fixedSize()
                 }
             }
         }
@@ -715,15 +717,17 @@ struct ExternalCard: View {
             }
             .padding(.top, 4)
         } else {
+            // Narrow windows drop the hint, then shorten "Create in Jira" / "Open in Jira" to "Create" / "Open".
             ViewThatFits(in: .horizontal) {
                 footerRow(hint: true)
                 footerRow(hint: false)
+                footerRow(hint: false, short: true)
             }
             .padding(.top, 4)
         }
     }
 
-    private func footerRow(hint: Bool) -> some View {
+    private func footerRow(hint: Bool, short: Bool = false) -> some View {
         let busy = creating || writing || improving
         return HStack(spacing: 8) {
             if item.status == .created {
@@ -741,16 +745,19 @@ struct ExternalCard: View {
                 Text("Creating in \(service)…").font(Theme.body(13, .semibold)).lineLimit(1).fixedSize()
             } else {
                 SoftButton(title: "Complete", size: .small, systemImage: "checkmark") { store.complete(item) }
+                    .fixedSize()
                     .disabled(busy).opacity(busy ? 0.45 : 1)
                     .help(item.status == .created ? "Complete (you’ve handled it; it stays as it is in \(service))" : "Complete (you’ve handled it)")
                 if item.status == .created {
-                    PrimaryButton(title: "Open in \(service)", systemImage: "arrow.up.right.square", size: .small) { open(item.external?.url) }
+                    PrimaryButton(title: short ? "Open" : "Open in \(service)", systemImage: "arrow.up.right.square", size: .small) { open(item.external?.url) }
+                        .fixedSize().help("Open in \(service)")
                 } else if notWritten && !writing {
-                    PrimaryButton(title: "Write draft", size: .small) { store.draft(item) }
+                    PrimaryButton(title: "Write draft", size: .small) { store.draft(item) }.fixedSize()
                 } else {
                     let label = type.handler("create")?.label ?? "Create"
-                    PrimaryButton(title: label.lowercased().hasPrefix("create") && label.count > 6 ? label : "Create in \(service)",
-                                  systemImage: "plus", size: .small, enabled: !busy) { store.perform(item, handler: "create") }
+                    let full = label.lowercased().hasPrefix("create") && label.count > 6 ? label : "Create in \(service)"
+                    PrimaryButton(title: short ? "Create" : full, systemImage: "plus", size: .small, enabled: !busy) { store.perform(item, handler: "create") }
+                        .fixedSize().help(full)
                 }
             }
         }

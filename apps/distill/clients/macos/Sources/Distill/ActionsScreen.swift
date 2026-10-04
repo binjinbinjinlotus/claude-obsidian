@@ -270,7 +270,7 @@ struct TodoScreen: View {
     }
 
     private func noMatchText(hidden: Int) -> String {
-        var what = "Nothing open"
+        var what = ui.filter.status == .open ? "Nothing open" : "Nothing"
         if !ui.filter.labels.isEmpty { what += " with " + ui.filter.labels.sorted().map { "#" + $0 }.joined(separator: " or ") }
         let q = ui.filter.text.trimmingCharacters(in: .whitespaces)
         what += q.isEmpty ? " matches these filters." : " mentions “\(q)”."

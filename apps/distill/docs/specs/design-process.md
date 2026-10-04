@@ -147,7 +147,10 @@ Swift view of the same name, in `clients/macos/Sources/Distill/`. Built
 | FilterChip | `FilterChip` | AskParts.swift |
 | SourceChip | `SourceChip` (private) | SettingsSections.swift |
 | ModelChip | `ModelChip` | AskParts.swift |
-| DropdownButton | `DropdownButton` | ComposeComponents.swift |
+| DropdownButton | `DropdownButton` (plus `systemImage`, `active`, and `action` for a button that opens a popover) | ComposeComponents.swift |
+| ActionsToolbar | `ActionsToolbar` | ActionsToolbar.swift |
+| FilterPanel | `FilterPanel` | FilterPanel.swift |
+| ActionRow | `ActionRow` | ActionRow.swift |
 | QuickSourceButton | `QuickSourceButton` | QuickNote.swift |
 | MarkdownBarToggle | `MarkdownBarToggle` | MarkdownEditorBar.swift |
 | SendButton | `SendButton` | AskParts.swift |
