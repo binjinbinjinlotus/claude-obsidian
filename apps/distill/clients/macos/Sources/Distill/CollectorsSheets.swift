@@ -214,26 +214,31 @@ struct InterpreterDropdown: View {
 /// Inline script code (monospaced, line numbers in the margin).
 struct CodeEditor: View {
     @Binding var text: String
-    var minHeight: CGFloat = 110
+    var minLines = 5
+    var maxHeight: CGFloat = 320
+
+    private static let font = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)
+    private static var lineHeight: CGFloat { NSLayoutManager().defaultLineHeight(for: font) }
 
     var body: some View {
         let count = max(1, text.components(separatedBy: "\n").count)
+        let height = min(maxHeight, CGFloat(max(count, minLines)) * Self.lineHeight + 4)
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .trailing, spacing: 0) {
                 ForEach(1...min(count, 999), id: \.self) { i in
-                    Text("\(i)").font(.system(size: 11.5, design: .monospaced)).foregroundStyle(Color(hex: 0xC2BEB6)).frame(height: 18.4)
+                    Text("\(i)").font(Font(Self.font)).foregroundStyle(Color(hex: 0xC2BEB6)).frame(height: Self.lineHeight)
                 }
+                Spacer(minLength: 0)
             }
-            .padding(.top, 1)
+            .frame(height: height, alignment: .top)
+            .clipped()
             TextEditor(text: $text)
-                .font(.system(size: 11.5, design: .monospaced))
+                .font(Font(Self.font))
                 .scrollContentBackground(.hidden)
-                .scrollDisabled(true)
                 .autocorrectionDisabled()
-                .frame(minHeight: CGFloat(count) * 18.4 + 4, alignment: .topLeading)
+                .frame(height: height)
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
-        .frame(minHeight: minHeight, alignment: .topLeading)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color.white))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(CollectorsTheme.selectedStroke, lineWidth: 1.5))
     }
@@ -271,8 +276,7 @@ private struct SheetCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 16) { content }
             .padding(.horizontal, 24).padding(.vertical, 22)
             .frame(width: width, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 18).fill(Color.white))
-            .shadow(color: Color.black.opacity(0.25), radius: 30, y: 24)
+            .background(RoundedRectangle(cornerRadius: 18).fill(Color.white).shadow(color: Color.black.opacity(0.25), radius: 30, y: 24))
             .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.black.opacity(0.06)))
     }
 }

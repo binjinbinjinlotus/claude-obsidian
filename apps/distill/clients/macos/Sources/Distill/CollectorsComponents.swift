@@ -27,6 +27,15 @@ enum CollectorsTheme {
     }
 }
 
+/// Snapshots: folders count as present (renders never depend on the real file system).
+private struct FixtureFoldersKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    var fixtureFolders: Bool {
+        get { self[FixtureFoldersKey.self] }
+        set { self[FixtureFoldersKey.self] = newValue }
+    }
+}
+
 // MARK: - CollectorRow
 
 /// One collector in the list: kind tile, name, one status line, and a pill only
@@ -118,11 +127,12 @@ struct QueuePath: View {
     var onCreate: (() -> Void)? = nil
     @State private var hovered = false
     @State private var copiedAt: Date?
+    @Environment(\.fixtureFolders) private var fixtureFolders
 
     private var compact: Bool { size == "compact" }
     private var font: Font { Theme.body(compact ? 12 : 12.5, .medium) }
     private var missing: Bool {
-        state == "missing" || (state == "default" && !path.isEmpty && !FileManager.default.fileExists(atPath: path))
+        state == "missing" || (state == "default" && !fixtureFolders && !path.isEmpty && !FileManager.default.fileExists(atPath: path))
     }
     private var copied: Bool { state == "copied" || copiedAt != nil }
     private var shown: String { CollectorText().tilde(path) }

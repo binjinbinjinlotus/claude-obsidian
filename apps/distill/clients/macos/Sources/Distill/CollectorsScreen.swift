@@ -195,37 +195,61 @@ struct CollectorDetail: View {
 
     // MARK: Title row
 
+    /// Name and controls on one row; in a narrow pane the controls move under the name instead of cutting it.
     private var titleRow: some View {
-        let k = CollectorsTheme.kind(c.kind.rawValue)
-        return HStack(spacing: 12) {
-            Image(systemName: k.2).font(.system(size: 16, weight: .semibold)).foregroundStyle(k.1)
-                .frame(width: 38, height: 38).background(RoundedRectangle(cornerRadius: 11).fill(k.0))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(c.name).font(Theme.display(22)).lineLimit(1).truncationMode(.tail)
-                Text(text.titleLine(c, now: store.now)).font(Theme.body(12.5)).foregroundStyle(Theme.muted).lineLimit(1)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                tile
+                nameBlock.fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 0)
+                controls
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .layoutPriority(-1)
-            PillSwitch(isOn: Binding(get: { c.enabled }, set: { store.setEnabled(c, $0) }), label: "Collector on", width: 36, height: 22)
-                .disabled(c.needsConsent)
-                .help(c.needsConsent ? "Allow the script first" : c.enabled ? "Turn off" : "Turn on")
-            if !c.needsConsent && !editing {
-                if c.isRunning {
-                    SoftButton(title: "Stop", fill: .white, size: .small, stroke: true, systemImage: "xmark") { store.stop(c) }
-                        .fixedSize()
-                } else {
-                    SoftButton(title: "Run now", fill: .white, size: .small, stroke: true, systemImage: "play") { store.runNow(c) }
-                        .fixedSize()
-                        .disabled(store.busy[c.id] == "run")
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    tile
+                    nameBlock.frame(maxWidth: .infinity, alignment: .leading)
+                }
+                HStack(spacing: 12) {
+                    Spacer(minLength: 0)
+                    controls
                 }
             }
-            Menu { CollectorMenuItems(store: store, collector: c) } label: {
-                Image(systemName: "ellipsis").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
-                    .frame(width: 28, height: 28).contentShape(Circle())
-            }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-            .help("More: Edit, Rename, Duplicate, Delete")
         }
+    }
+
+    private var tile: some View {
+        let k = CollectorsTheme.kind(c.kind.rawValue)
+        return Image(systemName: k.2).font(.system(size: 16, weight: .semibold)).foregroundStyle(k.1)
+            .frame(width: 38, height: 38).background(RoundedRectangle(cornerRadius: 11).fill(k.0))
+    }
+
+    private var nameBlock: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(c.name).font(Theme.display(22)).lineLimit(1).truncationMode(.tail)
+            Text(text.titleLine(c, now: store.now)).font(Theme.body(12.5)).foregroundStyle(Theme.muted).lineLimit(1)
+        }
+    }
+
+    @ViewBuilder private var controls: some View {
+        PillSwitch(isOn: Binding(get: { c.enabled && !c.needsConsent }, set: { store.setEnabled(c, $0) }), label: "Collector on", width: 36, height: 22)
+            .disabled(c.needsConsent)
+            .help(c.needsConsent ? "Allow the script first" : c.enabled ? "Turn off" : "Turn on")
+        if !c.needsConsent && !editing {
+            if c.isRunning {
+                SoftButton(title: "Stop", fill: .white, size: .small, stroke: true, systemImage: "xmark") { store.stop(c) }
+                    .fixedSize()
+            } else {
+                SoftButton(title: "Run now", fill: .white, size: .small, stroke: true, systemImage: "play") { store.runNow(c) }
+                    .fixedSize()
+                    .disabled(store.busy[c.id] == "run")
+            }
+        }
+        Menu { CollectorMenuItems(store: store, collector: c) } label: {
+            Image(systemName: "ellipsis").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
+                .frame(width: 28, height: 28).contentShape(Circle())
+        }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+        .help("More: Edit, Rename, Duplicate, Delete")
     }
 
     private var renameRow: some View {
@@ -267,7 +291,7 @@ struct CollectorDetail: View {
         let short = sha.map { "sha256 " + Self.abbrev($0) } ?? ""
         let was = s?.allowedSha256.map { " (was " + Self.abbrev($0) + ")" } ?? ""
         let source: String = {
-            if let code = s?.source.inlineCode { return "(inline, \(code.split(separator: "\n", omittingEmptySubsequences: false).count) lines)" }
+            if let code = s?.source.inlineCode { return "(inline, \(code.trimmingCharacters(in: .newlines).split(separator: "\n", omittingEmptySubsequences: false).count) lines)" }
             return text.tilde(s?.source.filePath ?? "")
         }()
         return ScriptConsent(state: text.scriptChanged(c) ? "changed" : "ask", interpreter: s?.interpreter.rawValue ?? "zsh",

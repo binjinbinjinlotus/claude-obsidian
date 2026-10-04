@@ -359,7 +359,7 @@ public struct CollectorText: Sendable {
             lines += body.isEmpty ? [] : body.components(separatedBy: "\n")
             if r.result == .timedout { lines.append("[stopped by Distill after \(Self.duration(r.durationMs) ?? "the timeout")]") }
             if r.result == .stopped { lines.append("[stopped]") }
-            if body.isEmpty, let m = r.error?.message, !m.isEmpty, r.result != .success { lines.append(m) }
+            if body.isEmpty, let m = r.error?.message, !m.isEmpty, r.result == .failed { lines.append(m) }
             return (useErr ? "stderr" : "stdout", lines.count <= (command == nil ? 0 : 1) ? [] : lines)
         }
         let lines = (r.files ?? []).map { f -> String in

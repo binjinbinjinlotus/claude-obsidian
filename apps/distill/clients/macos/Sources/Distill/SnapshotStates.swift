@@ -16,6 +16,7 @@ enum StatesSnapshot {
         case flask = "4 · Quick access from the flask"
         case app = "5 · Settings and app"
         case actions = "6 · Actions from your notes"
+        case collectors = "7 · Collectors"
     }
 
     nonisolated static let mainSize = CGSize(width: 1200, height: 760)
@@ -45,6 +46,7 @@ enum StatesSnapshot {
         quickNoteStates()
         settingsStates()
         actionsStates()
+        collectorsStates()
         settingsNavStates()
         writeManifest()
     }
@@ -189,9 +191,11 @@ enum StatesSnapshot {
             content().frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.window)
         }
         .environmentObject(e.ask)
+        .overlay { if section == .collectors { CollectorsOverlay(store: e.collectors) } }
         .overlay(alignment: .bottom) { ErrorBanner() }
         .foregroundStyle(Theme.ink)
         .environmentObject(e)
+        .environment(\.fixtureFolders, true)
         .frame(width: size.width, height: size.height)
         shoot(file, flow, screen, state, description, defaults: defaults, live: live, liveSize: size, view)
     }
