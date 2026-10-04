@@ -289,8 +289,9 @@ def render_node(node, screen):
 
 
 def render_list(node, screen):
-    """An ActionRow list from screen["lists"]. Group heads count the rows of their group that are not
-    gone (or show a fixed "count"); selected / hover / gone are row indexes, heads not counted."""
+    """A row list from screen["lists"]: ActionRow rows, or the component named by the node's "row"
+    (CollectorRow). Group heads count the rows of their group that are not gone (or show a fixed
+    "count"); selected / hover / gone are row indexes, heads not counted."""
     items = screen['lists'][node['list']]
     sel, hov, gone = node.get('selected'), node.get('hover'), node.get('gone')
     idx, i = [], 0
@@ -322,7 +323,7 @@ def render_list(node, screen):
         r = idx[j]
         props = {k: v for k, v in it.items() if k != 'mode'}
         props.update(selected=True if r == sel else None, hover=True if r == hov else None, mode=it.get('mode'), faded=True if r == gone else None)
-        out.append(dc_import('ActionRow', props, ['100%', '56px']))
+        out.append(dc_import(node.get('row', 'ActionRow'), props, ['100%', '56px']))
     return ''.join(out)
 
 
@@ -360,6 +361,23 @@ def render_window(s, screen):
             f'<div style="position: absolute; inset: 0; z-index: -1">{dc_import("WindowShell", {"layer": "frame", "width": w, "height": h}, [f"{w}px", f"{h}px"])}</div>'
             f'<div style="position: absolute; left: 20px; top: 20px; right: 20px; bottom: 20px; display: flex; border-radius: 16px; overflow: hidden">{content}{regions.get("overlay", "")}</div>'
             f'<div style="position: absolute; left: 38px; top: 36px">{dc_import("WindowShell", {"layer": "controls"}, ["52px", "12px"])}</div></div>')
+
+
+def page_doc(doc, body):
+    """A page board's document: the window body plus its own CSS, data-props and script, kept verbatim
+    (the script carries the sc-for data, so it never goes through str.format)."""
+    return ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+            f'<title>{doc["title"]}</title>\n<script src="./support.js"></script>\n</head>\n<body>\n<x-dc>\n<helmet>\n{FONTS}\n'
+            f'<style>{doc["css"]}</style>\n</helmet>\n{body}\n</x-dc>\n'
+            f"<script type=\"text/x-dc\" data-dc-script data-props='{doc['props']}'>\n{doc['script']}\n</script>\n</body>\n</html>\n")
+
+
+def render_page(s, screen):
+    """A page board (one app window, no heading): the state's layout with its regions, wrapped by page_doc."""
+    regions = {k: render_region(v, screen) for k, v in s.get('regions', {}).items()}
+    layout = screen['layouts'][s['layout']]
+    fields = {k: regions.get(k, '') for k in re.findall(r'(?<!\{)\{(\w+)\}', layout)}
+    return page_doc(s['doc'], layout.format(**fields))
 
 
 def screen_states(screen, comp_names):
@@ -403,6 +421,10 @@ def screen_boards(screens, comps, H):
         for b in screen.get('boards', []):
             if b.get('pending') and '--include-pending' not in sys.argv:
                 continue
+            if 'page' in b:  # one window as its own board (Queue, Queue · batch running)
+                st = resolved[b['page']]
+                boards[b['file']] = (render_page(st, screen), st['window']['width'], b['title'], 'page')
+                continue
             parts = []
             for sec in b['sections']:
                 if 'row' in sec:
@@ -426,7 +448,7 @@ def screen_boards(screens, comps, H):
                     f'<span style="font-size: 13px; color: #6B6862; max-width: 1400px; line-height: 1.55">{b["intro"]}</span>\n</div>\n'
                     + ''.join(parts) + '\n</div>\n</div>')
             props_json = '{"$preview":{"width":%d,"height":%d}}' % (W, hgt)
-            boards[f] = (page(f'Distill — {b["title"]}', body, props_json, 'class Component extends DCLogic { renderVals() { return {}; } }', BOARD_CSS), W, b['title'])
+            boards[f] = (page(f'Distill — {b["title"]}', body, props_json, 'class Component extends DCLogic { renderVals() { return {}; } }', BOARD_CSS), W, b['title'], 'screen')
     return boards
 
 
@@ -440,9 +462,9 @@ def build_all(H=None):
         out[f'{c["name"]}.dc.html'] = (component_board(c), c['preview'][0], f'{c["name"]} (component)', COMPONENT_ROW_Y, 'component')
     for f, (html, W, title) in states_boards(comps, H).items():
         out[f] = (html, W, title, COMPONENT_ROW_Y, 'states')
-    for f, (html, W, title) in screen_boards(screens, comps, H).items():
+    for f, (html, W, title, kind) in screen_boards(screens, comps, H).items():
         row = next((s.get('row') for s in screens if any(b['file'] == f for b in s.get('boards', []))), None)
-        out[f] = (html, W, title, row, 'screen')
+        out[f] = (html, W, title, row, kind)
     return out
 
 
@@ -521,6 +543,12 @@ def merge_canvas(live_path, out_dir, built, written):
         last = max((order.index(k) for k in in_row if k in order), default=len(order) - 1)
         order.insert(last + 1, f)
         added.append(f)
+    notes = c.setdefault('notes', {})
+    for s in schema()[1]:  # a screen file may open its own row: {"rowNote": {"id", "text"}}, title 240 px above the boards
+        n = s.get('rowNote')
+        if n and n['id'] not in notes:
+            notes[n['id']] = {'kind': 'title1', 'maxW': 8000, 'text': n['text'], 'w': 240, 'x': 0, 'y': s['row'] - 240}
+            print('note   ', n['id'], n['text'])
     with open(os.path.join(out_dir, 'canvas.json'), 'w', encoding='utf-8') as fh:
         json.dump(c, fh, indent=2, ensure_ascii=False)
     for f in changed:
@@ -571,7 +599,7 @@ def main(argv):
 
     write()
     if do_measure:
-        targets = [f for f in files if built[f][4] != 'component']
+        targets = [f for f in files if built[f][4] in ('states', 'screen')]  # a page board keeps its window height
         got = measure(out_dir, targets, {f: built[f][1] for f in targets})
         H = sizes()
         moved = {f: (H.get(f), h) for f, h in got.items() if H.get(f) != h}

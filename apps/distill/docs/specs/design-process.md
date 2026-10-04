@@ -92,6 +92,21 @@ menus, toasts). Use the id of the
 matching `Distill --snapshot --states` render; the drift test lists screen
 states without one (report only).
 
+Page boards (2026-10-04): a board that is one app window with no heading
+(Main, MainLoading, MainEmpty in `screens/queue.json`) is `{"file", "title",
+"page": STATE_ID}`. Its base keeps the document wrapper verbatim in `doc`
+(`title`, `css`, `data-props`, and the `script` holding the `sc-for` data,
+which never goes through `str.format`) and has `sidebar` and `header`
+regions; states override them like any other (`header.vars.path`,
+`doc.script`). `tools/import_board.py --page PROJECT screens/<name>.json
+Board.dc.html:STATE_ID` imports one and writes only if it renders back byte
+for byte. `--measure` leaves page boards at their window height.
+
+A row list can use another row component: `{"list": KEY, "row":
+"CollectorRow", "selected": 0}`. A screen file can open its own canvas row:
+`"rowNote": {"id": "flow7", "text": "7 · …"}` adds the row title 240 px above
+`row` when the canvas has no note with that id.
+
 ### Drift test
 
 `design/test_design.py`, part of `make test`, fails when `tokens.json`

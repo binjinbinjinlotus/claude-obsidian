@@ -2,6 +2,11 @@
 """Import published legacy boards into a screens/*.json file (migration tool, standard library only).
 
     python3 apps/distill/design/tools/import_board.py [--ids IDS.json] PROJECT_DIR SCREEN_JSON BOARD[:BASE_PREFIX] ...
+    python3 apps/distill/design/tools/import_board.py --page PROJECT_DIR SCREEN_JSON BOARD:STATE_ID ...
+
+--page imports single-window boards (Main, MainLoading: no heading, their own sc-for script) as page
+bases: the wrapper stays verbatim, the Sidebar and the header become regions. It adds to SCREEN_JSON
+instead of replacing it, and writes only when every board renders back byte for byte.
 
 PROJECT_DIR is a copy of the canvas project (the final, published .dc.html files). Each board is
 parsed into the schema: frames become states of a base screen (the board's first frame), recognized
@@ -452,8 +457,99 @@ def layout_key(screen, text, prefix, regions):
     return key
 
 
+# ---------------------------------------------------------------- page boards (one window, no heading)
+PAGE_RX = re.compile('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<title>(.*?)</title>\n<script src="./support.js"></script>\n</head>\n<body>\n<x-dc>\n<helmet>\n'
+                     + re.escape(render.FONTS) + '\n<style>(.*?)</style>\n</helmet>\n(.*)\n</x-dc>\n'
+                     "<script type=\"text/x-dc\" data-dc-script data-props='([^']*)'>\n(.*)\n</script>\n</body>\n</html>\n$", re.S)
+PAGE_HEADER_TEMPLATE = ('<header style="display: flex; align-items: flex-start; gap: 16px">\n<div style="display: flex; flex-direction: column; gap: 6px; flex-grow: 1">\n'
+                        '<h1 style="margin: 0; font-family: \'Bricolage Grotesque\', sans-serif; font-weight: 800; font-size: 34px; letter-spacing: -0.03em; line-height: 1.05">{title}</h1>\n'
+                        '<span style="font-size: 15px; color: #6B6862">{sub}</span>{path}\n</div>\n{right}\n</header>')
+PAGE_HEADER_RX = re.compile(re.escape(PAGE_HEADER_TEMPLATE).replace(r'\{title\}', '(.*?)').replace(r'\{sub\}', '(.*?)')
+                            .replace(r'\{path\}', '()').replace(r'\{right\}', '(.*?)'), re.S)
+
+
+def import_page(s, prefix):
+    """A page board → base {doc, window, layout text, regions}: the document wrapper verbatim, the
+    Sidebar instance and the header as regions, everything else stays in the layout."""
+    m = PAGE_RX.match(s)
+    if not m:
+        raise SystemExit(f'{prefix}: not a page board (wrapper differs from render.page_doc)')
+    title, css, body, props, script = m.groups()
+    off = m.start(3)
+    root = parse(s, off, m.end(3))
+    regions, cuts = {}, []
+
+    def walk(el):
+        for k in el.kids:
+            if k.tag == 'dc-import' and k.attr('name') == 'Sidebar' and 'sidebar' not in regions:
+                node = instance(s, k)
+                if node:
+                    regions['sidebar'] = node
+                    cuts.append((k.start, k.end, 'sidebar'))
+                    continue
+            if k.tag == 'header' and 'header' not in regions:
+                hm = PAGE_HEADER_RX.fullmatch(html(s, k))
+                if hm:
+                    right = parse(s, k.start + hm.start(4), k.start + hm.end(4))
+                    node = instance(s, right.kids[0]) if len(right.kids) == 1 and right.kids[0].tag == 'dc-import' and html(s, right.kids[0]) == hm.group(4) else None
+                    regions['header'] = {'t': 'page-header', 'vars': {'title': hm.group(1), 'sub': hm.group(2), 'path': '', 'right': node or hm.group(4)}}
+                    cuts.append((k.start, k.end, 'header'))
+                    continue
+            walk(k)
+    walk(root)
+    cuts.sort()
+    out, pos = [], off
+    for a, b, name in cuts:
+        out.append(s[pos:a].replace('{', '{{').replace('}', '}}'))
+        out.append('{' + name + '}')
+        pos = b
+    out.append(s[pos:m.end(3)].replace('{', '{{').replace('}', '}}'))
+    w, h = (int(x) for x in re.search(r'width: (\d+)px; height: (\d+)px', body).groups())
+    return {'doc': {'title': title, 'css': css, 'props': props, 'script': script}, 'window': {'width': w, 'height': h},
+            'layout': ''.join(out), 'regions': regions}
+
+
+def main_pages(argv):
+    """--page PROJECT_DIR SCREEN_JSON BOARD:STATE_ID ...: add page boards to SCREEN_JSON (other keys kept)."""
+    proj, screen_path = argv[0], argv[1]
+    screen = json.load(open(screen_path)) if os.path.exists(screen_path) else {}
+    screen.setdefault('$doc', 'Page boards (one app window each) imported by tools/import_board.py --page, then edited by hand. '
+                      'The document wrapper (title, CSS, data-props, script with the sc-for data) is kept verbatim in each base\'s doc.')
+    screen.setdefault('row', 0)
+    for k in ('templates', 'layouts', 'bases'):
+        screen.setdefault(k, {})
+    screen.setdefault('states', [])
+    screen.setdefault('boards', [])
+    screen['templates']['page-header'] = PAGE_HEADER_TEMPLATE
+    canvas = json.load(open(os.path.join(proj, 'canvas.json')))['boards'] if os.path.exists(os.path.join(proj, 'canvas.json')) else {}
+    orders = render.prop_orders(render.load('components.json')['components'])
+    for spec in argv[2:]:
+        file, _, sid = spec.partition(':')
+        s = open(os.path.join(proj, file), encoding='utf-8').read()
+        base = import_page(s, sid)
+        key = f'{sid}-page'
+        screen['layouts'][key] = base.pop('layout')
+        base['layout'] = key
+        screen['bases'][sid] = base
+        screen['states'] = [x for x in screen['states'] if x['id'] != sid] + [{'id': sid, 'base': sid, 'label': canvas.get(file, {}).get('title', file)}]
+        screen['boards'] = [b for b in screen['boards'] if b['file'] != file] + [{'file': file, 'title': canvas.get(file, {}).get('title', file), 'page': sid}]
+        screen['_file'] = os.path.basename(screen_path)
+        st = render.screen_states(screen, orders)[sid]
+        got = render.render_page(st, screen)
+        del screen['_file']
+        if got != s:
+            i = next((i for i, (a, b) in enumerate(zip(got, s)) if a != b), min(len(got), len(s)))
+            raise SystemExit(f'{file}: render differs at byte {i}: {got[i - 60:i + 60]!r} vs {s[i - 60:i + 60]!r}; nothing written')
+        print(f'{file}: page base {sid}, regions {", ".join(base["regions"])}, byte-identical')
+    with open(screen_path, 'w', encoding='utf-8') as f:
+        json.dump(screen, f, indent=1, ensure_ascii=False)
+        f.write('\n')
+
+
 def main(argv):
     args = list(argv)
+    if args and args[0] == '--page':
+        return main_pages(args[1:])
     idmap = {}
     if '--ids' in args:
         i = args.index('--ids')

@@ -17,6 +17,58 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Collectors (designed, not built): defaults chosen for the open
+  questions.** Spec: [Collectors](collectors.md). Canvas: row "7 ·
+  Collectors" (Collectors, CollectorsScript) and the queue path on Queue
+  (Main, MainLoading, MainEmpty). These are the defaults; the user can
+  overturn any of them.
+  - **Sidebar item, no Settings section.** Collectors sits under Queue
+    because it feeds the queue. Collectors have runs and errors, so they
+    are not preferences, and editing them in two places would drift.
+  - **The list is global, with a target vault on each collector.** It
+    defaults to the active vault. This is still open in the spec.
+  - **Folder always moves (never copies).** It skips hidden files,
+    subfolders, and files changed within the settle delay (the same 10
+    minutes as batching). On a name clash it adds " 2" and never
+    overwrites.
+  - **Dedupe is by content.** The vault ledger (Folder collectors only;
+    script runs never enter it) is keyed by sha256, with
+    path, size and mtime as a shortcut that skips hashing. A file whose
+    content was collected before is skipped and stays in the source
+    folder, whatever its name. Same path with new content is collected
+    again. The ledger outlives the collector.
+  - **One schedule model: 5-field cron in local time; presets are
+    shorthands.** The cron is always shown next to the preset. A missed
+    run catches up once, a tick that overlaps a running run is skipped,
+    and at most 2 collectors run at once.
+  - **Script contract.** The script gets `$1` (vault) and `$2` (queue
+    folder) plus `DISTILL_VAULT` and `DISTILL_QUEUE_DIR`. It runs in a
+    fresh temporary working folder with stdin closed. The timeout is 5
+    minutes by default and 1 hour at most; Distill sends SIGTERM, then
+    SIGKILL 10 s later. Exit 0 is success. Files a failed or timed-out run
+    wrote stay in the queue.
+  - **Consent is bound to the script's sha256.** The core checks the hash
+    before every run. A changed file or a saved inline edit pauses the
+    collector until the user allows the new version. No sandbox is
+    promised. Scripts never run during note processing.
+  - **Run history lives in the collector, not in History.** It is kept for
+    30 days or the last 200 runs, with the last 64 KB of stdout and
+    stderr. History → Jobs keeps showing the batches, and queue rows name
+    the collector. There is no notification on success; a macOS
+    notification is sent only on the first failure after a success.
+  - **The queue path on Queue is shown with `~`.** Copy copies the
+    absolute path, and the hover shows it. This is open: the user asked for
+    the "full path". The Folder default source is
+    `~/Distill Inbox`, and Distill creates it on first save.
+  - **API and contract are proposed only.** The lead owns `contracts.ts`.
+- **Design schema: page boards.** Main and MainLoading moved from
+  `legacy/gen_audit.py` into `design/screens/queue.json`. They are a new
+  "page" board kind (one window, the document wrapper and the `sc-for`
+  script kept verbatim) and were imported byte for byte with
+  `tools/import_board.py --page`. `gen_audit.py` must no longer run over
+  them. A screen file can add its canvas row title (`rowNote`), and row
+  lists can use a row component other than ActionRow.
+
 - **Settings shows one page per section, matching the canvas; the group
   pages were a deviation.** The SettingsNav board draws each nav item as its
   own page (To-do defaults and Connections each fill the page alone), but the

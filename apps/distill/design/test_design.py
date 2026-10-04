@@ -196,6 +196,9 @@ class Screens(unittest.TestCase):
                     self.assertIn('card', st, f'{s["_file"]}: state {st["id"]} has neither a base nor a card')
             render.screen_states(s, names)
             for b in s['boards']:
+                if 'page' in b:  # a page board is one state
+                    self.assertIn(b['page'], ids, f'{b["file"]}: unknown state {b["page"]}')
+                    continue
                 for sec in b['sections']:
                     for sid in sec.get('row', []) + sec.get('grid', []) + ([sec['frame']] if 'frame' in sec else []):
                         self.assertIn(sid, ids, f'{b["file"]}: unknown state {sid}')
