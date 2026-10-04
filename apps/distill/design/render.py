@@ -208,6 +208,9 @@ def normalize(comp_names, v):
     return v
 
 
+NODE_KEYS = {'c', 'props', 'size', 'at', 't', 'vars', 'html'}  # a node's own keys; any other key on an instance is a prop
+
+
 def apply_override(base, override, comp_names):
     """A state is the base screen plus `override`: {"dotted.path": value}. A path walks regions, then a
     component instance's props ("toolbar.chips" sets the toolbar instance's chips prop). null removes."""
@@ -217,11 +220,11 @@ def apply_override(base, override, comp_names):
         keys = path.split('.')
         node = s['regions'] if keys[0] in s.get('regions', {}) or keys[0] not in s else s
         for k in keys[:-1]:
-            if isinstance(node, dict) and k not in node and 'props' in node:
-                node = node['props']
+            if isinstance(node, dict) and 'c' in node and k not in NODE_KEYS:
+                node = node.setdefault('props', {})
             node = node.setdefault(k, {})
         last = keys[-1]
-        if isinstance(node, dict) and 'c' in node and last not in node and last != 'c':
+        if isinstance(node, dict) and 'c' in node and last not in NODE_KEYS:
             node = node.setdefault('props', {})
         if value is None:
             node.pop(last, None)
@@ -378,6 +381,21 @@ def measure(out_dir, files, widths):
     return got
 
 
+def preview_height(html):
+    m = re.search(r"data-props='([^']*)'", html)
+    return json.loads(m.group(1).replace('&#39;', "'")).get('$preview', {}).get('height') if m else None
+
+
+def same_board(a, b):
+    """Equal boards: identical markup, and data-props equal as JSON (key order inside a prop is free)."""
+    rx = r"data-props='([^']*)'"
+    pa, pb = re.search(rx, a), re.search(rx, b)
+    if not pa or not pb:
+        return a == b
+    ja, jb = (json.loads(p.group(1).replace('&#39;', "'")) for p in (pa, pb))
+    return ja == jb and a.replace(pa.group(0), '') == b.replace(pb.group(0), '')
+
+
 def merge_canvas(live_path, out_dir, built, written):
     """Live canvas.json + this render → OUT_DIR/canvas.json. Prints the boards that changed."""
     live_dir = os.path.dirname(os.path.abspath(live_path))
@@ -388,22 +406,24 @@ def merge_canvas(live_path, out_dir, built, written):
     for f in written:
         html, W, title, row, kind = built[f]
         old = os.path.join(live_dir, f)
-        if not os.path.exists(old) or open(old, encoding='utf-8').read() != html:
+        if not os.path.exists(old):
             changed.append(f)
+        else:
+            with open(old, encoding='utf-8') as fh:
+                if not same_board(fh.read(), html):
+                    changed.append(f)
+        h = preview_height(html)
         if f in boards:
-            if kind != 'component':  # a component frame keeps the size the user gave it in the editor
-                m = re.search(r'"height":(\d+)\}\}', html)
-                if m and abs(int(m.group(1)) - boards[f]['h']) > 2:
-                    resized.append((f, boards[f]['h'], int(m.group(1))))
-                    boards[f]['h'] = int(m.group(1))
+            if kind != 'component' and h and abs(h - boards[f]['h']) > 2:  # a component frame keeps the user's editor size
+                resized.append((f, boards[f]['h'], h))
+                boards[f]['h'] = h
             continue
         if row is None:
             print(f'warning: {f} has no canvas row; not placed', file=sys.stderr)
             continue
         in_row = [k for k, v in boards.items() if v['y'] == row]
         x = max((boards[k]['x'] + boards[k]['w'] for k in in_row), default=-80) + 80
-        m = re.search(r'"height":(\d+)\}\}', html)
-        boards[f] = {'x': x, 'y': row, 'w': W, 'h': int(m.group(1)) if m else 400, 'title': title}
+        boards[f] = {'x': x, 'y': row, 'w': W, 'h': h or 400, 'title': title}
         last = max((order.index(k) for k in in_row if k in order), default=len(order) - 1)
         order.insert(last + 1, f)
         added.append(f)
@@ -448,7 +468,9 @@ def main(argv):
     files = [f for f in built if not only or f in only]
 
     def write():
-        for f in files:
+        # Boards import components at render time, so the component files always go along (they are
+        # tiny). Only `files` are reported and merged.
+        for f in [f for f in built if built[f][4] == 'component' and f not in files] + files:
             with open(os.path.join(out_dir, f), 'w', encoding='utf-8') as fh:
                 fh.write(built[f][0])
         shutil.copy(os.path.join(ROOT, 'support.js'), os.path.join(out_dir, 'support.js'))
