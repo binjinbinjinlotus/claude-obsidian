@@ -772,6 +772,194 @@ export interface ConnectRequest {
   token?: string;
 }
 
+// ───────────────────────────── Collectors (collectors.json) ─────────────────────────────
+//
+// Collectors fill a vault's queue folder on a schedule; what they bring is batched,
+// reviewed and applied like a dropped file. One list for all vaults; each collector
+// has a target vault. State: <state>/collectors.json, <state>/collectors/ledger-<vault-id>.jsonl
+// (Folder dedupe by sha256), <state>/collectors/runs/<collector-id>.jsonl (run history).
+// Spec: apps/distill/docs/specs/collectors.md
+
+export type CollectorKind = 'folder' | 'script';
+export type CollectorInterpreter = 'zsh' | 'python3' | 'node';
+/** Presets are shorthands for the cron: every15 = "*\/15 * * * *", hourly = "0 * * * *", daily = "M H * * *", weekdays = "M H * * 1-5". */
+export type SchedulePreset = 'every15' | 'hourly' | 'daily' | 'weekdays' | 'custom';
+
+export interface CollectorSchedule {
+  /** 5-field cron (minute hour day-of-month month day-of-week) in local time; "@hourly" and "@daily" are accepted. */
+  cron: string;
+  preset?: SchedulePreset;
+}
+
+export interface FolderCollectorSettings {
+  /** Absolute source folder (a leading "~" is expanded on save). Default "~/Distill Inbox", created on save. */
+  source: string;
+  /** copy (default) keeps the original; move takes it out of the source folder. */
+  afterCollect: 'copy' | 'move';
+}
+
+export type ScriptSource = { file: string } | { inline: string };
+
+export interface ScriptCollectorSettings {
+  source: ScriptSource;
+  interpreter: CollectorInterpreter;
+  /** Default 300 (5 minutes), 1…3600. */
+  timeoutSeconds: number;
+  /** The script sha256 the user allowed (consent). A run starts only while the script hashes to this. */
+  allowedSha256?: string | null;
+  allowedAt?: string | null;
+}
+
+/** Computed by the core on every read; ignored on input. */
+export interface CollectorStatus {
+  /** A run is queued or running. */
+  running: boolean;
+  /** Next scheduled run (ISO-8601); null when off or the schedule never runs. */
+  nextRunAt?: string | null;
+  /** The newest run (files and output tails left out; see listCollectorRuns). */
+  lastRun?: CollectorRun | null;
+  /** Script: the script's current sha256, or null when it can't be read (scriptProblem says why). */
+  currentSha256?: string | null;
+  scriptProblem?: string | null;
+  /** Script: never allowed, or changed since it was allowed. */
+  needsConsent: boolean;
+  /** Folder: ledger entries whose source is this collector's folder ("Already collected: 128 files"). */
+  collectedCount?: number;
+  /** The sidebar count: the last run failed or timed out, or the script needs consent. */
+  needsAttention: boolean;
+}
+
+export interface Collector {
+  id: string; // col-<uuid>
+  kind: CollectorKind;
+  name: string;
+  /** Target vault (a configured vault profile); its queue folder receives the files. */
+  vaultPath: string;
+  enabled: boolean;
+  schedule: CollectorSchedule;
+  folder?: FolderCollectorSettings; // kind folder
+  script?: ScriptCollectorSettings; // kind script
+  createdAt: string;
+  updatedAt: string;
+  status?: CollectorStatus;
+}
+
+export interface NewCollectorInput {
+  kind: CollectorKind;
+  /** Default "Distill Inbox" (folder) / "Script" (script). */
+  name?: string;
+  /** Default: the active vault. */
+  vaultPath?: string;
+  /** Folder default true. A script is always created off (it needs consent first). */
+  enabled?: boolean;
+  /** Default every hour. */
+  schedule?: CollectorSchedule;
+  folder?: Partial<FolderCollectorSettings>;
+  script?: { source: ScriptSource; interpreter: CollectorInterpreter; timeoutSeconds?: number };
+}
+
+export interface CollectorPatch {
+  name?: string;
+  vaultPath?: string;
+  /** Turning a script on needs a current consent (else invalid_state). */
+  enabled?: boolean;
+  schedule?: CollectorSchedule;
+  folder?: Partial<FolderCollectorSettings>;
+  /** A new source or interpreter changes the hash: the script needs consent again. */
+  script?: Partial<{ source: ScriptSource; interpreter: CollectorInterpreter; timeoutSeconds: number }>;
+}
+
+export type CollectorTrigger = 'schedule' | 'now' | 'catchup';
+
+/**
+ * queued    – waiting for a free slot (at most 2 collectors run at once) or, for a script,
+ *             for a batch to finish applying to the same vault (`waiting`)
+ * success   – copied / moved files (Folder) or added files to the queue (script, exit 0)
+ * nothing   – nothing new
+ * skipped   – a scheduled tick while this collector was still running (`skipReason`)
+ * notTrusted – a script that isn't allowed yet or changed since (error.code notAllowed | scriptChanged)
+ * stopped   – the user pressed Stop
+ */
+export type CollectorRunResult = 'queued' | 'running' | 'success' | 'nothing' | 'failed' | 'timedout' | 'skipped' | 'notTrusted' | 'stopped';
+
+export type CollectorErrorCode =
+  | 'sourceMissing'
+  | 'noPermission'
+  | 'queueMissing'
+  | 'vaultMissing'
+  | 'scriptMissing'
+  | 'interpreterMissing'
+  | 'scriptFailed'
+  | 'notAllowed'
+  | 'scriptChanged'
+  | 'interrupted'
+  | 'other';
+
+export interface CollectorRunFile {
+  /** Name in the source folder. */
+  name: string;
+  /** copied / moved; skipped = already collected; waiting = still changing; error = this file failed (the run went on). */
+  outcome: 'copied' | 'moved' | 'skipped' | 'waiting' | 'error';
+  reason?: string;
+  /** Name it got in the queue folder ("tea 2.md" after a clash). */
+  queueName?: string;
+  size?: number;
+}
+
+export interface CollectorRun {
+  id: string; // run-<uuid>
+  collectorId: string;
+  kind: CollectorKind;
+  vaultPath: string;
+  trigger: CollectorTrigger;
+  /** When the run started (when it was queued, until it starts). */
+  startedAt: string;
+  endedAt?: string;
+  durationMs?: number;
+  result: CollectorRunResult;
+  /** While queued: what it waits for. */
+  waiting?: 'slot' | 'batch';
+  /** Skipped: why, e.g. "the 6:00 AM run was still going". */
+  skipReason?: string;
+  error?: { code: CollectorErrorCode; message: string };
+  /** Folder: per-file outcomes. */
+  files?: CollectorRunFile[];
+  counts: { copied: number; moved: number; skipped: number; waiting: number; errors: number; added: number };
+  /** Names that appeared in the queue folder during the run (script), or that the run put there (Folder). */
+  filesAdded: string[];
+  /** Script. */
+  exitCode?: number | null;
+  signal?: string | null;
+  sha256?: string;
+  /** Script: the last 64 KB of each stream. */
+  stdoutTail?: string;
+  stderrTail?: string;
+}
+
+/** One entry of a vault's ledger: a file a Folder collector took (name, size, times, hash; never content). */
+export interface CollectedFile {
+  sha256: string;
+  name: string;
+  sourcePath: string;
+  size: number;
+  /** The file's mtime when collected (ISO-8601). */
+  mtime: string;
+  collectedAt: string;
+  collectorId: string;
+  queueName: string;
+  outcome: 'copied' | 'moved';
+}
+
+export interface ScheduleCheck {
+  cron: string;
+  valid: boolean;
+  error?: string;
+  /** The preset this cron matches, if any ("custom" otherwise). */
+  preset?: SchedulePreset;
+  /** The next runs from now (up to 3, ISO-8601). */
+  nextRuns: string[];
+}
+
 // ───────────────────────────── Events ─────────────────────────────
 
 export type CoreEvent =
@@ -783,7 +971,13 @@ export type CoreEvent =
   | { type: 'progress'; progress: Progress }
   | { type: 'conversation'; conversation: AskConversationSummary; deleted?: boolean }
   | { type: 'action'; action: ActionItem; deleted?: true }
-  | { type: 'connection'; connection: ConnectionInfo };
+  | { type: 'connection'; connection: ConnectionInfo }
+  // v4: collectors (dotted names as in the collectors spec)
+  | { type: 'collector.changed'; collector: Collector; deleted?: true }
+  | { type: 'collector.run.started'; run: CollectorRun }
+  /** Throttled script output: the text added since the last event. */
+  | { type: 'collector.run.output'; collectorId: string; runId: string; stream: 'stdout' | 'stderr'; text: string }
+  | { type: 'collector.run.finished'; run: CollectorRun };
 
 // ───────────────────────────── The core facade ─────────────────────────────
 
@@ -913,6 +1107,34 @@ export interface DistillCore {
   signInURL(id: string, site?: string): Promise<{ url: string }>;
   disconnect(id: string): Promise<ConnectionInfo>;
 
+  // ── v4: collectors (owner: core-collectors; spec collectors.md) ──
+  listCollectors(): Promise<Collector[]>;
+  getCollector(id: string): Promise<Collector | undefined>;
+  /** A script collector is saved off and needs allowCollector before it can run. */
+  createCollector(input: NewCollectorInput): Promise<Collector>;
+  updateCollector(id: string, patch: CollectorPatch): Promise<Collector>;
+  /** Refused (busy) while a run is queued or running. The ledger is kept. */
+  deleteCollector(id: string): Promise<void>;
+  /** Run now (does not move the schedule). Returns the run (queued or running); busy when one is already queued or running. */
+  runCollector(id: string): Promise<CollectorRun>;
+  /** Stop the queued or running run (scripts: SIGTERM, SIGKILL 10 s later). Null when idle. */
+  stopCollector(id: string): Promise<CollectorRun | null>;
+  /** Consent: `sha256` must equal the script's current hash (else invalid_state). Also turns it on. */
+  allowCollector(id: string, sha256: string): Promise<Collector>;
+  /** Clears the consent and turns the collector off. */
+  revokeCollector(id: string): Promise<Collector>;
+  /** Newest first. */
+  listCollectorRuns(id: string, opts?: { limit?: number }): Promise<CollectorRun[]>;
+  /** Folder: Already collected, newest first; `query` filters by name. */
+  listCollected(id: string, query?: string): Promise<CollectedFile[]>;
+  /** Folder: Forget one (every entry with that sha256 in the vault's ledger) or, without sha256, all entries from this folder. Returns what was removed (for Undo). */
+  forgetCollected(id: string, sha256?: string): Promise<CollectedFile[]>;
+  /** Folder: Undo of Forget: put entries back. */
+  restoreCollected(id: string, files: CollectedFile[]): Promise<number>;
+  /** Create a missing source folder (Folder) or the target vault's queue folder. */
+  createCollectorFolder(id: string, which: 'source' | 'queue'): Promise<Collector>;
+  checkSchedule(cron: string): Promise<ScheduleCheck>;
+
   subscribe(listener: (event: CoreEvent) => void): () => void;
 }
 
@@ -926,4 +1148,5 @@ export interface StatePaths {
   serverLock: string; // <dir>/server.json  {pid, port, startedAt}
   token: string; // <dir>/token  (mode 0600)
   actions?: string; // <dir>/actions.json (v3)
+  collectors?: string; // <dir>/collectors.json (v4); ledgers and runs in <dir>/collectors/
 }

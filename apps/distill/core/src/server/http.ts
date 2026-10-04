@@ -1,6 +1,13 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 import type {
+  CollectedFile,
+  CollectorInterpreter,
+  CollectorKind,
+  CollectorPatch,
+  CollectorSchedule,
+  NewCollectorInput,
+  ScriptSource,
   ActionPatch,
   ActionQuery,
   ActionSource,
@@ -403,6 +410,121 @@ function parseActionQuery(query: URLSearchParams): ActionQuery {
   const text = query.get('q');
   if (text && text.trim()) q.text = text;
   return q;
+}
+
+// ───────────────────────────── collectors ─────────────────────────────
+
+const SCHEDULE_PRESETS = ['every15', 'hourly', 'daily', 'weekdays', 'custom'] as const;
+
+function parseSchedule(v: unknown): CollectorSchedule | undefined {
+  if (v === undefined || v === null) return undefined;
+  const o = asObject(v, false);
+  const preset = optEnum(o, 'preset', SCHEDULE_PRESETS);
+  return { cron: reqString(o, 'cron'), ...(preset ? { preset } : {}) };
+}
+
+function parseScriptSource(v: unknown): ScriptSource | undefined {
+  if (v === undefined || v === null) return undefined;
+  const o = asObject(v, false);
+  const inline = optString(o, 'inline');
+  const file = optString(o, 'file');
+  if ((inline === undefined) === (file === undefined)) throw bad('"source" must be {"file": path} or {"inline": code}');
+  return inline !== undefined ? { inline } : { file: file! };
+}
+
+function optTimeout(o: Record<string, unknown>): number | undefined {
+  const v = o.timeoutSeconds;
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== 'number' || !Number.isFinite(v)) throw bad('"timeoutSeconds" must be a number');
+  return v;
+}
+
+const INTERPRETERS = ['zsh', 'python3', 'node'] as const;
+
+function parseFolderPatch(v: unknown): NewCollectorInput['folder'] {
+  if (v === undefined || v === null) return undefined;
+  const o = asObject(v, false);
+  const out: NonNullable<NewCollectorInput['folder']> = {};
+  const source = optString(o, 'source');
+  const afterCollect = optEnum(o, 'afterCollect', ['copy', 'move'] as const);
+  if (source !== undefined) out.source = source;
+  if (afterCollect) out.afterCollect = afterCollect;
+  return out;
+}
+
+function parseNewCollector(body: unknown): NewCollectorInput {
+  const o = asObject(body, false);
+  const kind = optEnum<CollectorKind>(o, 'kind', ['folder', 'script']);
+  if (!kind) throw bad('"kind" is required ("folder" or "script")');
+  const input: NewCollectorInput = { kind };
+  const name = optString(o, 'name');
+  const vaultPath = optString(o, 'vaultPath');
+  const enabled = optBoolean(o, 'enabled');
+  const schedule = parseSchedule(o.schedule);
+  const folder = parseFolderPatch(o.folder);
+  if (name !== undefined) input.name = name;
+  if (vaultPath !== undefined) input.vaultPath = vaultPath;
+  if (enabled !== undefined) input.enabled = enabled;
+  if (schedule) input.schedule = schedule;
+  if (folder) input.folder = folder;
+  if (o.script !== undefined && o.script !== null) {
+    const so = asObject(o.script, false);
+    const source = parseScriptSource(so.source);
+    const interpreter = optEnum<CollectorInterpreter>(so, 'interpreter', INTERPRETERS);
+    if (!source) throw bad('"script.source" is required');
+    if (!interpreter) throw bad('"script.interpreter" is required (zsh, python3 or node)');
+    const timeoutSeconds = optTimeout(so);
+    input.script = { source, interpreter, ...(timeoutSeconds !== undefined ? { timeoutSeconds } : {}) };
+  }
+  if (kind === 'script' && !input.script) throw bad('a script collector needs "script"');
+  return input;
+}
+
+function parseCollectorPatch(body: unknown): CollectorPatch {
+  const o = asObject(body, false);
+  const patch: CollectorPatch = {};
+  const name = optString(o, 'name');
+  const vaultPath = optString(o, 'vaultPath');
+  const enabled = optBoolean(o, 'enabled');
+  const schedule = parseSchedule(o.schedule);
+  const folder = parseFolderPatch(o.folder);
+  if (name !== undefined) patch.name = name;
+  if (vaultPath !== undefined) patch.vaultPath = vaultPath;
+  if (enabled !== undefined) patch.enabled = enabled;
+  if (schedule) patch.schedule = schedule;
+  if (folder) patch.folder = folder;
+  if (o.script !== undefined && o.script !== null) {
+    const so = asObject(o.script, false);
+    const script: NonNullable<CollectorPatch['script']> = {};
+    const source = parseScriptSource(so.source);
+    const interpreter = optEnum<CollectorInterpreter>(so, 'interpreter', INTERPRETERS);
+    const timeoutSeconds = optTimeout(so);
+    if (source) script.source = source;
+    if (interpreter) script.interpreter = interpreter;
+    if (timeoutSeconds !== undefined) script.timeoutSeconds = timeoutSeconds;
+    patch.script = script;
+  }
+  return patch;
+}
+
+function parseCollectedFiles(o: Record<string, unknown>): CollectedFile[] {
+  if (!Array.isArray(o.files)) throw bad('"files" must be an array');
+  return o.files.map((f): CollectedFile => {
+    const x = asObject(f, false);
+    const size = x.size;
+    if (typeof size !== 'number' || !Number.isFinite(size)) throw bad('each file needs a numeric "size"');
+    return {
+      sha256: reqString(x, 'sha256'),
+      name: reqString(x, 'name'),
+      sourcePath: reqString(x, 'sourcePath'),
+      size,
+      mtime: reqString(x, 'mtime'),
+      collectedAt: reqString(x, 'collectedAt'),
+      collectorId: optString(x, 'collectorId') ?? '',
+      queueName: optString(x, 'queueName') ?? '',
+      outcome: optEnum(x, 'outcome', ['copied', 'moved'] as const) ?? 'copied',
+    };
+  });
 }
 
 /** Abort the signal when the client closes the request (Cancel). */
@@ -827,6 +949,82 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
       },
     },
     { method: 'POST', pattern: /^\/v1\/connections\/([^/]+)\/disconnect$/, handler: async ({ params }) => core.disconnect(params[0]!) },
+
+    // ── v4: collectors (docs/specs/collectors.md → API) ──
+    { method: 'GET', pattern: /^\/v1\/collectors$/, handler: async () => ({ collectors: await core.listCollectors() }) },
+    { method: 'POST', pattern: /^\/v1\/collectors$/, status: 201, handler: async ({ body }) => core.createCollector(parseNewCollector(await body())) },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/collectors\/check-schedule$/,
+      handler: async ({ body }) => core.checkSchedule(reqString(asObject(await body(), false), 'cron')),
+    },
+    {
+      method: 'GET',
+      pattern: /^\/v1\/collectors\/([^/]+)$/,
+      handler: async ({ params }) => {
+        const c = await core.getCollector(params[0]!);
+        if (!c) throw new HttpError(404, 'collector_not_found', `no collector with id "${params[0]}"`);
+        return c;
+      },
+    },
+    { method: 'PATCH', pattern: /^\/v1\/collectors\/([^/]+)$/, handler: async ({ params, body }) => core.updateCollector(params[0]!, parseCollectorPatch(await body())) },
+    {
+      method: 'DELETE',
+      pattern: /^\/v1\/collectors\/([^/]+)$/,
+      handler: async ({ params }) => {
+        await core.deleteCollector(params[0]!);
+        return { id: params[0]!, deleted: true };
+      },
+    },
+    { method: 'POST', pattern: /^\/v1\/collectors\/([^/]+)\/run$/, handler: async ({ params }) => ({ run: await core.runCollector(params[0]!) }) },
+    { method: 'POST', pattern: /^\/v1\/collectors\/([^/]+)\/stop$/, handler: async ({ params }) => ({ run: await core.stopCollector(params[0]!) }) },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/collectors\/([^/]+)\/consent$/,
+      handler: async ({ params, body }) => core.allowCollector(params[0]!, reqString(asObject(await body(), false), 'sha256')),
+    },
+    { method: 'DELETE', pattern: /^\/v1\/collectors\/([^/]+)\/consent$/, handler: async ({ params }) => core.revokeCollector(params[0]!) },
+    {
+      method: 'GET',
+      pattern: /^\/v1\/collectors\/([^/]+)\/runs$/,
+      handler: async ({ params, query }) => {
+        const raw = query.get('limit');
+        let limit: number | undefined;
+        if (raw !== null && raw.trim() !== '') {
+          limit = Number(raw);
+          if (!Number.isInteger(limit) || limit < 1) throw bad('limit must be a positive integer');
+        }
+        return { runs: await core.listCollectorRuns(params[0]!, limit ? { limit } : undefined) };
+      },
+    },
+    {
+      method: 'GET',
+      pattern: /^\/v1\/collectors\/([^/]+)\/collected$/,
+      handler: async ({ params, query }) => {
+        const q = query.get('query') ?? query.get('q');
+        return { files: await (q ? core.listCollected(params[0]!, q) : core.listCollected(params[0]!)) };
+      },
+    },
+    { method: 'DELETE', pattern: /^\/v1\/collectors\/([^/]+)\/collected$/, handler: async ({ params }) => ({ forgotten: await core.forgetCollected(params[0]!) }) },
+    {
+      method: 'DELETE',
+      pattern: /^\/v1\/collectors\/([^/]+)\/collected\/([0-9a-fA-F]{64})$/,
+      handler: async ({ params }) => ({ forgotten: await core.forgetCollected(params[0]!, params[1]!) }),
+    },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/collectors\/([^/]+)\/collected\/restore$/,
+      handler: async ({ params, body }) => ({ restored: await core.restoreCollected(params[0]!, parseCollectedFiles(asObject(await body(), false))) }),
+    },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/collectors\/([^/]+)\/create-folder$/,
+      handler: async ({ params, body }) => {
+        const which = optEnum(asObject(await body(), false), 'which', ['source', 'queue'] as const);
+        if (!which) throw bad('"which" must be "source" or "queue"');
+        return core.createCollectorFolder(params[0]!, which);
+      },
+    },
     {
       method: 'GET',
       pattern: /^\/v1\/events$/,
