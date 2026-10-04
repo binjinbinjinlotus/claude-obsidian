@@ -221,6 +221,17 @@ describe('HTTP API', () => {
       assert.equal(forced.body.job.id, 'job-processed');
       assert.deepEqual(lastCall(), { method: 'processQueue', args: [{ force: true }] });
     });
+    it('POST /v1/queue/scan: Refresh (manual by default) and the window-active scan; a bad trigger is 400', async () => {
+      const scan = await request(port, 'POST', '/v1/queue/scan');
+      assert.equal(scan.status, 200);
+      assert.deepEqual([scan.body.added, scan.body.removed, scan.body.changed, scan.body.trigger], [0, 0, 0, 'manual']);
+      assert.ok(Array.isArray(scan.body.entries) && typeof scan.body.checkedAt === 'string');
+      assert.deepEqual(lastCall(), { method: 'scanQueue', args: [{}] });
+      const win = await request(port, 'POST', '/v1/queue/scan', { body: { trigger: 'window' } });
+      assert.equal(win.body.trigger, 'window');
+      assert.deepEqual(lastCall(), { method: 'scanQueue', args: [{ trigger: 'window' }] });
+      assert.equal((await request(port, 'POST', '/v1/queue/scan', { body: { trigger: 'periodic' } })).status, 400);
+    });
     it('POST /v1/notes returns 201 with AddNoteResult', async () => {
       const body = {
         title: 'Gyokuro at 60 °C',

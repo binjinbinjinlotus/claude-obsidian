@@ -95,6 +95,8 @@ export function decodeCollector(v: unknown, now = new Date()): Collector | undef
     const source = str(f.source);
     if (!source) return undefined;
     c.folder = { source, afterCollect: f.afterCollect === 'move' ? 'move' : 'copy' };
+    // v5: absent (a collector saved before subfolders existed) stays absent and reads as off.
+    if (typeof f.includeSubfolders === 'boolean') c.folder.includeSubfolders = f.includeSubfolders;
   } else {
     const s = isObject(v.script) ? v.script : {};
     const source = decodeScriptSource(s.source);

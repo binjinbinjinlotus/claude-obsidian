@@ -3,6 +3,7 @@ import type { AITask, Job, LabelOrigin, Settings, TransactionPlan, VaultProfile,
 import { yamlScalar } from '../labels/frontmatter.js';
 import { coreScriptPath } from '../store/settings.js';
 import { jobStateDirectory } from '../store/jobs.js';
+import { folderSourceBlock, walkFolder } from './queue.js';
 
 /** Single-quotes a string only when the shell needs it, so common paths stay readable and rules simple. */
 export function shellQuote(s: string): string {
@@ -202,6 +203,27 @@ contains into the note's knowledge, and do NOT store or embed the image.
 - An image missing from the manifest is kept (the default).`;
 }
 
+/**
+ * v5: one block per folder item (job.folders): its tree with paths relative to the batch folder,
+ * names and sizes, so the runner sees how the files relate. No absolute paths.
+ */
+export function folderPrompt(ctx: JobContext): string {
+  const folders = ctx.job.folders ?? [];
+  if (folders.length === 0) return '';
+  const blocks = folders.map((rel) => {
+    const block = folderSourceBlock(path.posix.basename(rel), walkFolder(path.join(ctx.vault.path, rel)));
+    return `In ${path.posix.dirname(rel)}/:\n${block}`;
+  });
+  return `
+
+Some inputs are folders. A folder is one source made of the files inside it; \
+its files are in the list above. The paths below are relative to the folder \
+each one is in. Entries marked "not read" or "not a source" are context only: \
+do not read, ingest or store them.
+
+${blocks.join('\n\n')}`;
+}
+
 function labelLines(entry: SourceLabels): string {
   if (entry.labels.length === 0) {
     return `- ${entry.file}: no labels. Its source page gets no \`tags\` and no \`labels_*\` properties.`;
@@ -244,7 +266,7 @@ ${list}
 
 Agreed scope: exactly these ${ctx.job.files.length} local file(s); no network \
 egress; default existing-page budget from the skill. Media you cannot read \
-must be reported as unsupported, not invented.${manifestPrompt(ctx)}${labelsPrompt(ctx.labelPlan)}
+must be reported as unsupported, not invented.${manifestPrompt(ctx)}${folderPrompt(ctx)}${labelsPrompt(ctx.labelPlan)}
 
 Build ONE \`claude-obsidian.transaction.v1\` ingest bundle for the whole batch \
 at ${ctx.bundlePath}, then run:

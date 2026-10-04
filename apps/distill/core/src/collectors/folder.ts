@@ -3,14 +3,26 @@
  * top-level, non-hidden regular file of a source folder into the target
  * vault's queue folder. Dedupe is by content (sha256) against the vault's
  * ledger; an identical file under another name is skipped, an edited file is
- * collected again.
+ * collected again. With includeSubfolders (v5), each top-level subfolder is
+ * one folder item, collected when any file in it is new or changed.
  */
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { CollectorErrorCode, CollectorRun, CollectorRunFile, FolderCollectorSettings } from '../contracts.js';
+import { QUEUE_FOLDER_LIMITS, type CollectorErrorCode, type CollectorRun, type CollectorRunFile, type FolderCollectorSettings } from '../contracts.js';
 import { isoDate } from '../store/json.js';
-import { isSettled, moveIntoDirNoOverwrite, PARTIAL_SUFFIXES } from '../engine/queue.js';
+import {
+  FOLDER_MANIFEST_NAME,
+  folderTreeEntries,
+  isHiddenName as isHiddenQueueName,
+  isSettled,
+  moveFolderIntoDirNoOverwrite,
+  moveIntoDirNoOverwrite,
+  PARTIAL_SUFFIXES,
+  walkFolder,
+  type FolderManifest,
+  type FolderWalk,
+} from '../engine/queue.js';
 import type { Ledger } from './store.js';
 
 export interface FolderRunInput {
@@ -54,9 +66,7 @@ function emptyCounts(): CollectorRun['counts'] {
 }
 
 /** Hidden files (".DS_Store", "._x") and the macOS folder icon file "Icon\r". */
-export function isHiddenName(name: string): boolean {
-  return name.startsWith('.') || name === 'Icon\r';
-}
+export const isHiddenName = isHiddenQueueName;
 
 async function copyNoOverwrite(src: string, dir: string, name: string): Promise<string> {
   const ext = path.extname(name);
@@ -65,6 +75,169 @@ async function copyNoOverwrite(src: string, dir: string, name: string): Promise<
     const dest = path.join(dir, n === 1 ? name : `${base} ${n}${ext}`);
     try {
       await fs.promises.copyFile(src, dest, fs.constants.COPYFILE_EXCL);
+      return dest;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') continue;
+      throw err;
+    }
+  }
+  throw new Error(`No free name for ${name} in ${dir}.`);
+}
+
+interface RunAcc {
+  counts: CollectorRun['counts'];
+  files: CollectorRunFile[];
+  filesAdded: string[];
+}
+
+/** Same files, sizes and mtimes (the subfolder didn't change while it was copied). */
+function sameWalk(a: FolderWalk, b: FolderWalk): boolean {
+  if (a.files.length !== b.files.length || a.partialCount !== b.partialCount) return false;
+  return a.files.every((f, i) => f.rel === b.files[i]!.rel && f.size === b.files[i]!.size && f.modifiedMs === b.files[i]!.modifiedMs);
+}
+
+/**
+ * One top-level subfolder as one folder item (v5). The dedupe unit stays the file: each file is
+ * checked against the ledger (path+size+mtime, else sha256). Nothing new → skipped. Copy mode copies
+ * only the new and changed files into `<name>` (" 2" on a clash) with their relative paths; move mode
+ * moves the whole folder. Either way the item gets `.distill-folder.json` with the whole tree, files
+ * collected before marked seenBefore (listed for the AI, never sources). Limits: 200 new files and
+ * 500 MB of them; 8 levels deep.
+ */
+async function collectSubfolder(input: FolderRunInput, name: string, full: string, acc: RunAcc): Promise<void> {
+  const { folder, queueDir, ledger } = input;
+  const line = (f: Omit<CollectorRunFile, 'name' | 'kind'>) => acc.files.push({ name: `${name}/`, kind: 'folder', ...f });
+  const w = walkFolder(full, { maxFiles: Number.POSITIVE_INFINITY, maxBytes: Number.POSITIVE_INFINITY, maxDepth: QUEUE_FOLDER_LIMITS.maxDepth });
+  if (w.unreadable) {
+    line({ outcome: 'error', reason: 'no permission to read it' });
+    acc.counts.errors += 1;
+    return;
+  }
+  if (w.tooBig) {
+    line({ outcome: 'skipped', reason: 'too big', fileCount: w.fileCount, size: w.totalSize });
+    acc.counts.skipped += 1;
+    return;
+  }
+  if (w.tooDeep) {
+    line({ outcome: 'skipped', reason: 'too deep', fileCount: w.fileCount, size: w.totalSize });
+    acc.counts.skipped += 1;
+    return;
+  }
+  if (w.partialCount > 0) {
+    line({ outcome: 'waiting', reason: 'still downloading', fileCount: w.fileCount, size: w.totalSize });
+    acc.counts.waiting += 1;
+    return;
+  }
+  if (w.fileCount > 0 && !isSettled({ path: full, name, modifiedMs: w.newestMs, size: w.totalSize }, input.settleSeconds, input.now())) {
+    line({ outcome: 'waiting', reason: 'still changing', fileCount: w.fileCount, size: w.totalSize });
+    acc.counts.waiting += 1;
+    return;
+  }
+  // Which files are new: the cheap stat match first, then the content hash.
+  const fresh: { rel: string; size: number; mtimeMs: number; sha: string }[] = [];
+  const seen = new Set<string>();
+  let hashedKnown = false;
+  try {
+    for (const f of w.files) {
+      const abs = path.join(full, ...f.rel.split('/'));
+      if (ledger.hasStat(abs, f.size, f.modifiedMs)) {
+        seen.add(f.rel);
+        continue;
+      }
+      const sha = await sha256File(abs);
+      if (ledger.hasSha(sha)) {
+        seen.add(f.rel);
+        hashedKnown = true;
+        continue;
+      }
+      fresh.push({ rel: f.rel, size: f.size, mtimeMs: f.modifiedMs, sha });
+    }
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    line({ outcome: 'error', reason: code === 'EACCES' || code === 'EPERM' ? 'no permission to read it' : (err as Error).message });
+    acc.counts.errors += 1;
+    return;
+  }
+  if (fresh.length === 0) {
+    // Unchanged since it was collected: counted; a line only when a file matched by content alone.
+    if (hashedKnown) line({ outcome: 'skipped', reason: 'already collected', fileCount: w.fileCount, size: w.totalSize });
+    acc.counts.skipped += 1;
+    return;
+  }
+  const freshBytes = fresh.reduce((n, f) => n + f.size, 0);
+  if (fresh.length > QUEUE_FOLDER_LIMITS.maxFiles || freshBytes > QUEUE_FOLDER_LIMITS.maxBytes) {
+    line({ outcome: 'skipped', reason: 'too big', fileCount: w.fileCount, newCount: fresh.length, size: freshBytes });
+    acc.counts.skipped += 1;
+    return;
+  }
+  const outcome = folder.afterCollect === 'move' ? 'moved' : 'copied';
+  const manifest: FolderManifest = {
+    version: 1,
+    name,
+    collectorId: input.collectorId,
+    collectedAt: isoDate(input.now()),
+    tree: folderTreeEntries(w).map((e) => (e.kind !== 'dir' && seen.has(e.path) ? { ...e, seenBefore: true } : e)),
+  };
+  let dest: string;
+  try {
+    if (outcome === 'moved') {
+      dest = moveFolderIntoDirNoOverwrite(full, queueDir);
+    } else {
+      dest = makeFolderNoOverwrite(queueDir, name);
+      for (const f of fresh) {
+        const from = path.join(full, ...f.rel.split('/'));
+        const to = path.join(dest, ...f.rel.split('/'));
+        fs.mkdirSync(path.dirname(to), { recursive: true });
+        fs.copyFileSync(from, to, fs.constants.COPYFILE_EXCL);
+        const st = fs.statSync(from);
+        fs.utimesSync(to, st.atime, st.mtime); // keeps its mtime, so a settled folder is ready for the next batch
+      }
+      // Changed while we copied: drop the copy and wait for the next run.
+      const after = walkFolder(full, { maxFiles: Number.POSITIVE_INFINITY, maxBytes: Number.POSITIVE_INFINITY, maxDepth: QUEUE_FOLDER_LIMITS.maxDepth });
+      if (!sameWalk(w, after)) {
+        fs.rmSync(dest, { recursive: true, force: true });
+        line({ outcome: 'waiting', reason: 'still changing', fileCount: w.fileCount, size: w.totalSize });
+        acc.counts.waiting += 1;
+        return;
+      }
+    }
+    fs.writeFileSync(path.join(dest, FOLDER_MANIFEST_NAME), JSON.stringify(manifest, null, 2) + '\n');
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    line({ outcome: 'error', reason: code === 'EACCES' || code === 'EPERM' ? 'no permission to read it' : (err as Error).message });
+    acc.counts.errors += 1;
+    return;
+  }
+  const queueName = path.basename(dest);
+  const logged = new Set<string>();
+  for (const f of fresh) {
+    if (logged.has(f.sha)) continue; // two identical files inside: one ledger entry
+    logged.add(f.sha);
+    ledger.append({
+      sha256: f.sha,
+      name: `${name}/${f.rel}`,
+      sourcePath: path.join(full, ...f.rel.split('/')),
+      size: f.size,
+      mtime: isoDate(new Date(f.mtimeMs)),
+      mtimeMs: f.mtimeMs,
+      collectedAt: isoDate(input.now()),
+      collectorId: input.collectorId,
+      queueName: `${queueName}/${f.rel}`,
+      outcome,
+    });
+  }
+  line({ outcome, queueName, fileCount: w.fileCount, newCount: fresh.length, size: freshBytes });
+  acc.filesAdded.push(queueName);
+  acc.counts[outcome] += 1;
+  acc.counts.added += 1;
+}
+
+/** Creates `<dir>/<name>`, `<name> 2`, ... (never an existing folder). */
+function makeFolderNoOverwrite(dir: string, name: string): string {
+  for (let n = 1; n < 10_000; n++) {
+    const dest = path.join(dir, n === 1 ? name : `${name} ${n}`);
+    try {
+      fs.mkdirSync(dest);
       return dest;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'EEXIST') continue;
@@ -96,6 +269,7 @@ export async function runFolder(input: FolderRunInput): Promise<FolderRunOutcome
 
   // Oldest first, like the queue.
   const entries: { name: string; full: string; st: fs.Stats }[] = [];
+  const subfolders: { name: string; full: string }[] = [];
   for (const name of names) {
     if (isHiddenName(name)) continue;
     const full = path.join(source, name);
@@ -105,10 +279,20 @@ export async function runFolder(input: FolderRunInput): Promise<FolderRunOutcome
     } catch {
       continue;
     }
-    if (!st.isFile()) continue; // subfolders and symlinks are left alone
+    if (st.isDirectory()) {
+      if (folder.includeSubfolders === true) subfolders.push({ name, full });
+      continue;
+    }
+    if (!st.isFile()) continue; // symlinks are left alone
     entries.push({ name, full, st });
   }
   entries.sort((a, b) => a.st.mtimeMs - b.st.mtimeMs || a.name.localeCompare(b.name));
+  subfolders.sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const sub of subfolders) {
+    if (input.shouldStop()) return { result: 'stopped', counts, files, filesAdded };
+    await collectSubfolder(input, sub.name, sub.full, { counts, files, filesAdded });
+  }
 
   for (const { name, full, st } of entries) {
     if (input.shouldStop()) {

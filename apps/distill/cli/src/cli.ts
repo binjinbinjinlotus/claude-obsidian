@@ -16,6 +16,7 @@ import type {
   ModelSelection,
   NoteImage,
   Progress,
+  QueueScanResult,
   Settings,
   StatusResponse,
 } from '@distill/core/contracts';
@@ -89,6 +90,7 @@ Usage:
   distill history show <conversation-id> [--json]
   distill history rm <conversation-id> [--json]
   distill status [--json]
+  distill queue scan [--json]
   distill actions list [--type T] [--history] [--json]
   distill actions add "<title>" [--type todo] [--body "..."] [--why "..."] [--due YYYY-MM-DD]
               [--vault PATH] [--json]
@@ -133,6 +135,9 @@ Commands:
                 \`history show ID\` prints every question and answer; \`history rm ID\`
                 deletes one. Continue one with \`distill ask --conversation ID\`.
   status       Server, active vault, queue size, reviews waiting, runner problems.
+  queue scan    Check the active queue folder for changes now (the app's Refresh): new
+                files and folders appear, files removed by hand drop out, folders are
+                read again. Prints what changed. \`queue sync\` is the same command.
   actions list  List open actions (to-dos, Slack messages, Jira tickets, Confluence pages),
                 including found ones waiting for the user to confirm ("to confirm").
                 --type narrows to one type; --history adds done, sent and removed items.
@@ -189,6 +194,9 @@ or $DISTILL_STATE_DIR.
              "queueCount", "pendingApprovals", "runningJobs", "nextBatchAt",
              "runners": [{"id","displayName","enabled","problems"}],
              "server": {"pid","port","startedAt","version"}}
+  queue scan
+            {"added", "removed", "changed" (counts), "checkedAt", "trigger": "manual",
+             "problem"?, "addedEntries", "removedEntries", "changedEntries", "entries"}
   actions list
             {"actions": [{"id","type","status","title","body","fields","why","source",
              "createdAt","updatedAt","events", ...}]}
@@ -295,6 +303,8 @@ async function dispatch(argv: string[], io: CliIO): Promise<number> {
       return history(rest, io, api);
     case 'status':
       return status(rest, io, api);
+    case 'queue':
+      return queue(rest, io, api);
     case 'actions':
       return actions(rest, io, api);
     case 'collectors':
@@ -738,6 +748,37 @@ function describeCollector(c: Collector): string {
   const lines = [`${c.id}  ${c.name}  ${what}  [${flags.join(' · ')}]`, `    vault: ${c.vaultPath}`];
   if (s?.lastRun) lines.push(`    last:  ${describeRun(s.lastRun)}`);
   return lines.join('\n');
+}
+
+// ───────────────────────────── queue ─────────────────────────────
+
+const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+
+/** "2 new items found · 1 item gone", "Nothing new" (the app's Refresh wording). */
+export function describeScan(r: QueueScanResult): string {
+  if (r.problem) return `Can't read the queue folder: ${r.problem}`;
+  const parts: string[] = [];
+  if (r.added > 0) parts.push(`${plural(r.added, 'new item')} found`);
+  if (r.removed > 0) parts.push(`${plural(r.removed, 'item')} gone`);
+  if (r.changed > 0) parts.push(`${plural(r.changed, 'item')} changed`);
+  const lines = [parts.length > 0 ? parts.join(' · ') : 'Nothing new'];
+  for (const e of r.addedEntries) lines.push(`  + ${e.name}${e.kind === 'folder' ? '/' : ''}`);
+  for (const e of r.removedEntries) lines.push(`  - ${e.name}${e.kind === 'folder' ? '/' : ''}`);
+  for (const e of r.changedEntries) lines.push(`  ~ ${e.name}${e.kind === 'folder' ? '/' : ''}`);
+  lines.push(`${plural(r.entries.length, 'item')} in the queue`);
+  return lines.join('\n');
+}
+
+async function queue(args: string[], io: CliIO, api: ApiFactory): Promise<number> {
+  const [sub, ...rest] = args;
+  if (sub !== 'scan' && sub !== 'sync') throw usageError('usage: distill queue scan');
+  const { values, positionals } = parse(rest, {});
+  if (positionals.length) throw usageError(`unexpected argument "${positionals[0]}"`);
+  const out = new Output(io, values.json === true);
+  const client = await api(out);
+  const res = await client.request<QueueScanResult>('POST', '/v1/queue/scan', { trigger: 'manual' });
+  out.result(res, () => describeScan(res) + '\n');
+  return res.problem ? 1 : 0;
 }
 
 async function collectors(args: string[], io: CliIO, api: ApiFactory): Promise<number> {

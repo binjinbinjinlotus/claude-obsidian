@@ -15,7 +15,7 @@ import {
   type FakeCore,
   type RunningServer,
 } from '@distill/core/server';
-import { HELP, run, type CliIO } from './cli.js';
+import { describeScan, HELP, run, type CliIO } from './cli.js';
 import { loaderArgs, type ServerSpawner } from './client.js';
 
 interface Captured {
@@ -464,6 +464,31 @@ describe('distill CLI', () => {
       const help = await cli(['--help']);
       assert.ok(help.stdout.includes('distill collectors list'));
       assert.ok(help.stdout.includes('never allows (consents to) a collector script'));
+    });
+  });
+
+  describe('queue scan', () => {
+    it('scans now (sync is the same command) and prints what changed; --json is the scan result', async () => {
+      const r = await cli(['queue', 'scan']);
+      assert.equal(r.code, 0, r.stderr);
+      assert.match(r.stdout, /^Nothing new\n\d+ items? in the queue\n$/);
+      assert.deepEqual(lastCall('scanQueue')?.args, [{ trigger: 'manual' }]);
+      const j = await cli(['queue', 'sync', '--json']);
+      assert.equal(j.code, 0, j.stderr);
+      const res = JSON.parse(j.stdout);
+      assert.deepEqual([res.added, res.removed, res.changed, res.trigger], [0, 0, 0, 'manual']);
+      assert.equal((await cli(['queue'])).code, 2);
+      assert.equal((await cli(['queue', 'scan', 'extra'])).code, 2);
+      assert.ok((await cli(['--help'])).stdout.includes('distill queue scan'));
+    });
+    it('describeScan words changes like Refresh', () => {
+      const entry = (name: string, kind?: 'folder') => ({ path: `/q/${name}`, name, modified: '', size: 1, settled: true, ...(kind ? { kind } : {}) });
+      const text = describeScan({
+        added: 2, removed: 1, changed: 0, checkedAt: '', trigger: 'manual',
+        addedEntries: [entry('Trip', 'folder'), entry('a.md')], removedEntries: [entry('old.md')], changedEntries: [],
+        entries: [entry('Trip', 'folder'), entry('a.md')],
+      });
+      assert.equal(text, '2 new items found · 1 item gone\n  + Trip/\n  + a.md\n  - old.md\n2 items in the queue');
     });
   });
 

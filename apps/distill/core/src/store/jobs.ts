@@ -161,6 +161,9 @@ export function decodeJob(v: unknown, now = new Date()): Job | undefined {
   if (error !== undefined) job.error = error;
   const actionsFound = decodeActionsSummary(v.actionsFound);
   if (actionsFound) job.actionsFound = actionsFound;
+  // v5: folder items in the batch; absent (or not a string list) stays absent.
+  const folders = strArray(v.folders);
+  if (folders && folders.length > 0) job.folders = folders;
   return job;
 }
 
@@ -235,7 +238,7 @@ function encodeApproval(a: ApprovalRequest): JSONObject {
 
 const JOB_KEYS = [
   'id', 'kind', 'vaultPath', 'files', 'sessionID', 'runnerID', 'model', 'effort', 'state',
-  'createdAt', 'updatedAt', 'approval', 'turns', 'grantedTools', 'operationID', 'changedPaths', 'error', 'actionsFound',
+  'createdAt', 'updatedAt', 'approval', 'turns', 'grantedTools', 'operationID', 'changedPaths', 'error', 'actionsFound', 'folders',
 ];
 
 /** Every non-optional key is always written; nil optionals are omitted (never `null`). */
@@ -268,6 +271,7 @@ export function encodeJob(job: Job, raw: JSONObject = {}): JSONObject {
     if (a.model != null) summary.model = a.model;
     out.actionsFound = summary;
   }
+  if (job.folders != null && job.folders.length > 0) out.folders = [...job.folders];
   return out;
 }
 

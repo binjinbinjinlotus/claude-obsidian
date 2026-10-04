@@ -100,6 +100,11 @@ interface Active {
 
 const clone = <T>(v: T): T => structuredClone(v);
 
+/** `file` is inside `dir` (at any depth): Folder ledger entries of a collector, subfolders included. */
+function isUnder(file: string, dir: string): boolean {
+  return file.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep);
+}
+
 function samePath(a: string, b: string): boolean {
   return path.resolve(a) === path.resolve(b);
 }
@@ -193,7 +198,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
   function collectedIn(c: Collector): LedgerEntry[] {
     if (c.kind !== 'folder' || !c.folder) return [];
     const source = path.resolve(c.folder.source);
-    return ledgerFor(c.vaultPath).entries.filter((e) => path.dirname(e.sourcePath) === source);
+    return ledgerFor(c.vaultPath).entries.filter((e) => isUnder(e.sourcePath, source));
   }
 
   function summary(run: CollectorRun | undefined): CollectorRun | null {
@@ -264,7 +269,14 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     if (afterCollect !== 'copy' && afterCollect !== 'move') throw new CoreError('invalid_request', '"afterCollect" must be "copy" or "move".');
     const queue = vaultProfile(vaultPath)?.queueDirectory;
     if (queue && samePath(queue, source)) throw new CoreError('invalid_request', 'The source folder is the vault’s queue folder.');
-    return { source: path.resolve(source), afterCollect };
+    // New collectors include subfolders; a saved one without the field keeps reading as off.
+    const includeSubfolders = f?.includeSubfolders ?? base?.includeSubfolders ?? (base ? undefined : true);
+    if (includeSubfolders !== undefined && typeof includeSubfolders !== 'boolean') {
+      throw new CoreError('invalid_request', '"includeSubfolders" must be true or false.');
+    }
+    const out: FolderCollectorSettings = { source: path.resolve(source), afterCollect };
+    if (includeSubfolders !== undefined) out.includeSubfolders = includeSubfolders;
+    return out;
   }
 
   function validScriptSource(s: ScriptSource): ScriptSource {
@@ -543,11 +555,11 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     return `${s} s`;
   }
 
-  /** Regular, non-hidden names in the queue folder (what batching would see). */
+  /** Regular, non-hidden names in the queue folder, folders included (what batching would see). */
   function queueNames(dir: string): Set<string> {
     const out = new Set<string>();
     try {
-      for (const d of fs.readdirSync(dir, { withFileTypes: true })) if (d.isFile() && !d.name.startsWith('.')) out.add(d.name);
+      for (const d of fs.readdirSync(dir, { withFileTypes: true })) if ((d.isFile() || d.isDirectory()) && !d.name.startsWith('.')) out.add(d.name);
     } catch {
       // empty
     }
@@ -846,7 +858,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       // Forget one: every entry with that content in this vault (dedupe is vault-wide), so it is collected again.
       const removed = sha256
         ? ledger.remove((e) => e.sha256 === sha256.toLowerCase())
-        : ledger.remove((e) => path.dirname(e.sourcePath) === source);
+        : ledger.remove((e) => isUnder(e.sourcePath, source));
       if (sha256 && removed.length === 0) throw new CoreError('not_found', `Nothing collected with sha256 ${sha256}.`);
       changed(c);
       return removed.map(publicEntry);
