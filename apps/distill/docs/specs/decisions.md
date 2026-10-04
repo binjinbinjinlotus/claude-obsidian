@@ -15,6 +15,13 @@ Newest first. Each entry: what was decided, why, and where it lives. Add an
 entry in the same change that makes a decision; never rewrite an old one —
 supersede it with a new entry.
 
+## 2026-10-04
+
+- **Atlassian sign-in stays a pasted API token (for now):** browser sign-in was
+  considered via Atlassian's remote MCP server (OAuth 2.1 + PKCE, no shipped
+  secret), a hosted token broker, or Claude's Atlassian connector. The user chose
+  to keep the token flow; revisit with a spike on the MCP route. → [actions](actions.md)
+
 ## 2026-10-03
 
 - **Actions redesign (canvas v57): Complete everywhere, one toolbar, list
