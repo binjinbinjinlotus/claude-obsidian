@@ -16,8 +16,8 @@ schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
   `~/Documents/Distill Queue/<vault name>`. It may also be the vault's `inbox/`.
 - Pending files: top-level, non-hidden regular files. Folders are left alone.
   Partial downloads are skipped (`.crdownload .part .download .tmp .partial`).
-  **Designed 2026-10-04:** top-level folders become folder items and `.gdoc`
-  files become Google Doc items; see "Folders, Google Docs and syncing"
+  **Built in the core 2026-10-04:** top-level folders are folder items and
+  `.gdoc` files are Google Doc items; see "Folders, Google Docs and syncing"
   below.
 - Settle delay (`settleSeconds`, default 600 s = 10 minutes in the TS core;
   configurable in Settings → Batch; an explicit value is always honored): a
@@ -54,9 +54,11 @@ schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
   collisions become `name 2.ext`). Removing a note row moves its whole set
   (images, manifest, then the `.md`). Removing a member alone (a manifest or
   image whose `.md` is still queued) is refused with `invalid_request`, so the
-  note never loses its manifest. Also refused for paths outside the folder,
-  folders and symlinks (`invalid_request`) and, when the queue is the inbox,
-  files a batch already took (`invalid_state`).
+  note never loses its manifest. A folder item goes to the Trash whole
+  (`name 2` on a clash; the name is claimed with an exclusive `mkdir`, so an
+  existing Trash folder is never replaced). Also refused for paths outside
+  the folder and symlinks (`invalid_request`) and, when the queue is the
+  inbox, items a batch already took (`invalid_state`).
 
 ## Queue screen
 
@@ -147,7 +149,9 @@ changes`. Failed and cancelled batches finish with `Failed` (and `error`) or
 ## Folders, Google Docs and syncing (designed 2026-10-04)
 
 Canvas: Main, MainLoading, MainEmpty, MainFolder, QueueItems; components
-QueueRowView (folder and Google Doc states) and QueueRefresh. Not built yet.
+QueueRowView (folder and Google Doc states) and QueueRefresh. The core, API
+and CLI are built (see "Built in the core" at the end of this section); the
+Mac UI is not built yet.
 
 ### Sync: Refresh and the queue check
 
@@ -242,3 +246,85 @@ QueueRowView (folder and Google Doc states) and QueueRefresh. Not built yet.
 - **Google Drive fetch:** designed separately. The coordinator and the owner
   are deciding it, including automatic collection of meeting notes. Until
   then, no link note and no other ingestion of `.gdoc` content.
+
+### Built in the core (2026-10-04)
+
+Code: `scanQueueFolder`, `walkFolder`, `folderTreeEntries`,
+`folderSourceBlock`, `parseGoogleDoc`, `claimItems` in
+`core/src/engine/queue.ts`; `scanQueueNow` and `processQueue` in
+`core/src/engine/index.ts`; `folderPrompt` in `job-kinds.ts`. Tests:
+`core/src/engine/queue-folders.test.ts`.
+
+- **Why the folder never showed up:** the scanner (`pendingFiles`) kept
+  regular files only (`lstat().isFile()`). There was no missing watcher: a
+  5-second tick already rescanned the top level, which is also why top-level
+  files removed by hand already disappeared within 5 s. `pendingFiles` stays
+  file-only for the note-manifest lookups; the queue list and batches use
+  `scanQueueFolder`.
+- **Two kinds of scan.**
+  - The 5-second tick reads the top level and reuses each folder's last
+    walk while the folder's own mtime is unchanged (entries added or removed
+    directly inside move it; changes deeper down don't).
+  - A **full scan** walks every folder again: Refresh and the window-active
+    scan (`POST /v1/queue/scan {trigger: 'manual' | 'window'}`, default
+    manual), the queue check every `queueScanMinutes`, and every batch
+    (`processQueue` never trusts the cache, so the wait rule holds for the
+    newest change inside a folder even when the queue check is Off).
+- **Scan result** (`QueueScanResult`): `added`, `removed`, `changed` (counts,
+  as designed), `checkedAt`, `trigger` (`manual | window | periodic`),
+  `problem` when the queue folder exists but can't be read, plus
+  `addedEntries`, `removedEntries` (as last listed), `changedEntries` and
+  `entries`. It compares with the list the core last had, so a change the
+  5-second tick already listed is not counted again. "Changed" ignores
+  `settled`, `readyAt` and `changing`, which move with the clock. Every full
+  scan emits `queue.scanned {result}`; the `queue` event still goes out only
+  when the list changed. `status()` adds `lastQueueScanAt` ("checked at …")
+  and `nextQueueScanAt` (null when Off).
+- **`settings.queueScanMinutes`:** absent = 5; 0 = Off; decoded leniently
+  (mistyped = absent, clamped to 0…1440) and never written unless set.
+  Changing it reschedules the next check from now.
+- **Folder entries:** `kind: 'folder'`, `fileCount` (files present, `.gdoc`
+  included; hidden files, partial downloads and `.distill-folder.json` not
+  counted), `folderCount`, `size`, `modified` (newest file inside; the
+  folder's own mtime only when it has no files), `tree` (`{path, size, kind:
+  'file' | 'dir' | 'gdoc', seenBefore?}`, dirs carry their files' total,
+  sorted by path, capped at 500) and `treeTruncated`. Symlinks are skipped.
+  Folders' own mtimes never count for the wait, because Finder rewrites
+  `.DS_Store` when the user only looks.
+- **Problems** hold a folder out of every batch, Process now included:
+  `'too big'` (more than 200 source files or 500 MB of them, or more than
+  5000 entries walked), `'too deep'` (a file more than 8 levels down:
+  `folder/a/b/c.md` is level 3; not in the design, added because the owner
+  asked for a depth limit), `'empty folder'` (no files at all; not in the
+  design) and the usual "can't read" sentence. A folder whose only files are
+  `.gdoc` pointers gets `waiting: 'google-drive'` instead.
+- **Batch:** a folder moves whole to `inbox/<yyyy-MM-dd>/<name>` (`name 2`
+  on a clash). Its sources (not hidden, partial, `.gdoc` or `seenBefore`) go
+  into `job.files` one by one; the folder itself goes into the new
+  `job.folders`. When the queue is the inbox, folders stay where they are
+  and a folder counts as taken once any of its files is in a job. "Reading N
+  sources" and the app turn count a folder as one. Files inside a folder get
+  no per-file AI labels (one folder would otherwise cost one label call per
+  file).
+- **Prompt:** after the manifest section, one block per folder:
+  `In inbox/<date>/:`, then `Folder source: <name>/ (12 files, 3 folders,
+  18.4 MB)`, one line per tree entry (`- name/dir/`, `- name/file.md (1.2
+  KB)`, `- name/x.gdoc (Google Doc, not read)`, `- name/old.md (4 B, seen
+  before, not a source)`), then "Treat these as one source; the paths and
+  names are context." Paths are relative to the batch folder; no queue or
+  home path reaches the runner.
+- **`.gdoc`:** `kind: 'gdoc'`, `gdoc: {title, url, docId}`, `waiting:
+  'google-drive'`; never batched. The link must be https on
+  `docs.google.com` or `drive.google.com`; with no usable `url`, it is
+  built from a valid `doc_id` (`https://docs.google.com/document/d/<id>/edit`).
+  Anything else, malformed JSON or a file over 64 KB is `kind: 'file'`
+  with `problem: 'no link inside'`, so the JSON never reaches a runner. The
+  `email` field is never read out (not in entries, events, logs or prompts).
+  The wait rule still applies to the pointer file's mtime, but it is
+  irrelevant while the item waits.
+- **Folder collector manifest** (`.distill-folder.json`, written by the
+  Folder collector into a subfolder item; see [Collectors](collectors.md)):
+  `{version: 1, name, collectorId, collectedAt, tree}`. Entries marked
+  `seenBefore` are listed in the queue tree and the prompt but are never
+  sources; ones the collector didn't copy appear in the tree only. Being
+  hidden, the manifest itself is never counted or sent.

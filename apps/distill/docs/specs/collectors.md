@@ -496,6 +496,47 @@ change, delete or allow a collector.
 - **Notifications** (first failure after a success) are a client job; not
   built.
 
+### Built: subfolders and .gdoc (core, 2026-10-04)
+
+Code: `collectSubfolder` in `core/src/collectors/folder.ts`. Tests:
+`core/src/collectors/collectors.test.ts` ("includeSubfolders …", "a
+subfolder is one folder item …").
+
+- **`folder.includeSubfolders`:** new collectors get `true` (as designed).
+  A collector saved before this build has no field and reads as **off**, so
+  an existing collector doesn't start taking subfolders the user kept in its
+  folder without them choosing it. `PATCH {folder: {includeSubfolders}}`
+  takes a boolean (anything else is `invalid_request`).
+- **Order:** subfolders run before top-level files, by name.
+- **A subfolder** is walked like a queue folder item (hidden files, symlinks
+  and `.DS_Store` skipped; 8 levels at most). Partial downloads inside →
+  "Waiting · still downloading"; any file changed within the settle delay →
+  "Waiting · still changing"; deeper than 8 levels → "Skipped · too deep".
+  Each file is checked against the ledger (path+size+mtime, else sha256).
+  - Nothing new → counted in `counts.skipped`; a line ("already collected")
+    only when a file matched by content alone, like top-level files.
+  - More than 200 new files or 500 MB of them → "Skipped · too big".
+  - Copy: only the new files are copied into `<name>` (`name 2` on a
+    clash), relative paths and mtimes kept, then `.distill-folder.json`
+    with the whole tree, files collected before marked `seenBefore`. If a
+    file in the source changed while copying, the copy is removed and the
+    folder waits for the next run.
+  - Move: the whole folder moves (an exclusive `mkdir` claims the name,
+    then a rename), then the manifest is written into it.
+- **Run line:** one per folder item: `{name: "Tea trip/", kind: "folder",
+  outcome, queueName, fileCount, newCount, size}` (size = the new files'
+  bytes). A folder counts as one in `counts.copied`/`moved` and
+  `counts.added`; `filesAdded` gets its queue name.
+- **Ledger:** one entry per new file (one per distinct sha256 inside a
+  folder): `name` is `<folder>/<path inside>`, `sourcePath` the file's own
+  path, `queueName` `<queue folder name>/<path inside>`. "Already collected:
+  N files" and Forget all now count every ledger entry under the source
+  folder, nested files included (before: direct children only).
+- **`.gdoc`:** collected like any file (top level, or inside a subfolder);
+  in the queue it waits ("needs Google Drive access").
+- **Script runs:** "files added" now also names folders that appeared in
+  the queue folder during the run.
+
 ## macOS app (built)
 
 Built 2026-10-04 from canvas v63.
