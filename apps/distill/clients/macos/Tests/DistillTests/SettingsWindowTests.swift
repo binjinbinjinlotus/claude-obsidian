@@ -50,6 +50,14 @@ final class SettingsWindowTests: XCTestCase {
         controller.show()
         defer { controller.window?.close() }
         XCTAssertEqual(controller.window?.contentMinSize, SettingsWindowSize.minimum)
+        // Nothing in the page pushes the window's minimum up: a smaller size stops at 820.
+        controller.window?.setFrameOrigin(NSPoint(x: -30000, y: -30000))
+        controller.window?.setContentSize(NSSize(width: 500, height: 500))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        XCTAssertEqual(controller.window?.minSize.width, SettingsWindowSize.minimum.width)
+        let host = NSHostingController(rootView: SettingsView().environmentObject(controller.engine))
+        XCTAssertEqual(host.sizeThatFits(in: CGSize(width: 100, height: 100)).width, SettingsWindowSize.minimum.width,
+                       "the Settings view asks for no more than the window minimum")
     }
 
     // MARK: Scroll memory
