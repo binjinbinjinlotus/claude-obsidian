@@ -1,6 +1,6 @@
 ---
 name: authoring-skills-and-agents
-description: Writes and reviews Claude skills (SKILL.md) and agent definitions (.claude/agents/*.md) as frames that set intent, context and preferences, not scripts that cap what the model can do. Use when creating, editing or reviewing any skill, subagent, system prompt or reusable instruction file in this repo.
+description: Writes and reviews this repo's skills (.claude/skills/*/SKILL.md) and subagents (.claude/agents/*.md) to the owner's frame-not-script standard of intent, context, defaults, known gaps and few boundaries. Use when creating, editing or reviewing a skill, subagent or reusable instruction file here, including alongside skill-creator or prompt-refiner.
 ---
 
 # Authoring skills and agents that don't cap the model
@@ -13,12 +13,14 @@ the few lines it must not cross. Give it that, then get out of the way.
 
 This matters more with each model generation. Current Claude models follow
 instructions closely and literally, so every rule you write is likely to be
-obeyed, including the ones you didn't really mean as limits. Anthropic
-removed most of Claude Code's own system prompt for its newest models with no
-loss. Over-specifying doesn't make a newer model safer; it makes it smaller.
+obeyed, including the ones you didn't really mean as limits. In July 2026
+Anthropic cut about 80% of Claude Code's system prompt for Opus 5 and Fable 5,
+with no measurable loss on coding evals. Over-specifying doesn't make a newer model safer; it makes it smaller.
 
 ## What to put in
 
+- **Real misses first.** Run the task without the skill, and write for what
+  actually went wrong. Don't write for imagined problems.
 - **Intent and the reason for it.** Say what the output is for and who uses
   it. The model generalises from a reason ("this goes into a client email,
   so prose reads warmer than bullets"). It can only obey a bare rule ("no
@@ -55,6 +57,9 @@ loss. Over-specifying doesn't make a newer model safer; it makes it smaller.
 - A persona so narrow it walls off knowledge, such as "only consider X".
 - Time-sensitive facts with no date, and anything that duplicates what the
   repo already records.
+- Boilerplate that every file repeats. One sentence of invitation is enough.
+  Link to where repo-wide boundaries are recorded (`apps/distill/AGENTS.md`,
+  the e2e skill), and restate only the ones this task can actually hit.
 
 ## Match the freedom to the risk
 
@@ -74,8 +79,17 @@ fenced, and leave the rest open.
   - `description`: third person, what it does plus when to use it, with the
     trigger words. Only the description is in context until the skill loads,
     so it does all the routing.
-  - Agents may add `model` and `tools`. Leave `tools` unset unless there's a
-    real reason to restrict them.
+  - Other fields exist. For agents: `model`, `effort`, `tools`,
+    `disallowedTools`, `skills`, `permissionMode`, `isolation`, and more. For
+    skills: `when_to_use`, `disable-model-invocation`, `paths`,
+    `allowed-tools`, and more. See code.claude.com/docs/en/sub-agents and
+    /skills.
+  - Use a field when config enforces something better than prose would.
+    Don't restrict tools without a reason.
+- **Agents differ from skills.** An agent's body is its whole system prompt:
+  it doesn't see the parent conversation, and only its final message returns.
+  Say what it should return, and how long. Put "use proactively" in the
+  description only if it should be delegated to unprompted.
 - **Body:** short sections. Keep it well under 500 lines. Put long reference
   material in separate files linked one level deep from SKILL.md, so it's read
   only when needed.

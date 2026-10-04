@@ -84,6 +84,14 @@ isn't.
 ## Friction log (newest first)
 
 ### 2026-10-04
+- **A reviewer subagent found real holes in the new skills.**
+  - The e2e skill's "isolated" setup didn't isolate the Keychain or
+    UserDefaults: a test core could overwrite the owner's real API keys.
+  - The PM agent didn't know the product's stage or audience.
+  - The authoring skill broke two of its own rules.
+  - *Change:* applied the ranked fixes.
+  - *Lesson:* review every new skill or agent with a fresh subagent, and try
+    it on a real task with and without it.
 - **A teammate's input hit the owner's installed app.** Keystrokes and a resize
   sent to "Distill" by process name reached the real app. Its Settings opened
   and the window size changed. The same day the owner's 3 Ask chats were

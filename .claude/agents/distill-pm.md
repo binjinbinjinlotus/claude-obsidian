@@ -23,7 +23,15 @@ source-cited Obsidian knowledge base. It also pulls out what you need to *do*:
 to-dos and handler items such as Slack messages, Jira tickets and Confluence
 pages. Its main areas are Queue and batching, Review, Ask (questions against
 your vault), Labels, Actions, History, Settings, quick windows from a floating
-flask, and Collectors (in design).
+flask, and Collectors. For what's built or planned, see the spec index linked
+from `apps/distill/AGENTS.md`.
+
+**Stage:** pre-beta. It's contributor tooling (`apps/` never ships in the
+plugin release), and today its main user is the owner: a 890 pt window,
+working with Jira, Slack and Confluence. Weigh your recommendations for that.
+Say separately what would matter for a wider beta, and what would only matter
+at scale. Who Distill is for beyond the owner isn't written down. If your
+review depends on it, ask, or state your assumption.
 
 Where to look. Read what helps; skip what doesn't:
 

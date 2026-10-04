@@ -1,6 +1,6 @@
 ---
 name: distill-macos-e2e
-description: End-to-end testing of the Distill macOS app (apps/distill/clients/macos) and its core. A framework for testing it, plus the gaps earlier AI test passes missed. It is not a complete guide; extend it with your own judgement. Use it before saying a Distill UI or behaviour change is tested, before reinstalling for the user, or when asked to e2e test, verify or QA the Mac app.
+description: End-to-end testing of the Distill macOS app (apps/distill/clients/macos) and its core: a testing frame plus the gaps earlier AI test passes missed. Use before saying a Distill UI or behaviour change is tested, before reinstalling for the user, or when asked to e2e test, verify, QA, check it works, screenshot the app, or whether something broke.
 ---
 
 # Distill macOS e2e testing
@@ -57,9 +57,19 @@ facts (what exists here), not the only way to test.
     for a headless batch.
   - Prefer real-shaped data, with old fields and empty defaults, over fixtures
     that set every field.
+- **Two things `DISTILL_STATE_DIR` doesn't isolate:**
+  - **The Keychain.** The core stores runner keys and Atlassian credentials
+    under the fixed service `com.claude-obsidian.distill`
+    (`core/src/runners/secrets.ts`). Saving, replacing or removing a key on a
+    test core changes the user's real keys. Test key flows only with the
+    user's go-ahead, or with the service overridden.
+  - **UserDefaults.** Quick-window sizes, the flask position and some toggles
+    live in `UserDefaults.standard`. A renamed SwiftPM binary gets its own
+    domain (for example `DistillQA`). A copied `.app` shares the user's
+    `com.claude-obsidian.distill` domain, so don't run a copied bundle.
 
 ### 3. Build and the automated layers
-- From the distill workspace: TypeScript typecheck with 0 `error TS`, then
+- From the distill workspace: `npm run typecheck --workspaces` with 0 `error TS`, then
   `npm test` for the core and CLI.
 - In `clients/macos`: `swift build` and `swift test`. Run the suite more than
   once after touching async code.
@@ -71,8 +81,8 @@ facts (what exists here), not the only way to test.
 Snapshots and unit tests are not the app (see below). Exercise the built app
 itself:
 
-- **Launch a copy on the temp state.** Copy the built binary under its own
-  name and run it with `DISTILL_STATE_DIR=T`. The installed app and the build
+- **Launch a copy on the temp state.** Copy the SwiftPM binary (not the `.app`
+  bundle) under its own name and run it with `DISTILL_STATE_DIR=T`. The installed app and the build
   share the bundle id `com.claude-obsidian.distill` and the process name
   "Distill", so anything that targets "Distill" may hit the user's app.
 - **Never let input reach the user's own Distill.** Twice, keystrokes and
@@ -93,9 +103,10 @@ itself:
   quick ask and quick note panels, and the flask.
 
 ### 5. Install for the user
-- Run `apps/distill/clients/macos/scripts/distill.sh update`. It backs up,
-  runs the tests, installs and compares data counts. Read the "Your data is
-  intact: …" line; treat any WARNING as a failure.
+- Install with the `distill` skill's `update`, and follow its rules about
+  running jobs and `--force`. It backs up, runs the tests, installs and
+  compares data counts. Read the "Your data is intact: …" line, and treat any
+  WARNING as a failure.
 - Then run `distill.sh core-stop`, and confirm with `distill.sh status` that
   the core has a new PID.
 
@@ -134,6 +145,12 @@ user runs.**
 - **Long content.** Controls meant to stay pinned at the bottom (the model row,
   the source picker in quick windows) scrolled away when the text got long.
   Test with long, multi-line text and with images inside the text.
+- **Structure, not only visuals.** Settings shipped as long group pages
+  instead of one page per section, as the canvas shows. Compare navigation and
+  scrolling with the canvas, not just the pixels.
+- **States the code can't leave.** "Connecting…" stayed stuck after the
+  pasted-token flow. For every transitional state, find the event that ends
+  it.
 - **Empty states combined with error states.** The canvas drew "not connected"
   inside an item card. With no items there was no card, so the user had no way
   to connect.
@@ -177,6 +194,12 @@ user runs.**
   installer's test run failed on it. One passing run proves little.
 - **Real-shaped state.** The user's `settings.json` has `taskDefaults: {}`.
   Fixtures that set everything never take the default path.
+- **The update data check is relative.** It compares only before and after
+  the install, so it can't see a loss that happened earlier (three Ask chats
+  vanished between two installs).
+- **Automation can be blocked,** by a locked screen or a missing Accessibility
+  or Screen Recording permission. Report the real-app phase as not run and hand
+  it to the owner. Snapshots don't substitute for it.
 
 ### Design parity
 - **Compare state by state, wording included.** For example: "Mark done" vs
