@@ -109,6 +109,13 @@ public final class CoreClient: Sendable {
         let _: JSONValue = try await send("DELETE", "/v1/queue/entries", body: ["path": path])
     }
 
+    /// v5 `POST /v1/queue/scan` `{trigger}`: rescan the queue folder now (folders walked again, files removed
+    /// by hand dropped). `.manual` = Refresh, `.window` = the main window became active. An older core
+    /// answers 404 (`isNotAvailable`).
+    public func scanQueue(trigger: QueueScanResult.Trigger = .manual) async throws -> QueueScanResult {
+        try await send("POST", "/v1/queue/scan", body: ["trigger": trigger.rawValue])
+    }
+
     // MARK: Notes
 
     public func addNote(_ request: AddNoteRequest) async throws -> AddNoteResult {

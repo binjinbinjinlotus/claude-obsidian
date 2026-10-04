@@ -502,3 +502,21 @@ struct ScriptConsent: View {
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color(hex: 0xF5D98B)))
     }
 }
+
+// MARK: - Include subfolders
+
+/// The Folder collector's "Include subfolders" switch (Add step 2, the Edit form): each top-level
+/// subfolder becomes one folder item in the queue.
+struct SubfoldersSwitch: View {
+    @Binding var isOn: Bool
+    var title: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            PillSwitch(isOn: $isOn, label: title, width: 34, height: 20)
+            Text(title).font(Theme.body(12.5)).foregroundStyle(CollectorsTheme.body)
+                .onTapGesture { isOn.toggle() }
+                .accessibilityHidden(true)
+        }
+    }
+}

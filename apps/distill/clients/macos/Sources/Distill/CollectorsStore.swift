@@ -45,6 +45,8 @@ struct AddDraft: Equatable {
     var kind: CollectorKind = .folder
     var folderPath = "~/Distill Inbox"
     var afterCollect = "copy"
+    /// v5: new collectors take each subfolder as one folder item (as designed); always sent.
+    var includeSubfolders = true
     var scriptInline = true
     var scriptFile = ""
     var code = "#!/bin/zsh\n# Write files into the queue folder ($2, or $DISTILL_QUEUE_DIR).\n"
@@ -58,6 +60,7 @@ struct AddDraft: Equatable {
 struct CollectorDraft: Equatable {
     var folderPath = ""
     var afterCollect = "copy"
+    var includeSubfolders = false
     var vaultPath = ""
     var schedule = ScheduleDraft()
     var scriptInline = false
@@ -72,6 +75,7 @@ struct CollectorDraft: Equatable {
     init(_ c: Collector, text: CollectorText) {
         folderPath = text.tilde(c.folder?.source ?? "")
         afterCollect = c.folder?.afterCollect ?? "copy"
+        includeSubfolders = c.folder?.subfolders ?? false
         vaultPath = c.vaultPath
         schedule = ScheduleDraft(c.schedule)
         if let s = c.script {
@@ -93,6 +97,7 @@ struct CollectorDraft: Equatable {
             var fp = FolderPatch()
             if src != f.source { fp.source = src }
             if afterCollect != f.afterCollect { fp.afterCollect = afterCollect }
+            if includeSubfolders != f.subfolders { fp.includeSubfolders = includeSubfolders }
             if fp != FolderPatch() { p.folder = fp }
         }
         if c.isScript, let s = c.script {
@@ -379,7 +384,7 @@ final class CollectorsStore: ObservableObject {
     func duplicate(_ c: Collector) {
         var input = NewCollectorInput(kind: c.kind, name: c.name + " copy", vaultPath: c.vaultPath, enabled: c.isFolder ? false : nil,
                                       schedule: c.schedule)
-        if let f = c.folder { input.folder = FolderPatch(source: f.source, afterCollect: f.afterCollect) }
+        if let f = c.folder { input.folder = FolderPatch(source: f.source, afterCollect: f.afterCollect, includeSubfolders: f.subfolders) }
         if let s = c.script { input.script = .init(source: s.source, interpreter: s.interpreter, timeoutSeconds: s.timeoutSeconds) }
         perform(c.id, "duplicate") { [weak self] client in
             let created = try await client.createCollector(input)
@@ -511,7 +516,7 @@ final class CollectorsStore: ObservableObject {
             let src = text.expand(d.folderPath)
             input.name = d.name.isEmpty ? (src as NSString).lastPathComponent : d.name
             input.enabled = true
-            input.folder = FolderPatch(source: src, afterCollect: d.afterCollect)
+            input.folder = FolderPatch(source: src, afterCollect: d.afterCollect, includeSubfolders: d.includeSubfolders)
         } else {
             let source: ScriptSource = d.scriptInline ? .inline(d.code) : .file(text.expand(d.scriptFile))
             input.name = d.name.isEmpty ? (d.scriptInline ? "Script" : ((d.scriptFile as NSString).lastPathComponent as NSString).deletingPathExtension) : d.name

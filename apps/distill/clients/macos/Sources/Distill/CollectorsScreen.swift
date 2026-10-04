@@ -351,6 +351,7 @@ struct CollectorDetail: View {
         if let f = c.folder {
             let queue = store.queuePath(c.vaultPath).map { " · queue " + text.tilde($0) } ?? ""
             return [("From", text.tilde(f.source), ""),
+                    ("Subfolders", f.subfolders ? "Collected as folder items" : "Left alone", ""),
                     ("After collecting", f.moves ? "Move it to the queue" : "Keep the original (copy)", ""),
                     ("Into", store.vaultName(c.vaultPath), queue),
                     ("Schedule", sched, "")]

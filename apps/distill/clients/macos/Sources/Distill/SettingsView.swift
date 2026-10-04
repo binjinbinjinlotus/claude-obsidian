@@ -363,6 +363,20 @@ struct BatchingSettings: View {
             }
             .padding(.top, 6)
             .settingsAnchor("Wait before picking up a file")
+            // The queue check (v5): the core rescans the queue folder this often; Off leaves Refresh and the window check.
+            SettingsRow(title: "Check the queue folder for changes",
+                        note: "Finds files and folders added outside Distill (Finder, sync apps). Refresh on the Queue checks at once.", bold: true) {
+                DropdownButton(title: QueueScanInterval.label(engine.settings.resolvedQueueScanMinutes), height: 30) {
+                    ForEach(QueueScanInterval.options, id: \.self) { minutes in
+                        Button(QueueScanInterval.label(minutes) + (minutes == 0 ? " (only Refresh and when the window opens)" : "")) {
+                            engine.settings.queueScanMinutes = minutes
+                        }
+                    }
+                }
+                .fixedSize()
+                .accessibilityLabel("Check the queue folder for changes")
+            }
+            .padding(.top, 6)
         }
     }
 
