@@ -146,12 +146,12 @@ runs. Reply and Allow turns start a new run of the same key at `Drafting page
 changes`. Failed and cancelled batches finish with `Failed` (and `error`) or
 `Cancelled`.
 
-## Folders, Google Docs and syncing (designed 2026-10-04)
+## Folders, Google Docs and syncing (designed and built 2026-10-04)
 
 Canvas: Main, MainLoading, MainEmpty, MainFolder, QueueItems; components
-QueueRowView (folder and Google Doc states) and QueueRefresh. The core, API
-and CLI are built (see "Built in the core" at the end of this section); the
-Mac UI is not built yet.
+QueueRowView (folder and Google Doc states) and QueueRefresh. The core, API,
+CLI and Mac app are built (see "Built in the core" and "Built in the Mac app"
+at the end of this section).
 
 ### Sync: Refresh and the queue check
 
@@ -336,3 +336,81 @@ Code: `scanQueueFolder`, `walkFolder`, `folderTreeEntries`,
   `seenBefore` are listed in the queue tree and the prompt but are never
   sources; ones the collector didn't copy appear in the tree only. Being
   hidden, the manifest itself is never counted or sent.
+
+### Built in the Mac app (2026-10-04)
+
+Built from canvas v64. Code: DistillKit `Models.swift` (QueueEntry v5
+fields, `QueueTreeEntry`, `QueueScanResult`, status scan times, `Job.folders`,
+`Settings.queueScanMinutes`, the `queue.scanned` event), `QueueItems.swift`
+(folder and Google Doc wording, `QueueTree.lines`, `Job.sources`,
+`QueueRefreshState`, `QueueScanInterval`), `QueueFolderWalk.swift`,
+`SourceUsage.swift`, `CoreClient.scanQueue`; the app's `QueueRowViews.swift`
+(QueueRowView, QueueTreeView, QueueRefresh), `AppModel+Queue.swift`,
+`JobSources.swift`, `MainView.swift` (QueueView, JobDetailView) and
+`SettingsView.swift` (Batching). Tests: `QueueItemsTests`,
+`QueueScanClientTests`, `QueueRefreshTests`. Snapshot states:
+`SnapshotQueueItems.swift` (`queue`, `queue-900`, `queue-refreshed(-900)`,
+`queue-running(-900)`, `queue-row-states`, `queue-refresh-states`,
+`queue-card-settings`, `queue-card-review`, `queue-card-history`;
+`queue-empty` shows "Nothing new").
+
+- **Refresh** sits after Reveal in Finder (on a second line when the window
+  is too narrow for one). "Checking…" is disabled while `POST /v1/queue/scan
+  {trigger: manual}` runs; the result shows for 4 s, then "checked at …"
+  (`max(status.lastQueueScanAt, the newest scan the app saw)`). The scan's
+  `entries` replace the list at once and added rows flash once. A periodic or
+  window scan (`queue.scanned`) moves "checked at" and the list but shows no
+  result. An older core (404) falls back to re-reading the list, with no
+  banner and no "checked at".
+- **Window scan:** `POST /v1/queue/scan {trigger: window}` when the main
+  window becomes key (never the quick panels or Settings), at most every 15 s,
+  only with a live core. At launch the window is key before the core answers,
+  so the scan runs once it connects.
+- **Folder rows** expand from a click on the name or the chevron, which is a
+  button ("Show what is inside …") for VoiceOver and keyboard users.
+- **Title:** "N items in the queue" ("1 item"); a folder is one item, and a
+  running batch counts a folder once ("3 in this batch").
+- **Rows:** a folder row has the folder tile, the chevron (only when it has a
+  tree), the meta from the board ("12 files · 3 folders · 18.4 MB · moved in
+  at 2:40 AM"; folders left out at 0; "a file changed at …" while the wait
+  runs; no time on a problem row or in a batch). The tree is rebuilt from the
+  core's flat list: 5 entries per folder, then "… N more" with their size;
+  folders show their file count, a .gdoc "not read", a file the collector took
+  before "seen before · size"; when the core cut the list, a last line says so.
+  A Google Doc row has the doc tile, "Google Doc · needs Google Drive access ·
+  added 2:55 AM", Open in Google Docs (only an https link on docs or drive
+  .google.com opens), the amber Waiting pill and the hint (both dropped while
+  a batch runs, as on the board). Status order: problem, then waiting, then
+  the batch. Pills: "Too big", "Too deep", "Empty folder", "Couldn’t read"
+  (any other problem, a .gdoc with no link included), "Waiting".
+- **Remove** of a folder asks first ("Move “Tea tasting trip” to the
+  Trash?"); the core moves the whole folder to the Trash.
+- **In a batch** a folder is one In batch row; its counts and tree are read
+  from the folder in the vault's inbox (read-only).
+- **Review → Sources in this batch · N:** the folder once ("folder · 12 files
+  · 3 folders", Show files), then each file with the pages it was used in, a
+  .gdoc inside as "not read: needs Google Drive access". **History:** the
+  folder once ("· 12 files · in inbox/2026-10-04/") expanding to the tree.
+  "Used in" is a heuristic over the changed pages' text (the bundle's writes
+  while waiting, the vault's pages once applied): a page uses a file when it
+  mentions its vault path or its path from the batch folder. "Not used" only
+  when every page was read and at least one file matched; otherwise no file
+  has a suffix (the citation form of real ingest pages isn't fixed: pages may
+  cite a `.raw/` copy or only the source ledger).
+- **Settings → Batching:** "Check the queue folder for changes" with Every
+  minute, Every 5 min, Every 15 min, Every hour and Off; a value set elsewhere
+  shows as it is ("Every 30 min"). Written only when the user picks one. In
+  Settings search.
+
+Where the app differs from the boards (also in [Decisions](decisions.md)):
+
+- The tree shows 5 entries per folder as specified; the board's photos/ line
+  shows one photo, then "… 7 more".
+- Too deep and Empty folder have their own pills (the canvas draws neither).
+- Refresh's other results: "1 new item found · 1 item gone", "2 items
+  changed" (gray). The board draws only the four designed ones.
+- Review doesn't group images ("photos/ (8 images) · described in …"); each
+  file has its own line.
+- The QueueItems card "What the AI is given" is the core's prompt; it has no
+  app view and no snapshot. The board id `queue` can't be a snapshot id (ids
+  are hyphenated); its state is `queue` + `queue-900`.

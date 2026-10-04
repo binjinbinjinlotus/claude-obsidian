@@ -127,6 +127,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         mainWindow?.makeKeyAndOrderFront(nil)
     }
 
+    /// The main window became active: rescan the queue folder (folders moved in by hand show up).
+    /// Only the main window; the quick panels and Settings never trigger it.
+    func windowDidBecomeKey(_ notification: Notification) {
+        if (notification.object as? NSWindow) === mainWindow { engine.scanQueueOnWindowActive() }
+    }
+
     func windowWillClose(_ notification: Notification) {
         // Closing the main window closes the Ask screen (Keep history off deletes its chat).
         if (notification.object as? NSWindow) === mainWindow { engine.ask.leave(engine.ask.main) }

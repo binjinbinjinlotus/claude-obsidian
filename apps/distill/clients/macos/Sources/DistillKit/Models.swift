@@ -156,6 +156,11 @@ public struct Settings: Codable, Equatable, Sendable {
     public var runnerOptions: [String: [String: String]]?
     /// v3 (optional; absent = DEFAULT_ACTION_PREFERENCES). Raw object, so unknown nested keys survive.
     public var actionPreferences: ActionPreferences?
+    /// v5: the queue check, in minutes (absent = 5, 0 = Off). Never written unless the user picks a value.
+    public var queueScanMinutes: Int?
+
+    /// The queue check as the core applies it: absent = 5; clamped to 0…1440.
+    public var resolvedQueueScanMinutes: Int { queueScanMinutes.map { min(1440, max(0, $0)) } ?? 5 }
 
     public init() {}
 
@@ -196,6 +201,7 @@ public struct Settings: Codable, Equatable, Sendable {
         shortcuts = c.lossy(ShortcutSettings.self, .shortcuts)
         runnerOptions = c.lossy([String: [String: String]].self, .runnerOptions)
         actionPreferences = c.lossy(ActionPreferences.self, .actionPreferences)
+        queueScanMinutes = c.lossyInt(.queueScanMinutes).map { min(1440, max(0, $0)) }
     }
 
     /// This value as a JSON object (nil optionals omitted).
@@ -334,7 +340,7 @@ public struct TurnRecord: Codable, Equatable, Sendable, Identifiable {
 public struct Job: Codable, Identifiable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, kind, vaultPath, files, sessionID, runnerID, model, effort, state, createdAt, updatedAt
-        case approval, turns, grantedTools, operationID, changedPaths, error, actionsFound
+        case approval, turns, grantedTools, operationID, changedPaths, error, actionsFound, folders
     }
 
     public var id: String
@@ -356,6 +362,8 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
     public var error: String?
     /// v3: what the batch's "Finding actions" step found (nil on older cores and other kinds).
     public var actionsFound: JobActionsSummary?
+    /// v5: folder items in this batch (vault-relative, "inbox/2026-10-04/Tea tasting trip"); their files are in `files`. nil on older jobs.
+    public var folders: [String]?
 
     public var totalCostUSD: Double { turns.reduce(0) { $0 + $1.costUSD } }
     public var selection: ModelSelection { ModelSelection(runnerID: runnerID ?? "claude-code", model: model, effort: effort) }
@@ -404,6 +412,7 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
         changedPaths = c.lossyArray(String.self, .changedPaths)
         error = c.lossy(String.self, .error)
         actionsFound = c.lossy(JobActionsSummary.self, .actionsFound)
+        folders = c.lossy([Lossy<String>].self, .folders).map { $0.compactMap(\.value) }
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -426,16 +435,37 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
         try c.encode(changedPaths, forKey: .changedPaths)
         try c.encodeIfPresent(error, forKey: .error)
         try c.encodeIfPresent(actionsFound, forKey: .actionsFound)
+        try c.encodeIfPresent(folders, forKey: .folders)
     }
 }
 
 // MARK: - Queue, status
 
 public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
-    enum CodingKeys: String, CodingKey { case path, name, modified, size, settled, readyAt, kind, problem, changing, members, note }
+    enum CodingKeys: String, CodingKey {
+        case path, name, modified, size, settled, readyAt, kind, problem, changing, members, note
+        case fileCount, folderCount, tree, treeTruncated, gdoc, waiting
+    }
 
-    /// note = written by addNote (complete when queued, skips the settle wait); file = anything else.
-    public enum Kind: String, Codable, Sendable { case note, file }
+    /// note = written by addNote (complete when queued, skips the settle wait); folder = a folder in the
+    /// queue folder, one item (v5); gdoc = a Google Drive `.gdoc` pointer (v5); file = anything else
+    /// (an unknown kind from a newer core reads as file).
+    public enum Kind: String, Codable, Sendable { case note, file, folder, gdoc }
+
+    /// v5: a `.gdoc` row's title and link (never the account email in the file).
+    public struct GoogleDoc: Codable, Equatable, Hashable, Sendable {
+        public var title: String
+        public var url: String
+        public var docId: String?
+        public init(title: String, url: String, docId: String? = nil) { self.title = title; self.url = url; self.docId = docId }
+        enum CodingKeys: String, CodingKey { case title, url, docId }
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            title = c.lossy(String.self, .title) ?? ""
+            url = c.lossy(String.self, .url) ?? ""
+            docId = c.lossy(String.self, .docId)
+        }
+    }
 
     /// A note row's summary from its manifest.
     public struct NoteSummary: Codable, Equatable, Hashable, Sendable {
@@ -482,13 +512,25 @@ public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
     /// older core, which listed them as rows of their own.
     public var members: [String]?
     public var note: NoteSummary?
+    /// v5, folder rows: files inside (hidden files and partial downloads not counted), subfolders at any level.
+    public var fileCount: Int?
+    public var folderCount: Int?
+    /// v5, folder rows: the read-only tree, sorted by path (capped by the core; `treeTruncated` then).
+    public var tree: [QueueTreeEntry]?
+    public var treeTruncated: Bool
+    /// v5, gdoc rows.
+    public var gdoc: GoogleDoc?
+    /// v5: held out of every batch though nothing is wrong ("google-drive": a .gdoc).
+    public var waiting: String?
 
     public var id: String { path }
     public var url: URL { URL(fileURLWithPath: path) }
 
     public init(path: String, name: String? = nil, modified: Date, size: Int, settled: Bool,
                 readyAt: Date? = nil, kind: Kind = .file, problem: String? = nil,
-                changing: Bool = false, members: [String]? = nil, note: NoteSummary? = nil) {
+                changing: Bool = false, members: [String]? = nil, note: NoteSummary? = nil,
+                fileCount: Int? = nil, folderCount: Int? = nil, tree: [QueueTreeEntry]? = nil, treeTruncated: Bool = false,
+                gdoc: GoogleDoc? = nil, waiting: String? = nil) {
         self.path = path
         self.name = name ?? URL(fileURLWithPath: path).lastPathComponent
         self.modified = modified
@@ -500,6 +542,12 @@ public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
         self.changing = changing
         self.members = members
         self.note = note
+        self.fileCount = fileCount
+        self.folderCount = folderCount
+        self.tree = tree
+        self.treeTruncated = treeTruncated
+        self.gdoc = gdoc
+        self.waiting = waiting
     }
 
     public init(from decoder: Decoder) throws {
@@ -515,6 +563,12 @@ public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
         changing = c.lossy(Bool.self, .changing) ?? false
         members = c.lossy([Lossy<String>].self, .members).map { $0.compactMap(\.value) }
         note = c.lossy(NoteSummary.self, .note)
+        fileCount = c.lossyInt(.fileCount).map { max(0, $0) }
+        folderCount = c.lossyInt(.folderCount).map { max(0, $0) }
+        tree = c.lossy([Lossy<QueueTreeEntry>].self, .tree).map { $0.compactMap(\.value) }
+        treeTruncated = c.lossy(Bool.self, .treeTruncated) ?? false
+        gdoc = c.lossy(GoogleDoc.self, .gdoc)
+        waiting = c.lossy(String.self, .waiting).flatMap { $0.isEmpty ? nil : $0 }
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -530,6 +584,98 @@ public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
         if changing { try c.encode(true, forKey: .changing) }
         try c.encodeIfPresent(members, forKey: .members)
         try c.encodeIfPresent(note, forKey: .note)
+        try c.encodeIfPresent(fileCount, forKey: .fileCount)
+        try c.encodeIfPresent(folderCount, forKey: .folderCount)
+        try c.encodeIfPresent(tree, forKey: .tree)
+        if treeTruncated { try c.encode(true, forKey: .treeTruncated) }
+        try c.encodeIfPresent(gdoc, forKey: .gdoc)
+        try c.encodeIfPresent(waiting, forKey: .waiting)
+    }
+}
+
+/// One entry of a folder item's tree (`QueueTreeEntry`).
+public struct QueueTreeEntry: Codable, Equatable, Hashable, Sendable {
+    public enum Kind: String, Codable, Sendable { case file, dir, gdoc }
+    /// Relative to the folder item, "/"-separated ("notes/day1-uji.md").
+    public var path: String
+    /// Bytes; a dir: the total of its files.
+    public var size: Int
+    public var kind: Kind
+    /// Collected before (Folder collector): listed for context, not a source.
+    public var seenBefore: Bool
+
+    public init(path: String, size: Int = 0, kind: Kind = .file, seenBefore: Bool = false) {
+        self.path = path; self.size = size; self.kind = kind; self.seenBefore = seenBefore
+    }
+
+    enum CodingKeys: String, CodingKey { case path, size, kind, seenBefore }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        path = try c.decode(String.self, forKey: .path)
+        size = max(0, c.lossyInt(.size) ?? 0)
+        kind = c.lossy(String.self, .kind).flatMap(Kind.init(rawValue:)) ?? .file
+        seenBefore = c.lossy(Bool.self, .seenBefore) ?? false
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(path, forKey: .path)
+        try c.encode(size, forKey: .size)
+        try c.encode(kind, forKey: .kind)
+        if seenBefore { try c.encode(true, forKey: .seenBefore) }
+    }
+}
+
+/// What a queue scan found (`POST /v1/queue/scan`, the `queue.scanned` event).
+public struct QueueScanResult: Codable, Equatable, Sendable {
+    public enum Trigger: String, Codable, Sendable { case manual, window, periodic }
+    public var added: Int
+    public var removed: Int
+    public var changed: Int
+    public var checkedAt: Date
+    /// manual = Refresh; window = the window became active; periodic = the queue check (unknown reads as periodic).
+    public var trigger: Trigger
+    /// The queue folder exists but can't be read.
+    public var problem: String?
+    public var addedEntries: [QueueEntry]
+    public var removedEntries: [QueueEntry]
+    public var changedEntries: [QueueEntry]
+    /// The whole list after the scan; nil when the core didn't send it.
+    public var entries: [QueueEntry]?
+
+    public init(added: Int = 0, removed: Int = 0, changed: Int = 0, checkedAt: Date = Date(), trigger: Trigger = .manual,
+                problem: String? = nil, addedEntries: [QueueEntry] = [], removedEntries: [QueueEntry] = [],
+                changedEntries: [QueueEntry] = [], entries: [QueueEntry]? = nil) {
+        self.added = added; self.removed = removed; self.changed = changed; self.checkedAt = checkedAt; self.trigger = trigger
+        self.problem = problem; self.addedEntries = addedEntries; self.removedEntries = removedEntries
+        self.changedEntries = changedEntries; self.entries = entries
+    }
+
+    enum CodingKeys: String, CodingKey { case added, removed, changed, checkedAt, trigger, problem, addedEntries, removedEntries, changedEntries, entries }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        added = max(0, c.lossyInt(.added) ?? 0)
+        removed = max(0, c.lossyInt(.removed) ?? 0)
+        changed = max(0, c.lossyInt(.changed) ?? 0)
+        checkedAt = c.lossyDate(.checkedAt) ?? Date()
+        trigger = c.lossy(String.self, .trigger).flatMap(Trigger.init(rawValue:)) ?? .periodic
+        problem = c.lossy(String.self, .problem).flatMap { $0.isEmpty ? nil : $0 }
+        addedEntries = c.lossyArray(QueueEntry.self, .addedEntries)
+        removedEntries = c.lossyArray(QueueEntry.self, .removedEntries)
+        changedEntries = c.lossyArray(QueueEntry.self, .changedEntries)
+        entries = c.lossy([Lossy<QueueEntry>].self, .entries).map { $0.compactMap(\.value) }
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(added, forKey: .added)
+        try c.encode(removed, forKey: .removed)
+        try c.encode(changed, forKey: .changed)
+        try c.encode(CoreDate.format(checkedAt), forKey: .checkedAt)
+        try c.encode(trigger, forKey: .trigger)
+        try c.encodeIfPresent(problem, forKey: .problem)
+        try c.encode(addedEntries, forKey: .addedEntries)
+        try c.encode(removedEntries, forKey: .removedEntries)
+        try c.encode(changedEntries, forKey: .changedEntries)
+        try c.encodeIfPresent(entries, forKey: .entries)
     }
 }
 
@@ -562,6 +708,7 @@ public struct RunnerStatus: Codable, Equatable, Sendable {
 public struct StatusResponse: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case version, activeVault, problems, queueCount, pendingApprovals, runningJobs, nextBatchAt, runners
+        case lastQueueScanAt, nextQueueScanAt
     }
 
     public var version: String
@@ -572,9 +719,13 @@ public struct StatusResponse: Codable, Equatable, Sendable {
     public var runningJobs: Int
     public var nextBatchAt: Date?
     public var runners: [RunnerStatus]
+    /// v5: the last full queue scan of any kind ("checked at 3:41 AM"); the next queue check (nil when Off or on an older core).
+    public var lastQueueScanAt: Date?
+    public var nextQueueScanAt: Date?
 
     public init(version: String = "", activeVault: VaultProfile? = nil, problems: [SetupProblem] = [], queueCount: Int = 0,
-                pendingApprovals: Int = 0, runningJobs: Int = 0, nextBatchAt: Date? = nil, runners: [RunnerStatus] = []) {
+                pendingApprovals: Int = 0, runningJobs: Int = 0, nextBatchAt: Date? = nil, runners: [RunnerStatus] = [],
+                lastQueueScanAt: Date? = nil, nextQueueScanAt: Date? = nil) {
         self.version = version
         self.activeVault = activeVault
         self.problems = problems
@@ -583,6 +734,8 @@ public struct StatusResponse: Codable, Equatable, Sendable {
         self.runningJobs = runningJobs
         self.nextBatchAt = nextBatchAt
         self.runners = runners
+        self.lastQueueScanAt = lastQueueScanAt
+        self.nextQueueScanAt = nextQueueScanAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -595,6 +748,8 @@ public struct StatusResponse: Codable, Equatable, Sendable {
         runningJobs = c.lossyInt(.runningJobs) ?? 0
         nextBatchAt = c.lossyDate(.nextBatchAt)
         runners = c.lossyArray(RunnerStatus.self, .runners)
+        lastQueueScanAt = c.lossyDate(.lastQueueScanAt)
+        nextQueueScanAt = c.lossyDate(.nextQueueScanAt)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -607,6 +762,8 @@ public struct StatusResponse: Codable, Equatable, Sendable {
         try c.encode(runningJobs, forKey: .runningJobs)
         try c.encodeIfPresent(nextBatchAt.map(CoreDate.format), forKey: .nextBatchAt)
         try c.encode(runners, forKey: .runners)
+        try c.encodeIfPresent(lastQueueScanAt.map(CoreDate.format), forKey: .lastQueueScanAt)
+        try c.encodeIfPresent(nextQueueScanAt.map(CoreDate.format), forKey: .nextQueueScanAt)
     }
 }
 
@@ -977,11 +1134,13 @@ public enum CoreEvent: Equatable, Sendable {
     /// Live output of a script run: the text added since the last event.
     case collectorRunOutput(collectorId: String, runId: String, stream: String, text: String)
     case collectorRunFinished(CollectorRun)
+    /// v5: a full queue scan finished (Refresh, the window-active scan or the queue check).
+    case queueScanned(QueueScanResult)
     case unknown(type: String)
 
     private enum Keys: String, CodingKey {
         case type, entries, job, settings, level, message, requestID, notePath, labels, error, conversation, deleted, progress, action, connection
-        case collector, run, collectorId, runId, stream, text
+        case collector, run, collectorId, runId, stream, text, result
     }
 
     /// Decodes the JSON of one `data:` line.
@@ -1018,6 +1177,7 @@ public enum CoreEvent: Equatable, Sendable {
             case "collector.run.output":
                 event = .collectorRunOutput(collectorId: c.lossy(String.self, .collectorId) ?? "", runId: c.lossy(String.self, .runId) ?? "",
                                             stream: c.lossy(String.self, .stream) ?? "stdout", text: c.lossy(String.self, .text) ?? "")
+            case "queue.scanned": event = .queueScanned(try c.decode(QueueScanResult.self, forKey: .result))
             default: event = .unknown(type: type)
             }
         }

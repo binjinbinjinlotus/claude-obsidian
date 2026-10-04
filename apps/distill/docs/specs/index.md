@@ -30,7 +30,7 @@ https://claude.ai/artifact/VSqHFPZjcqY2bMqFEnPqpG
 - [AI runners](ai-runners.md): Claude Code, Codex, OpenAI, OpenRouter and Vercel AI SDK; per-task runner/model/effort; Keychain secrets.
 - [Claude runner](claude-runner.md): how `claude -p` is invoked, isolation flags, sessions, resume, structured output.
 - [Approval and review](approval-and-review.md): two-phase runs, the approval gate, core-applied transactions, recovery.
-- [Queue and batching](queue-and-batching.md): queue folder, 10-minute settle wait, schedule, inbox moves, progress steps; folder items, .gdoc items that wait, the queue scan (Refresh and the periodic check; core, API, CLI built).
+- [Queue and batching](queue-and-batching.md): queue folder, 10-minute settle wait, schedule, inbox moves, progress steps; folder items, .gdoc items that wait, the queue scan (Refresh and the periodic check; core, API, CLI and Mac app built).
 - [Job kinds](job-kinds.md): ingest and labels; the extension point for new kinds of work.
 - [Vaults and settings](vaults-and-settings.md): vault profiles, stored settings, validation.
 

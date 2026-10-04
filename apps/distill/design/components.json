@@ -4712,26 +4712,22 @@
             "file",
             "folder",
             "gdoc"
-          ],
-          "swiftPending": "folder and Google Doc rows, designed 2026-10-04"
+          ]
         },
         {
           "name": "expanded",
           "type": "boolean",
-          "default": false,
-          "swiftPending": "folder and Google Doc rows, designed 2026-10-04"
+          "default": false
         },
         {
           "name": "tree",
           "type": "text",
-          "default": "",
-          "swiftPending": "folder and Google Doc rows, designed 2026-10-04"
+          "default": ""
         },
         {
           "name": "hint",
           "type": "text",
-          "default": "",
-          "swiftPending": "folder and Google Doc rows, designed 2026-10-04"
+          "default": ""
         },
         {
           "name": "width",
@@ -4745,7 +4741,7 @@
         "file": "QueueRowViewStates.dc.html",
         "title": "Queue row states",
         "heading": "QueueRowView",
-        "intro": "QueueRowViews.swift → <b>QueueRowView</b>. One row per queue item: a file, a <b>folder</b> (one item, not N files: folder icon, name, “12 files · 3 folders · 18.4 MB”; the chevron expands its tree, read-only) or a <b>Google Doc</b> (a .gdoc is only a pointer, so its content can’t be read here: the doc’s title, “Google Doc · needs Google Drive access”, a <b>Waiting</b> pill, Open in Google Docs, and a short hint; it is not processed). Pill and × as for files; in a batch the row is locked. Props: title, meta, tileName, status, statusText, help, noteTile; designed, not in Swift yet: kind (file | folder | gdoc), expanded, tree (“name · size” items separated by |, two spaces per level, folders end with /), hint. Status <b>waiting</b> is new: QueueRowStatus needs a waiting case (Google Docs).",
+        "intro": "QueueRowViews.swift → <b>QueueRowView</b>. One row per queue item: a file, a <b>folder</b> (one item, not N files: folder icon, name, “12 files · 3 folders · 18.4 MB”; the chevron expands its tree, read-only) or a <b>Google Doc</b> (a .gdoc is only a pointer, so its content can’t be read here: the doc’s title, “Google Doc · needs Google Drive access”, a <b>Waiting</b> pill, Open in Google Docs, and a short hint; it is not processed). Pill and × as for files; in a batch the row is locked. Props: title, meta, tileName, status, statusText, help, noteTile, kind (file | folder | gdoc), expanded, tree (“name · size” items separated by |, two spaces per level, folders end with /; Swift: QueueTree.lines from the core’s flat tree), hint. Status <b>waiting</b> (Google Docs) is QueueRowStatus.waiting.",
         "width": 1680,
         "cols": 2,
         "wrap": "<div style=\"width: 780px; padding: 6px; border-radius: 16px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
@@ -4897,7 +4893,7 @@
     {
       "name": "QueueRefresh",
       "title": "Queue refresh",
-      "swift": null,
+      "swift": "clients/macos/Sources/Distill/QueueRowViews.swift",
       "preview": [
         320,
         28
@@ -4935,7 +4931,7 @@
         "file": "QueueRefreshStates.dc.html",
         "title": "Queue refresh states",
         "heading": "QueueRefresh",
-        "intro": "Refresh on the Queue screen, after Copy path and Reveal in Finder: it re-syncs the list with the queue folder now (the same check runs every 5 minutes and when the window opens). “Checking…” while the core scans, then the result for 4 seconds, then back to “checked at …”. No Swift view yet: add <b>QueueRefresh</b>. Props: state (idle | checking | found | nothing | error), checked, found, error.",
+        "intro": "Refresh on the Queue screen, after Copy path and Reveal in Finder: it re-syncs the list with the queue folder now (the same check runs every 5 minutes and when the window opens). “Checking…” while the core scans, then the result for 4 seconds, then back to “checked at …”. Swift: <b>QueueRefresh</b> in QueueRowViews.swift (state from AppModel.refreshState). Props: state (idle | checking | found | nothing | error), checked, found, error.",
         "width": 1280,
         "cols": 3
       },

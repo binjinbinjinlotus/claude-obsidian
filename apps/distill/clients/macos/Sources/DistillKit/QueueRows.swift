@@ -9,10 +9,12 @@ public enum QueueRowStatus: Equatable, Sendable {
     case inBatch
     /// Added while a batch runs: it waits for the next one.
     case nextBatch
-    /// "Couldn't read", with the core's reason in the tooltip.
+    /// "Couldn't read" (or "Too big", "Too deep", "Empty folder" for a folder), with the reason in the tooltip.
     case problem(String)
+    /// v5: held out of every batch though nothing is wrong (a Google Doc waiting for Google Drive access).
+    case waiting(String)
 
-    public enum Tone: Sendable { case gray, green, blue, peach }
+    public enum Tone: Sendable { case gray, green, blue, peach, amber }
 
     public var tone: Tone {
         switch self {
@@ -20,6 +22,7 @@ public enum QueueRowStatus: Equatable, Sendable {
         case .ready: return .green
         case .inBatch: return .blue
         case .problem: return .peach
+        case .waiting: return .amber
         }
     }
 
@@ -65,8 +68,10 @@ public enum QueueRows {
         Set([entry.path] + (entry.members ?? []))
     }
 
+    /// Problem first, then waiting (a Google Doc keeps waiting while a batch runs), then the batch.
     public static func status(_ entry: QueueEntry, batchRunning: Bool) -> QueueRowStatus {
         if let problem = entry.problem { return .problem(problem) }
+        if let waiting = entry.waiting { return .waiting(waiting) }
         if batchRunning { return .nextBatch }
         if entry.kind == .note || entry.settled { return .ready }
         if let at = entry.readyAt { return .readyAt(at) }
@@ -80,7 +85,14 @@ public enum QueueRows {
         case .ready: return "Ready"
         case .inBatch: return "In batch"
         case .nextBatch: return "Next batch"
-        case .problem: return "Couldn’t read"
+        case .problem(let reason):
+            switch reason {
+            case "too big": return "Too big"
+            case "too deep": return "Too deep"
+            case "empty folder": return "Empty folder"
+            default: return "Couldn’t read"
+            }
+        case .waiting: return "Waiting"
         }
     }
 
@@ -89,7 +101,15 @@ public enum QueueRows {
         switch status {
         case .readyAt:
             return "Distill waits \(waitPhrase(settleSeconds)) after a file last changes so half-written files aren't picked up. Process now skips the wait."
-        case .problem(let reason): return reason
+        case .problem(let reason):
+            switch reason {
+            case "too big": return "A folder item can hold up to 200 files and 500 MB. Split it into smaller folders."
+            case "too deep": return "A file in this folder is more than 8 folders down. Move it up, or split the folder."
+            case "empty folder": return "There are no files in this folder."
+            case "no link inside": return "This .gdoc has no link inside, often because Google Drive hasn’t synced it yet."
+            default: return reason
+            }
+        case .waiting: return "Distill can’t open Google Docs yet, so this waits here and isn’t processed."
         case .inBatch: return "A batch is reading it now."
         case .nextBatch: return "Added while a batch runs: it waits for the next one."
         case .ready: return nil
@@ -103,9 +123,14 @@ public enum QueueRows {
         return entry.name.range(of: pasted, options: .regularExpression) != nil ? .pasted : .dropped
     }
 
-    /// The row title: a written note shows its title (the file stem), anything else its file name.
+    /// The row title: a written note shows its title (the file stem), a Google Doc its title (the file name
+    /// without .gdoc), anything else (a folder too) its name.
     public static func title(_ entry: QueueEntry) -> String {
         if entry.kind == .note, entry.name.hasSuffix(".md") { return String(entry.name.dropLast(3)) }
+        if entry.kind == .gdoc {
+            if let t = entry.gdoc?.title, !t.isEmpty { return t }
+            if entry.name.lowercased().hasSuffix(".gdoc") { return String(entry.name.dropLast(5)) }
+        }
         return entry.name
     }
 
@@ -113,8 +138,13 @@ public enum QueueRows {
     /// "Written note · In person · labels confirmed · 1 image". A note from an
     /// older core (no summary), or one with nothing to summarize, shows
     /// "Written note · Added at 3:04 AM".
-    public static func meta(_ entry: QueueEntry, now: Date = Date(),
+    public static func meta(_ entry: QueueEntry, now: Date = Date(), inBatch: Bool = false, batchRunning: Bool = false,
                             locale: Locale = .current, timeZone: TimeZone = .current) -> String {
+        switch entry.kind {
+        case .folder: return folderMeta(entry, now: now, inBatch: inBatch, locale: locale, timeZone: timeZone)
+        case .gdoc: return gdocMeta(entry, now: now, batchRunning: batchRunning || inBatch, locale: locale, timeZone: timeZone)
+        default: break
+        }
         let origin = origin(entry)
         let when = "\(origin.verb) \(at(entry.modified, now: now, locale: locale, timeZone: timeZone))"
         if origin == .note, entry.name.hasSuffix(".md") {

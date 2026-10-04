@@ -99,6 +99,7 @@ public struct CollectorText: Sendable {
     }
 
     public static func files(_ n: Int) -> String { n == 1 ? "1 file" : "\(n) files" }
+    public static func items(_ n: Int) -> String { n == 1 ? "1 item" : "\(n) items" }
 
     // MARK: Schedules
 
@@ -307,9 +308,11 @@ public struct CollectorText: Sendable {
         case .nothing: return "Nothing new"
         case .success:
             if r.kind == .script { return n.added == 0 ? "Nothing new" : "Added \(Self.files(n.added))" }
+            // A run that took a subfolder counts items (a folder is one), as on the board: "Copied 3 items".
+            let unit: (Int) -> String = (r.files ?? []).contains(where: \.isFolder) ? Self.items : Self.files
             var parts: [String] = []
-            if n.moved > 0 { parts.append("Moved \(Self.files(n.moved))") }
-            if n.copied > 0 || parts.isEmpty { parts.append("Copied \(Self.files(n.copied))") }
+            if n.moved > 0 { parts.append("Moved \(unit(n.moved))") }
+            if n.copied > 0 || parts.isEmpty { parts.append("Copied \(unit(n.copied))") }
             if n.skipped > 0 { parts.append("skipped \(n.skipped) already collected") }
             if n.waiting > 0 { parts.append("\(n.waiting) still changing") }
             if n.errors > 0 { parts.append("\(n.errors) failed") }
@@ -363,15 +366,38 @@ public struct CollectorText: Sendable {
             return (useErr ? "stderr" : "stdout", lines.count <= (command == nil ? 0 : 1) ? [] : lines)
         }
         let lines = (r.files ?? []).map { f -> String in
+            let name = Self.runFileName(f)
             switch f.outcome {
-            case .copied: return "Copied — \(f.name)"
-            case .moved: return "Moved — \(f.name)"
-            case .skipped: return "Skipped · already collected — \(f.name)"
-            case .waiting: return "Waiting · \(f.reason ?? "still changing") — \(f.name)"
-            default: return "Error — \(f.name)" + (f.reason.map { " (\($0))" } ?? "")
+            case .copied: return "Copied — \(name)"
+            case .moved: return "Moved — \(name)"
+            case .skipped: return "Skipped · already collected — \(name)"
+            case .waiting: return "Waiting · \(f.reason ?? "still changing") — \(name)"
+            default: return "Error — \(name)" + (f.reason.map { " (\($0))" } ?? "")
             }
         }
         return ("files", lines)
+    }
+
+    /// The name in a Folder run line. A subfolder item: "Tea tasting trip/ (folder · 5 new of 12 files)";
+    /// a collected `.gdoc`: "Q3 plan.gdoc (waits in the queue: needs Google Drive access)".
+    public static func runFileName(_ f: CollectorRunFile) -> String {
+        if f.isFolder {
+            let base = f.name.hasSuffix("/") ? f.name : f.name + "/"
+            var detail = ["folder"]
+            if let total = f.fileCount {
+                let unit = total == 1 ? "file" : "files"
+                if let new = f.newCount, f.outcome == .copied || f.outcome == .moved {
+                    detail.append("\(new) new of \(total) \(unit)")
+                } else {
+                    detail.append("\(total) \(unit)")
+                }
+            }
+            return "\(base) (\(detail.joined(separator: " · ")))"
+        }
+        if f.name.lowercased().hasSuffix(".gdoc"), f.outcome == .copied || f.outcome == .moved {
+            return "\(f.name) (waits in the queue: needs Google Drive access)"
+        }
+        return f.name
     }
 
     /// The whole run list with long stretches of quiet runs collapsed:

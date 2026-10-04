@@ -59,7 +59,11 @@ struct CollectorEditForm: View {
                             store.chooseFolder(start: d.folderPath) { store.editing?.folderPath = $0 }
                         }.fixedSize()
                     }
-                    Hint("Every file at the top of the folder. Hidden files, subfolders and files still changing are left alone.")
+                    Hint("Files in the folder, including Google Docs (.gdoc), which wait in the queue until Google Drive access exists. Hidden files and anything still changing are left alone.")
+                }
+                AdvancedRow(label: "Subfolders", labelWidth: labelWidth, stacked: width < 460) {
+                    SubfoldersSwitch(isOn: draft.includeSubfolders, title: "Include subfolders")
+                    Hint("Each subfolder becomes one folder item in the queue, with its structure. Collected again when a file inside is new or changed.")
                 }
                 AdvancedRow(label: "After collecting", labelWidth: labelWidth, stacked: width < 460) {
                     ViewThatFits(in: .horizontal) {
@@ -399,6 +403,8 @@ struct AddCollectorSheet: View {
                     }.fixedSize()
                 }
                 Hint("Distill creates it if it doesn’t exist.")
+                SubfoldersSwitch(isOn: draft.includeSubfolders, title: "Include subfolders, each as one folder item")
+                    .padding(.top, 4)
             }
             VStack(alignment: .leading, spacing: 8) {
                 Text("After collecting").font(Theme.body(12.5, .semibold))

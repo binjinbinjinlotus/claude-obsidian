@@ -144,6 +144,7 @@ enum SettingsIndex {
         e(.vaults, "Queue folder", "Where each vault’s queue lives; use the vault’s inbox", "inbox"),
         e(.batching, "Batch every", "Automatic: runs on this schedule. Off: only when you press Process now.", "schedule interval automatic minutes hours days"),
         e(.batching, "Wait before picking up a file", "A file must stay unchanged this long before a batch takes it", "settle seconds"),
+        e(.batching, "Check the queue folder for changes", "Finds files and folders added outside Distill (Finder, sync apps)", "queue check scan refresh sync interval every minutes off folder"),
         e(.sources, "Sources", "Where a note came from, in groups", "source group slack meeting"),
         e(.labels, "Labels", "Read from your vault’s tags", "tags"),
         e(.labels, "Suggest labels after a note is queued", "Uses the Label suggestions model"),

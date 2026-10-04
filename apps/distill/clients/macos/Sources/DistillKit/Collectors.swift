@@ -126,15 +126,28 @@ public struct FolderCollectorSettings: Codable, Hashable, Sendable {
     public var source: String
     /// "copy" (default) or "move" (raw, unknown kept).
     public var afterCollect: String
+    /// v5: each top-level subfolder is collected as one folder item. Absent (a collector saved before v5) = off.
+    public var includeSubfolders: Bool?
 
-    public init(source: String, afterCollect: String = "copy") { self.source = source; self.afterCollect = afterCollect }
+    public init(source: String, afterCollect: String = "copy", includeSubfolders: Bool? = nil) {
+        self.source = source; self.afterCollect = afterCollect; self.includeSubfolders = includeSubfolders
+    }
     public var moves: Bool { afterCollect == "move" }
+    /// Off when absent, so an older collector keeps doing what the user set up.
+    public var subfolders: Bool { includeSubfolders ?? false }
 
-    enum Keys: String, CodingKey { case source, afterCollect }
+    enum Keys: String, CodingKey { case source, afterCollect, includeSubfolders }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
         source = c.lossy(String.self, .source) ?? ""
         afterCollect = c.lossy(String.self, .afterCollect) ?? "copy"
+        includeSubfolders = c.lossy(Bool.self, .includeSubfolders)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Keys.self)
+        try c.encode(source, forKey: .source)
+        try c.encode(afterCollect, forKey: .afterCollect)
+        try c.encodeIfPresent(includeSubfolders, forKey: .includeSubfolders)
     }
 }
 
@@ -315,11 +328,20 @@ public struct CollectorRunFile: Codable, Hashable, Sendable {
     public var reason: String?
     public var queueName: String?
     public var size: Int?
+    /// v5: "folder" for a subfolder collected as one item (raw; absent = a file).
+    public var kind: String?
+    /// v5, folder lines: files inside, and how many were new or changed.
+    public var fileCount: Int?
+    public var newCount: Int?
 
-    public init(name: String, outcome: CollectorFileOutcome, reason: String? = nil, queueName: String? = nil, size: Int? = nil) {
+    public var isFolder: Bool { kind == "folder" }
+
+    public init(name: String, outcome: CollectorFileOutcome, reason: String? = nil, queueName: String? = nil, size: Int? = nil,
+                kind: String? = nil, fileCount: Int? = nil, newCount: Int? = nil) {
         self.name = name; self.outcome = outcome; self.reason = reason; self.queueName = queueName; self.size = size
+        self.kind = kind; self.fileCount = fileCount; self.newCount = newCount
     }
-    enum Keys: String, CodingKey { case name, outcome, reason, queueName, size }
+    enum Keys: String, CodingKey { case name, outcome, reason, queueName, size, kind, fileCount, newCount }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
         name = c.lossy(String.self, .name) ?? ""
@@ -327,6 +349,9 @@ public struct CollectorRunFile: Codable, Hashable, Sendable {
         reason = c.lossy(String.self, .reason)
         queueName = c.lossy(String.self, .queueName)
         size = c.lossyInt(.size)
+        kind = c.lossy(String.self, .kind)
+        fileCount = c.lossyInt(.fileCount)
+        newCount = c.lossyInt(.newCount)
     }
 }
 
@@ -530,7 +555,11 @@ public struct NewCollectorInput: Encodable, Hashable, Sendable {
 public struct FolderPatch: Encodable, Hashable, Sendable {
     public var source: String?
     public var afterCollect: String?
-    public init(source: String? = nil, afterCollect: String? = nil) { self.source = source; self.afterCollect = afterCollect }
+    /// v5; nil = not sent.
+    public var includeSubfolders: Bool?
+    public init(source: String? = nil, afterCollect: String? = nil, includeSubfolders: Bool? = nil) {
+        self.source = source; self.afterCollect = afterCollect; self.includeSubfolders = includeSubfolders
+    }
 }
 
 public struct ScriptPatch: Encodable, Hashable, Sendable {

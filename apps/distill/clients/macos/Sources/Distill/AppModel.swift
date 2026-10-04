@@ -32,6 +32,16 @@ final class AppModel: ObservableObject {
     /// Buttons waiting on the core ("process", "approve:<job id>") and when they were pressed;
     /// cleared by the job event or an error.
     @Published var pendingActions: [String: Date] = [:]
+    /// QueueRefresh: "Checking…", then a result for 4 s after Refresh (AppModel+Queue.swift).
+    @Published var refreshState: QueueRefreshState = .idle
+    /// The last full queue scan this app saw (Refresh, window, periodic); see `queueCheckedAt`.
+    @Published var lastScanSeen: Date?
+    /// Rows that just appeared through a scan flash once.
+    @Published var flashingPaths: Set<String> = []
+    var refreshResetTask: Task<Void, Never>?
+    var flashTask: Task<Void, Never>?
+    var lastWindowScan: Date?
+    var windowScanPending = false
     /// Ask chats, the Ask screen and the quick ask window (AskModel.swift).
     lazy var ask = AskModel(engine: self)
 
@@ -111,6 +121,7 @@ final class AppModel: ObservableObject {
                 self.attach(CoreClient(endpoint: endpoint))
                 try await self.refreshAll()
                 self.connection = .connected
+                self.runPendingWindowScan() // the window became active before the core answered
             } catch {
                 guard let self, !Task.isCancelled else { return }
                 self.connection = .unreachable("\(error)")
@@ -208,6 +219,8 @@ final class AppModel: ObservableObject {
             collectors.runOutput(collectorId: collectorId, runId: runId, stream: stream, text: text)
         case .collectorRunFinished(let run):
             collectors.runFinished(run)
+        case .queueScanned(let result):
+            applyScan(result)
         case .unknown:
             break
         }

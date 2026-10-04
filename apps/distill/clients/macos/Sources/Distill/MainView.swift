@@ -339,9 +339,16 @@ struct QueueView: View {
     @Environment(\.snapshotMode) private var snapshot
     @State private var targeted: Bool
     @AppStorage("distill.addMode") private var addMode: AddMode = .files
+    /// A folder row's × asks first: the whole folder goes to the Trash.
+    @State private var confirmRemoval: QueueEntry?
+    /// Snapshots: folder rows whose tree starts open.
+    private let expandedPaths: Set<String>
 
     /// `targeted` starts true only in snapshots (the drop hover state).
-    init(targeted: Bool = false) { _targeted = State(initialValue: targeted) }
+    init(targeted: Bool = false, expandedPaths: Set<String> = []) {
+        _targeted = State(initialValue: targeted)
+        self.expandedPaths = expandedPaths
+    }
 
     var body: some View {
         if addMode == .note {
@@ -356,7 +363,18 @@ struct QueueView: View {
                 }
                 .padding(.horizontal, 44).padding(.top, 44).padding(.bottom, 30)
             }
+            .confirmationDialog(removalTitle, isPresented: Binding(get: { confirmRemoval != nil }, set: { if !$0 { confirmRemoval = nil } }),
+                                titleVisibility: .visible, presenting: confirmRemoval) { entry in
+                Button("Move to Trash", role: .destructive) { engine.removeFromQueue(entry); confirmRemoval = nil }
+                Button("Cancel", role: .cancel) { confirmRemoval = nil }
+            } message: { entry in
+                Text("The whole folder (\(QueueRows.count(entry.fileCount ?? 0, "file"))) leaves the queue. You can put it back from the Trash.")
+            }
         }
+    }
+
+    private var removalTitle: String {
+        confirmRemoval.map { "Move “\($0.name)” to the Trash?" } ?? ""
     }
 
     /// Title, schedule, the add-mode switch and Process now. When the row is too
@@ -382,15 +400,25 @@ struct QueueView: View {
         }
     }
 
-    /// The active vault's queue folder under the schedule line (QueuePath): `~`, Copy path, Reveal in Finder.
+    /// The active vault's queue folder under the schedule line (QueuePath): `~`, Copy path, Reveal in
+    /// Finder, then Refresh (QueueRefresh). When the line is too narrow, Refresh moves under the path.
     @ViewBuilder private var queuePath: some View {
         if !engine.isStarting, let vault = engine.activeVault {
-            QueuePath(path: vault.queueDirectory, onCreate: {
+            let path = QueuePath(path: vault.queueDirectory, onCreate: {
                 try? FileManager.default.createDirectory(atPath: vault.queueDirectory, withIntermediateDirectories: true)
                 engine.objectWillChange.send()
             })
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { path.fixedSize(); refresh }
+                VStack(alignment: .leading, spacing: 2) { path; refresh }
+            }
             .padding(.top, -2)
         }
+    }
+
+    private var refresh: some View {
+        QueueRefresh(state: engine.refreshState, checked: QueueRefreshState.checked(engine.queueCheckedAt),
+                     onRefresh: { engine.refreshQueueNow() })
     }
 
     private var titleBlock: some View {
@@ -422,14 +450,14 @@ struct QueueView: View {
 
     private var title: String {
         if let batch = engine.runningBatch {
-            let inBatch = batch.files.filter { !$0.hasSuffix(QueueRows.manifestSuffix) }.count
+            let inBatch = batch.sources.count // a folder counts once
             let waiting = rows.count
             return "\(inBatch) in this batch" + (waiting > 0 ? " · \(waiting) waiting" : "")
         }
         switch rows.count {
         case 0: return "All caught up"
-        case 1: return "1 source in the queue"
-        default: return "\(rows.count) sources in the queue"
+        case 1: return "1 item in the queue"
+        default: return "\(rows.count) items in the queue"
         }
     }
 
@@ -478,27 +506,47 @@ struct QueueView: View {
     private var fileList: some View {
         VStack(spacing: 4) {
             if let batch = engine.runningBatch {
-                ForEach(batch.files.filter { !$0.hasSuffix(QueueRows.manifestSuffix) }, id: \.self) { file in
-                    let entry = Self.batchEntry(file, vaultPath: batch.vaultPath)
-                    QueueRowView(title: QueueRows.title(entry), meta: QueueRows.meta(entry), tileName: entry.name,
+                ForEach(batch.sources, id: \.self) { source in
+                    let entry = MainQueueEntries.entry(source, vaultPath: batch.vaultPath)
+                    QueueRowView(title: QueueRows.title(entry), meta: QueueRows.meta(entry, inBatch: true), tileName: entry.name,
                                  status: .inBatch, help: QueueRows.pillHelp(.inBatch, settleSeconds: engine.settings.settleSeconds),
                                  noteTile: entry.kind == .note && entry.name.hasSuffix(".md"),
+                                 kind: entry.kind, tree: QueueTree.lines(entry.tree ?? [], truncated: entry.treeTruncated),
                                  onReveal: { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) })
                 }
             }
             ForEach(rows) { entry in
-                let status = QueueRows.status(entry, batchRunning: engine.runningBatch != nil)
-                QueueRowView(title: QueueRows.title(entry), meta: QueueRows.meta(entry), tileName: entry.name, status: status,
+                let running = engine.runningBatch != nil
+                let status = QueueRows.status(entry, batchRunning: running)
+                QueueRowView(title: QueueRows.title(entry), meta: QueueRows.meta(entry, batchRunning: running), tileName: entry.name, status: status,
                              help: QueueRows.pillHelp(status, settleSeconds: engine.settings.settleSeconds),
                              noteTile: entry.kind == .note && entry.name.hasSuffix(".md"),
-                             onRemove: { engine.removeFromQueue(entry) },
-                             onReveal: { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) })
+                             kind: entry.kind, expanded: expandedPaths.contains(entry.path),
+                             tree: QueueTree.lines(entry.tree ?? [], truncated: entry.treeTruncated),
+                             hint: QueueRows.hint(entry, batchRunning: running),
+                             flash: engine.flashingPaths.contains(entry.path),
+                             onRemove: { if entry.kind == .folder { confirmRemoval = entry } else { engine.removeFromQueue(entry) } },
+                             onReveal: { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) },
+                             onOpenLink: QueueRows.googleDocURL(entry).map { url in { NSWorkspace.shared.open(url) } })
+                    .id(entry.path)
             }
             if rows.isEmpty && engine.runningBatch == nil {
                 Text("Nothing waiting. New files will show up here.")
                     .font(Theme.body(13)).foregroundStyle(Theme.faint)
                     .frame(maxWidth: .infinity).padding(.vertical, 20)
             }
+        }
+    }
+
+    /// A source a running batch took (`inbox/...` in the vault), described like a queue entry: a folder
+    /// is read from the vault (counts and tree), a file as before.
+    static func batchEntry(_ source: BatchSource, vaultPath: String) -> QueueEntry {
+        switch source {
+        case .file(let file): return batchEntry(file, vaultPath: vaultPath)
+        case .folder(let path, let files):
+            let url = URL(fileURLWithPath: vaultPath).appendingPathComponent(path)
+            return QueueFolderWalk.entry(at: url)
+                ?? QueueEntry(path: url.path, modified: Date(), size: 0, settled: true, kind: .folder, fileCount: files.count)
         }
     }
 
@@ -769,13 +817,22 @@ extension Job {
         }
     }
 
-    /// "Tea brewing session"-style title from the first input file.
+    /// "Tea brewing session"-style title from the first source (a folder counts once).
     var displayTitle: String {
-        guard let first = files.first else { return kind.prefix(1).uppercased() + kind.dropFirst() }
-        let base = ((first as NSString).lastPathComponent as NSString).deletingPathExtension
-            .replacingOccurrences(of: "-", with: " ").replacingOccurrences(of: "_", with: " ")
-        let pretty = base.prefix(1).uppercased() + base.dropFirst()
-        return files.count > 1 ? "\(pretty) +\(files.count - 1)" : pretty
+        let sources = self.sources
+        guard let first = sources.first else {
+            guard let file = files.first else { return kind.prefix(1).uppercased() + kind.dropFirst() }
+            return Self.pretty((file as NSString).lastPathComponent)
+        }
+        let name: String
+        if case .folder = first { name = first.name } else { name = (first.name as NSString).deletingPathExtension }
+        let pretty = Self.pretty(name)
+        return sources.count > 1 ? "\(pretty) +\(sources.count - 1)" : pretty
+    }
+
+    private static func pretty(_ name: String) -> String {
+        let base = name.replacingOccurrences(of: "-", with: " ").replacingOccurrences(of: "_", with: " ")
+        return base.prefix(1).uppercased() + base.dropFirst()
     }
 }
 
@@ -801,10 +858,13 @@ struct JobDetailView: View {
     let jobID: String
     @State private var reply: String
     @State private var allowed: Set<String>
+    /// Snapshots: source folders that start open.
+    var openFolders: Set<String> = []
 
     /// `reply` / `allowed` start non-empty only in snapshots.
-    init(jobID: String, reply: String = "", allowed: Set<String> = []) {
+    init(jobID: String, reply: String = "", allowed: Set<String> = [], openFolders: Set<String> = []) {
         self.jobID = jobID
+        self.openFolders = openFolders
         _reply = State(initialValue: reply)
         _allowed = State(initialValue: allowed)
     }
@@ -881,7 +941,7 @@ struct JobDetailView: View {
             BatchBanner(job: job, showsCancel: false)
         }
         if job.state == .awaitingApproval, job.kind == "ingest" || job.kind == "batch" {
-            let n = job.files.filter { !$0.hasSuffix(QueueRows.manifestSuffix) }.count
+            let n = job.sources.count // a folder counts once
             HStack(spacing: 8) {
                 Image(systemName: "checklist").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.primary)
                 Text("After you apply, Distill looks for actions in \(n == 1 ? "this note" : "these \(n) notes") with Sonnet and asks you to confirm them.")
@@ -921,17 +981,10 @@ struct JobDetailView: View {
                 }
             }
         }
-        DisclosureGroup("Inputs (\(job.files.count))") {
-            ForEach(job.files, id: \.self) { file in
-                Button(file) {
-                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: job.vaultPath).appendingPathComponent(file)])
-                }
-                .buttonStyle(.link)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
+        if !job.files.isEmpty || !(job.folders ?? []).isEmpty {
+            // A folder shows once (QueueItems cards 2 and 3): its files and their pages on Review, its tree in History.
+            JobSourcesView(job: job, mode: job.state == .awaitingApproval ? .review : .history, openFolders: openFolders)
         }
-        .font(Theme.body(13))
-        .foregroundStyle(Theme.muted)
     }
 
     private func blocked(_ job: Job, _ approval: ApprovalRequest) -> some View {

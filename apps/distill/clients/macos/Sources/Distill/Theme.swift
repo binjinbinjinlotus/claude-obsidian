@@ -275,6 +275,8 @@ struct Tile: View {
     var body: some View {
         Text(text)
             .font(display ? Theme.display(size * 0.42) : Theme.body(10, .bold))
+            .lineLimit(1).minimumScaleFactor(0.6) // a 22 pt tile (Review sources) still reads "PNG"
+            .padding(.horizontal, size < 30 ? 2 : 0)
             .foregroundStyle(ink)
             .frame(width: size, height: size)
             .background(RoundedRectangle(cornerRadius: size * 0.3).fill(fill))

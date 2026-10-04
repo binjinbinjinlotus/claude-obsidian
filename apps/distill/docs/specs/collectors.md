@@ -585,6 +585,28 @@ Where the app differs from the boards (also in [Decisions](decisions.md)):
   snapshot. macOS notifications for a first failure are not built.
 - Timeout choices in Edit → Advanced: 1, 5, 15, 30 minutes and 1 hour.
 
+### Built in the Mac app: Include subfolders (2026-10-04, canvas v64)
+
+- **Add, step 2:** "Include subfolders, each as one folder item", on by
+  default; the new collector always sends `includeSubfolders`.
+- **Edit:** a Subfolders row ("Include subfolders" and the board's hint);
+  the From hint now names Google Docs. The patch sends `includeSubfolders`
+  only when it changed. Duplicate copies it (an old collector with no field
+  duplicates as off, so the copy doesn't start taking subfolders).
+- **Settings block:** "Subfolders · Collected as folder items", or "Left
+  alone" when off (the board draws only the on state).
+- **Run lines:** a subfolder line reads "Copied — Tea tasting trip/ (folder ·
+  5 new of 12 files)" (`kind`, `newCount`, `fileCount`; "4 files" when it
+  waited or failed), a collected .gdoc "… (waits in the queue: needs Google
+  Drive access)". A run that took a subfolder counts items in its summary
+  ("Copied 3 items"). The brief's "tea-notes/ · 4 new of 12" was written
+  before the board; the app follows the board's wording.
+- Code: `FolderCollectorSettings.includeSubfolders` / `subfolders`,
+  `FolderPatch.includeSubfolders`, `CollectorRunFile.kind/fileCount/newCount`,
+  `CollectorText.runFileName`; `SubfoldersSwitch` in CollectorsComponents.swift.
+  Snapshots: `collectors-add-folder`, `collectors-folder(-edit)(-900)`,
+  `collectors-folder-history` (the fixtures now match the board).
+
 ## Open questions
 
 The owner answered the questions from the first draft on 2026-10-04 (see

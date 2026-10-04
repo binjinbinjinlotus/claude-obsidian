@@ -36,6 +36,7 @@ enum StatesSnapshot {
         self.outDir = outDir
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
         queueStates()
+        queueItemStates()
         composeStates()
         reviewStates()
         historyStates()
@@ -341,7 +342,8 @@ extension StatesSnapshot {
         let f = Flow.intake
         var e = engine { $0.activeVaultPath = $0.vaults.first?.path }
         e.queued = []
-        main("queue-empty", f, "Queue", "Empty · all caught up", "Nothing in the queue; the header shows the next batch time.", e, section: .queue) { QueueView() }
+        e.refreshState = .nothing("Nothing new")
+        main("queue-empty", f, "Queue", "Empty · all caught up", "Nothing in the queue; the header shows the next batch time, and Refresh just said “Nothing new”.", e, section: .queue) { QueueView() }
 
         e = engine()
         main("queue-ready", f, "Queue", "Files waiting (Ready / Ready at)", "Three ready files and one waiting until its ready time; Process now enabled.", e, section: .queue) { QueueView() }
