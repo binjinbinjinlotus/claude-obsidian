@@ -37,7 +37,16 @@
      "vars": {
       "title": "4 sources in the queue",
       "sub": "Next batch at <strong style=\"color: #1D1C1A; font-weight: 600\">5:30 AM</strong> · every 2 hours",
-      "path": "",
+      "path": {
+       "c": "QueuePath",
+       "props": {
+        "path": "~/Documents/Distill Queue/Research"
+       },
+       "size": [
+        "560px",
+        "28px"
+       ]
+      },
       "right": {
        "c": "PrimaryButton",
        "props": {
@@ -84,7 +93,16 @@
      "vars": {
       "title": "3 in this batch · 1 waiting",
       "sub": "New drops wait for the next batch",
-      "path": "",
+      "path": {
+       "c": "QueuePath",
+       "props": {
+        "path": "~/Documents/Distill Queue/Research"
+       },
+       "size": [
+        "560px",
+        "28px"
+       ]
+      },
       "right": "<span disabled style=\"display: inline-flex; flex-shrink: 0; text-decoration: none; \"><dc-import name=\"SoftButton\" title=\"Processing…\" system-image=\"progress.indicator\" size=\"regular\" tint=\"#6B6862\" fill=\"#F6F5F2\" hint-size=\"144px,40px\"></dc-import></span>"
      }
     }
@@ -102,6 +120,17 @@
    "id": "queue-running",
    "base": "queue-running",
    "label": "Queue · batch running"
+  },
+  {
+   "id": "queue-empty",
+   "base": "queue",
+   "label": "Queue · all caught up",
+   "set": {
+    "doc.title": "Distill — Queue (all caught up)",
+    "doc.script": "class Component extends DCLogic {\nrenderVals() {\nreturn {\nfiles: [\n]\n};\n}\n}",
+    "sidebar.queueCount": "0",
+    "header.vars.title": "All caught up"
+   }
   }
  ],
  "boards": [
@@ -114,6 +143,11 @@
    "file": "MainLoading.dc.html",
    "title": "Queue · batch running",
    "page": "queue-running"
+  },
+  {
+   "file": "MainEmpty.dc.html",
+   "title": "Queue · all caught up (queue folder path)",
+   "page": "queue-empty"
   }
  ]
 }

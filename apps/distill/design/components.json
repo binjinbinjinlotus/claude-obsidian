@@ -15,6 +15,7 @@
           "default": "queue",
           "options": [
             "queue",
+            "collectors",
             "review",
             "actions",
             "ask",
@@ -45,6 +46,12 @@
           "default": "3",
           "swift": false,
           "why": "computed by Sidebar from AppModel (queue, approvals, labels, actions)"
+        },
+        {
+          "name": "collectorsAlert",
+          "type": "text",
+          "default": "",
+          "swiftPending": "Collectors sidebar item (designed 2026-10-04): count of collectors that failed or wait for your OK"
         },
         {
           "name": "reviewCount",
@@ -159,7 +166,7 @@
         "file": "SidebarStates.dc.html",
         "title": "Sidebar states",
         "heading": "Sidebar",
-        "intro": "MainView.swift → <b>Sidebar</b> (with RecentQuestions and VaultSwitcher). One file, imported by every app window. Props: section, sub, queueCount, reviewCount, actionsCount, labelsCount, todoCount, slackCount, jiraCount, confluenceCount, recentRunning, recentFailed, recentOpen, vault, status, height. Swift’s Section has no Actions yet and no sub-items: both are design ahead of the app.",
+        "intro": "MainView.swift → <b>Sidebar</b> (with RecentQuestions and VaultSwitcher). One file, imported by every app window. Props: section, sub, queueCount, collectorsAlert, reviewCount, actionsCount, labelsCount, todoCount, slackCount, jiraCount, confluenceCount, recentRunning, recentFailed, recentOpen, vault, status, height. Swift’s Section has no Actions yet and no sub-items: both are design ahead of the app. Collectors (designed 2026-10-04) sits under Queue because it feeds the queue; it shows a peach count only when a collector failed or waits for your OK.",
         "width": 1920,
         "cols": 6,
         "wrap": "<div style=\"width: 220px; border-radius: 14px; overflow: hidden; box-shadow: 0 0 0 1px #ECEAE5\">{import}</div>"
@@ -326,6 +333,31 @@
             "720px"
           ],
           "caption": "Swift: “Choose a vault”, no status line."
+        },
+        {
+          "name": "Collectors",
+          "props": {
+            "section": "collectors",
+            "height": 720
+          },
+          "size": [
+            "220px",
+            "720px"
+          ],
+          "caption": "Collectors open. No count while every collector is fine: they work in the background."
+        },
+        {
+          "name": "A collector needs you",
+          "props": {
+            "section": "queue",
+            "collectorsAlert": "1",
+            "height": 720
+          },
+          "size": [
+            "220px",
+            "720px"
+          ],
+          "caption": "Peach count = collectors that failed on their last run or wait for your OK to run a script."
         }
       ]
     },
@@ -3827,6 +3859,777 @@
             "56px"
           ],
           "caption": "sent items have no Restore"
+        }
+      ]
+    },
+    {
+      "name": "CollectorRow",
+      "title": "Collector row",
+      "swift": null,
+      "preview": [
+        330,
+        56
+      ],
+      "props": [
+        {
+          "name": "kind",
+          "type": "enum",
+          "default": "folder",
+          "options": [
+            "folder",
+            "script"
+          ]
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "default": "Distill Inbox"
+        },
+        {
+          "name": "summary",
+          "type": "text",
+          "default": "Moved 3 · skipped 2 already collected · 9:00 AM"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "default": "On"
+        },
+        {
+          "name": "statusKind",
+          "type": "enum",
+          "default": "on",
+          "options": [
+            "on",
+            "off",
+            "running",
+            "error",
+            "consent"
+          ]
+        },
+        {
+          "name": "selected",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "hover",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "CollectorRowStates.dc.html",
+        "title": "Collector row states",
+        "heading": "CollectorRow",
+        "intro": "One row per collector in the Collectors list: kind tile (Folder = green folder, Custom script = violet terminal), name, last-run line, status pill. Same shape as ActionRow, so the two lists read alike. Hover shows Run now and ⋯. The last-run line turns peach when the collector needs you. No Swift view yet: add <b>CollectorRow</b>. Props: kind, title, summary, status, statusKind (on | off | running | error | consent), selected, hover, width.",
+        "width": 1280,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "Folder, on",
+          "props": {
+            "kind": "folder",
+            "title": "Distill Inbox",
+            "summary": "Moved 3 · skipped 2 already collected · 9:00 AM",
+            "status": "Every hour",
+            "statusKind": "on",
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ],
+          "caption": "The pill says when it runs; the line says what the last run did."
+        },
+        {
+          "name": "Selected",
+          "props": {
+            "kind": "script",
+            "title": "Pocket export",
+            "summary": "Added 4 files · today at 7:00 AM",
+            "status": "Daily 7:00",
+            "statusKind": "on",
+            "selected": true,
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ],
+          "caption": "its detail is open on the right"
+        },
+        {
+          "name": "Hover: Run now and ⋯",
+          "props": {
+            "kind": "folder",
+            "title": "Distill Inbox",
+            "summary": "Nothing new · 10:00 AM",
+            "status": "Every hour",
+            "statusKind": "on",
+            "hover": true,
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ],
+          "caption": "⋯ holds Rename, Duplicate, Turn off and Delete."
+        },
+        {
+          "name": "Running",
+          "props": {
+            "kind": "folder",
+            "title": "Distill Inbox",
+            "summary": "Moving 2 of 5…",
+            "status": "Running",
+            "statusKind": "running",
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ]
+        },
+        {
+          "name": "Failed",
+          "props": {
+            "kind": "script",
+            "title": "Slack saved items",
+            "summary": "Failed · exit 1 · 8:30 AM",
+            "status": "Failed",
+            "statusKind": "error",
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ],
+          "caption": "It keeps its schedule; the next run tries again."
+        },
+        {
+          "name": "Waiting for your OK",
+          "props": {
+            "kind": "script",
+            "title": "Kindle highlights",
+            "summary": "Allow it to run · never run yet",
+            "status": "Needs your OK",
+            "statusKind": "consent",
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ],
+          "caption": "New scripts, and scripts that changed since you allowed them."
+        },
+        {
+          "name": "Off",
+          "props": {
+            "kind": "folder",
+            "title": "Scans",
+            "summary": "Off · last run Sep 28 at 9:00 AM",
+            "status": "Off",
+            "statusKind": "off",
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ]
+        },
+        {
+          "name": "Folder missing",
+          "props": {
+            "kind": "folder",
+            "title": "Phone uploads",
+            "summary": "~/Phone uploads is missing",
+            "status": "Failed",
+            "statusKind": "error",
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "QueuePath",
+      "title": "Queue path",
+      "swift": null,
+      "preview": [
+        520,
+        28
+      ],
+      "props": [
+        {
+          "name": "path",
+          "type": "text",
+          "default": "~/Documents/Distill Queue/Research"
+        },
+        {
+          "name": "label",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "state",
+          "type": "enum",
+          "default": "default",
+          "options": [
+            "default",
+            "hover",
+            "copied",
+            "missing"
+          ]
+        },
+        {
+          "name": "size",
+          "type": "enum",
+          "default": "regular",
+          "options": [
+            "regular",
+            "compact"
+          ]
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "QueuePathStates.dc.html",
+        "title": "Queue path states",
+        "heading": "QueuePath",
+        "intro": "The queue folder’s full path with Copy path and Reveal in Finder. On Queue it sits under the “Next batch …” line; on Collectors it shows where collected files land. The path is shown with ~ for your home folder and truncates in the middle; hover shows, and Copy copies, the absolute path. Missing folder: peach, with Create folder. No Swift view yet: add <b>QueuePath</b>. Props: path, label, state (default | hover | copied | missing), size (regular | compact), width.",
+        "width": 1280,
+        "cols": 2
+      },
+      "states": [
+        {
+          "name": "Queue header",
+          "props": {
+            "state": "default"
+          },
+          "size": [
+            "520px",
+            "28px"
+          ],
+          "caption": "Under “Next batch at 5:30 AM · every 2 hours”."
+        },
+        {
+          "name": "Hover the path",
+          "props": {
+            "state": "hover"
+          },
+          "size": [
+            "520px",
+            "28px"
+          ],
+          "caption": "Tooltip: /Users/mei/Documents/Distill Queue/Research."
+        },
+        {
+          "name": "Copied",
+          "props": {
+            "state": "copied"
+          },
+          "size": [
+            "520px",
+            "28px"
+          ],
+          "caption": "“Copied” for 2 seconds, then back to Copy path."
+        },
+        {
+          "name": "Folder missing",
+          "props": {
+            "state": "missing"
+          },
+          "size": [
+            "520px",
+            "28px"
+          ],
+          "caption": "Someone moved or deleted it. Create folder makes it again (same path)."
+        },
+        {
+          "name": "Compact, with a label (Collectors)",
+          "props": {
+            "label": "Lands in",
+            "size": "compact"
+          },
+          "size": [
+            "460px",
+            "28px"
+          ]
+        },
+        {
+          "name": "Long path truncates in the middle",
+          "props": {
+            "path": "~/Library/Mobile Documents/com~apple~CloudDocs/Distill Queue/Research",
+            "width": 420
+          },
+          "size": [
+            "420px",
+            "28px"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ScheduleField",
+      "title": "Schedule field",
+      "swift": null,
+      "preview": [
+        460,
+        70
+      ],
+      "props": [
+        {
+          "name": "preset",
+          "type": "enum",
+          "default": "hourly",
+          "options": [
+            "15min",
+            "hourly",
+            "daily",
+            "weekdays",
+            "custom"
+          ]
+        },
+        {
+          "name": "time",
+          "type": "text",
+          "default": "9:00 AM"
+        },
+        {
+          "name": "cron",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "preview",
+          "type": "text",
+          "default": "Every hour, on the hour"
+        },
+        {
+          "name": "next",
+          "type": "text",
+          "default": "next at 10:00 AM"
+        },
+        {
+          "name": "invalid",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "menuOpen",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "ScheduleFieldStates.dc.html",
+        "title": "Schedule field states",
+        "heading": "ScheduleField",
+        "intro": "One schedule control for every collector: a preset (Every 15 minutes, Every hour, Every day, Weekdays, Custom), a time for daily presets, and the cron expression it stands for with a plain-English preview and the next run. Presets show their cron read-only, so the two always agree; Custom makes it editable. Times are local. No Swift view yet: add <b>ScheduleField</b>. Props: preset, time, cron, preview, next, invalid, menuOpen, width.",
+        "width": 1280,
+        "cols": 2,
+        "wrap": "<div style=\"width: 480px; padding: 10px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
+      },
+      "states": [
+        {
+          "name": "Every hour (Folder default)",
+          "props": {
+            "preset": "hourly",
+            "preview": "Every hour, on the hour",
+            "next": "next at 10:00 AM"
+          },
+          "size": [
+            "460px",
+            "70px"
+          ]
+        },
+        {
+          "name": "Every day at a time",
+          "props": {
+            "preset": "daily",
+            "time": "7:00 AM",
+            "cron": "0 7 * * *",
+            "preview": "Every day at 7:00 AM",
+            "next": "next tomorrow at 7:00 AM"
+          },
+          "size": [
+            "460px",
+            "70px"
+          ]
+        },
+        {
+          "name": "Weekdays",
+          "props": {
+            "preset": "weekdays",
+            "time": "9:00 AM",
+            "preview": "Monday to Friday at 9:00 AM",
+            "next": "next Mon, Oct 5 at 9:00 AM"
+          },
+          "size": [
+            "460px",
+            "70px"
+          ]
+        },
+        {
+          "name": "Custom cron",
+          "props": {
+            "preset": "custom",
+            "cron": "30 8 * * 1,3,5",
+            "preview": "Mon, Wed and Fri at 8:30 AM",
+            "next": "next Mon, Oct 5 at 8:30 AM"
+          },
+          "size": [
+            "460px",
+            "70px"
+          ],
+          "caption": "The preview updates as you type."
+        },
+        {
+          "name": "Invalid cron",
+          "props": {
+            "preset": "custom",
+            "cron": "30 8 * *",
+            "invalid": true,
+            "preview": "Not a schedule",
+            "next": "use 5 fields: minute hour day month weekday"
+          },
+          "size": [
+            "460px",
+            "70px"
+          ],
+          "caption": "Save stays off until it parses. Seconds and @reboot are not accepted."
+        },
+        {
+          "name": "Preset menu open",
+          "props": {
+            "preset": "hourly",
+            "menuOpen": true
+          },
+          "size": [
+            "460px",
+            "70px"
+          ],
+          "caption": "Menu: Every 15 minutes, Every hour, Every day, Weekdays, Custom (cron)."
+        }
+      ]
+    },
+    {
+      "name": "RunLogEntry",
+      "title": "Run log entry",
+      "swift": null,
+      "preview": [
+        560,
+        40
+      ],
+      "props": [
+        {
+          "name": "result",
+          "type": "enum",
+          "default": "success",
+          "options": [
+            "success",
+            "nothing",
+            "failed",
+            "timedout",
+            "skipped",
+            "running"
+          ]
+        },
+        {
+          "name": "time",
+          "type": "text",
+          "default": "9:00 AM"
+        },
+        {
+          "name": "summary",
+          "type": "text",
+          "default": "Moved 3 files · skipped 2 already collected"
+        },
+        {
+          "name": "meta",
+          "type": "text",
+          "default": "1.2 s"
+        },
+        {
+          "name": "outputKind",
+          "type": "enum",
+          "default": "files",
+          "options": [
+            "files",
+            "stdout",
+            "stderr"
+          ]
+        },
+        {
+          "name": "lines",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "expanded",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "RunLogEntryStates.dc.html",
+        "title": "Run log entry states",
+        "heading": "RunLogEntry",
+        "intro": "One run of a collector in its run history: result, start time, what it did, duration (and exit code for scripts). Click to expand: Folder runs list each file (Moved, Skipped · already collected, Waiting · still changing); script runs show their output, stderr in peach. No Swift view yet: add <b>RunLogEntry</b>. Props: result (success | nothing | failed | timedout | skipped | running), time, summary, meta, outputKind (files | stdout | stderr), lines (“What — name” items separated by |), expanded, width.",
+        "width": 1280,
+        "cols": 2,
+        "wrap": "<div style=\"width: 580px; padding: 10px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
+      },
+      "states": [
+        {
+          "name": "Folder run, expanded",
+          "props": {
+            "result": "success",
+            "time": "9:00 AM",
+            "summary": "Moved 3 files · skipped 2 already collected",
+            "meta": "0.4 s",
+            "lines": "Moved — gongfu-brewing-guide.pdf|Moved — Screenshot 08.52.10.png|Moved — tasting-notes.md|Skipped · already collected — gyokuro.md (Oct 2, 8:00 AM)|Skipped · already collected — gyokuro copy.md (same content)",
+            "expanded": true
+          },
+          "size": [
+            "560px",
+            "150px"
+          ],
+          "caption": "Skipped files stay in ~/Distill Inbox; the ledger knows their content."
+        },
+        {
+          "name": "Nothing new",
+          "props": {
+            "result": "nothing",
+            "time": "8:00 AM",
+            "summary": "Nothing new",
+            "meta": "0.1 s"
+          },
+          "size": [
+            "560px",
+            "40px"
+          ],
+          "caption": "Quiet runs collapse: “12 runs with nothing new” groups them."
+        },
+        {
+          "name": "Waiting files",
+          "props": {
+            "result": "success",
+            "time": "7:00 AM",
+            "summary": "Moved 1 file · 1 still changing",
+            "meta": "0.2 s",
+            "lines": "Moved — receipt.pdf|Waiting · still changing — export.zip (changed 3 min ago)",
+            "expanded": true
+          },
+          "size": [
+            "560px",
+            "96px"
+          ],
+          "caption": "Same 10-minute wait as batching; the next run picks it up."
+        },
+        {
+          "name": "Script succeeded",
+          "props": {
+            "result": "success",
+            "time": "7:00 AM",
+            "summary": "Added 4 files",
+            "meta": "exit 0 · 2.4 s",
+            "outputKind": "stdout",
+            "lines": "$ python3 ~/Scripts/pocket-export.py|Fetched 4 new articles since Oct 3|Wrote 4 files to /Users/mei/Documents/Distill Queue/Research",
+            "expanded": true
+          },
+          "size": [
+            "560px",
+            "140px"
+          ]
+        },
+        {
+          "name": "Script failed",
+          "props": {
+            "result": "failed",
+            "time": "8:30 AM",
+            "summary": "Failed · added nothing",
+            "meta": "exit 1 · 0.8 s",
+            "outputKind": "stderr",
+            "lines": "$ node ~/Scripts/slack-saved.mjs|Error: SLACK_TOKEN is not set|    at main (slack-saved.mjs:12:11)",
+            "expanded": true
+          },
+          "size": [
+            "560px",
+            "140px"
+          ],
+          "caption": "Files it wrote before failing stay in the queue."
+        },
+        {
+          "name": "Timed out",
+          "props": {
+            "result": "timedout",
+            "time": "6:00 AM",
+            "summary": "Stopped after 5 min · added 2 files",
+            "meta": "timeout · 5:00",
+            "outputKind": "stdout",
+            "lines": "$ zsh ~/Scripts/kindle.sh|Syncing highlights… 2 of 40",
+            "expanded": true
+          },
+          "size": [
+            "560px",
+            "120px"
+          ],
+          "caption": "Distill sends SIGTERM, waits 10 s, then SIGKILL."
+        },
+        {
+          "name": "Skipped tick",
+          "props": {
+            "result": "skipped",
+            "time": "6:05 AM",
+            "summary": "Skipped · the 6:00 AM run was still going",
+            "meta": ""
+          },
+          "size": [
+            "560px",
+            "40px"
+          ]
+        },
+        {
+          "name": "Running",
+          "props": {
+            "result": "running",
+            "time": "10:00 AM",
+            "summary": "Running · 12 s",
+            "meta": "Stop"
+          },
+          "size": [
+            "560px",
+            "40px"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ScriptConsent",
+      "title": "Script consent",
+      "swift": null,
+      "preview": [
+        560,
+        170
+      ],
+      "props": [
+        {
+          "name": "state",
+          "type": "enum",
+          "default": "ask",
+          "options": [
+            "ask",
+            "changed",
+            "allowed"
+          ]
+        },
+        {
+          "name": "interpreter",
+          "type": "text",
+          "default": "python3"
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "default": "~/Scripts/pocket-export.py"
+        },
+        {
+          "name": "hash",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "allowedText",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "ScriptConsentStates.dc.html",
+        "title": "Script consent states",
+        "heading": "ScriptConsent",
+        "intro": "The explicit first-run consent for a custom script. Distill runs nothing you have not allowed: a new script waits here, and a script whose content changes (its sha256) is paused until you allow the new version. The allowance belongs to the exact script, not to the collector. No Swift view yet: add <b>ScriptConsent</b>. Props: state (ask | changed | allowed), interpreter, source, hash, allowedText, width.",
+        "width": 1280,
+        "cols": 2,
+        "wrap": "<div style=\"width: 580px; padding: 10px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
+      },
+      "states": [
+        {
+          "name": "First run: ask",
+          "props": {
+            "state": "ask"
+          },
+          "size": [
+            "560px",
+            "170px"
+          ],
+          "caption": "Allow and turn on runs it on its schedule. Run now is off until you allow it."
+        },
+        {
+          "name": "Changed since you allowed it",
+          "props": {
+            "state": "changed"
+          },
+          "size": [
+            "560px",
+            "170px"
+          ],
+          "caption": "Checked before every run (file scripts can change on disk)."
+        },
+        {
+          "name": "Allowed",
+          "props": {
+            "state": "allowed"
+          },
+          "size": [
+            "560px",
+            "36px"
+          ],
+          "caption": "Revoke turns the collector off and asks again next time."
+        },
+        {
+          "name": "Inline script",
+          "props": {
+            "state": "ask",
+            "interpreter": "zsh",
+            "source": "(inline, 6 lines)",
+            "hash": "sha256 a71e…99d0"
+          },
+          "size": [
+            "560px",
+            "170px"
+          ],
+          "caption": "Editing inline code changes its hash, so a saved edit asks again."
         }
       ]
     }
