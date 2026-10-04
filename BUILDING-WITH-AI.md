@@ -84,6 +84,14 @@ isn't.
 ## Friction log (newest first)
 
 ### 2026-10-04
+- **Collectors went from request to installed in one pass:** canvas, redesign,
+  then building the core and the Mac app in parallel. The core was built while
+  the UI was still being polished, because it doesn't depend on layout. That
+  saved a full round.
+  - *Limit hit:* the Mac's screen was locked during every real-app phase, so
+    the click-through went to the owner.
+  - *Idea:* a way to test the real UI headlessly (accessibility-driven, in an
+    offscreen session) would remove this recurring gap.
 - **A reviewer subagent found real holes in the new skills.**
   - The e2e skill's "isolated" setup didn't isolate the Keychain or
     UserDefaults: a test core could overwrite the owner's real API keys.
