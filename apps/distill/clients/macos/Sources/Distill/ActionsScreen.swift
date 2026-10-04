@@ -442,57 +442,60 @@ struct TodoFilterBar: View {
     var now = Date()
 
     var body: some View {
-        HStack(spacing: 6) {
-            ActionSearchField(text: $ui.filter.text, placeholder: "Search to-dos")
-            chip("status", "Status", value: ui.filter.status.title, clear: ui.filter.status == .open ? nil : { ui.filter.status = .open }) {
-                ActionMenuPanel(title: "STATUS", width: 200) {
-                    ForEach(ActionFilter.Status.allCases, id: \.self) { s in
-                        ActionMenuRow(title: s.title, checked: ui.filter.status == s) { ui.filter.status = s; ui.menu = nil }
+        // The chips wrap onto a second line in a narrow window instead of widening the screen.
+        HStack(alignment: .top, spacing: 6) {
+            FlowLayout(spacing: 6) {
+                ActionSearchField(text: $ui.filter.text, placeholder: "Search to-dos")
+                chip("status", "Status", value: ui.filter.status.title, clear: ui.filter.status == .open ? nil : { ui.filter.status = .open }) {
+                    ActionMenuPanel(title: "STATUS", width: 200) {
+                        ForEach(ActionFilter.Status.allCases, id: \.self) { s in
+                            ActionMenuRow(title: s.title, checked: ui.filter.status == s) { ui.filter.status = s; ui.menu = nil }
+                        }
+                    }
+                }
+                chip("due", "Due", value: ui.filter.due.isEmpty ? nil : ActionDue.Bucket.allCases.filter { ui.filter.due.contains($0) }.map { $0.title.capitalized }.joined(separator: ", "),
+                     clear: { ui.filter.due = [] }) {
+                    ActionMenuPanel(title: "DUE", width: 220) {
+                        ActionMenuRow(title: "Any time", checked: ui.filter.due.isEmpty) { ui.filter.due = [] }
+                        ForEach(ActionDue.Bucket.allCases, id: \.self) { b in
+                            ActionMenuRow(title: b.title.capitalized, icon: "calendar", checked: ui.filter.due.contains(b)) { flip(&ui.filter.due, b) }
+                        }
+                    }
+                }
+                chip("person", "Person", value: joined(ui.filter.people), clear: { ui.filter.people = [] }) {
+                    facetPanel("PEOPLE", values: people, selected: ui.filter.people, search: true) { flip(&ui.filter.people, $0) }
+                }
+                chip("label", "Label", value: joined(ui.filter.labels.map { "#" + $0 }), clear: { ui.filter.labels = [] }) {
+                    facetPanel("LABELS", values: labels, selected: ui.filter.labels) { flip(&ui.filter.labels, $0) }
+                }
+                chip("note", "Note", value: joined(ui.filter.notes), clear: { ui.filter.notes = [] }) {
+                    facetPanel("SOURCE NOTE", values: notes, selected: ui.filter.notes) { flip(&ui.filter.notes, $0) }
+                }
+                chip("priority", "Priority", value: joined(ui.filter.priorities), clear: { ui.filter.priorities = [] }) {
+                    ActionMenuPanel(title: "PRIORITY", width: 200) {
+                        ForEach(ActionList.priorities + ["None"], id: \.self) { p in
+                            ActionMenuRow(title: p, icon: "flag", checked: ui.filter.priorities.contains(p)) { flip(&ui.filter.priorities, p) }
+                        }
+                    }
+                }
+                chip("more", "More", value: moreValue, clear: { ui.filter.addedBy = nil; ui.filter.vaults = []; ui.filter.jobID = nil }) {
+                    ActionMenuPanel(title: "MORE FILTERS", width: 280) {
+                        ActionMenuRow(title: "Added by Distill", icon: "sparkle", checked: ui.filter.addedBy == .distill) {
+                            ui.filter.addedBy = ui.filter.addedBy == .distill ? nil : .distill
+                        }
+                        ActionMenuRow(title: "Added by you", icon: "person", checked: ui.filter.addedBy == .you) {
+                            ui.filter.addedBy = ui.filter.addedBy == .you ? nil : .you
+                        }
+                        ForEach(vaults, id: \.self) { v in
+                            ActionMenuRow(title: (v as NSString).lastPathComponent, detail: "Vault", icon: "folder", checked: ui.filter.vaults.contains(v)) { flip(&ui.filter.vaults, v) }
+                        }
+                        if ui.filter.jobID != nil {
+                            ActionMenuRow(title: "Only this batch's notes", icon: "tray.full", checked: true) { ui.filter.jobID = nil }
+                        }
                     }
                 }
             }
-            chip("due", "Due", value: ui.filter.due.isEmpty ? nil : ActionDue.Bucket.allCases.filter { ui.filter.due.contains($0) }.map { $0.title.capitalized }.joined(separator: ", "),
-                 clear: { ui.filter.due = [] }) {
-                ActionMenuPanel(title: "DUE", width: 220) {
-                    ActionMenuRow(title: "Any time", checked: ui.filter.due.isEmpty) { ui.filter.due = [] }
-                    ForEach(ActionDue.Bucket.allCases, id: \.self) { b in
-                        ActionMenuRow(title: b.title.capitalized, icon: "calendar", checked: ui.filter.due.contains(b)) { flip(&ui.filter.due, b) }
-                    }
-                }
-            }
-            chip("person", "Person", value: joined(ui.filter.people), clear: { ui.filter.people = [] }) {
-                facetPanel("PEOPLE", values: people, selected: ui.filter.people, search: true) { flip(&ui.filter.people, $0) }
-            }
-            chip("label", "Label", value: joined(ui.filter.labels.map { "#" + $0 }), clear: { ui.filter.labels = [] }) {
-                facetPanel("LABELS", values: labels, selected: ui.filter.labels) { flip(&ui.filter.labels, $0) }
-            }
-            chip("note", "Note", value: joined(ui.filter.notes), clear: { ui.filter.notes = [] }) {
-                facetPanel("SOURCE NOTE", values: notes, selected: ui.filter.notes) { flip(&ui.filter.notes, $0) }
-            }
-            chip("priority", "Priority", value: joined(ui.filter.priorities), clear: { ui.filter.priorities = [] }) {
-                ActionMenuPanel(title: "PRIORITY", width: 200) {
-                    ForEach(ActionList.priorities + ["None"], id: \.self) { p in
-                        ActionMenuRow(title: p, icon: "flag", checked: ui.filter.priorities.contains(p)) { flip(&ui.filter.priorities, p) }
-                    }
-                }
-            }
-            chip("more", "More", value: moreValue, clear: { ui.filter.addedBy = nil; ui.filter.vaults = []; ui.filter.jobID = nil }) {
-                ActionMenuPanel(title: "MORE FILTERS", width: 280) {
-                    ActionMenuRow(title: "Added by Distill", icon: "sparkle", checked: ui.filter.addedBy == .distill) {
-                        ui.filter.addedBy = ui.filter.addedBy == .distill ? nil : .distill
-                    }
-                    ActionMenuRow(title: "Added by you", icon: "person", checked: ui.filter.addedBy == .you) {
-                        ui.filter.addedBy = ui.filter.addedBy == .you ? nil : .you
-                    }
-                    ForEach(vaults, id: \.self) { v in
-                        ActionMenuRow(title: (v as NSString).lastPathComponent, detail: "Vault", icon: "folder", checked: ui.filter.vaults.contains(v)) { flip(&ui.filter.vaults, v) }
-                    }
-                    if ui.filter.jobID != nil {
-                        ActionMenuRow(title: "Only this batch's notes", icon: "tray.full", checked: true) { ui.filter.jobID = nil }
-                    }
-                }
-            }
-            Spacer(minLength: 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
             chip("group", "", value: nil, clear: nil, label: AnyView(HStack(spacing: 5) {
                 Image(systemName: "arrow.up.arrow.down").font(.system(size: 10, weight: .semibold))
                 Text(grouping.title).fontWeight(.semibold).foregroundStyle(Theme.ink)
