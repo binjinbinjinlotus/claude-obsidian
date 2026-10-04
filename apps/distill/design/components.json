@@ -3917,6 +3917,11 @@
           "default": false
         },
         {
+          "name": "runEnabled",
+          "type": "boolean",
+          "default": true
+        },
+        {
           "name": "width",
           "type": "text",
           "default": ""
@@ -3926,7 +3931,7 @@
         "file": "CollectorRowStates.dc.html",
         "title": "Collector row states",
         "heading": "CollectorRow",
-        "intro": "One row per collector in the Collectors list: kind tile (Folder = green folder, Custom script = violet terminal), name, and one status line. A healthy collector shows no pill: the line says when it runs and what it last did. A pill appears only when something needs a look: Running, Failed, Needs your OK. Off rows are dimmed. Hover shows Run now and ⋯. No Swift view yet: add <b>CollectorRow</b>. Props: kind, title, summary, status (pill text), statusKind (on | off | running | error | consent), selected, hover, width.",
+        "intro": "One row per collector in the Collectors list: kind tile (Folder = green folder, Custom script = violet terminal), name, and one status line. A healthy collector shows no pill: the line says when it runs and what it last did. A pill appears only when something needs a look: Running, Failed, Needs your OK. Off rows are dimmed. <b>Run now is always on the selected row</b> (a play button at the right), and on hover with ⋯ for any row, so it never hides behind a hover. A script that waits for your OK has no play button: its detail offers Allow and run. Props: kind, title, summary, status (pill text), statusKind (on | off | running | error | consent), selected, hover, runEnabled, width.",
         "width": 1280,
         "cols": 3
       },
@@ -3960,7 +3965,40 @@
             "330px",
             "56px"
           ],
-          "caption": "its detail is open on the right"
+          "caption": "Its detail is open on the right; Run now stays visible on the row."
+        },
+        {
+          "name": "Selected, failed",
+          "props": {
+            "kind": "script",
+            "title": "Slack saved items",
+            "summary": "Exit 1 at 8:30 AM",
+            "status": "Failed",
+            "statusKind": "error",
+            "selected": true,
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ],
+          "caption": "Run now tries again at once; the schedule doesn’t move."
+        },
+        {
+          "name": "Selected, off",
+          "props": {
+            "kind": "folder",
+            "title": "Scans",
+            "summary": "Off",
+            "statusKind": "off",
+            "selected": true,
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ],
+          "caption": "Off stops the schedule only. Run now still works."
         },
         {
           "name": "Hover: Run now and ⋯",
@@ -3976,7 +4014,7 @@
             "330px",
             "56px"
           ],
-          "caption": "⋯ holds Edit, Rename, Duplicate, Turn off and Delete."
+          "caption": "⋯ holds Run now, Edit, Rename, Duplicate, Turn off and Delete."
         },
         {
           "name": "Running",
@@ -4581,6 +4619,12 @@
           "default": ""
         },
         {
+          "name": "changes",
+          "type": "text",
+          "default": "",
+          "swiftPending": "the core reports what changed (script, manifest or both); the card names it"
+        },
+        {
           "name": "allowedText",
           "type": "text",
           "default": ""
@@ -4595,7 +4639,7 @@
         "file": "ScriptConsentStates.dc.html",
         "title": "Script consent states",
         "heading": "ScriptConsent",
-        "intro": "The explicit first-run consent for a custom script. Distill runs nothing you have not allowed: a new script waits here, and a script whose content changes (its sha256) is paused until you allow the new version. The allowance belongs to the exact script, not to the collector. No Swift view yet: add <b>ScriptConsent</b>. Props: state (ask | changed | allowed), interpreter, source, hash, allowedText, width.",
+        "intro": "The explicit first-run consent for a custom script. Distill runs nothing you have not allowed: a new script waits here, and a script whose content changes (its sha256) is paused until you allow the new version. The allowance belongs to the exact script, not to the collector. No Swift view yet: add <b>ScriptConsent</b>. The allowance covers the script <b>and its package manifest</b> (package.json or requirements.txt), because installing packages runs their authors’ code; <code>changes</code> names what changed. Props: state (ask | changed | allowed), interpreter, source, hash, changes, allowedText, width.",
         "width": 1280,
         "cols": 2,
         "wrap": "<div style=\"width: 580px; padding: 10px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
@@ -4624,6 +4668,21 @@
           "caption": "Checked before every run (file scripts can change on disk)."
         },
         {
+          "name": "Packages changed",
+          "props": {
+            "state": "changed",
+            "interpreter": "npm install ·",
+            "source": "package.json",
+            "hash": "sha256 77d0…a1c3 (was 3f9a…c217)",
+            "changes": "package.json"
+          },
+          "size": [
+            "560px",
+            "190px"
+          ],
+          "caption": "Edited in the app or in your editor. Nothing installs or runs until you allow it."
+        },
+        {
           "name": "Allowed",
           "props": {
             "state": "allowed"
@@ -4647,6 +4706,257 @@
             "170px"
           ],
           "caption": "Editing inline code changes its hash, so a saved edit asks again."
+        }
+      ]
+    },
+    {
+      "name": "ScriptEditor",
+      "title": "Script editor",
+      "preview": [
+        560,
+        230
+      ],
+      "props": [
+        {
+          "name": "language",
+          "type": "enum",
+          "default": "python",
+          "options": [
+            "zsh",
+            "python",
+            "javascript",
+            "typescript"
+          ]
+        },
+        {
+          "name": "source",
+          "type": "enum",
+          "default": "managed",
+          "options": [
+            "managed",
+            "external"
+          ]
+        },
+        {
+          "name": "path",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "ScriptEditorStates.dc.html",
+        "title": "Script editor states",
+        "heading": "ScriptEditor",
+        "intro": "The Script field of a custom collector’s Edit form (and Add, step 2). The language picker (zsh, Python, JavaScript, TypeScript) sits on top; under it, <b>where the file lives</b>, with Reveal in Finder and Open in editor. A script Distill keeps is a real file in its own folder (<code>~/Library/Application Support/Distill/collectors/scripts/&lt;id&gt;/collector.py</code>), so it can be edited in any editor, backed up and versioned; the app edits that same file. Your own file stays where it is: no code box, Choose… picks another. Changing the language or saving a change asks for your OK again. No Swift view yet: add <b>ScriptEditor</b>. Props: language (zsh | python | javascript | typescript), source (managed | external), path, code (lines separated by |), width.",
+        "width": 1280,
+        "cols": 2,
+        "wrap": "<div style=\"width: 580px; padding: 14px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
+      },
+      "states": [
+        {
+          "name": "Python, kept by Distill",
+          "props": {
+            "language": "python"
+          },
+          "size": [
+            "550px",
+            "230px"
+          ],
+          "caption": "collector.py in the collector’s folder; packages come from requirements.txt next to it."
+        },
+        {
+          "name": "TypeScript",
+          "props": {
+            "language": "typescript"
+          },
+          "size": [
+            "550px",
+            "230px"
+          ],
+          "caption": "Runs on your Node with the types stripped (Node 22.6 or later). No build step."
+        },
+        {
+          "name": "JavaScript",
+          "props": {
+            "language": "javascript"
+          },
+          "size": [
+            "550px",
+            "230px"
+          ]
+        },
+        {
+          "name": "zsh",
+          "props": {
+            "language": "zsh"
+          },
+          "size": [
+            "550px",
+            "230px"
+          ],
+          "caption": "zsh has no packages."
+        },
+        {
+          "name": "Your own file",
+          "props": {
+            "language": "python",
+            "source": "external"
+          },
+          "size": [
+            "550px",
+            "100px"
+          ],
+          "caption": "Distill runs it from where it is and asks again when it changes. Packages are yours to install."
+        }
+      ]
+    },
+    {
+      "name": "PackagesPanel",
+      "title": "Packages panel",
+      "preview": [
+        560,
+        240
+      ],
+      "props": [
+        {
+          "name": "manifest",
+          "type": "enum",
+          "default": "package.json",
+          "options": [
+            "package.json",
+            "requirements.txt"
+          ]
+        },
+        {
+          "name": "state",
+          "type": "enum",
+          "default": "installed",
+          "options": [
+            "none",
+            "installed",
+            "pending",
+            "installing",
+            "failed",
+            "needsOK"
+          ]
+        },
+        {
+          "name": "lines",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "output",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "summary",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "expanded",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "PackagesPanelStates.dc.html",
+        "title": "Packages panel states",
+        "heading": "PackagesPanel",
+        "intro": "Packages for a script Distill keeps: the manifest next to the script (<b>package.json</b> for JavaScript and TypeScript, installed with npm into node_modules/; <b>requirements.txt</b> for Python, installed with pip into .venv/), one status line, and <b>Install</b>. It shows in the Edit form only; at a glance it is one Settings line, and install progress or a failed install shows in the status card, like a run. Installs run when you press Install, and on their own before the next run when the manifest changed since the last install. Output is kept like a run’s (last 64 KB, stopped after 10 minutes). A changed manifest needs your OK first. ⋯ holds Clean reinstall (drops node_modules/ or .venv/ and installs again) and Open in editor. No Swift view yet: add <b>PackagesPanel</b>. Props: manifest, state (none | installed | pending | installing | failed | needsOK), lines (manifest lines, | separated; a leading + marks an added line), output, summary, expanded, width.",
+        "width": 1280,
+        "cols": 2,
+        "wrap": "<div style=\"width: 580px; padding: 14px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
+      },
+      "states": [
+        {
+          "name": "Installed",
+          "props": {
+            "manifest": "requirements.txt",
+            "state": "installed"
+          },
+          "size": [
+            "550px",
+            "150px"
+          ],
+          "caption": "Quiet when it’s done: one green line."
+        },
+        {
+          "name": "Changed, not installed yet",
+          "props": {
+            "manifest": "package.json",
+            "state": "pending"
+          },
+          "size": [
+            "550px",
+            "230px"
+          ],
+          "caption": "You allowed it; it installs before the next run, or now with Install."
+        },
+        {
+          "name": "Changed, waits for your OK",
+          "props": {
+            "manifest": "package.json",
+            "state": "needsOK"
+          },
+          "size": [
+            "550px",
+            "240px"
+          ],
+          "caption": "Install is off until you allow this version (the consent card above it)."
+        },
+        {
+          "name": "Installing",
+          "props": {
+            "manifest": "requirements.txt",
+            "state": "installing"
+          },
+          "size": [
+            "550px",
+            "250px"
+          ],
+          "caption": "Live output; Stop ends it. A run waits for the install."
+        },
+        {
+          "name": "Install failed",
+          "props": {
+            "manifest": "package.json",
+            "state": "failed"
+          },
+          "size": [
+            "550px",
+            "300px"
+          ],
+          "caption": "The run doesn’t start with half-installed packages; fix the manifest and Install again."
+        },
+        {
+          "name": "No packages yet",
+          "props": {
+            "manifest": "requirements.txt",
+            "state": "none"
+          },
+          "size": [
+            "550px",
+            "110px"
+          ],
+          "caption": "Typing a first line creates requirements.txt."
         }
       ]
     },

@@ -17,7 +17,10 @@ Build status: **built in the core, the API, the CLI and the macOS app**
 `distill collectors list|run|history`; the Mac UI from canvas row "7 ·
 Collectors", boards Collectors and CollectorsScript, and the queue path on
 Main, MainLoading and MainEmpty). See "macOS app (built)" for where the app
-differs from the boards. The contract is in
+differs from the boards. **Script files, TypeScript and packages** (v6,
+2026-10-04) are built in the core, API and CLI and designed on the canvas
+(board CollectorsScriptFiles); the Mac UI for them is not built yet. See
+"Script files and packages (v6)". The contract is in
 `core/src/contracts.ts`; see "API and contract (built)" for where it differs
 from the proposal.
 
@@ -123,11 +126,16 @@ The first built-in is **Folder**:
 The user provides a script, and Distill runs it on a schedule, like a cron
 job.
 
-- **Source:** a file path, or inline code edited in the app (stored in the
-  collector's record). The interpreter is one of `zsh`, `python3` or `node`,
-  resolved on the user's login-shell `PATH` when the run starts. A file
-  source runs as `<interpreter> <path> <vault> <queue>`. Inline code is
-  written to a temporary file and run the same way.
+- **Source:** a script Distill keeps as a real file in the collector's own
+  folder (code written in the app), or the user's own file. Since v6 code
+  is never stored in `collectors.json`; see "Script files and packages
+  (v6)". The language is zsh, Python (`python3`), JavaScript (`node`) or
+  TypeScript (`typescript`, on Node), resolved on the user's login-shell
+  `PATH` when the run starts. A script runs as `<interpreter> <path>
+  <vault> <queue>`.
+- **Packages:** a script Distill keeps can have a `package.json`
+  (JavaScript, TypeScript) or a `requirements.txt` (Python) next to it;
+  Distill installs them into that folder.
 - Settings: the schedule, a timeout, and on/off.
 
 ## Ledger and dedupe
@@ -216,7 +224,9 @@ job.
   skipped and logged as "Skipped · the 6:00 AM run was still going". The same
   collector never runs twice at once. Different collectors run in parallel,
   at most 2 at a time.
-- **Run now** starts a run at once. It does not move the schedule.
+- **Run now** starts a run at once. It does not move the schedule. Every
+  collector has it, whatever its kind or state (off, failed, never run);
+  see "Run now everywhere (v6, designed)".
 - Turning a collector off stops future runs. A run in progress finishes
   (Folder) or keeps running until Stop (script).
 
@@ -245,7 +255,9 @@ queue folder go into batches.
   It can read and change anything you can and use the network." Run now and
   the switch stay disabled until the user chooses **Allow and turn on**.
 - **Consent is bound to the script's sha256.** That is the file's content for
-  a file source, or the stored code for inline. Before every run the core
+  a file source, or the stored code for inline. Since v6 it also covers the
+  package manifest of a script Distill keeps (see "Script files and packages
+  (v6)"): installing packages runs third-party code. Before every run the core
   hashes the script. If the hash differs from the allowed one, the run does
   not start ("Not run · the script changed since you allowed it"), the
   collector shows "Needs your OK", and the consent card shows the old and new
@@ -402,7 +414,8 @@ interface CollectorRun {
   folder.** A file can still be skipped after Forget all when the same bytes
   were collected from another folder into the same vault (dedupe is
   vault-wide). Forget one removes every entry with that sha256 in the vault.
-- **Deleting a collector deletes its run history**; the ledger stays.
+- **Deleting a collector deletes its run history**; the ledger stays. Since
+  v6 its script folder goes to a trash for 30 days (see below).
 - **A file skipped because it is unchanged since it was collected (same
   path, size and mtime) gets no per-file line**, only `counts.skipped`.
   With copy as the default every original stays in the folder, so a line
@@ -483,7 +496,9 @@ change, delete or allow a collector.
   it is `success` with `counts.errors`.
 - **Scripts:** run as `<interpreter> <script> <vault> <queue>`, with the
   interpreter found on the login shell's `PATH` (`$SHELL -l -c`, cached 10
-  minutes). Inline code is written to a temp file with exactly the hashed
+  minutes). Since v6 a script Distill keeps runs from its file in its
+  folder. Only an old inline record that could not be moved to a file (the
+  write failed) is still written to a temp file with exactly the hashed
   bytes (`collector.zsh`, `.py`, or `.mjs` for node). The environment is the
   core's, minus every `DISTILL_*` variable, plus the four documented ones.
   The working folder is `$TMPDIR/distill-run-<run-id>-XXXX`, deleted after
@@ -536,6 +551,159 @@ subfolder is one folder item …").
   in the queue it waits ("needs Google Drive access").
 - **Script runs:** "files added" now also names folders that appeared in
   the queue folder during the run.
+
+## Script files and packages (v6)
+
+Owner request (2026-10-04): "the script should be saved as a script, not
+inline in json, it should support zsh, python3, js and typescript; it should
+support package install for js and typescript; all collectors should support
+run now." Built in the core, API and CLI on 2026-10-04 (`core/src/collectors/files.ts`,
+`packages.ts`, hooks in `index.ts`; tests in `files.test.ts` and
+`server/http-collectors.test.ts`). Designed on canvas board
+CollectorsScriptFiles (frames T–Z2); Mac UI not built.
+
+### Where scripts live
+
+```
+<state>/collectors/scripts/<collector-id>/
+  collector.zsh | collector.py | collector.js | collector.ts   the script
+  package.json (JavaScript, TypeScript) | requirements.txt (Python)   optional
+  node_modules/ | .venv/                                        installed packages
+```
+
+- `collectors.json` stores `script.source = {file: <absolute path>, managed:
+  true}`. The user's own file stays `{file}` (no `managed`), runs from where
+  it is, and Distill never writes to it.
+- Files are written atomically, mode 0600, folders 0700.
+- Old clients keep working: `{inline: code}` on create or PATCH is written to
+  the managed file; `{file: <the managed path>}` sent back unchanged stays
+  managed; an old app reads the managed path like any file. `{file}`
+  pointing at **another** collector's managed file (the app's Duplicate)
+  gives the new collector its own copy, manifest included.
+- **Migration:** at start, every inline script is written to its folder with
+  the exact same bytes (node code keeps `collector.mjs`, the extension its
+  inline code always ran with), after `collectors.json` is copied to
+  `collectors.json.pre-script-files-<time>` next to it. The hash doesn't
+  change, so an allowed script stays allowed. It is idempotent: identical
+  bytes already in the folder are reused. A script whose file can't be
+  written stays inline and still runs.
+- A managed path from another state dir (a restore, another
+  `DISTILL_STATE_DIR`) is re-pointed at this state dir's folder on load.
+- **Language change** renames the managed file to the new extension
+  (TypeScript needs `.ts`); a file already holding that name is kept as
+  `<name>.old-<time>`. It clears consent, as before.
+- **Delete:** the folder moves to `<state>/collectors/trash/<id>-<time>/`
+  without `node_modules`/`.venv`, with the collector's record saved as
+  `collector.json` beside the script. Trash folders older than 30 days are
+  removed when the core starts. There is no Restore button yet (the
+  activity log teammate may add a shared trash; see Decisions).
+
+### Languages
+
+| Language | `interpreter` | File | Runs with |
+| --- | --- | --- | --- |
+| zsh | `zsh` | `collector.zsh` | `zsh` |
+| Python | `python3` | `collector.py` | the folder's `.venv/bin/python3` once packages were installed, else `python3` |
+| JavaScript | `node` | `collector.js` | `node` |
+| TypeScript | `typescript` | `collector.ts` | `node` with its built-in type stripping |
+
+TypeScript: the core asks the login shell's `node` for its version and
+`process.features.typescript` (cached 10 minutes). Node 22.18+ / 23.6+ strip
+types by default (no flag, no warning); 22.6–22.17 get
+`--experimental-strip-types --disable-warning=ExperimentalWarning`; older
+Node fails the run (`interpreterMissing`, "TypeScript needs Node 22.6 or
+later … or add tsx to package.json and Install"). Stripping handles erasable
+syntax only (no `enum`, `namespace`, parameter properties). When the folder
+has `tsx` installed (a devDependency the user adds), the core runs
+`node node_modules/tsx/dist/cli.mjs collector.ts` instead.
+
+### Packages
+
+- **Manifest:** `package.json` for JavaScript and TypeScript, `requirements.txt`
+  for Python, in the script's folder; zsh has none. Packages are for scripts
+  Distill keeps, not the user's own file (Node resolves packages from the
+  script's location, so a folder elsewhere wouldn't be found).
+- **Install** (`POST …/install`, and automatically before a run when the
+  manifest changed since the last successful install or `node_modules` /
+  `.venv` is missing):
+  - `package.json`: `npm install --no-audit --no-fund`, with the `npm` next to
+    the `node` scripts run with (so nvm versions match), else `npm` on PATH.
+  - `requirements.txt`: `python3 -m venv .venv` when there is no venv, then
+    `.venv/bin/python3 -m pip install --disable-pip-version-check -r
+    requirements.txt`.
+  - cwd is the script's folder; the environment is a run's (login PATH, no
+    `DISTILL_*` variables, plus `npm_config_update_notifier=false`).
+  - Timeout 10 minutes; Stop (`POST …/install/stop`) ends it the way Stop
+    ends a script.
+  - Output: stdout and stderr interleaved, the last 64 KB, with
+    `user:password@` in URLs and `_authToken`/`token`/`password` values
+    masked (in the stored tail and the live events).
+  - `{clean: true}` removes `node_modules` / `.venv` first.
+  - The newest install is kept in `<state>/collectors/installs/<id>.json`
+    with the manifest hash of the last successful one.
+- **One operation per collector:** Run now and Install refuse (`busy`) while
+  the other runs; a scheduled tick during an install is logged "Skipped ·
+  packages were being installed". Installs don't wait for a batch (they
+  don't touch the queue or the vault).
+- A run that installed first carries `installId`; when that install fails
+  the run is `failed`, code `installFailed`, and doesn't start the script.
+  A failed install with the change still pending raises `needsAttention`.
+- An empty manifest (no packages) needs no install.
+
+### Consent with packages
+
+- The consent hash is `sha256(script)` when there is no manifest (exactly as
+  before v6), else `sha256("distill-collector-consent-v2\nscript <sha256 of
+  script>\n<manifest name> <sha256 of manifest>\n")`. Editing the manifest
+  in the app or in another editor means "Needs your OK", like editing code.
+- Install needs the current version allowed (`invalid_state` otherwise).
+- `script.allowedFiles {script, manifest}` records each file's hash at
+  Allow, so `status.script.changes` can say what changed since ("script",
+  "manifest", or both).
+- **Not covered:** `package-lock.json` (npm writes it during install) and
+  versions a range resolves to at install time. Installs only happen when
+  the manifest changed or the user asks.
+- An older core restored from a backup sees a different hash for a script
+  with a manifest and asks for consent again (it fails closed).
+
+### API (v6)
+
+| Method and path | Core method | Returns |
+| --- | --- | --- |
+| `GET /v1/collectors/:id/script` | `getCollectorScript(id)` | `CollectorScriptFiles`: path, dir, managed, interpreter, code, sha256 (script alone), manifest {name, path, text, sha256} |
+| `PUT /v1/collectors/:id/script {code?, manifest?, baseSha256?, baseManifestSha256?}` | `writeCollectorScript(id, update)` | the files as saved; 409 when the file changed on disk since `base…` was read, or for the user's own file |
+| `POST /v1/collectors/:id/install {clean?}` | `installCollectorPackages(id, {clean})` | `{install}` (running); 409 without consent or while busy |
+| `POST /v1/collectors/:id/install/stop` | `stopCollectorInstall(id)` | `{install}` or `{install: null}` |
+| `GET /v1/collectors/:id/install` | `getCollectorInstall(id)` | `{install}` with `outputTail`, or `{install: null}` |
+
+- `NewCollectorInput.script.manifest` sets the manifest at creation.
+- `Collector.status.script`: `path`, `dir`, `managed`, `manifest`
+  (`name`, `path`, `exists`, `hasDependencies`, `packageCount`, `sha256`,
+  `installedSha256`, `needsInstall`, `installing`, `lastInstall` without
+  output) and `changes`.
+- Events: `collector.install.started {install}`, `collector.install.output
+  {collectorId, installId, text}` (throttled by the process, at most 16 KB
+  each), `collector.install.finished {install}`.
+- New error code `installFailed`; `CollectorRun.installId`.
+- CLI: `distill collectors list` prints each script's file path.
+
+### Run now everywhere (v6, designed)
+
+What was wrong in the Mac app (the core already ran every kind in every
+state): Run now was a hover-only icon in the list; the detail hid it while
+a script waited for the user's OK and while the Edit form was open; the ⋯
+menus had no Run now. The design (boards Collectors, CollectorsScript,
+CollectorsScriptFiles):
+
+- the same title-row slot for every kind and state: Run now; Stop while
+  running or installing; **Allow and run** when the script needs the
+  user's OK (it allows the version shown, then runs it once);
+- it stays while editing (it runs the saved version);
+- first item in every ⋯ menu; the selected list row always shows its play
+  button;
+- a manual run's result shows at once in the status card: one sentence
+  ("Run now · added 2 files at 10:42 AM") and the last output lines, with
+  Copy output and Hide; failures show stderr in peach.
 
 ## macOS app (built)
 
@@ -595,4 +763,15 @@ The owner answered the questions from the first draft on 2026-10-04 (see
 - dedupe is by content (above);
 - the queue path is shown with `~`, and hover and Copy give the full path.
 
-None is open now.
+Open from v6 (script files and packages), for the owner:
+
+- Packages only for scripts Distill keeps. Should Python packages also work
+  for the user's own file (its `requirements.txt` and `.venv` in Distill's
+  folder for it)? Node can't do that cleanly.
+- A Python `.venv` means the script runs as `.venv/bin/python3`. A script
+  that reads the Keychain (the meeting-notes script) may get macOS's
+  Keychain prompt again once; choose Always Allow.
+- A "test run" that writes into a scratch folder instead of the queue, for
+  trying a script without feeding the next batch? Not built.
+- Restore from the trash in the app, or leave it to Finder until the
+  activity log's trash exists?

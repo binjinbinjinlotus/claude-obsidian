@@ -3,27 +3,28 @@
  "row": 19825,
  "rowNote": {
   "id": "flow7",
-  "text": "7 · Collectors (bring material into the queue on a schedule)"
+  "text": "7 \u00b7 Collectors (bring material into the queue on a schedule)"
  },
  "templates": {
   "header": "<header style=\"display: flex; align-items: center; gap: 12px; padding: 30px 32px 0\">\n<div style=\"display: flex; flex-direction: column; gap: 6px; flex-grow: 1; min-width: 0\"><h1 style=\"margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 30px; letter-spacing: -0.03em; line-height: 1.05\">{title}</h1>\n<span style=\"font-size: 13px; color: #6B6862\">{sub}</span></div>{right}</header>"
  },
  "layouts": {
   "list-detail": "{header}<div style=\"flex-grow: 1; display: flex; gap: 24px; padding: 20px 28px 0 20px; min-height: 0; overflow: hidden; position: relative\"><div style=\"width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 2px\">{list}</div><div style=\"flex-grow: 1; min-width: 0; overflow: hidden; padding: 2px 2px 20px\">{detail}</div></div>",
-  "pane": "{header}<div style=\"flex-grow: 1; min-height: 0; overflow: hidden\">{detail}</div>"
+  "pane": "{header}<div style=\"flex-grow: 1; min-height: 0; overflow: hidden\">{detail}</div>",
+  "list-detail-narrow": "{header}<div style=\"flex-grow: 1; display: flex; gap: 24px; padding: 20px 28px 0 20px; min-height: 0; overflow: hidden; position: relative\"><div style=\"width: 240px; flex-shrink: 0; display: flex; flex-direction: column; gap: 2px\">{list}</div><div style=\"flex-grow: 1; min-width: 0; overflow: hidden; padding: 2px 2px 20px\">{detail}</div></div>"
  },
  "lists": {
   "collectors": [
    {
     "kind": "folder",
     "title": "Distill Inbox",
-    "summary": "Every hour · copied 3 at 9:00 AM",
+    "summary": "Every hour \u00b7 copied 3 at 9:00 AM",
     "statusKind": "on"
    },
    {
     "kind": "script",
     "title": "Pocket export",
-    "summary": "Daily at 7:00 · added 4 at 7:00 AM",
+    "summary": "Daily at 7:00 \u00b7 added 4 at 7:00 AM",
     "statusKind": "on"
    },
    {
@@ -51,14 +52,14 @@
    {
     "kind": "folder",
     "title": "Distill Inbox",
-    "summary": "Copying 2 of 5…",
+    "summary": "Copying 2 of 5\u2026",
     "statusKind": "running",
     "status": "Running"
    },
    {
     "kind": "script",
     "title": "Pocket export",
-    "summary": "Daily at 7:00 · added 4 at 7:00 AM",
+    "summary": "Daily at 7:00 \u00b7 added 4 at 7:00 AM",
     "statusKind": "on"
    },
    {
@@ -86,13 +87,13 @@
    {
     "kind": "folder",
     "title": "Distill Inbox",
-    "summary": "Every hour · copied 3 at 9:00 AM",
+    "summary": "Every hour \u00b7 copied 3 at 9:00 AM",
     "statusKind": "on"
    },
    {
     "kind": "script",
     "title": "Pocket export",
-    "summary": "Running · 0:12",
+    "summary": "Running \u00b7 0:12",
     "statusKind": "running",
     "status": "Running"
    },
@@ -121,13 +122,13 @@
    {
     "kind": "folder",
     "title": "Distill Inbox",
-    "summary": "Every hour · copied 3 at 9:00 AM",
+    "summary": "Every hour \u00b7 copied 3 at 9:00 AM",
     "statusKind": "on"
    },
    {
     "kind": "script",
     "title": "Pocket export",
-    "summary": "Script changed · paused",
+    "summary": "Script changed \u00b7 paused",
     "statusKind": "consent",
     "status": "Needs your OK"
    },
@@ -163,13 +164,13 @@
    {
     "kind": "folder",
     "title": "Distill Inbox",
-    "summary": "Every hour · copied 3 at 9:00 AM",
+    "summary": "Every hour \u00b7 copied 3 at 9:00 AM",
     "statusKind": "on"
    },
    {
     "kind": "script",
     "title": "Pocket export",
-    "summary": "Daily at 7:00 · added 4 at 7:00 AM",
+    "summary": "Daily at 7:00 \u00b7 added 4 at 7:00 AM",
     "statusKind": "on"
    }
   ],
@@ -177,7 +178,7 @@
    {
     "kind": "folder",
     "title": "Distill Inbox",
-    "summary": "Every hour · copied 3 at 9:00 AM",
+    "summary": "Every hour \u00b7 copied 3 at 9:00 AM",
     "statusKind": "on"
    },
    {
@@ -186,6 +187,169 @@
     "summary": "No permission",
     "status": "Failed",
     "statusKind": "error"
+   }
+  ],
+  "collectors-files": [
+   {
+    "kind": "folder",
+    "title": "Distill Inbox",
+    "summary": "Every hour \u00b7 copied 3 at 9:00 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "script",
+    "title": "Pocket export",
+    "summary": "Daily at 7:00 AM \u00b7 added 4 at 7:00 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "script",
+    "title": "Slack saved items",
+    "summary": "Every hour \u00b7 added 3 at 9:30 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "script",
+    "title": "Meeting notes",
+    "summary": "Every 15 min \u00b7 added 1 at 10:30 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "folder",
+    "title": "Scans",
+    "summary": "Off",
+    "statusKind": "off"
+   }
+  ],
+  "collectors-files-manual": [
+   {
+    "kind": "folder",
+    "title": "Distill Inbox",
+    "summary": "Every hour \u00b7 copied 3 at 9:00 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "script",
+    "title": "Pocket export",
+    "summary": "Run now \u00b7 added 2 at 10:42 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "script",
+    "title": "Slack saved items",
+    "summary": "Every hour \u00b7 added 3 at 9:30 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "script",
+    "title": "Meeting notes",
+    "summary": "Every 15 min \u00b7 added 1 at 10:30 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "folder",
+    "title": "Scans",
+    "summary": "Off",
+    "statusKind": "off"
+   }
+  ],
+  "collectors-files-changed": [
+   {
+    "kind": "folder",
+    "title": "Distill Inbox",
+    "summary": "Every hour \u00b7 copied 3 at 9:00 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "script",
+    "title": "Pocket export",
+    "summary": "Daily at 7:00 AM \u00b7 added 4 at 7:00 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "script",
+    "title": "Slack saved items",
+    "summary": "package.json changed",
+    "statusKind": "consent",
+    "status": "Needs your OK"
+   },
+   {
+    "kind": "script",
+    "title": "Meeting notes",
+    "summary": "Every 15 min \u00b7 added 1 at 10:30 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "folder",
+    "title": "Scans",
+    "summary": "Off",
+    "statusKind": "off"
+   }
+  ],
+  "collectors-files-installing": [
+   {
+    "kind": "folder",
+    "title": "Distill Inbox",
+    "summary": "Every hour \u00b7 copied 3 at 9:00 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "script",
+    "title": "Pocket export",
+    "summary": "Daily at 7:00 AM \u00b7 added 4 at 7:00 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "script",
+    "title": "Slack saved items",
+    "summary": "Installing packages\u2026",
+    "statusKind": "running",
+    "status": "Running"
+   },
+   {
+    "kind": "script",
+    "title": "Meeting notes",
+    "summary": "Every 15 min \u00b7 added 1 at 10:30 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "folder",
+    "title": "Scans",
+    "summary": "Off",
+    "statusKind": "off"
+   }
+  ],
+  "collectors-files-failed": [
+   {
+    "kind": "folder",
+    "title": "Distill Inbox",
+    "summary": "Every hour \u00b7 copied 3 at 9:00 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "script",
+    "title": "Pocket export",
+    "summary": "Daily at 7:00 AM \u00b7 added 4 at 7:00 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "script",
+    "title": "Slack saved items",
+    "summary": "Exit 1 at 10:58 AM",
+    "statusKind": "error",
+    "status": "Failed"
+   },
+   {
+    "kind": "script",
+    "title": "Meeting notes",
+    "summary": "Every 15 min \u00b7 added 1 at 10:30 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "folder",
+    "title": "Scans",
+    "summary": "Off",
+    "statusKind": "off"
    }
   ]
  },
@@ -205,7 +369,7 @@
      "t": "header",
      "vars": {
       "title": "Collectors",
-      "sub": "Fill Research’s queue on a schedule.",
+      "sub": "Fill Research\u2019s queue on a schedule.",
       "right": {
        "c": "PrimaryButton",
        "props": {
@@ -235,7 +399,7 @@
   {
    "id": "collectors-empty",
    "base": "collectors",
-   "label": "A · No collectors yet",
+   "label": "A \u00b7 No collectors yet",
    "set": {
     "layout": "pane",
     "header.vars.right": "",
@@ -248,7 +412,7 @@
   {
    "id": "collectors-add",
    "base": "collectors",
-   "label": "B · Add, step 1: Folder or Custom script",
+   "label": "B \u00b7 Add, step 1: Folder or Custom script",
    "set": {
     "layout": "pane",
     "header.vars.right": "",
@@ -264,7 +428,7 @@
   {
    "id": "collectors-add-folder",
    "base": "collectors",
-   "label": "C · Add Folder, step 2: the folder (default ~/Distill Inbox) and Keep or Move",
+   "label": "C \u00b7 Add Folder, step 2: the folder (default ~/Distill Inbox) and Keep or Move",
    "set": {
     "layout": "pane",
     "header.vars.right": "",
@@ -280,7 +444,7 @@
   {
    "id": "collectors-add-schedule",
    "base": "collectors",
-   "label": "D · Add, step 3: schedule (every hour) and target vault",
+   "label": "D \u00b7 Add, step 3: schedule (every hour) and target vault",
    "set": {
     "layout": "pane",
     "header.vars.right": "",
@@ -296,12 +460,12 @@
   {
    "id": "collectors-folder",
    "base": "collectors",
-   "label": "E · Folder at a glance: last run, settings, recent runs"
+   "label": "E \u00b7 Folder at a glance: last run, settings, recent runs"
   },
   {
    "id": "collectors-folder-edit",
    "base": "collectors",
-   "label": "F · Edit (from ⋯ or Edit): the settings become a form in place",
+   "label": "F \u00b7 Edit (from \u22ef or Edit): the settings become a form in place",
    "set": {
     "detail": {
      "frag": "folder-edit"
@@ -311,7 +475,7 @@
   {
    "id": "collectors-folder-collected",
    "base": "collectors",
-   "label": "G · Already collected (the link): Forget one to collect it again",
+   "label": "G \u00b7 Already collected (the link): Forget one to collect it again",
    "set": {
     "overlay": {
      "frag": "collected-sheet"
@@ -321,7 +485,7 @@
   {
    "id": "collectors-folder-running",
    "base": "collectors",
-   "label": "H · Running: the status card says what it is doing; Stop replaces Run now",
+   "label": "H \u00b7 Running: the status card says what it is doing; Stop replaces Run now",
    "set": {
     "list": {
      "list": "collectors-running",
@@ -336,7 +500,7 @@
   {
    "id": "collectors-folder-history",
    "base": "collectors",
-   "label": "I · All runs: per-file detail only in an opened run",
+   "label": "I \u00b7 All runs: per-file detail only in an opened run",
    "set": {
     "detail": {
      "frag": "folder-history"
@@ -346,7 +510,7 @@
   {
    "id": "collectors-folder-missing",
    "base": "collectors",
-   "label": "J · Error: folder missing (this one moves files)",
+   "label": "J \u00b7 Error: folder missing (this one moves files)",
    "set": {
     "sidebar.collectorsAlert": "1",
     "list": {
@@ -362,7 +526,7 @@
   {
    "id": "collectors-folder-no-permission",
    "base": "collectors",
-   "label": "K · Error: no permission to read the folder",
+   "label": "K \u00b7 Error: no permission to read the folder",
    "set": {
     "sidebar.collectorsAlert": "1",
     "list": {
@@ -378,7 +542,7 @@
   {
    "id": "collectors-add-script",
    "base": "collectors",
-   "label": "L · Add Custom script, step 2: inline code or a file, interpreter",
+   "label": "L \u00b7 Add Custom script, step 2: kept by Distill (language and code) or your own file",
    "set": {
     "layout": "pane",
     "header.vars.right": "",
@@ -394,7 +558,7 @@
   {
    "id": "collectors-script-consent",
    "base": "collectors",
-   "label": "M · New script: shows what will run and asks once; nothing runs before",
+   "label": "M \u00b7 New script: shows what will run and asks once; nothing runs before",
    "set": {
     "sidebar.collectorsAlert": "2",
     "list.selected": 3,
@@ -406,7 +570,7 @@
   {
    "id": "collectors-script",
    "base": "collectors",
-   "label": "N · Script at a glance: interpreter, timeout and arguments sit under Advanced",
+   "label": "N \u00b7 Script at a glance: interpreter, timeout and arguments sit under Advanced",
    "set": {
     "sidebar.collectorsAlert": "2",
     "list.selected": 1,
@@ -418,7 +582,7 @@
   {
    "id": "collectors-script-edit",
    "base": "collectors",
-   "label": "O · Edit, Advanced open: interpreter, timeout, cron, what it gets",
+   "label": "O \u00b7 Edit, Advanced open: interpreter, timeout, cron, what it gets",
    "set": {
     "sidebar.collectorsAlert": "2",
     "list.selected": 1,
@@ -430,7 +594,7 @@
   {
    "id": "collectors-script-log",
    "base": "collectors",
-   "label": "P · All runs: open a run to see its output (here: failed, stderr)",
+   "label": "P \u00b7 All runs: open a run to see its output (here: failed, stderr)",
    "set": {
     "sidebar.collectorsAlert": "2",
     "list.selected": 1,
@@ -442,7 +606,7 @@
   {
    "id": "collectors-script-running",
    "base": "collectors",
-   "label": "Q · Script running: live output in the status card, Stop",
+   "label": "Q \u00b7 Script running: live output in the status card, Stop",
    "set": {
     "sidebar.collectorsAlert": "2",
     "list": {
@@ -458,7 +622,7 @@
   {
    "id": "collectors-script-failed",
    "base": "collectors",
-   "label": "R · Error: the script failed (exit 1, stderr in the card)",
+   "label": "R \u00b7 Error: the script failed (exit 1, stderr in the card)",
    "set": {
     "sidebar.collectorsAlert": "2",
     "list.selected": 2,
@@ -470,7 +634,7 @@
   {
    "id": "collectors-script-changed",
    "base": "collectors",
-   "label": "S · Script changed since you allowed it: paused, asks again",
+   "label": "S \u00b7 Script changed since you allowed it: paused, asks again",
    "set": {
     "sidebar.collectorsAlert": "3",
     "list": {
@@ -499,8 +663,8 @@
   },
   {
    "id": "collectors-card-menu",
-   "label": "⋯ menu",
-   "caption": "Edit lives here (and as the Edit link on Settings). Delete keeps the collected files and what Distill remembers.",
+   "label": "\u22ef menu",
+   "caption": "Run now comes first. Edit lives here (and as the Edit link on Settings). Delete keeps the collected files and what Distill remembers.",
    "card": {
     "height": 300,
     "bg": "#E4E1DB",
@@ -510,14 +674,182 @@
    "body": {
     "frag": "card-menu"
    }
+  },
+  {
+   "id": "collectors-script-managed",
+   "base": "collectors",
+   "label": "T \u00b7 A script Distill keeps: a real file in its own folder, Reveal in Finder and Open in editor; packages on one line",
+   "set": {
+    "list": {
+     "list": "collectors-files",
+     "row": "CollectorRow",
+     "selected": 1
+    },
+    "detail": {
+     "frag": "script-managed"
+    }
+   }
+  },
+  {
+   "id": "collectors-script-editor",
+   "base": "collectors",
+   "label": "U \u00b7 Edit: language picker, the file it edits, and its package.json (a new line, not installed yet)",
+   "set": {
+    "list": {
+     "list": "collectors-files",
+     "row": "CollectorRow",
+     "selected": 2
+    },
+    "detail": {
+     "frag": "script-editor"
+    }
+   }
+  },
+  {
+   "id": "collectors-script-manual-run",
+   "base": "collectors",
+   "label": "V \u00b7 Run now finished: the result and the last lines of output, right in the status card",
+   "set": {
+    "list": {
+     "list": "collectors-files-manual",
+     "row": "CollectorRow",
+     "selected": 1
+    },
+    "detail": {
+     "frag": "script-manual-run"
+    }
+   }
+  },
+  {
+   "id": "collectors-script-manifest-changed",
+   "base": "collectors",
+   "label": "W \u00b7 package.json changed (in the app or an editor): paused; Allow and run, or Allow this version",
+   "set": {
+    "sidebar.collectorsAlert": "1",
+    "list": {
+     "list": "collectors-files-changed",
+     "row": "CollectorRow",
+     "selected": 2
+    },
+    "detail": {
+     "frag": "script-manifest-changed"
+    }
+   }
+  },
+  {
+   "id": "collectors-script-installing",
+   "base": "collectors",
+   "label": "X \u00b7 Installing before the run: live npm output in the status card, Stop",
+   "set": {
+    "list": {
+     "list": "collectors-files-installing",
+     "row": "CollectorRow",
+     "selected": 2
+    },
+    "detail": {
+     "frag": "script-installing"
+    }
+   }
+  },
+  {
+   "id": "collectors-script-external",
+   "base": "collectors",
+   "label": "Y \u00b7 Your own file: its path, Reveal in Finder and Open in editor; no packages",
+   "set": {
+    "list": {
+     "list": "collectors-files",
+     "row": "CollectorRow",
+     "selected": 3
+    },
+    "detail": {
+     "frag": "script-external"
+    }
+   }
+  },
+  {
+   "id": "collectors-script-narrow-failed",
+   "base": "collectors",
+   "label": "Z \u00b7 890 pt window: a Run now that failed after an edit; controls under the name",
+   "set": {
+    "window.width": 890,
+    "layout": "list-detail-narrow",
+    "sidebar.collectorsAlert": "1",
+    "list": {
+     "list": "collectors-files-failed",
+     "row": "CollectorRow",
+     "selected": 2
+    },
+    "detail": {
+     "frag": "narrow-run-failed"
+    }
+   }
+  },
+  {
+   "id": "collectors-script-narrow-edit",
+   "base": "collectors",
+   "label": "Z2 \u00b7 890 pt window: Edit, labels above the fields",
+   "set": {
+    "window.width": 890,
+    "layout": "list-detail-narrow",
+    "list": {
+     "list": "collectors-files",
+     "row": "CollectorRow",
+     "selected": 2
+    },
+    "detail": {
+     "frag": "narrow-edit"
+    }
+   }
+  },
+  {
+   "id": "collectors-card-run-now",
+   "label": "Run now, every kind and state",
+   "caption": "Same place in the title row for every collector. Running: Stop. Needs your OK: Allow and run (allows the version shown, then runs it once). Never hidden.",
+   "card": {
+    "height": 470,
+    "bg": "#E4E1DB",
+    "pad": "18px",
+    "align": "stretch"
+   },
+   "body": {
+    "frag": "card-run-now"
+   }
+  },
+  {
+   "id": "collectors-card-script-menu",
+   "label": "\u22ef menu, script",
+   "caption": "Run now comes first in every \u22ef menu. A script Distill keeps adds its file and packages.",
+   "card": {
+    "height": 470,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "card-script-menu"
+   }
+  },
+  {
+   "id": "collectors-card-delete",
+   "label": "Delete a script collector",
+   "caption": "Nothing is lost at once: the folder can be put back from the trash for 30 days.",
+   "card": {
+    "height": 220,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "stretch"
+   },
+   "body": {
+    "frag": "card-delete"
+   }
   }
  ],
  "boards": [
   {
    "file": "Collectors.dc.html",
-   "title": "Collectors · list, add, Folder collector",
-   "heading": "Collectors · built-in Folder",
-   "intro": "Collectors fill the queue on a schedule: <b>Folder</b> (built in) or a <b>custom script</b>. The detail answers one question at a glance, “is it working, and what did it last do?”: a status card, a compact read-only settings block (Edit turns it into a form in place), and the last three runs. Healthy rows in the list have no pill; only Running, Failed and Needs your OK do. Adding is three short steps with defaults (Folder: <code>~/Distill Inbox</code>, Keep the original, every hour, the active vault). Folder copies by default and remembers what it took (by content), shown as the <b>Already collected</b> link with Forget. It also collects Google Docs (.gdoc) and, with <b>Include subfolders</b> (on by default), each subfolder as one folder item.",
+   "title": "Collectors \u00b7 list, add, Folder collector",
+   "heading": "Collectors \u00b7 built-in Folder",
+   "intro": "Collectors fill the queue on a schedule: <b>Folder</b> (built in) or a <b>custom script</b>. The detail answers one question at a glance, \u201cis it working, and what did it last do?\u201d: a status card, a compact read-only settings block (Edit turns it into a form in place), and the last three runs. Healthy rows in the list have no pill; only Running, Failed and Needs your OK do. Adding is three short steps with defaults (Folder: <code>~/Distill Inbox</code>, Keep the original, every hour, the active vault). Folder copies by default and remembers what it took (by content), shown as the <b>Already collected</b> link with Forget. It also collects Google Docs (.gdoc) and, with <b>Include subfolders</b> (on by default), each subfolder as one folder item.",
    "width": 2520,
    "sections": [
     {
@@ -572,9 +904,9 @@
   },
   {
    "file": "CollectorsScript.dc.html",
-   "title": "Collectors · custom script (consent, schedule, run log)",
-   "heading": "Collectors · custom script",
-   "intro": "Same layout as Folder. Setup is two sheet steps (script, then schedule), then the new collector asks once before it ever runs: <b>“Distill will run this code on your Mac as you”</b>, with the code shown. The allowance is tied to the script’s sha256, so a changed script pauses and asks again. At a glance: status card, settings (script, schedule, allowed), and the last runs; interpreter, timeout, cron and the arguments it gets ($1/$2, DISTILL_VAULT, DISTILL_QUEUE_DIR) sit under <b>Advanced</b>. Output shows only in an opened run, or live while it runs.",
+   "title": "Collectors \u00b7 custom script (consent, schedule, run log)",
+   "heading": "Collectors \u00b7 custom script",
+   "intro": "Same layout as Folder. Setup is two sheet steps (script, then schedule), then the new collector asks once before it ever runs: <b>\u201cDistill will run this code on your Mac as you\u201d</b>, with the code shown. The allowance is tied to the script\u2019s sha256, so a changed script pauses and asks again. At a glance: status card, settings (script, schedule, allowed), and the last runs; interpreter, timeout, cron and the arguments it gets ($1/$2, DISTILL_VAULT, DISTILL_QUEUE_DIR) sit under <b>Advanced</b>. Output shows only in an opened run, or live while it runs.",
    "width": 2520,
    "sections": [
     {
@@ -604,6 +936,58 @@
       "collectors-script-changed"
      ],
      "style": "display: flex; gap: 40px; align-items: flex-start"
+    }
+   ]
+  },
+  {
+   "file": "CollectorsScriptFiles.dc.html",
+   "title": "Collectors \u00b7 script files, packages and Run now",
+   "heading": "Collectors \u00b7 script files, packages, Run now",
+   "intro": "A script Distill keeps is now <b>a real file</b>, not code inside collectors.json: each collector gets its own folder (<code>~/Library/Application Support/Distill/collectors/scripts/&lt;id&gt;/</code>) with <code>collector.zsh</code>, <code>.py</code>, <code>.js</code> or <code>.ts</code>, so it can be found, edited in any editor, backed up and versioned. <b>Reveal in Finder</b> and <b>Open in editor</b> sit next to it. Languages: zsh, Python, JavaScript and TypeScript (run on your Node with the types stripped). <b>Packages</b>: package.json (npm, into node_modules/) for JavaScript and TypeScript, requirements.txt (pip, into .venv/) for Python, all inside that folder. Your OK covers the script and its manifest, so a changed package list asks first, like a changed script. <b>Run now</b> is in the same place for every collector and state (Stop while running, Allow and run while it needs your OK), first in every \u22ef menu, and always on the selected list row. A manual run shows its result and last output lines in the status card at once, so trying a script after an edit takes one click. Your own file still works: Distill runs it where it is.",
+   "width": 2520,
+   "sections": [
+    {
+     "row": [
+      "collectors-script-managed",
+      "collectors-script-editor"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "row": [
+      "collectors-script-manual-run",
+      "collectors-script-manifest-changed"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "row": [
+      "collectors-script-installing",
+      "collectors-script-external"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "title": "Narrow window (890 pt)",
+     "sub": "The list narrows to 240 pt; the title row puts the switch, Run now and \u22ef under the name; settings put labels above values; the editor and packages keep full width."
+    },
+    {
+     "row": [
+      "collectors-script-narrow-failed",
+      "collectors-script-narrow-edit"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "title": "Run now everywhere, and around the list"
+    },
+    {
+     "grid": [
+      "collectors-card-run-now",
+      "collectors-card-script-menu",
+      "collectors-card-delete"
+     ],
+     "cols": 3
     }
    ]
   }
