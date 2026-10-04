@@ -97,15 +97,20 @@ class SetupVaultTests(unittest.TestCase):
 
             # With no path, the caller's working directory is the vault. The
             # existing directory itself must still remain byte-for-byte intact.
-            marker = parent / "marker.txt"
+            # It sits one level below the temp root: a vault's parent is
+            # audited entry by entry, and the shared system temp root can
+            # exceed that bound (VAULT_DIRECTORY_LIMIT) on a busy machine.
+            existing = parent / "existing"
+            existing.mkdir()
+            marker = existing / "marker.txt"
             marker.write_text("untouched", encoding="utf-8")
-            before = _snapshot(parent)
-            result = _run("--dry-run", cwd=parent, env={"PWD": str(parent)})
+            before = _snapshot(existing)
+            result = _run("--dry-run", cwd=existing, env={"PWD": str(existing)})
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertEqual(
                 "claude-obsidian.adoption-plan.v1", json.loads(result.stdout)["schema"]
             )
-            self.assertEqual(before, _snapshot(parent))
+            self.assertEqual(before, _snapshot(existing))
 
     def test_check_is_read_only_and_has_meaningful_exit_status(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

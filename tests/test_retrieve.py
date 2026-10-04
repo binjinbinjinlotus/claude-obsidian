@@ -43,6 +43,20 @@ rerank = import_script("rerank", RERANK)
 bm25 = import_script("bm25", BM25)
 
 
+
+def nested_vault(tmpdir):
+    """Create and return a vault one level below a fresh temp directory.
+
+    Product code audits every entry of a vault's parent directory for
+    portable-name aliases and fails closed with VAULT_DIRECTORY_LIMIT above a
+    fixed bound.  The shared system temp root (macOS ``/var/folders/.../T``)
+    can hold more entries than that on a busy machine, so a test vault must
+    never sit directly in it: its parent is always a directory the test owns.
+    """
+    vault = Path(tmpdir) / "vault"
+    vault.mkdir()
+    return vault
+
 class Fail(SystemExit):
     pass
 
@@ -622,7 +636,7 @@ def test_retrieve_exits_10_without_index():
     """End-to-end CLI test: with no .vault-meta/bm25/index.json, retrieve.py must exit 10."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Build a minimal vault layout under tmpdir
-        sandbox = Path(tmpdir)
+        sandbox = nested_vault(tmpdir)
         (sandbox / ".vault-meta").mkdir()
         (sandbox / "wiki").mkdir()
         # Run product code against a separate vault. It should exit 10 because
@@ -652,7 +666,7 @@ def test_retrieve_validates_and_forwards_explicit_model():
     selected_model = "nomic-embed-text-v2-moe:latest"
     received = {}
     with tempfile.TemporaryDirectory() as tmpdir:
-        sandbox = Path(tmpdir)
+        sandbox = nested_vault(tmpdir)
         chunks_dir = sandbox / ".vault-meta/chunks/c-000001"
         index_dir = sandbox / ".vault-meta/bm25"
         page = sandbox / "wiki/example.md"
@@ -763,7 +777,7 @@ def test_retrieve_validates_and_forwards_explicit_model():
 def test_retrieve_translates_corrupt_index_to_documented_fallback_exit():
     """A malformed cache is unavailable, not an uncaught helper traceback."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        sandbox = Path(tmpdir)
+        sandbox = nested_vault(tmpdir)
         chunks_dir = sandbox / ".vault-meta" / "chunks" / "c-000001"
         index_dir = sandbox / ".vault-meta" / "bm25"
         chunks_dir.mkdir(parents=True)
@@ -821,7 +835,7 @@ def test_retrieve_translates_corrupt_index_to_documented_fallback_exit():
 def test_end_to_end_with_synthetic_chunks():
     """Build a minimal vault with 2 chunks, index it, run retrieve, verify output."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        sandbox = Path(tmpdir)
+        sandbox = nested_vault(tmpdir)
         meta = sandbox / ".vault-meta"
         chunks_dir = meta / "chunks"
         bm25_dir = meta / "bm25"
@@ -907,7 +921,7 @@ def test_end_to_end_with_synthetic_chunks():
 def test_dedupe_happens_before_final_top_k():
     """Multiple top chunks from one page must not crowd out another page."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        sandbox = Path(tmpdir)
+        sandbox = nested_vault(tmpdir)
         chunks_dir = sandbox / ".vault-meta" / "chunks"
         chunks_dir.mkdir(parents=True)
         pages_dir = sandbox / "wiki" / "fake"
@@ -979,7 +993,7 @@ def test_dedupe_happens_before_final_top_k():
 
 def test_retrieve_skips_page_deleted_after_index_build():
     with tempfile.TemporaryDirectory() as tmpdir:
-        sandbox = Path(tmpdir)
+        sandbox = nested_vault(tmpdir)
         chunks_dir = sandbox / ".vault-meta" / "chunks" / "c-000001"
         chunks_dir.mkdir(parents=True)
         page = sandbox / "wiki" / "fake" / "c-000001.md"
@@ -1110,7 +1124,7 @@ def test_chunk_currency_accepts_crlf_pages():
 def test_explain_flag_adds_diagnostics_block():
     """v1.7.2 / closes audit M8: --explain must include an 'explain' diagnostics block."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        sandbox = Path(tmpdir)
+        sandbox = nested_vault(tmpdir)
         meta = sandbox / ".vault-meta"
         chunks_dir = meta / "chunks"
         bm25_dir = meta / "bm25"
@@ -1190,7 +1204,7 @@ def test_explain_flag_adds_diagnostics_block():
 def test_no_rerank_flag_strategy_bm25_only():
     """v1.7.2 / closes audit M8: --no-rerank must produce strategy='bm25-only'."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        sandbox = Path(tmpdir)
+        sandbox = nested_vault(tmpdir)
         meta = sandbox / ".vault-meta"
         chunks_dir = meta / "chunks"
         bm25_dir = meta / "bm25"

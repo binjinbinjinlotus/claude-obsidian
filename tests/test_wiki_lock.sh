@@ -45,8 +45,17 @@ assert_true() {
 }
 
 # Set up a sandbox vault for the duration of this run
-SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/wiki-lock-test.XXXXXX")
-trap 'rm -rf "$SANDBOX"' EXIT
+# The vault sits one level below a private temp root.  Product code audits
+# every entry of a vault's parent directory and fails closed above a fixed
+# bound (VAULT_DIRECTORY_LIMIT); the shared system temp root can exceed it on
+# a busy machine, so it must never be the vault's parent.
+SANDBOX_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/wiki-lock-test.XXXXXX") || SANDBOX_ROOT=""
+if [ -z "$SANDBOX_ROOT" ] || [ ! -d "$SANDBOX_ROOT" ]; then
+  echo "FAIL could not create a temp sandbox under ${TMPDIR:-/tmp}" >&2
+  exit 1
+fi
+trap 'rm -rf "$SANDBOX_ROOT"' EXIT
+SANDBOX="$SANDBOX_ROOT/vault"
 mkdir -p "$SANDBOX/.vault-meta/locks"
 export WIKI_LOCK_VAULT="$SANDBOX"
 

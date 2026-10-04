@@ -33,6 +33,20 @@ bm25 = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bm25)
 
 
+
+def nested_vault(tmpdir):
+    """Create and return a vault one level below a fresh temp directory.
+
+    Product code audits every entry of a vault's parent directory for
+    portable-name aliases and fails closed with VAULT_DIRECTORY_LIMIT above a
+    fixed bound.  The shared system temp root (macOS ``/var/folders/.../T``)
+    can hold more entries than that on a busy machine, so a test vault must
+    never sit directly in it: its parent is always a directory the test owns.
+    """
+    vault = Path(tmpdir) / "vault"
+    vault.mkdir()
+    return vault
+
 class Fail(SystemExit):
     pass
 
@@ -220,7 +234,7 @@ def test_build_and_query():
     """End-to-end: write synthetic chunks, build index, query, verify rankings."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Redirect bm25 module's paths to a sandbox
-        sandbox = Path(tmpdir)
+        sandbox = nested_vault(tmpdir)
         meta = sandbox / ".vault-meta"
         chunks_dir = meta / "chunks"
         bm25_dir = meta / "bm25"
@@ -295,7 +309,7 @@ def test_build_and_query():
 def test_cjk_queries_retrieve_longer_japanese_and_chinese_documents():
     """Regression: phrase queries must overlap longer unsegmented CJK text."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        sandbox = Path(tmpdir)
+        sandbox = nested_vault(tmpdir)
         meta = sandbox / ".vault-meta"
         chunks_dir = meta / "chunks"
         bm25_dir = meta / "bm25"
@@ -357,7 +371,7 @@ def test_cjk_queries_retrieve_longer_japanese_and_chinese_documents():
 def test_cjk_normalization_and_one_character_queries_retrieve():
     """Equivalent Unicode forms and a one-character query reach longer documents."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        sandbox = Path(tmpdir)
+        sandbox = nested_vault(tmpdir)
         meta = sandbox / ".vault-meta"
         chunks_dir = meta / "chunks"
         bm25_dir = meta / "bm25"
@@ -438,7 +452,7 @@ def test_token_growth_limit_rejects_oversized_manual_chunk_without_traceback():
         )
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        sandbox = Path(tmpdir)
+        sandbox = nested_vault(tmpdir)
         meta = sandbox / ".vault-meta"
         chunks_dir = meta / "chunks"
         bm25_dir = meta / "bm25"
@@ -460,8 +474,14 @@ def test_token_growth_limit_rejects_oversized_manual_chunk_without_traceback():
             timeout=10,
             check=False,
         )
+        # Check the exit status before reading the index, so a refused build
+        # reports its own diagnostic instead of a FileNotFoundError traceback.
+        assert_true(
+            "oversized manual chunk build succeeds safely",
+            result.returncode == 0,
+            hint=f"rc={result.returncode} stderr={result.stderr.strip()}",
+        )
         index = json.loads((bm25_dir / "index.json").read_text(encoding="utf-8"))
-        assert_eq("oversized manual chunk build succeeds safely", 0, result.returncode)
         assert_eq("oversized manual chunk is skipped", 0, index["doc_count"])
         assert_true(
             "oversized chunk diagnostic names token limit",
@@ -517,7 +537,7 @@ def test_query_score_monotonicity():
     """A query term appearing TWICE in a chunk should score higher than appearing ONCE.
     (Standard BM25 monotonicity property within a single document length cohort.)"""
     with tempfile.TemporaryDirectory() as tmpdir:
-        sandbox = Path(tmpdir)
+        sandbox = nested_vault(tmpdir)
         meta = sandbox / ".vault-meta"
         chunks_dir = meta / "chunks"
         bm25_dir = meta / "bm25"
@@ -575,7 +595,7 @@ def test_query_score_monotonicity():
 def test_rebuild_reconciles_changed_and_deleted_source_pages():
     """A full rebuild must replace, not preserve, stale index records."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        sandbox = Path(tmpdir)
+        sandbox = nested_vault(tmpdir)
         meta = sandbox / ".vault-meta"
         chunks_dir = meta / "chunks"
         bm25_dir = meta / "bm25"
@@ -621,7 +641,7 @@ def test_rebuild_reconciles_changed_and_deleted_source_pages():
 
 def test_hashless_or_malformed_chunks_are_never_indexed():
     with tempfile.TemporaryDirectory() as tmpdir:
-        root = Path(tmpdir)
+        root = nested_vault(tmpdir)
         page = write_source_page(root, "c-000001", "current page text")
         base = synthetic_chunk(0, "c-000001", "current page text", "current page text")
 
@@ -650,7 +670,7 @@ def test_crlf_source_page_stays_current():
     # chunk of a CRLF page was permanently reported stale.  Both sides must
     # hash identical bytes.
     with tempfile.TemporaryDirectory() as tmpdir:
-        root = Path(tmpdir)
+        root = nested_vault(tmpdir)
         page = root / "wiki" / "fake" / "c-000001.md"
         page.parent.mkdir(parents=True, exist_ok=True)
         page.write_bytes(b"crlf line one\r\ncrlf line two\r\n")
@@ -662,7 +682,7 @@ def test_crlf_source_page_stays_current():
 
 def test_cli_build_refuses_shared_vault_writer_lock():
     with tempfile.TemporaryDirectory() as tmpdir:
-        root = Path(tmpdir)
+        root = nested_vault(tmpdir)
         (root / "wiki").mkdir()
         (root / ".obsidian").mkdir()
         (root / ".vault-meta/chunks").mkdir(parents=True)
