@@ -237,6 +237,24 @@ def header_node(s, el, frags, ctx):
 WIN_RX = re.compile(r'<div style="position: relative; width: (\d+)px; height: (\d+)px; flex-shrink: 0; isolation: isolate">')
 
 
+def positioned_instance(s, els):
+    """One `position: absolute` div around one dc-import → an instance with "at"; None otherwise."""
+    if len(els) != 1 or len(els[0].kids) != 1 or els[0].kids[0].tag != 'dc-import':
+        return None
+    st = els[0].style()
+    if not st.startswith('position: absolute; ') or inner(s, els[0]) != html(s, els[0].kids[0]):
+        return None
+    node = instance(s, els[0].kids[0])
+    if not node:
+        return None
+    at = {}
+    for part in st[len('position: absolute; '):].split('; '):
+        k, _, v = part.partition(': ')
+        at[k] = int(v[:-2]) if re.fullmatch(r'-?\d+px', v) else v
+    node['at'] = at
+    return node if render.render_node(node, {}) == html(s, els[0]) else None
+
+
 def frame_state(s, win, frags, ctx):
     m = WIN_RX.match(html(s, win))
     if not m or len(win.kids) != 3:
@@ -252,7 +270,7 @@ def frame_state(s, win, frags, ctx):
     layout, regions = split_main(s, content.kids[1], frags, ctx)
     over = ''.join(html(s, k) for k in content.kids[2:])
     if over:
-        regions['overlay'] = frags.add(over, f'{ctx}-overlay')
+        regions['overlay'] = positioned_instance(s, content.kids[2:]) or frags.add(over, f'{ctx}-overlay')
     st = {'window': {'width': w, 'height': h}, 'sidebar': sb['props'], 'layout': layout, 'regions': regions}
     return st
 

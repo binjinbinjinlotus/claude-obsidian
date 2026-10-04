@@ -17,6 +17,13 @@ supersede it with a new entry.
 
 ## 2026-10-03
 
+- **The schema owns the Actions boards from canvas v57:** ActionsTodo,
+  ActionsSlack, ActionsJira, ActionsConfluence and ActionsHistory render from
+  `design/screens/actions.json`; edits go there (and to its fragments), never
+  to `gen_actions.py`, which must not regenerate them. Fragments (bespoke
+  markup in `screens/actions/`) are an allowed migration step; each becomes a
+  component when it is next touched. ActionsOverview and ActionsAsk stay
+  legacy for now.
 - **The design is a schema in the repo (`apps/distill/design/`):** the
   canvas is rendered from `tokens.json` (generated from Theme.swift),
   `components.json` + `components/<Name>.dc.html` (one entry per Swift view)

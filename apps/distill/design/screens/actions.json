@@ -562,7 +562,19 @@
     },
     "detail": null,
     "overlay": {
-     "frag": "todo-f4-overlay"
+     "c": "FilterPanel",
+     "props": {
+      "due": "Today",
+      "height": 520
+     },
+     "size": [
+      "300px",
+      "520px"
+     ],
+     "at": {
+      "left": 448,
+      "top": 150
+     }
     }
    }
   },
