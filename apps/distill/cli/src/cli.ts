@@ -11,6 +11,8 @@ import type {
   AskConversationSummary,
   AskRequest,
   AskResponse,
+  Collector,
+  CollectorRun,
   ModelSelection,
   NoteImage,
   Progress,
@@ -90,6 +92,9 @@ Usage:
   distill actions list [--type T] [--history] [--json]
   distill actions add "<title>" [--type todo] [--body "..."] [--why "..."] [--due YYYY-MM-DD]
               [--vault PATH] [--json]
+  distill collectors list [--json]
+  distill collectors run <id> [--json]
+  distill collectors history <id> [--limit N] [--json]
   distill serve [--port N]
   distill plugin install --target claude|codex [--dry-run] [--copy] [--force] [--json]
   distill --help | --version
@@ -133,6 +138,17 @@ Commands:
                 --type narrows to one type; --history adds done, sent and removed items.
   actions add   Add a to-do (or, with --type, an item of another enabled type) by hand.
                 It is added for the user; nothing is sent or created outside Distill.
+  collectors list
+                List collectors (Folder and script) for all vaults: kind, on/off, schedule,
+                next run, last run, and whether one needs the user (a failed run, or a
+                script waiting for consent).
+  collectors run
+                Run a collector now (the schedule doesn't move). A script runs only if the
+                user allowed this exact version in the Distill app; otherwise the run is
+                recorded as "not run". Prints the run once it finishes.
+  collectors history
+                A collector's runs, newest first (--limit N, default 20), with per-file
+                results for Folder runs and output tails for scripts (with --json).
   serve         Run the Distill core server in the foreground (one per user).
   plugin install
                 Install the distill-ask and distill-note agent skills.
@@ -147,6 +163,8 @@ commands, and no confirm-labels command. Review queued changes, and confirm AI
 labels on pages already in the vault, in the Distill app (or another UI client).
 Likewise there is no command to confirm, complete, send or create actions: found
 actions are confirmed, and Jira/Confluence items created, only by the user.
+The CLI never allows (consents to) a collector script and cannot add, change
+or delete collectors: that happens in the Distill app.
 \`note label\` only sets the labels of a note that is still in the queue.
 
 Other commands start the server in the background when it is not running
@@ -176,6 +194,15 @@ or $DISTILL_STATE_DIR.
              "createdAt","updatedAt","events", ...}]}
   actions add
             {the new action, same shape}
+  collectors list
+            {"collectors": [{"id","kind","name","vaultPath","enabled","schedule": {"cron","preset"},
+             "folder"?: {"source","afterCollect"}, "script"?: {"source","interpreter","timeoutSeconds",...},
+             "status": {"running","nextRunAt","lastRun","needsConsent","needsAttention",...}}]}
+  collectors run
+            {"run": {"id","collectorId","trigger","startedAt","endedAt","result","counts",
+             "filesAdded","files"?,"exitCode"?,"stdoutTail"?,"stderrTail"?,"error"?}}
+  collectors history
+            {"runs": [run, ...]}
   plugin install
             {"target", "dryRun", "pluginDir", "actions": [{"action","skill","source","destination","command"}],
              "notes": [..]}
@@ -270,6 +297,8 @@ async function dispatch(argv: string[], io: CliIO): Promise<number> {
       return status(rest, io, api);
     case 'actions':
       return actions(rest, io, api);
+    case 'collectors':
+      return collectors(rest, io, api);
     case 'serve':
       return serve(rest, io, paths);
     case 'plugin':
@@ -666,6 +695,98 @@ async function actions(args: string[], io: CliIO, api: ApiFactory): Promise<numb
     return 0;
   }
   throw usageError(sub ? `unknown actions command "${sub}" (use "actions list" or "actions add")` : 'usage: distill actions list | add "<title>"');
+}
+
+// ───────────────────────────── collectors ─────────────────────────────
+
+const RESULT_LABEL: Record<CollectorRun['result'], string> = {
+  queued: 'queued',
+  running: 'running',
+  success: 'done',
+  nothing: 'nothing new',
+  failed: 'failed',
+  timedout: 'timed out',
+  skipped: 'skipped',
+  notTrusted: 'not run',
+  stopped: 'stopped',
+};
+
+export function describeRun(r: CollectorRun): string {
+  const parts: string[] = [];
+  if (r.result === 'success' || r.result === 'nothing' || r.result === 'failed' || r.result === 'stopped') {
+    if (r.counts.copied) parts.push(`copied ${r.counts.copied}`);
+    if (r.counts.moved) parts.push(`moved ${r.counts.moved}`);
+    if (r.kind === 'script' && r.counts.added) parts.push(`added ${r.counts.added}`);
+    if (r.counts.skipped) parts.push(`skipped ${r.counts.skipped} already collected`);
+    if (r.counts.waiting) parts.push(`${r.counts.waiting} still changing`);
+    if (r.counts.errors) parts.push(`${r.counts.errors} error${r.counts.errors === 1 ? '' : 's'}`);
+  }
+  if (r.skipReason) parts.push(r.skipReason);
+  if (r.error) parts.push(r.error.message);
+  if (r.exitCode !== undefined && r.exitCode !== null && r.exitCode !== 0) parts.push(`exit ${r.exitCode}`);
+  const when = r.startedAt.replace('T', ' ').replace(/:\d\dZ$/, 'Z');
+  return `${when}  ${r.trigger}  ${RESULT_LABEL[r.result] ?? r.result}${parts.length ? `  · ${parts.join(' · ')}` : ''}`;
+}
+
+function describeCollector(c: Collector): string {
+  const s = c.status;
+  const what = c.kind === 'folder' ? `Folder ${c.folder?.source ?? ''} (${c.folder?.afterCollect ?? 'copy'})` : `script (${c.script?.interpreter ?? '?'})`;
+  const flags: string[] = [c.enabled ? 'on' : 'off', c.schedule.cron];
+  if (s?.running) flags.push('running');
+  if (s?.nextRunAt && c.enabled) flags.push(`next ${s.nextRunAt}`);
+  if (s?.needsConsent) flags.push('needs your OK in the app');
+  const lines = [`${c.id}  ${c.name}  ${what}  [${flags.join(' · ')}]`, `    vault: ${c.vaultPath}`];
+  if (s?.lastRun) lines.push(`    last:  ${describeRun(s.lastRun)}`);
+  return lines.join('\n');
+}
+
+async function collectors(args: string[], io: CliIO, api: ApiFactory): Promise<number> {
+  const [sub, ...rest] = args;
+  if (sub === 'list') {
+    const { values, positionals } = parse(rest, {});
+    if (positionals.length) throw usageError(`unexpected argument "${positionals[0]}"`);
+    const out = new Output(io, values.json === true);
+    const client = await api(out);
+    const res = await client.request<{ collectors: Collector[] }>('GET', '/v1/collectors');
+    out.result(res, () => (res.collectors.length ? res.collectors.map(describeCollector).join('\n') + '\n' : 'No collectors. Add one in the Distill app (Collectors).\n'));
+    return 0;
+  }
+  if (sub === 'run') {
+    const { values, positionals } = parse(rest, {});
+    const [id, extra] = positionals;
+    if (!id) throw usageError('usage: distill collectors run <id>');
+    if (extra !== undefined) throw usageError(`unexpected argument "${extra}"`);
+    const out = new Output(io, values.json === true);
+    const client = await api(out);
+    const started = await client.request<{ run: CollectorRun }>('POST', `/v1/collectors/${encodeURIComponent(id)}/run`);
+    let run = started.run;
+    // Wait for the run to finish (a script may take up to its timeout).
+    while (run.result === 'queued' || run.result === 'running') {
+      await new Promise((r) => setTimeout(r, 250));
+      const res = await client.request<{ runs: CollectorRun[] }>('GET', `/v1/collectors/${encodeURIComponent(id)}/runs?limit=200`);
+      const found = res.runs.find((r) => r.id === started.run.id);
+      // Never loop on a run that dropped out of view (e.g. many skipped ticks since).
+      if (!found) throw new CliError(`Lost track of run ${started.run.id}; see "distill collectors history ${id}".`, 'lost_run');
+      run = found;
+    }
+    out.result({ run }, () => describeRun(run) + '\n');
+    return run.result === 'failed' || run.result === 'timedout' || run.result === 'notTrusted' ? 1 : 0;
+  }
+  if (sub === 'history') {
+    const { values, positionals } = parse(rest, { limit: { type: 'string' } });
+    const [id, extra] = positionals;
+    if (!id) throw usageError('usage: distill collectors history <id> [--limit N]');
+    if (extra !== undefined) throw usageError(`unexpected argument "${extra}"`);
+    const limitText = str(values.limit) ?? '20';
+    const limit = Number(limitText);
+    if (!Number.isInteger(limit) || limit < 1) throw usageError('--limit must be a positive integer');
+    const out = new Output(io, values.json === true);
+    const client = await api(out);
+    const res = await client.request<{ runs: CollectorRun[] }>('GET', `/v1/collectors/${encodeURIComponent(id)}/runs?limit=${limit}`);
+    out.result(res, () => (res.runs.length ? res.runs.map(describeRun).join('\n') + '\n' : 'No runs yet.\n'));
+    return 0;
+  }
+  throw usageError(sub ? `unknown collectors command "${sub}" (use list, run or history)` : 'usage: distill collectors list | run <id> | history <id>');
 }
 
 // ───────────────────────────── status ─────────────────────────────

@@ -1,5 +1,8 @@
 import { CoreError } from '../contracts.js';
 import type {
+  CollectedFile,
+  Collector,
+  CollectorRun,
   ActionItem,
   ActionTypeInfo,
   ConnectionInfo,
@@ -47,6 +50,48 @@ export interface FakeCore extends DistillCore, EngineExtras {
   actions: ActionItem[];
   actionTypes: ActionTypeInfo[];
   connections: ConnectionInfo[];
+  /** v4 collectors, their runs and the Folder ledger (in memory). */
+  collectors: Collector[];
+  collectorRuns: CollectorRun[];
+  collected: CollectedFile[];
+}
+
+export function sampleCollector(overrides: Partial<Collector> = {}): Collector {
+  return {
+    id: 'col-1',
+    kind: 'folder',
+    name: 'Distill Inbox',
+    vaultPath: '/tmp/vault',
+    enabled: true,
+    schedule: { cron: '0 * * * *', preset: 'hourly' },
+    folder: { source: '/tmp/Distill Inbox', afterCollect: 'copy' },
+    createdAt: '2026-10-04T08:00:00Z',
+    updatedAt: '2026-10-04T08:00:00Z',
+    status: { running: false, nextRunAt: '2026-10-04T10:00:00Z', lastRun: null, needsConsent: false, needsAttention: false, collectedCount: 1 },
+    ...overrides,
+  };
+}
+
+export function sampleCollectorRun(overrides: Partial<CollectorRun> = {}): CollectorRun {
+  return {
+    id: 'run-1',
+    collectorId: 'col-1',
+    kind: 'folder',
+    vaultPath: '/tmp/vault',
+    trigger: 'schedule',
+    startedAt: '2026-10-04T09:00:00Z',
+    endedAt: '2026-10-04T09:00:01Z',
+    durationMs: 1000,
+    result: 'success',
+    counts: { copied: 1, moved: 0, skipped: 2, waiting: 0, errors: 0, added: 1 },
+    filesAdded: ['gyokuro.md'],
+    files: [
+      { name: 'gyokuro.md', outcome: 'copied', queueName: 'gyokuro.md', size: 120 },
+      { name: 'gyokuro copy.md', outcome: 'skipped', reason: 'already collected', size: 120 },
+      { name: 'sencha.md', outcome: 'skipped', reason: 'already collected', size: 80 },
+    ],
+    ...overrides,
+  };
 }
 
 export function sampleAction(overrides: Partial<ActionItem> = {}): ActionItem {
@@ -202,6 +247,21 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
     runners: sampleRunners(),
     actions: [sampleAction()],
     actionTypes: sampleActionTypes(),
+    collectors: [sampleCollector()],
+    collectorRuns: [sampleCollectorRun()],
+    collected: [
+      {
+        sha256: 'a'.repeat(64),
+        name: 'gyokuro.md',
+        sourcePath: '/tmp/Distill Inbox/gyokuro.md',
+        size: 120,
+        mtime: '2026-10-04T07:00:00Z',
+        collectedAt: '2026-10-04T09:00:00Z',
+        collectorId: 'col-1',
+        queueName: 'gyokuro.md',
+        outcome: 'copied',
+      },
+    ],
     connections: [
       { id: 'atlassian', label: 'Atlassian (Jira and Confluence)', status: 'not_connected', site: null, account: null, message: null, usedBy: ['jira', 'confluence'] },
       { id: 'slack', label: 'Slack', status: 'not_connected', site: null, account: null, message: 'Copy works without connecting', usedBy: ['slack'] },
@@ -512,6 +572,109 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       if (!c) throw new CoreError('not_found', `Unknown connection ${id}.`);
       return Object.assign(c, { status: 'not_connected' as const, account: null });
     },
+    async listCollectors() {
+      record('listCollectors');
+      return fake.collectors;
+    },
+    async getCollector(id) {
+      record('getCollector', id);
+      return fake.collectors.find((c) => c.id === id);
+    },
+    async createCollector(input) {
+      record('createCollector', input);
+      const c = sampleCollector({
+        id: `col-${fake.collectors.length + 1}`,
+        kind: input.kind,
+        name: input.name ?? (input.kind === 'folder' ? 'Distill Inbox' : 'Script'),
+        enabled: input.kind === 'folder',
+        ...(input.kind === 'script' && input.script
+          ? { folder: undefined, script: { source: input.script.source, interpreter: input.script.interpreter, timeoutSeconds: input.script.timeoutSeconds ?? 300 } }
+          : {}),
+      });
+      fake.collectors.push(c);
+      return c;
+    },
+    async updateCollector(id, patch) {
+      record('updateCollector', id, patch);
+      const c = requireCollector(id);
+      if (patch.name !== undefined) c.name = patch.name;
+      if (patch.enabled !== undefined) c.enabled = patch.enabled;
+      if (patch.schedule) c.schedule = patch.schedule;
+      if (patch.folder && c.folder) Object.assign(c.folder, patch.folder);
+      return c;
+    },
+    async deleteCollector(id) {
+      record('deleteCollector', id);
+      fake.collectors.splice(fake.collectors.indexOf(requireCollector(id)), 1);
+    },
+    async runCollector(id) {
+      record('runCollector', id);
+      const c = requireCollector(id);
+      if (c.status?.running) throw new CoreError('busy', `${c.name} is already running.`);
+      // Stored as finished (a fake run ends at once); returned as it was when it started.
+      const done = sampleCollectorRun({ id: `run-${fake.collectorRuns.length + 1}`, collectorId: id, kind: c.kind, trigger: 'now' });
+      fake.collectorRuns.unshift(done);
+      const started: CollectorRun = { ...done, result: 'running', files: [], filesAdded: [], counts: { copied: 0, moved: 0, skipped: 0, waiting: 0, errors: 0, added: 0 } };
+      delete started.endedAt;
+      delete started.durationMs;
+      return started;
+    },
+    async stopCollector(id) {
+      record('stopCollector', id);
+      requireCollector(id);
+      const run = fake.collectorRuns.find((r) => r.collectorId === id && (r.result === 'running' || r.result === 'queued'));
+      return run ? Object.assign(run, { result: 'stopped' as const }) : null;
+    },
+    async allowCollector(id, sha256) {
+      record('allowCollector', id, sha256);
+      const c = requireCollector(id);
+      if (!c.script) throw new CoreError('invalid_request', 'Only script collectors need consent.');
+      Object.assign(c.script, { allowedSha256: sha256, allowedAt: '2026-10-04T09:00:00Z' });
+      c.enabled = true;
+      return c;
+    },
+    async revokeCollector(id) {
+      record('revokeCollector', id);
+      const c = requireCollector(id);
+      if (!c.script) throw new CoreError('invalid_request', 'Only script collectors have consent.');
+      Object.assign(c.script, { allowedSha256: null, allowedAt: null });
+      c.enabled = false;
+      return c;
+    },
+    async listCollectorRuns(id, opts) {
+      record('listCollectorRuns', id, opts);
+      requireCollector(id);
+      const runs = fake.collectorRuns.filter((r) => r.collectorId === id);
+      return opts?.limit ? runs.slice(0, opts.limit) : runs;
+    },
+    async listCollected(id, query) {
+      record('listCollected', id, query);
+      requireCollector(id);
+      return fake.collected.filter((f) => f.collectorId === id && (!query || f.name.includes(query)));
+    },
+    async forgetCollected(id, sha256) {
+      record('forgetCollected', id, sha256);
+      requireCollector(id);
+      const removed = fake.collected.filter((f) => f.collectorId === id && (!sha256 || f.sha256 === sha256));
+      fake.collected = fake.collected.filter((f) => !removed.includes(f));
+      return removed;
+    },
+    async restoreCollected(id, files) {
+      record('restoreCollected', id, files);
+      requireCollector(id);
+      fake.collected.push(...files);
+      return files.length;
+    },
+    async createCollectorFolder(id, which) {
+      record('createCollectorFolder', id, which);
+      return requireCollector(id);
+    },
+    async checkSchedule(cron) {
+      record('checkSchedule', cron);
+      return cron.trim().split(/\s+/).length === 5
+        ? { cron, valid: true, preset: 'custom' as const, nextRuns: ['2026-10-04T10:00:00Z'] }
+        : { cron, valid: false, error: 'A schedule has 5 fields.', nextRuns: [] };
+    },
     extractImageText: async (req: { imagePath: string; vaultPath?: string }) => {
       record('extractImageText', req);
       return { text: '', model: 'Haiku' };
@@ -526,6 +689,12 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       return () => listeners.delete(listener);
     },
   };
+
+  function requireCollector(id: string): Collector {
+    const c = fake.collectors.find((x) => x.id === id);
+    if (!c) throw new CoreError('not_found', `Unknown collector ${id}.`);
+    return c;
+  }
 
   function requireAction(id: string): ActionItem {
     const item = fake.actions.find((a) => a.id === id);

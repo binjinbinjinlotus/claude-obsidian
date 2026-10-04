@@ -1,7 +1,7 @@
 ---
 type: spec
 title: Collectors
-status: designed
+status: built
 created: 2026-10-04
 updated: 2026-10-04
 tags:
@@ -12,10 +12,13 @@ tags:
 
 # Collectors
 
-Build status: **designed** (canvas row "7 · Collectors": boards Collectors and
-CollectorsScript; queue path on Main, MainLoading and MainEmpty). Nothing is
-built yet. The contract section below is **proposed**: the lead owns
-`core/src/contracts.ts`.
+Build status: **built in the core, the API and the CLI** (2026-10-04;
+`core/src/collectors/`, routes in `core/src/server/http.ts`, `distill
+collectors list|run|history`). The macOS UI is **designed, not built**
+(canvas row "7 · Collectors": boards Collectors and CollectorsScript; queue
+path on Main, MainLoading and MainEmpty). The contract is in
+`core/src/contracts.ts`; see "API and contract (built)" for where it differs
+from the proposal.
 
 Collectors bring material into a vault's queue folder automatically, on a
 schedule. They only fill the queue. What they bring is batched, reviewed and
@@ -277,9 +280,14 @@ queue", "N in this batch · M waiting"):
 Settings → Vaults keeps its "Queue: <folder name>" summary and the full
 editor.
 
-## API and contract (proposed)
+## API and contract (built)
 
-The lead decides the final shapes in `core/src/contracts.ts`.
+Built 2026-10-04 in `core/src/contracts.ts` (types, `DistillCore` methods in
+the "v4: collectors" block, `CoreEvent` variants). The proposal as first
+written is kept below for reference; the deviations and what was added
+follow it.
+
+### The proposal (2026-10-04, as designed)
 
 ```ts
 type CollectorKind = 'folder' | 'script';           // built-ins add kinds via the registry
@@ -319,6 +327,150 @@ interface CollectorRun {
 - Collectors are stored in `<state>/collectors.json`, with additive schema
   and lenient decoding. They are not in `settings.json`, because runs and
   consent change often.
+
+### Built: deviations from the proposal, and why
+
+- **Routes are under `/v1`**, like every other route: `/v1/collectors`,
+  `/v1/collectors/:id/run`, and so on. Same paths otherwise.
+- **`CollectorRun.result` has two more values:**
+  - `queued`: a run waits for a free slot (at most 2 collectors at once) or,
+    for a script, for a batch in the same vault (`waiting: 'slot' | 'batch'`).
+    Without it, Run now while two others run would have nothing to return.
+  - `stopped`: the user pressed Stop (otherwise indistinguishable from a
+    failure).
+- **`CollectorRun` has more fields** the UI needs: `kind`, `vaultPath`,
+  `durationMs`, `counts` (copied, moved, skipped, waiting, errors, added; for
+  "Copied 3 files · skipped 2 already collected"), `error {code, message}`,
+  `skipReason` ("the 6:01 AM run was still going"), `signal`, `sha256` (the
+  script hash that ran or was refused), and per-file `queueName` and `size`.
+  Error codes: `sourceMissing`, `noPermission`, `queueMissing`,
+  `vaultMissing`, `scriptMissing`, `interpreterMissing`, `scriptFailed`,
+  `notAllowed` (never allowed), `scriptChanged`, `interrupted` (the core
+  stopped mid-run), `other`. `notTrusted` runs carry `notAllowed` or
+  `scriptChanged`.
+- **`Collector.status`** is computed on every read and never stored:
+  `running`, `nextRunAt`, `lastRun` (without files and output tails),
+  `currentSha256` and `scriptProblem` (scripts), `needsConsent`,
+  `collectedCount` (Folder, "Already collected: N files"), and
+  `needsAttention` (the sidebar count: last run failed, timed out or not
+  run, or the script needs consent).
+- **Ledger entries are `CollectedFile`:** `sha256`, `name`, `sourcePath`,
+  `size`, `mtime`, `collectedAt`, `collectorId`, `queueName`, `outcome`
+  (copied | moved). The file also stores `mtimeMs` for the path+size+mtime
+  shortcut.
+- **Undo of Forget is in the core:** `forgetCollected` returns what it
+  removed and `POST /v1/collectors/:id/collected/restore {files}` puts it
+  back, so Undo works even after the sheet re-fetches.
+- **Two small routes were added:** `POST /v1/collectors/:id/create-folder
+  {which: 'source' | 'queue'}` (the Create folder buttons) and `POST
+  /v1/collectors/check-schedule {cron}` → `{valid, error?, preset?,
+  nextRuns[3]}` (ScheduleField's validation and next run).
+- **Run now returns `{run}`;** Stop returns `{run}` or `{run: null}` when
+  idle; consent `POST` and `DELETE` return the collector.
+- **Changing the interpreter clears consent:** the same code under another
+  interpreter is another program. A changed source keeps the old
+  `allowedSha256` so the consent card can show old and new hashes.
+- **A script is always created off**, even when `enabled: true` is sent;
+  `PATCH {enabled: true}` without a current consent is `invalid_state`.
+- **The ledger is append-only for collecting; Forget rewrites it**
+  atomically (temp file and rename), keeping any line this build can't read.
+- **Forget all removes the entries whose source is this collector's
+  folder.** A file can still be skipped after Forget all when the same bytes
+  were collected from another folder into the same vault (dedupe is
+  vault-wide). Forget one removes every entry with that sha256 in the vault.
+- **Deleting a collector deletes its run history**; the ledger stays.
+- **A file skipped because it is unchanged since it was collected (same
+  path, size and mtime) gets no per-file line**, only `counts.skipped`.
+  With copy as the default every original stays in the folder, so a line
+  for each would make every run's record grow with the folder (500 files ≈
+  45 KB per run, 30 days of hourly runs ≈ 30 MB). Content matches under
+  another name ("gyokuro copy.md") still get their "Skipped · already
+  collected" line. `GET …/runs` returns the newest 50 unless `limit` is
+  given.
+- **The batch gate covers one direction only (open for the lead).** A
+  script never *starts* while a batch runs or applies in its vault, but a
+  script that is already running when a batch starts (or the user
+  approves) is not paused or waited for. Enforcing it would mean the
+  engine's batch and apply wait for running scripts in that vault.
+- **A core shutdown records running and queued runs as `failed`, code
+  `interrupted`**, not `stopped` (which means the user pressed Stop).
+- **No built-in registry yet.** Folder is the only built-in, and its fields
+  are fixed in the contract (`folder`), so the detail pane can't render
+  them from a registry yet. The registry (and a route listing built-in
+  kinds and their fields) comes with the second built-in; adding it is
+  additive.
+
+### Built: the API
+
+| Method and path | Core method | Returns |
+| --- | --- | --- |
+| `GET /v1/collectors` | `listCollectors()` | `{collectors}` |
+| `POST /v1/collectors` (201) | `createCollector(NewCollectorInput)` | the collector |
+| `GET /v1/collectors/:id` | `getCollector(id)` | the collector (404 `collector_not_found`) |
+| `PATCH /v1/collectors/:id` | `updateCollector(id, CollectorPatch)` | the collector |
+| `DELETE /v1/collectors/:id` | `deleteCollector(id)` (409 while running) | `{id, deleted}` |
+| `POST /v1/collectors/:id/run` | `runCollector(id)` (409 if one is queued or running) | `{run}` |
+| `POST /v1/collectors/:id/stop` | `stopCollector(id)` | `{run}` or `{run: null}` |
+| `POST /v1/collectors/:id/consent {sha256}` | `allowCollector(id, sha256)` (409 on a hash mismatch) | the collector, on |
+| `DELETE /v1/collectors/:id/consent` | `revokeCollector(id)` | the collector, off |
+| `GET /v1/collectors/:id/runs?limit=` | `listCollectorRuns(id, {limit})` | `{runs}`, newest first |
+| `GET /v1/collectors/:id/collected?query=` | `listCollected(id, query)` | `{files}`, newest first |
+| `DELETE /v1/collectors/:id/collected/:sha256` | `forgetCollected(id, sha256)` | `{forgotten}` |
+| `DELETE /v1/collectors/:id/collected` | `forgetCollected(id)` (Forget all) | `{forgotten}` |
+| `POST /v1/collectors/:id/collected/restore {files}` | `restoreCollected(id, files)` | `{restored}` |
+| `POST /v1/collectors/:id/create-folder {which}` | `createCollectorFolder(id, which)` | the collector |
+| `POST /v1/collectors/check-schedule {cron}` | `checkSchedule(cron)` | `ScheduleCheck` |
+
+Events (SSE `event:` is the type, as for every core event):
+`collector.changed` (`{collector, deleted?}`), `collector.run.started`
+(`{run}`), `collector.run.output` (`{collectorId, runId, stream, text}`,
+the text added since the last event, at most every 250 ms per run) and
+`collector.run.finished` (`{run}`).
+
+CLI: `distill collectors list`, `distill collectors run <id>` (waits for the
+run; exit 1 when it failed, timed out or was not run) and `distill
+collectors history <id> [--limit N]`, all with `--json`. The CLI cannot add,
+change, delete or allow a collector.
+
+### Built: behaviour the spec did not pin down
+
+- **Scheduler:** a 15-second tick in the core (`start()`), local time. A
+  due tick handled more than 2 minutes late, or with two or more ticks
+  missed, runs once with trigger `catchup`; the last handled tick is
+  persisted in `collectors.json` (`ticks`), so this works across restarts.
+  A new collector, one turned on, or a new schedule counts from that moment
+  (no catch-up for time before). On the spring-forward day, a time that
+  doesn't exist (2:30 AM) is skipped. Cron day matching follows Vixie cron:
+  when both day-of-month and day-of-week are restricted, either matches;
+  day-of-week 7 is Sunday; month and weekday names are accepted.
+- **"Never run scripts while a batch applies":** a script run waits
+  (`queued`, `waiting: 'batch'`) while any job in its vault is `running`
+  (agent turns and the apply). A job waiting for approval does not block it.
+  Folder runs are not held. Waiting runs start when the job changes state.
+- **"Not run" is recorded once:** while a script waits for consent, a
+  scheduled tick records a `notTrusted` run only when the last run wasn't
+  already one for the same hash, so history doesn't fill up every hour.
+- **Folder details:** symlinks are left alone like subfolders; files with a
+  partial-download suffix (`.crdownload`, `.part`, `.download`, `.tmp`,
+  `.partial`) are "Waiting · still downloading"; hidden files get no line.
+  A copy whose source changed while copying is removed and the file waits
+  for the next run. Copies keep the original's mtime (set explicitly). If
+  every eligible file failed, the run is `failed`; if some were collected,
+  it is `success` with `counts.errors`.
+- **Scripts:** run as `<interpreter> <script> <vault> <queue>`, with the
+  interpreter found on the login shell's `PATH` (`$SHELL -l -c`, cached 10
+  minutes). Inline code is written to a temp file with exactly the hashed
+  bytes (`collector.zsh`, `.py`, or `.mjs` for node). The environment is the
+  core's, minus every `DISTILL_*` variable, plus the four documented ones.
+  The working folder is `$TMPDIR/distill-run-<run-id>-XXXX`, deleted after
+  the run. A missing queue folder fails the run before the script starts
+  (`queueMissing`). After a timeout or Stop the leader gets SIGTERM, the
+  group SIGKILL 10 s later, and any stragglers SIGKILL as soon as the
+  leader exits. A script with exit 0 and no new files is "Nothing new".
+  A file source is hashed right before it starts and run from its path, so
+  a change in the milliseconds between hash and start is not caught.
+- **Notifications** (first failure after a success) are a client job; not
+  built.
 
 ## Open questions
 
