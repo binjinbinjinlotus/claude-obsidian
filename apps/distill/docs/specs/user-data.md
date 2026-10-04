@@ -3,7 +3,7 @@ type: spec
 title: User data
 status: built
 created: 2026-10-02
-updated: 2026-10-02
+updated: 2026-10-04
 tags:
   - distill
   - data
@@ -27,6 +27,9 @@ Nothing goes into the vault except approved notes and pages.
 | Ask history | `ask/<chat-id>.json`, one file per chat |
 | Actions (to-dos, drafts, History) | `actions.json` (v3) |
 | Connection details without secrets (Atlassian site, display name) | `connections.json` (v3, mode 0600) |
+| Collectors (settings, consent hashes, last scheduled tick) | `collectors.json` (v4) |
+| What Folder collectors already collected (per vault; name, size, mtime, sha256, never content) | `collectors/ledger-<vault-id>.jsonl` (v4, append-only) |
+| Collector run history (30 days or the newest 200 runs per collector) | `collectors/runs/<collector-id>.jsonl` (v4) |
 | API keys and connection tokens | macOS Keychain, never a file |
 | Backups | `backups/<time>[-tag]/` |
 | Runtime only | `server.json`, `server.log`, `token`, `ask/workspace/` |
@@ -48,7 +51,10 @@ Retention is the user's choice: Ask chats older than `askPreferences.historyDays
   `<file>.unreadable-<time>` (`preserveUnreadable` in `core/src/store/json.ts`):
   a `settings.json` that doesn't parse, a `jobs.json` that isn't a list or
   holds a job this build can't decode, an `actions.json` that doesn't parse
-  (an action item this build can't decode is also written back untouched).
+  (an action item this build can't decode is also written back untouched),
+  a `collectors.json` that doesn't parse (a collector this build can't
+  decode is written back untouched), and a ledger or run-history file with a
+  line this build can't read (the line is kept on every rewrite).
   The same bytes are copied once.
 - **Ask chat files that can't be read are skipped**, never deleted.
 - **Writes are atomic** (temp file, fsync, rename).
@@ -60,10 +66,12 @@ Retention is the user's choice: Ask chats older than `askPreferences.historyDays
 
 - `update` backs up first (`backups/<time>-update`), installs, then compares
   settings / job / chat counts before and after and prints
-  "Your data is intact: settings kept · N jobs · M Ask chats · K actions", or a WARNING
+  "Your data is intact: settings kept · N jobs · M Ask chats · K actions · C collectors", or a WARNING
   with how to restore.
 - `backup [TAG]` copies `settings.json`, `jobs.json`, `ask/*.json`,
-  `actions.json`, `connections.json` and any `*.unreadable-*` files
+  `actions.json`, `connections.json`, `collectors.json`, the
+  `collectors/` ledgers and `collectors/runs/` (with their set-aside
+  copies) and any `*.unreadable-*` files
   (Keychain secrets stay in the Keychain). The newest 10 backups are kept; names sort by time
   (a same-second counter is zero-padded).
 - `backups` lists them, newest first.

@@ -40,7 +40,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Quick actions and shortcuts](docs/specs/quick-actions.md) | built |
 | [App icon](docs/specs/app-icon.md) | built |
 | [Actions](docs/specs/actions.md) | built (core, API, CLI, macOS UI; answer selection bar not yet) |
-| [Collectors](docs/specs/collectors.md) | designed |
+| [Collectors](docs/specs/collectors.md) | built (core, API, CLI; macOS UI not yet) |
 
 ## Layout
 
@@ -49,12 +49,15 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 - `core/src/ask/`, `core/src/labels/`: Ask (filters, history, cancel) and labels.
 - `core/src/actions/`: actions (registry of types and handlers, actions.json,
   finding, drafts) and connections (Atlassian).
+- `core/src/collectors/`: collectors (cron scheduler, Folder runs and ledger,
+  script runs and consent, run history; collectors.json).
 - `core/src/runners/`: AI backends behind `AgentRunner` (Claude Code, Codex,
   OpenAI, OpenRouter, Vercel AI SDK) and Keychain secrets.
 - `core/src/store/`: settings.json / jobs.json; `core/src/server/`: the local
   HTTP API, token and lock file.
-- `cli/`: the `distill` CLI (ask, note add/label, history, status, serve,
-  plugin install). It never approves.
+- `cli/`: the `distill` CLI (ask, note add/label, history, status, actions,
+  collectors list/run/history, serve, plugin install). It never approves and
+  never consents to a collector script.
 - `plugin/`: agent skills (`distill-ask`, `distill-note`) for Claude Code and Codex.
 - `clients/macos/Sources/DistillKit/`: UI-free Swift client (DTOs, CoreClient,
   CoreLauncher). `clients/macos/Sources/Distill/`: the AppKit/SwiftUI app.

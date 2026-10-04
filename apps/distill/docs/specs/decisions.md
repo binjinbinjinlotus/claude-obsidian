@@ -17,6 +17,43 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Collectors built in the core, API and CLI; the contract is final for
+  the Mac UI.** Code: `core/src/collectors/`, routes under
+  `/v1/collectors`, `distill collectors list|run|history`. Spec:
+  [Collectors](collectors.md) → "API and contract (built)". The decisions
+  taken while building:
+  - **The proposal's shapes are kept**, under `/v1` like every route. Runs
+    gained `queued` (waiting for one of the 2 slots, or for a batch in the
+    same vault) and `stopped` (Stop), plus `counts`, `error {code,
+    message}`, `skipReason` and `sha256`, because the UI's lines ("Copied 3
+    files · skipped 2 already collected", "Not run · the script changed")
+    need them. `Collector.status` is computed on read, never stored.
+  - **Events keep the spec's dotted names** (`collector.changed`,
+    `collector.run.started|output|finished`), unlike the older one-word
+    event types, so the spec and the wire agree.
+  - **"While a batch applies" means a job in that vault in state
+    `running`** (agent turns and the apply). A batch waiting for approval
+    can sit for days, so it does not hold scripts. A held script run waits
+    in the queue instead of being skipped, so a daily schedule doesn't lose
+    its day. Folder runs are never held.
+  - **Catch-up:** a due tick handled more than 2 minutes late, or with two
+    or more ticks missed, is one `catchup` run. The last tick is stored in
+    `collectors.json`, so a restart catches up too. Turning a collector on
+    or changing its schedule never catches up the time before.
+  - **Consent extras:** changing the interpreter clears consent (the same
+    code under another interpreter is another program). A script is
+    always created off. A refused scheduled run is recorded once per hash,
+    not on every tick.
+  - **Forget returns what it removed and Undo is a core call**
+    (`collected/restore`), so Undo survives a refresh. Forget rewrites the
+    ledger atomically, keeping lines it can't read; collecting only appends.
+  - **Deleting a collector deletes its run history**; the ledger stays.
+  - **Scripts run with the core's environment minus every `DISTILL_*`
+    variable**, plus the four documented ones, and the login shell's
+    `PATH`. No sandbox, as the spec says.
+  - **No built-in registry yet.** Folder is the only built-in; the registry
+    comes with the second one, additively.
+
 - **Collectors: the owner's answers.** These supersede the defaults in the
   "Collectors (designed, not built)" entry below where they differ. Spec:
   [Collectors](collectors.md).
