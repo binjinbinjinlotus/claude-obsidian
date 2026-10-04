@@ -8,11 +8,12 @@ updated: 2026-10-04
 
 The core owns settings: `core/src/store/settings.ts`, `GET`/`PUT /v1/settings`.
 The macOS UI lives in `clients/macos/Sources/Distill/SettingsView.swift` (window,
-group pages, Vaults, Batching, Advanced), `SettingsNav.swift` (section list,
+one page per section, Vaults, Batching, Advanced), `SettingsNav.swift` (section list,
 search results), `SettingsCatalog.swift` (sections and search index),
 `SettingsSections.swift`, `SettingsModels.swift`, `SettingsActions.swift` and
 `SettingsConnections.swift`; `SettingsWindow.swift` holds the window
-(size, close hook) and the scroll position helper. The DTO is in
+(size, close hook), the scroll position helper and the row anchors search
+results land on. The DTO is in
 `clients/macos/Sources/DistillKit/Models.swift` (`Settings`) and
 `ActionSettings.swift` (`actionPreferences`, connections).
 Canvas: SettingsNav, Settings.
@@ -24,11 +25,17 @@ Canvas: SettingsNav, Settings.
   - **General**: Vaults, Batching (Batch every and Wait before picking up a
     file), Sources, Labels, Ask history, Keyboard shortcuts.
   - **AI**: AI runners, Models for tasks. Advanced (model, paths, extra
-    allowed tools) is a disclosure at the end of the AI page.
+    allowed tools) is a disclosure at the end of the AI runners page
+    (`SettingsSection.advancedHome`): most of it configures how the Claude
+    Code runner and the core start. Its search entry points there.
   - **Actions**: Actions, To-do defaults, Connections.
-- Picking a section shows its group's page, one scroll with an h2 per
-  section, scrolled to that section. An action type opens its own page
-  (Actions › Slack message) with a "‹ Actions" link back.
+- **One page per section**, as on the canvas (SettingsNav frames): picking
+  a section shows its own page, with its own scroll view. The page header
+  is the section's title (26 pt) and note; below it is only that section's
+  content. The group (General, AI, Actions) is a nav heading only and has
+  no page header. An action type opens its own page (Actions › Slack
+  message) with a "‹ Actions" link back. `SettingsPage` is what a page
+  shows inside its scroll view.
 - **Narrow windows.** Every page fits from the minimum width up; the
   section nav (236 pt) is never squeezed or cut off. The page column is
   `minWidth: 0` and clipped, so a page can never widen the window, and rows
@@ -43,30 +50,41 @@ Canvas: SettingsNav, Settings.
     title would get less than 220 pt; button labels are never cut.
   - Action types list: the model summary column shrinks (190 → 90 pt) before
     anything else.
-  `SettingsWindowTests` measures every section at the minimum and at 890 pt;
-  snapshot states `settings-{ai,general,actions,type-jira,connections}-{min,890}`.
+  `SettingsWindowTests` measures every page (each section and each action
+  type) at the minimum and at 890 pt, and checks in the real window that
+  every page starts right of the whole nav and never scrolls sideways.
+  Snapshot states: `settings-page-<section>-{min,890}` and
+  `settings-type-<type>-{min,890}` show each page whole; `settings-nav-<section>`
+  shows each page's top at the default 1140 pt.
 - **Scroll position.** Each page remembers where you left it, for this
   Settings session only:
-  - A section you haven't visited since Settings opened opens at its top
-    (its heading; the top of the page for a group's first section and for
-    an action type's page).
-  - A section you have visited reopens at the scroll position you left it
-    at, clamped if the page got shorter. This applies to the section list
-    and to links inside Settings ("Open Actions ›", an action type row,
-    "‹ Actions").
-  - Search results and deep links from other screens (`openSettings`) always
-    go to the matched section, ignoring the remembered position.
+  - A page you haven't visited since Settings opened opens at its top.
+  - A page you have visited reopens at the scroll position you left it
+    at, clamped if the page got shorter. Pages of one nav group don't share
+    a position. This applies to the section list and to the links back
+    inside Settings (an action type row, "‹ Actions").
+  - Search results, deep links from other screens (`openSettings`) and
+    "Open Actions ›" always open the page at its top, ignoring the
+    remembered position. A search result for a specific row (Labels › "CLI:
+    use AI labels if none are sent back", Actions › Jira ticket › "Improve
+    prompt") scrolls to that row; a result that is the section itself, and
+    Queue folder (inside the vault editor sheet), opens at the top. Rows
+    report where they sit with `.settingsAnchor(<search entry title>)`;
+    `SettingsRow` does it for its title. "Advanced" also expands the
+    disclosure. `SettingsWindowTests` checks that every search entry finds
+    its row.
   - Closing the Settings window forgets every position (and the prompt
     "Undo reset"s); so does quitting. Positions live in memory
-    (`SettingsStore.offsets`), never on disk. The next open builds the page
-    fresh, so no old offset survives in the scroll view either.
+    (`SettingsStore.offsets`), never on disk. Each page is built fresh when
+    shown, so no old offset survives in a scroll view either.
 - Setup problems and an unreachable core (with Retry) show at the top of
   every page.
 - **Search** sits above the list. Typing filters settings across every
   section: results are grouped under their section ("Actions › Jira
   ticket"), matching words are highlighted, the list shows a count per section
   and dims sections with no match. With no match it shows "No settings match
-  “…”" and Clear search. Esc or × clears. Clicking a result opens its section.
+  “…”" and Clear search. Esc or × clears. Clicking a result opens its page at that
+  setting's row.
   Every word of the query must appear in a setting's title, note or keywords.
 - The index is data (`SettingsIndex.fixed` plus one set of entries per action
   type from the core), not written per view. Making a new setting searchable

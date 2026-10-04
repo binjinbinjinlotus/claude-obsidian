@@ -25,6 +25,8 @@ struct SettingsRow<Control: View>: View {
     let title: String
     var note: String? = nil
     var bold = false
+    /// The search entry this row is where a result lands (`SettingsIndex`); the title by default.
+    var anchor: String? = nil
     @ViewBuilder var control: Control
 
     var body: some View {
@@ -39,6 +41,7 @@ struct SettingsRow<Control: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             control
         }
+        .settingsAnchor(anchor ?? title)
     }
 }
 
@@ -220,6 +223,7 @@ struct AskHistorySettings: View {
                                          set: { v in SettingsEdits.setAsk(&engine.settings) { $0.keepHistory = v } }),
                            label: "Keep Ask history")
             }
+            .settingsAnchor("Keep Ask history")
             HStack(spacing: 12) {
                 IntervalCounter(label: "days", value: Binding(get: { days },
                                                               set: { v in SettingsEdits.setAsk(&engine.settings) { $0.historyDays = max(1, v) } }),
@@ -242,6 +246,7 @@ struct AskHistorySettings: View {
                     Button("Delete chats", role: .destructive) { engine.clearAskHistory() }
                 }
             }
+            .settingsAnchor("Clear now")
         }
     }
 }
@@ -276,6 +281,7 @@ struct ShortcutsSettingsSection: View {
                              label: title)
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
+        .settingsAnchor("\(title) shortcut")
     }
 }
 

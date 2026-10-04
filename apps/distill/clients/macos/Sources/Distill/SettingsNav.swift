@@ -127,7 +127,7 @@ struct SettingsSearchResults: View {
     }
 
     private func row(_ entry: SettingsEntry) -> some View {
-        Button { ui.show(entry.target) } label: {
+        Button { ui.show(entry) } label: {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(highlighted(entry.title)).font(Theme.body(13, .semibold))

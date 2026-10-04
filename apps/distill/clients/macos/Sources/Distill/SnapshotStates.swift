@@ -958,64 +958,60 @@ extension StatesSnapshot {
 extension StatesSnapshot {
     static func settingsStates() {
         let f = Flow.app
-        func settings(_ file: String, _ state: String, _ desc: String, group: SettingsGroup = .general, advanced: Bool = false,
+        func settings(_ file: String, _ state: String, _ desc: String, target: SettingsTarget = SettingsTarget(.vaults), advanced: Bool = false,
                       width: CGFloat = settingsSize.width, defaults: [String: Any] = [:], _ e: AppModel) {
-            // A whole group page: measure the stacked (snapshot-mode) layout, then draw
+            // A whole page: measure the stacked (snapshot-mode) layout, then draw
             // the live window that tall so its scroll view shows everything.
-            e.settingsUI.target = SettingsTarget(group.sections[0])
+            e.settingsUI.target = target
             let measure = ImageRenderer(content: SettingsView(showAdvanced: advanced).environmentObject(e)
                 .environment(\.snapshotMode, true).frame(width: width).fixedSize(horizontal: false, vertical: true))
             let height = max(settingsSize.height, ((measure.nsImage?.size.height ?? 2400) + (advanced ? 160 : 40)).rounded(.up))
-            settingsWindow(file, state, desc, e, target: SettingsTarget(group.sections[0]),
+            settingsWindow(file, state, desc, e, target: target,
                            size: CGSize(width: width, height: height), advanced: advanced, defaults: defaults)
         }
         let busy: (AppModel) -> Void = { $0.notes.runnerBusy = ["openai": "Checking…"] }
-        var e = engine { $0.enabledRunners = ["claude-code", "ai-sdk"] }
-        busy(e)
-        settings("settings", "General · every section", "Vaults (one missing .claude-obsidian.json), batching, sources, labels, Ask history, shortcuts (one set).", e)
-        e = engine { $0.enabledRunners = ["claude-code", "ai-sdk"] }
-        busy(e)
-        settings("settings-ai", "AI · every section", "Runners (on, off, set up, checking, error) and Models for tasks with Finding actions and the Action drafts link.", group: .ai, e)
-        // Narrow windows: nothing clipped, rows reflow (the minimum and the usual ~890 pt).
+        var e: AppModel
+        // One page per section and per action type, whole, at the minimum width and
+        // the usual ~890 pt: nothing clipped, rows reflow, the nav is never cut off.
+        // (`settings-nav-*` shows each page's top at the default 1140 pt.)
         let minWidth = SettingsWindowSize.minimum.width
         for (suffix, width) in [("min", minWidth), ("890", 890)] {
-            e = engine { $0.enabledRunners = ["claude-code", "ai-sdk"] }
-            busy(e)
-            settings("settings-ai-\(suffix)", "AI · \(Int(width)) pt wide", "Runner cards and Models for tasks reflow to fit; the section nav is never cut off.",
-                     group: .ai, width: width, e)
-            e = engine { $0.enabledRunners = ["claude-code", "ai-sdk"] }
-            settings("settings-general-\(suffix)", "General · \(Int(width)) pt wide", "Vaults, batching, sources, labels, Ask history and shortcuts fit.", width: width, e)
-            e = engine()
-            settings("settings-actions-\(suffix)", "Actions · \(Int(width)) pt wide", "Sources, finding model, action types, to-do defaults and connections fit.",
-                     group: .actions, width: width, e)
-            e = engine()
-            settingsWindow("settings-type-jira-\(suffix)", "Actions › Jira ticket · \(Int(width)) pt wide", "Rows keep their controls; prompts fit.",
-                           e, target: SettingsTarget(.actions, actionType: "jira"), size: CGSize(width: width, height: 1100))
-            e = engine()
-            e.settingsUI.connections = [ConnectionInfo(id: "atlassian", label: "Atlassian", status: .notConnected, site: nil, account: nil, message: nil,
-                                                       usedBy: ["jira", "confluence"])]
-            e.settingsUI.connectionsLoad = .loaded
-            settingsWindow("settings-connections-\(suffix)", "Connections · \(Int(width)) pt wide", "Pill and button move under the title when narrow; no label is cut.",
-                           e, target: SettingsTarget(.connections), size: CGSize(width: width, height: settingsSize.height))
+            for section in SettingsSection.allCases {
+                e = engine { $0.enabledRunners = ["claude-code", "ai-sdk"] }
+                busy(e)
+                if section == .connections {
+                    e.settingsUI.connections = [ConnectionInfo(id: "atlassian", label: "Atlassian", status: .notConnected, site: nil, account: nil,
+                                                               message: nil, usedBy: ["jira", "confluence"])]
+                    e.settingsUI.connectionsLoad = .loaded
+                }
+                settings("settings-page-\(section.rawValue)-\(suffix)", "\(section.title) · \(Int(width)) pt wide",
+                         "The \(section.title) page alone: its title and note, then its content. Rows reflow to fit; no label is cut.",
+                         target: SettingsTarget(section), width: width, e)
+            }
+            for type in SettingsActionType.builtIn where !type.reserved && type.id != "todo" {
+                e = engine()
+                settings("settings-type-\(type.id)-\(suffix)", "Actions › \(type.label) · \(Int(width)) pt wide", "Rows keep their controls; prompts fit.",
+                         target: SettingsTarget(.actions, actionType: type.id), width: width, e)
+            }
         }
 
-        e = engine()
-        settings("settings-actions-all", "Actions and connections · every section", "Where actions come from, finding model, action types, to-do defaults, connections.", group: .actions, e)
-
         e = engine { $0.enabledRunners = ["claude-code", "ai-sdk"] }
-        settings("settings-advanced", "Advanced expanded", "End of the AI page. Advanced: model, paths, extra allowed tools.", group: .ai, advanced: true, e)
+        settings("settings-advanced", "Advanced expanded", "End of the AI runners page. Advanced: model, paths, extra allowed tools.",
+                 target: SettingsTarget(.advancedHome), advanced: true, e)
 
         e = engine()
         e.notes.runners = []
         e.notes.runnersLoading = true
         problem(e, [nodeMissing, "The claude CLI was not found at /Users/me/.local/bin/claude."])
-        settings("settings-problems", "Setup problems · runners loading", "Problems block at the top of the AI page; runner cards shimmer while loading.", group: .ai, e)
+        settings("settings-problems", "Setup problems · runners loading", "Problems block at the top of the AI runners page; runner cards shimmer while loading.",
+                 target: SettingsTarget(.runners), e)
 
         e = engine()
         e.notes.runners = []
         e.notes.labelCounts = []
         problem(e, [], connection: .unreachable(coreDown))
-        settings("settings-disconnected", "Core not running", "No labels until the core is connected; Retry at the top. Also shows “Suggest labels after a note is queued” switched off.", defaults: [AppModel.suggestAfterQueueKey: false], e)
+        settings("settings-disconnected", "Core not running", "Labels page: no labels until the core is connected; Retry at the top. Also shows “Suggest labels after a note is queued” switched off.",
+                 target: SettingsTarget(.labels), defaults: [AppModel.suggestAfterQueueKey: false], e)
 
         // Sections in their other states.
         e = engine { $0.enabledRunners = ["claude-code", "codex"] }

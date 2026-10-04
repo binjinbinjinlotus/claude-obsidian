@@ -44,26 +44,32 @@ final class SettingsStore: ObservableObject {
 
     // MARK: Scroll memory
     //
-    // A page you haven't visited in this Settings session opens at the top of
-    // its section; one you have reopens where you left it. Search results and
-    // deep links from other screens always go to the section. In memory only:
-    // `closed()` (the window closing) and quitting forget everything.
+    // Every section (and every action type) is its own page. A page you haven't
+    // visited in this Settings session opens at its top; one you have reopens
+    // where you left it. Search results and deep links always open the page at
+    // its top, or at the matched row. In memory only: `closed()` (the window
+    // closing) and quitting forget everything.
 
     /// Where the next shown page lands. Decided when the page is asked for,
     /// because a freshly built scroll view reports 0 before it is restored.
     enum Landing: Equatable {
-        /// The section's heading (offset 0 for a group's first section and for type pages).
-        case sectionTop
+        /// The top of the page.
+        case top
         /// A remembered offset from the top.
         case offset(CGFloat)
+        /// A row on the page (a search result), by its anchor key (`SettingsAnchor.key`).
+        case row(String)
     }
 
     /// Set until the page has scrolled to it; while set, scrolling isn't recorded.
     var landing: Landing?
     /// Where each page visited in this session was left (offset from the top).
     private(set) var offsets: [SettingsTarget: CGFloat] = [:]
+    /// The rows each page reports (anchor key → distance from the page's top), for search landings.
+    var anchors: [SettingsTarget: [String: CGFloat]] = [:]
 
-    /// The section nav and links inside Settings: back where you left it, or the section's top.
+    /// The section nav and links back inside Settings ("‹ Actions", an action type row):
+    /// back where you left the page, or its top.
     func select(_ t: SettingsTarget) {
         query = ""
         landing = landing(for: t)
@@ -71,12 +77,19 @@ final class SettingsStore: ObservableObject {
         scrollRequest += 1
     }
 
-    /// Search results and deep links ("connections", "actions/jira"): the section itself, ignoring memory.
-    func show(_ t: SettingsTarget) {
+    /// Search results, deep links ("connections", "actions/jira") and "Open Actions ›":
+    /// the page's top, or `row` on it, ignoring memory.
+    func show(_ t: SettingsTarget, row: String? = nil) {
         query = ""
-        landing = .sectionTop
+        landing = row.map { .row(SettingsAnchor.key($0)) } ?? .top
+        anchors[t] = nil // wait for the page to report its rows as laid out now
         target = t
         scrollRequest += 1
+    }
+
+    /// A search result: its row, or the page's top when the result is the section itself.
+    func show(_ entry: SettingsEntry) {
+        show(entry.target, row: entry.title == entry.target.section.title && entry.target.actionType == nil ? nil : entry.title)
     }
 
     /// Shows a section ("connections", "actions/jira"); unknown ids are ignored.
@@ -85,7 +98,7 @@ final class SettingsStore: ObservableObject {
         show(t)
     }
 
-    func landing(for t: SettingsTarget) -> Landing { offsets[t].map { .offset($0) } ?? .sectionTop }
+    func landing(for t: SettingsTarget) -> Landing { offsets[t].map { .offset($0) } ?? .top }
 
     /// The current page scrolled to `y` (by the user, or by landing).
     func remember(_ y: CGFloat) {
@@ -93,9 +106,10 @@ final class SettingsStore: ObservableObject {
         offsets[target] = y
     }
 
-    /// The Settings window closed: forget positions and prompt-reset undos.
+    /// The Settings window closed: forget positions, row anchors and prompt-reset undos.
     func closed() {
         offsets = [:]
+        anchors = [:]
         landing = nil
         promptUndo = [:]
     }
