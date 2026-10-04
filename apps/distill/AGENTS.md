@@ -40,7 +40,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Quick actions and shortcuts](docs/specs/quick-actions.md) | built |
 | [App icon](docs/specs/app-icon.md) | built |
 | [Actions](docs/specs/actions.md) | built (core, API, CLI, macOS UI; answer selection bar not yet) |
-| [Collectors](docs/specs/collectors.md) | built (core, API, CLI; macOS UI not yet) |
+| [Collectors](docs/specs/collectors.md) | built (core, API, CLI, macOS UI; queue rows don't name the collector yet) |
 
 ## Layout
 

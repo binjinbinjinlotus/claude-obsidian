@@ -41,7 +41,7 @@ https://claude.ai/artifact/VSqHFPZjcqY2bMqFEnPqpG
 - [Actions](actions.md): to-dos and action types (Slack, Jira, Confluence, …) found in processed notes and Ask answers; confirm, draft, improve, handlers, History, connections. Core, API, CLI and macOS UI built (selection bar for selected answer text not yet).
 - [Markdown editing](markdown-editing.md): Markdown in note, question and reply inputs; style bar, selection bubble, links and the `[[` note picker, shortcuts, paste.
 - [Labels and sources](labels-and-sources.md): taxonomy, AI suggestions, confirmation through Review, the Labels screen.
-- [Collectors](collectors.md): built-in (Folder) and custom-script collectors that fill the queue on a schedule; ledger and dedupe, cron schedule, script contract, consent. Core, API and CLI built; macOS UI not yet.
+- [Collectors](collectors.md): built-in (Folder) and custom-script collectors that fill the queue on a schedule; ledger and dedupe, cron schedule, script contract, consent. Core, API, CLI and macOS UI built.
 - [Intake: paste and drop](intake-paste-drop.md): how dropped files and pasted screenshots/text enter the queue.
 
 ## macOS app

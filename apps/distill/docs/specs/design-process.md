@@ -3,7 +3,7 @@ type: spec
 title: Design process and design system
 status: developing
 created: 2026-10-02
-updated: 2026-10-03
+updated: 2026-10-04
 tags:
   - distill
   - design
@@ -170,6 +170,11 @@ Swift view of the same name, in `clients/macos/Sources/Distill/`. Built
 | MarkdownBarToggle | `MarkdownBarToggle` | MarkdownEditorBar.swift |
 | SendButton | `SendButton` | AskParts.swift |
 | LinkButton | `LinkButton` | AskParts.swift |
+| CollectorRow | `CollectorRow` (plus `runEnabled`, `onSelect`, `onRun` and a ⋯ menu) | CollectorsComponents.swift |
+| QueuePath | `QueuePath` (`path` is absolute; the view shows `~`; plus `onCreate`) | CollectorsComponents.swift |
+| ScheduleField | `ScheduleField` (a `ScheduleDraft` binding; `preset`, `time` and `cron` read from it) | CollectorsComponents.swift |
+| RunLogEntry | `RunLogEntry` (`lines` is an array; plus `onToggle`) | CollectorsComponents.swift |
+| ScriptConsent | `ScriptConsent` (plus `problem`, `busy` and the button actions) | CollectorsComponents.swift |
 
 IconButton is round (fill and hover fill are circles, as on the canvas); the
 hover fill is ink at 6%. Icon-only buttons in rows, cards and toolbars use it
