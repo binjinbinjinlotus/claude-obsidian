@@ -15,6 +15,8 @@ Secrets live in the macOS Keychain, not in files:
   - the OAuth token (refreshed automatically)
 Both are under the service "distill.meeting-notes".
 
+Full setup (Google Cloud project, Keychain, schedules): see README.md here.
+
 One-time setup (in Terminal, with the same python3 Distill will use):
   python3 -m pip install --user google-api-python-client google-auth-httplib2 google-auth-oauthlib keyring
   python3 fetch_meeting_notes.py --import-client ~/Downloads/credentials.json   # then delete that file
