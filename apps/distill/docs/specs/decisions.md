@@ -48,6 +48,12 @@ supersede it with a new entry.
     (`collected/restore`), so Undo survives a refresh. Forget rewrites the
     ledger atomically, keeping lines it can't read; collecting only appends.
   - **Deleting a collector deletes its run history**; the ledger stays.
+  - **Unchanged, already collected files get no per-file line** (only the
+    count), so run history doesn't grow with the size of a copy-mode
+    folder; `…/runs` returns the newest 50 by default.
+  - **Open for the lead: the batch gate covers one direction.** A script
+    never starts during a batch in its vault, but one already running when
+    a batch starts or is approved is not waited for.
   - **Scripts run with the core's environment minus every `DISTILL_*`
     variable**, plus the four documented ones, and the login shell's
     `PATH`. No sandbox, as the spec says.

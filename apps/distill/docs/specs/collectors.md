@@ -356,6 +356,21 @@ interface CollectorRun {
   were collected from another folder into the same vault (dedupe is
   vault-wide). Forget one removes every entry with that sha256 in the vault.
 - **Deleting a collector deletes its run history**; the ledger stays.
+- **A file skipped because it is unchanged since it was collected (same
+  path, size and mtime) gets no per-file line**, only `counts.skipped`.
+  With copy as the default every original stays in the folder, so a line
+  for each would make every run's record grow with the folder (500 files ≈
+  45 KB per run, 30 days of hourly runs ≈ 30 MB). Content matches under
+  another name ("gyokuro copy.md") still get their "Skipped · already
+  collected" line. `GET …/runs` returns the newest 50 unless `limit` is
+  given.
+- **The batch gate covers one direction only (open for the lead).** A
+  script never *starts* while a batch runs or applies in its vault, but a
+  script that is already running when a batch starts (or the user
+  approves) is not paused or waited for. Enforcing it would mean the
+  engine's batch and apply wait for running scripts in that vault.
+- **A core shutdown records running and queued runs as `failed`, code
+  `interrupted`**, not `stopped` (which means the user pressed Stop).
 - **No built-in registry yet.** Folder is the only built-in, and its fields
   are fixed in the contract (`folder`), so the detail pane can't render
   them from a registry yet. The registry (and a route listing built-in

@@ -99,7 +99,8 @@ describe('Folder collector', () => {
 
     const again = await runAndWait(env.svc, c.id);
     assert.equal(again.result, 'nothing');
-    assert.deepEqual(again.files, [{ name: 'gyokuro.md', outcome: 'skipped', reason: 'already collected', size: 21 }]);
+    assert.equal(again.counts.skipped, 1);
+    assert.deepEqual(again.files, [], 'an unchanged, already collected file is counted without a line');
     assert.deepEqual(fs.readdirSync(env.queue), ['gyokuro.md']);
     assert.equal((await env.svc.getCollector(c.id))!.status!.collectedCount, 1);
   });
@@ -124,6 +125,22 @@ describe('Folder collector', () => {
     assert.ok(!('mtimeMs' in collected[0]!));
     assert.deepEqual((await env.svc.listCollected(c.id, 'TASTING')).length, 2);
     assert.deepEqual((await env.svc.listCollected(c.id, 'sencha')).length, 0);
+  });
+
+  test('a folder of many kept originals keeps the run history small', async () => {
+    const env = setup();
+    const c = await folder(env);
+    for (let i = 0; i < 300; i++) put(env.inbox, `note-${String(i).padStart(3, '0')}.md`, `note ${i}`);
+    assert.equal((await runAndWait(env.svc, c.id)).counts.copied, 300);
+    const runsFile = path.join(env.state, 'collectors', 'runs', `${c.id}.jsonl`);
+    const before = fs.statSync(runsFile).size;
+    for (let i = 0; i < 5; i++) {
+      const run = await runAndWait(env.svc, c.id);
+      assert.equal(run.counts.skipped, 300);
+      assert.equal(run.files!.length, 0);
+    }
+    const perRun = (fs.statSync(runsFile).size - before) / 5;
+    assert.ok(perRun < 1024, `${perRun} bytes per quiet run`);
   });
 
   test('two identical files in one run: the second is skipped', async () => {
@@ -454,6 +471,23 @@ describe('Script collector', () => {
     assert.ok(chunks.length >= 1 && chunks.length < 50, `${chunks.length} output events`);
   });
 
+  for (const [interpreter, code] of [
+    ['python3', 'import os, sys\nprint("args:" + sys.argv[1] + "|" + sys.argv[2])\nopen(os.path.join(sys.argv[2], "from-python.md"), "w").write(os.environ["DISTILL_VAULT"])\n'],
+    ['node', "import fs from 'node:fs';\nimport path from 'node:path';\nconsole.log(`args:${process.argv[2]}|${process.argv[3]}`);\nfs.writeFileSync(path.join(process.argv[3], 'from-node.md'), process.env.DISTILL_VAULT);\n"],
+  ] as const) {
+    test(`inline ${interpreter}: same argv layout, writes into the queue folder`, async () => {
+      const env = setup();
+      const c = await env.svc.createCollector({ kind: 'script', script: { source: { inline: code }, interpreter } });
+      await allow(env, c);
+      const run = await runAndWait(env.svc, c.id);
+      assert.equal(run.result, 'success', JSON.stringify(run));
+      assert.equal(run.stdoutTail, `args:${env.vault}|${env.queue}\n`);
+      const name = interpreter === 'node' ? 'from-node.md' : 'from-python.md';
+      assert.deepEqual(run.filesAdded, [name]);
+      assert.equal(fs.readFileSync(path.join(env.queue, name), 'utf8'), env.vault);
+    });
+  }
+
   test('a missing interpreter fails the run', async () => {
     const env = setup({ loginPath: async () => path.join(os.tmpdir(), 'no-such-bin') });
     const c = await script(env, 'exit 0');
@@ -626,15 +660,24 @@ describe('Scheduler', () => {
     assert.equal((await env.svc.getCollector(c.id))!.status!.running, false);
   });
 
-  test('stop() ends running scripts and marks queued runs interrupted', async () => {
+  test('stop() ends running scripts and marks running and queued runs interrupted', async () => {
     const env = setup();
     const a = await script(env, 'sleep 30');
     await allow(env, a);
+    const b = await script(env, 'exit 0');
+    await allow(env, b);
     await env.svc.runCollector(a.id);
+    env.busy.add(env.vault); // b waits for the "batch"
+    await env.svc.runCollector(b.id);
+    await new Promise((r) => setTimeout(r, 100));
     const t0 = Date.now();
     await env.svc.stop();
     assert.ok(Date.now() - t0 < 5000);
-    assert.equal((await env.svc.listCollectorRuns(a.id))[0]!.result, 'stopped');
+    for (const c of [a, b]) {
+      const [run] = await env.svc.listCollectorRuns(c.id);
+      assert.equal(run!.result, 'failed');
+      assert.equal(run!.error!.code, 'interrupted', 'a core shutdown is not the user pressing Stop');
+    }
   });
 });
 

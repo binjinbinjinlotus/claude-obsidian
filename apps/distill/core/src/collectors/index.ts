@@ -92,6 +92,8 @@ export type CollectorsService = Pick<DistillCore, CollectorsOwned> & {
 interface Active {
   run: CollectorRun;
   stopRequested: boolean;
+  /** The core is stopping (not the user's Stop). */
+  shutdown?: boolean;
   script?: ScriptHandle;
   done: Promise<void>;
 }
@@ -384,6 +386,10 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
         run.error = { code: 'other', message: (err as Error).message };
       })
       .then(() => {
+        if (entry.shutdown && (run.result === 'stopped' || run.result === 'running')) {
+          run.result = 'failed';
+          run.error = { code: 'interrupted', message: 'Distill stopped during this run.' };
+        }
         closeRun(run, started);
         active.delete(c.id);
         record(run);
@@ -656,6 +662,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       pending = [];
       for (const a of active.values()) {
         a.stopRequested = true;
+        a.shutdown = true;
         a.script?.stop();
       }
       await Promise.all([...active.values()].map((a) => a.done));

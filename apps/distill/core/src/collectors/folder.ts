@@ -126,7 +126,8 @@ export async function runFolder(input: FolderRunInput): Promise<FolderRunOutcome
       continue;
     }
     if (ledger.hasStat(full, st.size, st.mtimeMs)) {
-      files.push({ name, outcome: 'skipped', reason: 'already collected', size: st.size });
+      // Unchanged since it was collected: counted, but no line, so a run over a folder of
+      // 500 kept originals stays small in the history (copy mode leaves them all there).
       counts.skipped += 1;
       continue;
     }

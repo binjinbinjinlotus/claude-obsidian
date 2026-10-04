@@ -994,7 +994,8 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
           limit = Number(raw);
           if (!Number.isInteger(limit) || limit < 1) throw bad('limit must be a positive integer');
         }
-        return { runs: await core.listCollectorRuns(params[0]!, limit ? { limit } : undefined) };
+        // Default 50: Folder runs carry per-file lines, and history keeps up to 30 days.
+        return { runs: await core.listCollectorRuns(params[0]!, { limit: limit ?? 50 }) };
       },
     },
     {

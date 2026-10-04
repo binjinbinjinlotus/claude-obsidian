@@ -763,8 +763,11 @@ async function collectors(args: string[], io: CliIO, api: ApiFactory): Promise<n
     // Wait for the run to finish (a script may take up to its timeout).
     while (run.result === 'queued' || run.result === 'running') {
       await new Promise((r) => setTimeout(r, 250));
-      const res = await client.request<{ runs: CollectorRun[] }>('GET', `/v1/collectors/${encodeURIComponent(id)}/runs?limit=5`);
-      run = res.runs.find((r) => r.id === started.run.id) ?? run;
+      const res = await client.request<{ runs: CollectorRun[] }>('GET', `/v1/collectors/${encodeURIComponent(id)}/runs?limit=200`);
+      const found = res.runs.find((r) => r.id === started.run.id);
+      // Never loop on a run that dropped out of view (e.g. many skipped ticks since).
+      if (!found) throw new CliError(`Lost track of run ${started.run.id}; see "distill collectors history ${id}".`, 'lost_run');
+      run = found;
     }
     out.result({ run }, () => describeRun(run) + '\n');
     return run.result === 'failed' || run.result === 'timedout' || run.result === 'notTrusted' ? 1 : 0;
