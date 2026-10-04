@@ -442,6 +442,20 @@ public final class CoreClient: Sendable {
         try await performWrapped(makeRequest(method, path, body: try Self.encode(body), timeout: Self.defaultTimeout), key: key)
     }
 
+    // Module-internal entry points for route groups kept in their own files (Collectors.swift).
+    func getPlain<T: Decodable>(_ path: String) async throws -> T { try await get(path) }
+    func getWrapped<T: Decodable>(_ path: String, _ type: T.Type, key: String) async throws -> T {
+        try await get(path, as: Wrapped<T>.self, key: key).value
+    }
+    func sendPlain<B: Encodable, T: Decodable>(_ method: String, _ path: String, body: B?) async throws -> T {
+        try await send(method, path, body: body)
+    }
+    func sendWrapped<B: Encodable, T: Decodable>(_ method: String, _ path: String, body: B?, _ type: T.Type, key: String) async throws -> T {
+        let w: Wrapped<T> = try await performWrapped(makeRequest(method, path, body: try body.map(Self.encode), timeout: Self.defaultTimeout),
+                                                     key: key)
+        return w.value
+    }
+
     private static func encode<B: Encodable>(_ body: B) throws -> Data {
         do { return try JSONEncoder.core.encode(body) } catch { throw CoreClientError.badResponse("could not encode request: \(error)") }
     }

@@ -169,6 +169,7 @@ final class AppModel: ObservableObject {
         self.status = status
         refreshLiveExtras()
         actions.load()
+        collectors.load()
     }
 
     private func apply(_ event: CoreEvent) {
@@ -199,6 +200,14 @@ final class AppModel: ObservableObject {
             refreshStatusSoon()
         case .action(let item, let deleted):
             actions.apply(item, deleted: deleted)
+        case .collector(let c, let deleted):
+            collectors.apply(c, deleted: deleted)
+        case .collectorRunStarted(let run):
+            collectors.runStarted(run)
+        case .collectorRunOutput(let collectorId, let runId, let stream, let text):
+            collectors.runOutput(collectorId: collectorId, runId: runId, stream: stream, text: text)
+        case .collectorRunFinished(let run):
+            collectors.runFinished(run)
         case .unknown:
             break
         }

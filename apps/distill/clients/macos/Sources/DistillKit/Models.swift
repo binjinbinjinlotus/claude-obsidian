@@ -971,10 +971,17 @@ public enum CoreEvent: Equatable, Sendable {
     case action(ActionItem, deleted: Bool)
     /// v3: a connection changed (signed in, expired, disconnected).
     case connection(ConnectionInfo)
+    /// v4: a collector changed (`deleted`: removed).
+    case collector(Collector, deleted: Bool)
+    case collectorRunStarted(CollectorRun)
+    /// Live output of a script run: the text added since the last event.
+    case collectorRunOutput(collectorId: String, runId: String, stream: String, text: String)
+    case collectorRunFinished(CollectorRun)
     case unknown(type: String)
 
     private enum Keys: String, CodingKey {
         case type, entries, job, settings, level, message, requestID, notePath, labels, error, conversation, deleted, progress, action, connection
+        case collector, run, collectorId, runId, stream, text
     }
 
     /// Decodes the JSON of one `data:` line.
@@ -1004,6 +1011,13 @@ public enum CoreEvent: Equatable, Sendable {
             case "action":
                 event = .action(try c.decode(ActionItem.self, forKey: .action), deleted: c.lossy(Bool.self, .deleted) ?? false)
             case "connection": event = .connection(try c.decode(ConnectionInfo.self, forKey: .connection))
+            case "collector.changed":
+                event = .collector(try c.decode(Collector.self, forKey: .collector), deleted: c.lossy(Bool.self, .deleted) ?? false)
+            case "collector.run.started": event = .collectorRunStarted(try c.decode(CollectorRun.self, forKey: .run))
+            case "collector.run.finished": event = .collectorRunFinished(try c.decode(CollectorRun.self, forKey: .run))
+            case "collector.run.output":
+                event = .collectorRunOutput(collectorId: c.lossy(String.self, .collectorId) ?? "", runId: c.lossy(String.self, .runId) ?? "",
+                                            stream: c.lossy(String.self, .stream) ?? "stdout", text: c.lossy(String.self, .text) ?? "")
             default: event = .unknown(type: type)
             }
         }
