@@ -30,8 +30,11 @@ supersede it with a new entry.
   - **"Used in" is a heuristic.** The core keeps no source → page map, so
     Review matches each file's vault path or its path from the batch folder in
     the changed pages' text (bundle writes while waiting, vault pages once
-    applied). "Not used" only when every page was read. A core field would
-    make it exact.
+    applied). "Not used" only when every page was read and some file
+    matched: the core's prompt doesn't fix how pages cite inputs, and the
+    real citation form wasn't checked against a live ingest, so a batch where
+    nothing matches shows no suffixes rather than "not used" everywhere. A
+    core field would make it exact.
   - **The tree follows the spec's 5 entries per folder,** not the board's
     one-photo example. Too deep and Empty folder get their own pills; other
     Refresh results read "1 new item found · 1 item gone" and "2 items

@@ -600,7 +600,7 @@ struct CollectorStatusCard: View {
                 if r.counts.skipped > 0 { lines.append("Skipped \(r.counts.skipped) that \(r.counts.skipped == 1 ? "was" : "were") already collected.") }
             } else {
                 let moved = r.counts.moved > 0
-                title = "\(moved ? "Moved" : "Copied") \(CollectorText.files(moved ? r.counts.moved : r.counts.copied)) \(when)"
+                title = "\(moved ? "Moved" : "Copied") \(((r.files ?? []).contains(where: \.isFolder) ? CollectorText.items : CollectorText.files)(moved ? r.counts.moved : r.counts.copied)) \(when)"
                 var bits: [String] = []
                 if r.counts.skipped > 0 { bits.append("Skipped \(r.counts.skipped) that \(r.counts.skipped == 1 ? "was" : "were") already collected.") }
                 if r.counts.waiting > 0 { bits.append("\(r.counts.waiting) still changing; the next run takes \(r.counts.waiting == 1 ? "it" : "them").") }

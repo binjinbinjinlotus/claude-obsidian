@@ -170,7 +170,9 @@ struct JobSourcesView: View {
         for file in job.files where !file.hasSuffix(QueueRows.manifestSuffix) {
             out[file] = SourceUsage.pages(using: file, in: pages)
         }
-        loadedUsage = out
+        // When no page names any source, the pages cite another way (a .raw copy, a ledger): say nothing
+        // rather than "not used" on every file.
+        loadedUsage = out.values.contains(where: { !$0.isEmpty }) ? out : nil
     }
 }
 

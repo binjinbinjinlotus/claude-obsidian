@@ -146,7 +146,7 @@ runs. Reply and Allow turns start a new run of the same key at `Drafting page
 changes`. Failed and cancelled batches finish with `Failed` (and `error`) or
 `Cancelled`.
 
-## Folders, Google Docs and syncing (designed 2026-10-04)
+## Folders, Google Docs and syncing (designed and built 2026-10-04)
 
 Canvas: Main, MainLoading, MainEmpty, MainFolder, QueueItems; components
 QueueRowView (folder and Google Doc states) and QueueRefresh. The core, API,
@@ -387,7 +387,9 @@ fields, `QueueTreeEntry`, `QueueScanResult`, status scan times, `Job.folders`,
   "Used in" is a heuristic over the changed pages' text (the bundle's writes
   while waiting, the vault's pages once applied): a page uses a file when it
   mentions its vault path or its path from the batch folder. "Not used" only
-  when every page was read; otherwise the file has no suffix.
+  when every page was read and at least one file matched; otherwise no file
+  has a suffix (the citation form of real ingest pages isn't fixed: pages may
+  cite a `.raw/` copy or only the source ledger).
 - **Settings → Batching:** "Check the queue folder for changes" with Every
   minute, Every 5 min, Every 15 min, Every hour and Off; a value set elsewhere
   shows as it is ("Every 30 min"). Written only when the user picks one. In
