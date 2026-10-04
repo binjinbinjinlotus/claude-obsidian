@@ -184,11 +184,30 @@ class Components(unittest.TestCase):
 class Screens(unittest.TestCase):
     def test_overrides_resolve(self):
         comps, screens = render.schema()
-        names = {c['name'] for c in comps}
+        names = render.prop_orders(comps)
         for s in screens:
+            ids = [st['id'] for st in s['states']]
+            self.assertEqual(len(ids), len(set(ids)), f'{s["_file"]}: duplicate state ids')
             for st in s['states']:
-                self.assertIn(st['base'], s['bases'], f'{s["_file"]}: state {st["id"]} uses unknown base {st["base"]}')
+                if 'base' in st:
+                    self.assertIn(st['base'], s['bases'], f'{s["_file"]}: state {st["id"]} uses unknown base {st["base"]}')
+                    self.assertIn(st.get('set', {}).get('layout', s['bases'][st['base']]['layout']), s['layouts'])
+                else:
+                    self.assertIn('card', st, f'{s["_file"]}: state {st["id"]} has neither a base nor a card')
             render.screen_states(s, names)
+            for b in s['boards']:
+                for sec in b['sections']:
+                    for sid in sec.get('row', []) + sec.get('grid', []) + ([sec['frame']] if 'frame' in sec else []):
+                        self.assertIn(sid, ids, f'{b["file"]}: unknown state {sid}')
+
+    def test_fragments_exist_and_are_used(self):
+        _, screens = render.schema()
+        for s in screens:
+            used = set(re.findall(r'"frag": "([^"]+)"', json.dumps(s)))
+            d = os.path.join(ROOT, 'screens', s['_file'][:-5])
+            have = {f[:-5] for f in os.listdir(d) if f.endswith('.html')} if os.path.isdir(d) else set()
+            self.assertEqual(sorted(used - have), [], f'{s["_file"]}: fragments referenced but missing')
+            self.assertEqual(sorted(have - used), [], f'{s["_file"]}: fragment files nothing uses')
 
     def test_override_is_not_a_copy(self):
         base = {'regions': {'toolbar': {'c': 'ActionsToolbar', 'props': {'placeholder': 'Search to-dos'}}, 'overlay': None}}

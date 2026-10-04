@@ -44,7 +44,7 @@ boards are never edited by hand.
 | --- | --- | --- |
 | Tokens | `tokens.json` | Colours, type, button and pill sizes, radii, strokes. Generated from `Theme.swift` by `tokens.py`; never edited by hand. |
 | Components | `components.json` + `components/<Name>.dc.html` | One entry per canvas component: `name` (= the Swift view), `swift` (file, or `null` when no view exists yet), `preview` size, `props` (name, type, default, options; `swift` when the Swift name differs, `"swift": false` + `why` when the view derives it, `swiftPending` when designed but not built), `board` (its states board) and `states` (name, prop values, hint size, caption). The template file holds the markup with `{{…}}` holes and the logic; `@@ICONS@@` / `@@SETTINGS_NAV@@` pull in `data/`. |
-| Screens | `screens/actions.json` | `bases`: one per tab, regions (`header`, `toolbar`, `list`, `detail`, `overlay`, `bottom`) filled with component instances (`{"c": "ActionsToolbar", "props": {…}}`), template uses (`{"t": "header", "vars": {…}}`) or html. `states`: an id (= the snapshot state id), a base and an override, e.g. `{"toolbar.chips": ["Due: Today"], "overlay": {"FilterPanel": {"due": "Today"}}}`; never a copy. `boards`: ordered states with labels and captions. |
+| Screens | `screens/actions.json` + `screens/actions/*.html` | `bases`: one per tab (To do, Slack, Jira, Confluence, History → Actions): window size, Sidebar props, a `layout` (the `<main>` skeleton with `{header}`, `{toolbar}`, `{list}`, `{detail}`, `{toast}` holes) and `regions` filled with nodes: a component instance (`{"c": "ActionsToolbar", "props": {…}}`), a template use (`{"t": "header", "vars": {…}}`), an ActionRow list (`{"list": "slack", "selected": 0, "hover": 2, "gone": null}`, rows in `lists`), or a fragment (`{"frag": "slack-f0-detail"}`: bespoke markup in `screens/actions/`, not a component yet). `states`: frames are an id (= the snapshot state id where one exists), a base and an override, e.g. `{"toolbar.chips": "Due: Today", "overlay": {"frag": …}}` or `{"list.hover": 2}`, never a copy; cards are a label, caption, card box and a body node. `boards`: ordered sections (`row`, `frame`, `title`, `grid`). |
 | Heights | `sizes.json` | Measured height of each generated board (`render.py --measure`). |
 
 ### Workflow
@@ -75,8 +75,20 @@ new boards are appended to row 0.
 ### Add a state
 
 Component state: append `{"name", "props", "size", "caption"}` to its
-`states`. Screen state: append `{"id", "base", "label", "caption", "set"}`
-to `screens/*.json` and put its id in a board's section. Use the id of the
+`states`. Screen state: append `{"id", "base", "label", "set"}` to
+`screens/*.json` and put its id in a board's section. `set` paths walk the
+regions, then a component's props (`toolbar.chips`), a template's vars
+(`header.vars.title`) or a list's flags (`list.hover`); `null` removes a
+region. A new prop lands where the component declares it, so attribute
+order stays stable.
+
+Moving a legacy board in: `tools/import_board.py --ids tools/actions-ids.json
+PROJECT screens/<name>.json Board.dc.html:prefix …` parses the published
+board into bases, overrides, lists and fragments; `render.py` must give the
+board back byte for byte before it is committed. After that the schema owns
+the board and its legacy generator must not run over it. Fragments are the
+part still to turn into components (To do rows, detail panes, draft cards,
+menus, toasts). Use the id of the
 matching `Distill --snapshot --states` render; the drift test lists screen
 states without one (report only).
 

@@ -1241,7 +1241,7 @@ def history_board():
                  f'<div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: #F2F7FF; margin-top: 6px">{ic("actions", 15, BLUE)}<span style="font-size: 13px; font-weight: 600; flex-grow: 1">Found 3 to-dos, 1 Slack message, 1 Jira ticket</span><span style="font-size: 12px; font-weight: 700; color: {BLUE}">Open in Actions</span></div></div>', W)
     cards = [
         ('Filter: what happened', f'<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: {W}px">{wbar}<div style="margin-left: 170px">{what}</div></div>',
-         'The same single Filter menu as To do, with its own sections: WHAT happened (shown), TYPE, SOURCE NOTE and WHEN (today, this week, pick dates). Each set filter is a chip after the button (here “Removed ×”). Search covers titles, text and notes.'),
+         'The same single Filter menu as To do, with its own sections: TYPE, OUTCOME (shown), DATE and SOURCE. Each set filter is a chip after the button (here “Removed ×”). Search covers titles, text and notes.'),
         ('Restored', panel(hist_list(1, HIST[1:4]) + f'<div style="display: flex; justify-content: center; margin-top: 10px">{toast("Restored to Slack messages", ("Open",), icon="restore", w=360)}</div>', W),
          'Restore (on row hover, or in the detail) puts a removed or completed item back in the list it came from, with its text, edits and context. Its History entry goes away.'),
         ('Restore when the note is gone', panel(banner('error', 'Restored without its note link', 'The note Auth retry bug was deleted from your vault after this was found. The quoted lines are kept.', btn('OK', 'secondary', 28, 12))
