@@ -130,9 +130,9 @@ do_status() {
 BACKUPS="$STATE_DIR/backups"
 KEEP_BACKUPS=10
 
-# Prints one line: "<settings 0|1> <jobs> <chats> <actions>".
+# Prints one line: "<settings 0|1> <jobs> <chats> <actions> <collectors>".
 data_summary() {
-  local settings=0 jobs=0 chats actions=0
+  local settings=0 jobs=0 chats actions=0 collectors=0
   [[ -f "$STATE_DIR/settings.json" ]] && settings=1
   if [[ -f "$JOBS" ]]; then
     jobs=$(python3 -c 'import json,sys
@@ -146,13 +146,18 @@ try:
   d=json.load(open(sys.argv[1])); d=d.get("actions",d) if isinstance(d,dict) else d; print(len(d))
 except Exception: print(-1)' "$STATE_DIR/actions.json")
   fi
-  echo "$settings $jobs $chats $actions"
+  if [[ -f "$STATE_DIR/collectors.json" ]]; then
+    collectors=$(python3 -c 'import json,sys
+try: print(len(json.load(open(sys.argv[1])).get("collectors",[])))
+except Exception: print(-1)' "$STATE_DIR/collectors.json")
+  fi
+  echo "$settings $jobs $chats $actions $collectors"
 }
 
 describe_data() {
-  local settings jobs chats actions
-  read settings jobs chats actions <<< "$1"
-  echo "settings $( (( settings )) && echo kept || echo none) · $jobs jobs · $chats Ask chats · ${actions:-0} actions"
+  local settings jobs chats actions collectors
+  read settings jobs chats actions collectors <<< "$1"
+  echo "settings $( (( settings )) && echo kept || echo none) · $jobs jobs · $chats Ask chats · ${actions:-0} actions · ${collectors:-0} collectors"
 }
 
 do_backup() {
@@ -164,8 +169,14 @@ do_backup() {
   mkdir -p "$dest/ask"
   [[ -f "$STATE_DIR/settings.json" ]] && cp -p "$STATE_DIR/settings.json" "$dest/"
   [[ -f "$JOBS" ]] && cp -p "$JOBS" "$dest/jobs.json"
-  for f in actions.json connections.json; do [[ -f "$STATE_DIR/$f" ]] && cp -p "$STATE_DIR/$f" "$dest/"; done
+  for f in actions.json connections.json collectors.json; do [[ -f "$STATE_DIR/$f" ]] && cp -p "$STATE_DIR/$f" "$dest/"; done
   for f in "$STATE_DIR"/*.unreadable-*(N); do cp -p "$f" "$dest/"; done
+  # Collectors: the Folder ledgers (what was already collected) and run history, with any set-aside copies.
+  if [[ -d "$STATE_DIR/collectors" ]]; then
+    mkdir -p "$dest/collectors/runs"
+    for f in "$STATE_DIR"/collectors/ledger-*(N.); do cp -p "$f" "$dest/collectors/"; done
+    for f in "$STATE_DIR"/collectors/runs/*(N.); do cp -p "$f" "$dest/collectors/runs/"; done
+  fi
   for f in "$STATE_DIR"/ask/*.json(N); do cp -p "$f" "$dest/ask/"; done
   chmod 700 "$BACKUPS" "$dest"
   local old=( "$BACKUPS"/*(N/On[$((KEEP_BACKUPS + 1)),-1]) )
@@ -193,7 +204,12 @@ do_restore() {
   do_backup before-restore
   [[ -f "$src/settings.json" ]] && cp -p "$src/settings.json" "$STATE_DIR/settings.json"
   [[ -f "$src/jobs.json" ]] && cp -p "$src/jobs.json" "$JOBS"
-  for f in actions.json connections.json; do [[ -f "$src/$f" ]] && cp -p "$src/$f" "$STATE_DIR/$f"; done
+  for f in actions.json connections.json collectors.json; do [[ -f "$src/$f" ]] && cp -p "$src/$f" "$STATE_DIR/$f"; done
+  if [[ -d "$src/collectors" ]]; then
+    mkdir -p "$STATE_DIR/collectors/runs"
+    for f in "$src"/collectors/ledger-*(N.); do cp -p "$f" "$STATE_DIR/collectors/"; done
+    for f in "$src"/collectors/runs/*(N.); do cp -p "$f" "$STATE_DIR/collectors/runs/"; done
+  fi
   mkdir -p "$STATE_DIR/ask"
   for f in "$src"/ask/*.json(N); do cp -p "$f" "$STATE_DIR/ask/"; done
   echo "Restored $name ($(describe_data "$(data_summary)")). Start with: $SCRIPT start"
@@ -219,9 +235,9 @@ case "$cmd" in
     do_stop
     "$APP_DIR/scripts/build-app.sh" --install
     after="$(data_summary)"
-    read b_settings b_jobs b_chats b_actions <<< "$before"
-    read a_settings a_jobs a_chats a_actions <<< "$after"
-    if (( a_settings < b_settings || a_jobs < b_jobs || a_chats < b_chats || ${a_actions:-0} < ${b_actions:-0} )); then
+    read b_settings b_jobs b_chats b_actions b_collectors <<< "$before"
+    read a_settings a_jobs a_chats a_actions a_collectors <<< "$after"
+    if (( a_settings < b_settings || a_jobs < b_jobs || a_chats < b_chats || ${a_actions:-0} < ${b_actions:-0} || ${a_collectors:-0} < ${b_collectors:-0} )); then
       echo "WARNING: data changed during the update: before $(describe_data "$before"), now $(describe_data "$after")."
       echo "Your backup: $SCRIPT backups, then $SCRIPT restore NAME"
     else
