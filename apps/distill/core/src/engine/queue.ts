@@ -284,7 +284,8 @@ export function walkFolder(dir: string, limits: { maxFiles: number; maxBytes: nu
   out.files.sort((a, b) => byPath(a.rel, b.rel));
   out.folders.sort(byPath);
   const present = new Set(out.files.map((f) => f.rel));
-  out.absentSeenBefore = (manifest?.tree ?? []).filter((t) => t.seenBefore && t.kind !== 'dir' && !present.has(t.path));
+  // Collected before and left out (copy mode), or a .gdoc left behind in the queue folder: listed, never read.
+  out.absentSeenBefore = (manifest?.tree ?? []).filter((t) => (t.seenBefore || t.kind === 'gdoc') && t.kind !== 'dir' && !present.has(t.path));
   return out;
 }
 
@@ -321,7 +322,7 @@ export function folderTreeEntries(w: FolderWalk): QueueTreeEntry[] {
     }
   };
   for (const f of w.files) add(f.rel, f.size, f.gdoc ? 'gdoc' : 'file', f.seenBefore === true);
-  for (const t of w.absentSeenBefore) add(t.path, t.size, t.kind === 'gdoc' ? 'gdoc' : 'file', true);
+  for (const t of w.absentSeenBefore) add(t.path, t.size, t.kind === 'gdoc' ? 'gdoc' : 'file', t.seenBefore === true);
   return entries.sort((a, b) => byPath(a.path, b.path));
 }
 
@@ -345,7 +346,11 @@ const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
  * never absolute paths. `.gdoc` and files collected before are listed but marked as not sources.
  */
 export function folderSourceBlock(name: string, w: FolderWalk): string {
-  const lines = [`Folder source: ${name}/ (${plural(w.fileCount, 'file')}, ${plural(w.folderCount, 'folder')}, ${formatBytes(w.totalSize)})`];
+  // .gdoc pointers left behind in the queue folder still count: the folder had them.
+  const leftGdocs = w.absentSeenBefore.filter((t) => t.kind === 'gdoc' && !t.seenBefore);
+  const files = w.fileCount + leftGdocs.length;
+  const bytes = w.totalSize + leftGdocs.reduce((n, t) => n + t.size, 0);
+  const lines = [`Folder source: ${name}/ (${plural(files, 'file')}, ${plural(w.folderCount, 'folder')}, ${formatBytes(bytes)})`];
   const tree = folderTreeEntries(w);
   for (const e of tree.slice(0, QUEUE_FOLDER_LIMITS.maxTreeEntries)) {
     const p = `${name}/${e.path}`;
@@ -818,6 +823,43 @@ export function claimFiles(entries: ScanEntry[], vault: VaultProfile, alreadyCla
   return claimItems(entries, vault, alreadyClaimed).files;
 }
 
+/**
+ * Moves a folder item's .gdoc files (keeping their relative paths) into a hidden staging folder
+ * next to it in the queue folder, before the folder goes to the vault. Hidden, so no scan lists it.
+ */
+function setGoogleDocsAside(folder: string, gdocs: FolderFile[]): string {
+  const staging = fs.mkdtempSync(path.join(path.dirname(folder), '.distill-gdocs-'));
+  for (const g of gdocs) {
+    const to = path.join(staging, ...g.rel.split('/'));
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    moveFile(path.join(folder, ...g.rel.split('/')), to);
+    // Subfolders that held only the pointer don't travel to the vault empty (hidden files count as content).
+    for (let dir = path.dirname(path.join(folder, ...g.rel.split('/'))); dir !== folder; dir = path.dirname(dir)) {
+      try {
+        fs.rmdirSync(dir);
+      } catch {
+        break; // not empty
+      }
+    }
+  }
+  return staging;
+}
+
+/**
+ * Puts the staged .gdoc files back in the queue folder as a folder of the original name (" 2" if
+ * that is taken again), where they wait for Google Drive access, and records them in the moved
+ * folder's `.distill-folder.json` (path, size, kind only) so the prompt still lists them as
+ * "Google Doc, not read".
+ */
+function leaveGoogleDocsQueued(staging: string, original: string, moved: string, name: string, gdocs: FolderFile[]): void {
+  const remaining = fs.existsSync(original) ? uniqueFolderDestination(name, path.dirname(original)) : original;
+  fs.renameSync(staging, remaining);
+  const manifest = readFolderManifest(moved) ?? { version: 1 as const, name, tree: [] };
+  const listed = new Set(manifest.tree.map((t) => t.path));
+  for (const g of gdocs) if (!listed.has(g.rel)) manifest.tree.push({ path: g.rel, size: g.size, kind: 'gdoc' });
+  fs.writeFileSync(path.join(moved, FOLDER_MANIFEST_NAME), JSON.stringify(manifest, null, 2) + '\n');
+}
+
 /** `yyyy-MM-dd` in local time: the inbox folder a batch moves folder items into. */
 export function batchDateFolder(date: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
@@ -850,7 +892,11 @@ export function claimItems(
         const day = path.join(inbox, batchDateFolder(date));
         fs.mkdirSync(day, { recursive: true });
         const target = uniqueFolderDestination(entry.name, day);
+        // .gdoc pointers never enter the vault: they step aside first and stay queued, waiting.
+        const gdocs = entry.folder.files.filter((f) => f.gdoc);
+        const staging = gdocs.length > 0 ? setGoogleDocsAside(entry.path, gdocs) : undefined;
         moveFile(entry.path, target);
+        if (staging) leaveGoogleDocsQueued(staging, entry.path, target, entry.name, gdocs);
         rel = `inbox/${path.basename(day)}/${path.basename(target)}`;
       }
       const sources = entry.folder.files.filter((f) => !f.gdoc && !f.seenBefore).map((f) => `${rel}/${f.rel}`);
