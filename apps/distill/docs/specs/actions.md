@@ -3,7 +3,7 @@ type: spec
 title: Actions
 status: built
 created: 2026-10-02
-updated: 2026-10-02
+updated: 2026-10-03
 tags:
   - distill
   - actions
@@ -25,13 +25,14 @@ SettingsNav). Contract: `core/src/contracts.ts` → "Actions (actions.json)",
 
 - Every item has a **type**. `todo` is the catch-all: anything that needs the
   user and that Distill can't do itself. Other types are things Distill can
-  do through **handlers**: `slack` (Copy now; Send later), `jira` and
-  `confluence` (Create, Refresh, Mark done). `email` is reserved.
+  do through **handlers**: `slack` (Copy, Mark as sent, Complete; Send
+  later), `jira` and `confluence` (Create, Refresh, Complete). Every type
+  has **Complete** ("you've handled it"). `email` is reserved.
 - Types and handlers are registry data (`core/src/actions/registry.ts`):
   adding a type or a handler never changes the contract or the clients'
   generic rendering. Clients render unknown types from `ActionTypeInfo`.
 - Status: pending (to confirm) → open / ready → creating → created → done;
-  sent (messages); removed (History, restorable); dismissed (found, never
+  sent (messages); done also by Complete from open, ready, created or sent; removed (History, restorable); dismissed (found, never
   added). Every change appends to the item's `events` timeline.
 
 ## Where items come from
@@ -167,7 +168,7 @@ Files in `core/src/actions/`:
 | Type | Fields | Handlers | Draft written | Improve after edit | Connection |
 | --- | --- | --- | --- | --- | --- |
 | `todo` (catch-all, always on) | due (date), priority, person | complete | — (no prompt) | no | — |
-| `slack` | to (required) | copy, markSent, send (reserved: "Later") | onFind | yes | — |
+| `slack` | to (required) | copy, markSent, complete, send (reserved: "Later") | onFind | yes | — |
 | `jira` | project (required), issueType, priority, assignee | create, refresh, complete | onFind | yes | atlassian |
 | `confluence` | space (required), parent | create, refresh, complete | onFind | yes | atlassian |
 | `email` (reserved, off) | to, subject | copy, openMail (both reserved) | — | — | — |
@@ -255,9 +256,13 @@ fields}`; improve: `{body}`); a JSON object in the text is the fallback.
   error; an AI failure returns it with `error.code = ai_failed`. Drafts fill
   only empty fields. Improve keeps `previousBody`; `undoImprove` puts it back.
 - `performAction`: copy (event only; needs text), markSent → `sent`,
-  complete → `done`, create → `creating` → `created` with `external {key,
+  complete → `done` (every type; from open, ready, created or sent; refused
+  from pending, removed, dismissed, done, while busy, and for a to-do sent to
+  another type, which completes there; the external status is left as it is;
+  event `done` with detail = the status it left), create → `creating` → `created` with `external {key,
   url, status, checkedAt}`, refresh → the status from Jira / Confluence (Jira
-  `statusCategory` done → `done`). A failed handler returns 200 with the item
+  `statusCategory` done → `done`, kept: the automatic Done; its event detail
+  is "in Jira (Done)"). A failed handler returns 200 with the item
   back in its status and `error` set; never an HTTP error.
 - `sendActionTo`: from pending/open/ready to an enabled type; the old item →
   `sent` with event `sent-to:<type>` (detail = the new id); the new item keeps
@@ -265,7 +270,9 @@ fields}`; improve: `{body}`); a JSON object in the text is the fallback.
   (`person` ↔ `to`), and starts its draft right away.
 - `removeAction` (not from History) → `removed`, event detail = the status to
   restore. `restoreAction` is every Undo: removed → where it was; done →
-  open (created when it has an external key); Mark as sent → ready; Send to →
+  the status Complete recorded (open, ready, created or sent; for an
+  automatic Done or an older item: created when it has an external key, else
+  open / ready); Mark as sent → ready; Send to →
   back where it was, and the item it became is deleted if still untouched
   (only added / drafted events; otherwise `invalid_state`, "it lives on in
   …"); dismissed → pending (or open/ready for an auto-added item). A type
@@ -275,7 +282,8 @@ fields}`; improve: `{body}`); a JSON object in the text is the fallback.
   reruns "Finding actions" for an applied batch; it returns the job with
   `actionsFound.status = "finding"` at once.
 - Handler ids for clients: `copy`, `markSent`, `create`, `refresh`,
-  `complete` (also "Mark done" for a created ticket or page).
+  `complete` (labelled "Complete" for every type, also a created ticket or
+  page).
 - Retention: on load and at most hourly on `listActions`, removed / done /
   sent / dismissed items whose last event is older than `historyDays` are
   dropped; `historyDays <= 0` keeps them forever. Live items are never dropped.
@@ -423,52 +431,99 @@ Status per part; `built` parts ship in `clients/macos`.
   row); Undo improve is `undo-improve`. The sign-in buttons post
   `distill.openSettingsSection` "connections" and open Settings; "Settings for
   this type" posts `actions/<type>`.
+- **Toolbar and Filter panel** (built 2026-10-03, canvas v57; `ActionsToolbar.swift`,
+  `FilterPanel.swift`, rules in `DistillKit/ActionsFilters.swift`, tested): every
+  Actions tab and History → Actions has one toolbar line: search, Filter ▾
+  ("Filter · N" in the active blue style once filters beyond the default are
+  set; To do's Status: Open is the default and shows no chip), one removable
+  FilterChip per filter, a "+N" chip for those that don't fit (it opens the
+  panel at the first hidden one), then the right slot: sort on To do and
+  Slack (Newest / Oldest first on Slack; To do's group and sort panel),
+  connection status on Jira and Confluence ("acme.atlassian.net ·
+  connected", "Atlassian · not connected" + Connect now, which opens Settings
+  → Connections through `openSettings(section: "connections")`, or
+  Connecting… while the browser sign-in runs), nothing on History. It never
+  wraps and never asks for more width than it has: `ToolbarFit` decides from
+  the measured widths; chips collapse into +N first, then the search narrows
+  (160, then 140), and only then does the connection drop its status text.
+  The Filter panel (a popover; drawn in place in snapshots) has per-kind
+  sections: To do Status (single), Due, Person (search), Label, Source note,
+  Priority, More; Slack Status, Recipient, Source note, Label; Jira Status,
+  Project, Type, Priority, Assignee, Source note; Confluence Status, Space,
+  Source note; History Type, Outcome, Date, Source. A section with more than
+  6 rows shows the top 5 and "Show all N"; the footer has Clear all (back to
+  Status: Open; search stays), the count ("2 filters", "Status: Open", "No
+  filters") and Done. Clicking a chip opens the panel at its section, its
+  heading in blue. History's Date is presets only: Today, This week (last 7
+  days), Last 30 days. Not built from the template data: To do's Due "Next 7
+  days" and "Pick dates…" (Due uses the buckets Overdue, Today, This week,
+  Later, No due date) and History's "Pick dates…" (decision 2026-10-03).
+- **Rows and Complete** (built, `ActionRow.swift`, `ActionsStore.complete`): the
+  Slack, Jira, Confluence and History lists use ActionRow (type tile, title,
+  source line, status pill). Hover shows ✓ Complete ("Complete (you've handled
+  it)") and ⋯ on the lists, Restore and ⋯ in History. To do keeps its own
+  checkbox row and has no hover Complete. Complete (row, detail, bulk bar)
+  strikes the row through for 2 s, then it leaves for History as Completed;
+  one toast, "Completed · Undo" or "Completed 3 · Undo", whose Undo restores
+  every item to the status it left.
 - **To do** (built, `ActionsScreen.swift`): header with History and Add
-  to-do; filter chips Status, Due, Person (with search), Label, Note,
-  Priority, More (added by, vault, this batch); group and sort menu (starts from
-  Settings → To-do defaults; a change here is kept in `distill.todo.group` /
-  `distill.todo.sort`); grouped rows with
-  note, person, labels, priority and a due badge; the detail (fields, FROM
-  context with quote, Why and "Found by", "Also from this note", Complete,
-  Send to ▾ with the suggested type first and Email disabled, Remove); edit in
-  place (title, due, priority, people, labels; saved as you type); Add to-do
-  row (↩ adds, Esc cancels, labels you filter by pre-filled); Complete strikes
-  through for 2 s with Undo; ⌘/⇧-click selects for the bulk bar (Complete,
-  Due date, Priority, Label, Send to, Remove, Clear); "To confirm" group with
-  Add / Create draft, ×, Add all, Dismiss all; empty, no-match (names the
-  filters, Clear filters, Show completed), finding strip, first-load shimmer
-  and "Couldn't find actions" with Try again. Menus are drawn panels (not
-  NSMenu) so they render in snapshots.
-- **Slack and other copy types** (built, `ActionsTypes.swift`): message
-  cards with recipient (click to pick from the note's people and labels or
-  type someone else), Ready to paste / Not written / Writing / Editing /
-  Polishing / Copied at …, the body with @mentions and Markdown, Create
-  message, Writing with Sonnet… Cancel, editing in the shared Markdown editor
-  with the compact bar (⌘↩ Done → improve), Improved by … with Undo ⌘Z and
-  Show changes (changed words tinted 4 s), Copy (Slack marks: `*bold*`,
-  `_italic_`, `~strike~`, `<url|text>`) → Copied for 2 s → "Copied. Paste it
-  in Slack." with Mark as sent / Not yet, the disabled dashed "Send in Slack ·
-  Later" slot while the `send` handler is unavailable.
-- **Jira, Confluence and other create types** (built): drafts and created
-  items on the left, the card on the right: fields from `ActionTypeInfo`
-  (the refused field marked), the description as headings, bullets and
-  checkboxes, Write draft, Writing / Improving with Cancel, Create in Jira /
-  Creating in Jira…, Created with key link, status, "Status from Jira at
-  3:52 PM · Refresh", Open in Jira and Mark done; errors: not connected
-  ("Sign in to Jira in your browser" → Settings → Connections), sign-in
-  expired (plus Retry), Signed in → Retry (the create handler became
-  available), refused, unreachable, AI failed. The header shows connected /
-  not connected from the create handler's `available`.
-- **History → Actions** (built, `ActionsHistoryView.swift`): search, What
-  happened and Type filters, rows by day with what happened and when; the
-  selected item read-only with its timeline ("What happened"), Restore (with
-  "Restored to … · Open", the note-gone note, and Restore as a to-do when the
-  type is off), Delete forever (the only confirm); a sent to-do shows where it
-  went with Open in … and no Restore. History → Jobs and Review show the job's
-  line from `Job.actionsFound` (Found N actions to confirm · by type · Review
-  them / Open in Actions, which open To do filtered to that job; finding uses
-  the loading pattern; failed has Try again); Review says before apply that
-  actions are looked for after it.
+  to-do; the toolbar above; group and sort panel (starts from Settings →
+  To-do defaults; a change here is kept in `distill.todo.group` /
+  `distill.todo.sort`); grouped rows with note, person, labels, priority and a
+  due badge; the detail (fields, FROM context with quote, Why and "Found by",
+  "Also from this note"; footer: remove on the left, then Complete, then Send
+  to ▾ with the suggested type first and Email disabled); edit in place
+  (title, due, priority, people, labels; saved as you type); Add to-do row (↩
+  adds, Esc cancels, labels you filter by pre-filled); ⌘/⇧-click selects for
+  the bulk bar (Complete, Due date, Priority, Label, Send to, Remove, Clear);
+  "To confirm" group with Add / Create draft, ×, Add all, Dismiss all; empty,
+  no-match (names the filters, Clear filters, Show completed), finding strip,
+  first-load shimmer and "Couldn't find actions" with Try again.
+- **Handler tabs: Slack, Jira, Confluence and other types** (built,
+  `ActionsTypeScreen.swift`, cards in `ActionsTypes.swift`): list plus
+  detail on every tab (Slack moved from cards). The list narrows (330 → 250
+  pt) before the detail does. Detail footers have one order everywhere: edit
+  and remove on the left; Complete (SoftButton), then the primary action on
+  the right: Copy (Slack; Create message when not written; Send in Slack once
+  that handler exists, the dashed "Send in Slack · Later" slot until then,
+  dropped first in a narrow window), Create in Jira / Confluence (Write draft
+  when not written), Open in Jira / Confluence for created items. In a narrow
+  window the hint goes, then "Create in Jira" / "Open in Jira" shorten to
+  "Create" / "Open"; buttons never truncate. Slack messages: recipient (click
+  to pick from the note's people and labels or type someone else), Ready to
+  paste / Not written / Writing / Editing / Polishing / Copied, the body with
+  @mentions and Markdown, Writing with Sonnet… Cancel, editing in the shared
+  Markdown editor with the compact bar (⌘↩ Done → improve), Improved by … with
+  Undo ⌘Z and Show changes, Copy (Slack marks: `*bold*`, `_italic_`,
+  `~strike~`, `<url|text>`) → Copied for 2 s → "Copied. Paste it in Slack."
+  with Mark as sent / Not yet. Jira and Confluence: fields from
+  `ActionTypeInfo` (the refused field marked), the description as headings,
+  bullets and checkboxes, Writing / Improving with Cancel, Creating in Jira…,
+  Created with key link, status, "Status from Jira at 3:52 PM · Refresh";
+  errors: not connected ("Sign in to Jira in your browser" → Settings →
+  Connections), sign-in expired (plus Retry), Signed in → Retry, refused,
+  unreachable, AI failed. States per tab: empty with one primary action (Slack
+  and connected Jira / Confluence: Open To do; not connected: Connect now,
+  in the toolbar too; connecting: Connecting…), no results naming the filters
+  with Clear filters.
+- **History → Actions** (built, `ActionsHistoryView.swift`): the toolbar
+  (search, Filter with Type, Outcome, Date, Source) and ActionRows by day.
+  Outcomes: Completed (done by Complete), Sent (a to-do sent to another type,
+  or a message marked as sent), Created (Jira / Confluence reported Done on
+  refresh: the `done` event's detail starts with "in "), Removed, Dismissed
+  (found but not added; loaded with `status=…,dismissed&history=1`). Each has
+  Restore, except a to-do sent to another type, which shows where it went
+  with Open in … (it lives on there; the canvas draws no Restore for it).
+  Restoring a dismissed item puts it back in To confirm. The selected item is
+  read-only with its timeline ("What happened"), Restore (with "Restored to …
+  · Open", the note-gone note, and Restore as a to-do when the type is off),
+  Delete forever (the only confirm). Empty: "Nothing here yet" with Open To
+  do; no results: names the filters, Clear filters. History → Jobs and Review
+  show the job's line from `Job.actionsFound` (Found N actions to confirm · by
+  type · Review them / Open in Actions, which open To do filtered to that job;
+  finding uses the loading pattern; failed has Try again); Review says before
+  apply that actions are looked for after it.
+
 - **Ask** (built): see [Ask](ask.md) → Actions in answers.
 - **Batch progress** (built): the Queue banner's steps end with "Finding
   actions (after you apply)" while the core's steps stop at review; after
@@ -477,4 +532,15 @@ Status per part; `built` parts ship in `clients/macos`.
 - **Snapshots** (built): `--states` renders flow "6 · Actions from your
   notes" (`SnapshotActions.swift`): every To do, Slack, Jira, Confluence,
   History, Ask and quick ask state above, plus the sidebar collapsed total
-  and History › Actions. `DISTILL_STATES_ONLY=<prefix>` renders a subset.
+  and History › Actions. `DISTILL_STATES_ONLY=<prefix>` renders a subset. The
+  v57 frames render under the schema's state ids (`todo-frame-7` at a 900 pt
+  window, `todo-card-*`, `slack-frame-2…4`, `jira-frame-3…6`,
+  `confluence-frame-3…6`, `*-card-completed`, `history-card-no-results-for-the`)
+  plus the open Filter panel per kind (`actions-*-filter`).
+- **Live check** (opt-in, `Tests/DistillTests/ActionsLiveTests.swift`): with
+  `DISTILL_LIVE_STATE=<temp state dir>` of a running core with seeded actions,
+  it completes a Slack message and undoes it, bulk-completes three to-dos and
+  undoes all three, checks Connect now asks Settings for Connections, and
+  renders the real screens offscreen at 900 and 1110 pt, with filters set on
+  every tab (`DISTILL_LIVE_OUT` keeps the PNGs; they are looked at, not
+  measured).

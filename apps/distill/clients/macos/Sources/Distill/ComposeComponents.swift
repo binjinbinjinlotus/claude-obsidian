@@ -40,12 +40,22 @@ struct DropdownButton<Items: View>: View {
     var height: CGFloat = 32
     var radius: CGFloat = 10
     var font: Font = Theme.body(12, .semibold)
+    /// A leading SF Symbol (the Filter and sort buttons of the Actions toolbar).
+    var systemImage: String? = nil
+    /// Filters are set: blue tint, blue ring, bold blue title ("Filter · 2").
+    var active = false
+    /// Set: a plain button that runs this (it opens a popover) instead of a menu of `items`.
+    var action: (() -> Void)? = nil
     @ViewBuilder var items: Items
     @Environment(\.snapshotMode) private var snapshot
 
     var body: some View {
         if snapshot {
             face
+        } else if let action {
+            Button(action: action) { face }
+                .buttonStyle(.plain)
+                .fixedSize(horizontal: width == nil, vertical: true)
         } else {
             Menu { items } label: { face }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
@@ -55,16 +65,34 @@ struct DropdownButton<Items: View>: View {
 
     private var face: some View {
         HStack(spacing: 6) {
-            Text(title).font(font).lineLimit(1).foregroundStyle(Theme.ink)
-            Spacer(minLength: 4)
-            Text("▾").font(Theme.body(11)).foregroundStyle(Theme.faint)
+            if let systemImage {
+                Image(systemName: systemImage).font(.system(size: 11, weight: .bold)).foregroundStyle(active ? Theme.primary : Theme.muted)
+            }
+            Text(title).font(active ? Theme.body(12, .bold) : font).lineLimit(1).foregroundStyle(active ? Theme.primary : Theme.ink)
+            Spacer(minLength: systemImage == nil ? 4 : 0)
+            Text("▾").font(Theme.body(11)).foregroundStyle(active ? Theme.primary : Theme.faint)
         }
         .padding(.horizontal, 10)
         .frame(width: width, height: height)
-        .frame(maxWidth: width == nil ? .infinity : nil)
-        .background(RoundedRectangle(cornerRadius: radius).fill(Color.white))
-        .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Theme.border))
+        .frame(maxWidth: width == nil && action == nil && systemImage == nil ? .infinity : nil)
+        .background {
+            if radius * 2 >= height { Capsule().fill(active ? Theme.primaryTint : Color.white) }
+            else { RoundedRectangle(cornerRadius: radius).fill(active ? Theme.primaryTint : Color.white) }
+        }
+        .overlay {
+            if radius * 2 >= height { Capsule().strokeBorder(active ? ActionsTheme.selectedStroke : Theme.border) }
+            else { RoundedRectangle(cornerRadius: radius).strokeBorder(active ? ActionsTheme.selectedStroke : Theme.border) }
+        }
         .contentShape(Rectangle())
+    }
+}
+
+extension DropdownButton where Items == EmptyView {
+    /// A dropdown-looking button that opens something other than a menu (the Filter popover).
+    init(title: String, width: CGFloat? = nil, height: CGFloat = 32, radius: CGFloat = 10, font: Font = Theme.body(12, .semibold),
+         systemImage: String? = nil, active: Bool = false, action: @escaping () -> Void) {
+        self.init(title: title, width: width, height: height, radius: radius, font: font, systemImage: systemImage, active: active,
+                  action: action, items: { EmptyView() })
     }
 }
 

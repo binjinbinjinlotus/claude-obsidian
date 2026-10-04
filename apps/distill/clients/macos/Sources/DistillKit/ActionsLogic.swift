@@ -440,7 +440,10 @@ public enum ActionHistory {
             case "copied": return ("Copied", e.at)
             case "created": return ("Created \(e.detail ?? item.external?.key ?? "")".trimmingCharacters(in: .whitespaces), e.at)
             case "status": return ("Status: \(e.detail ?? "")", e.at)
-            case "done": return ("Done", e.at)
+            case "done":
+                // Complete records the status it left; Jira / Confluence's own Done reads "in Jira (Done)".
+                if let d = e.detail, d.hasPrefix("in ") { return ("Done \(d)", e.at) }
+                return ("Completed by you", e.at)
             case "sent": return ("Marked as sent", e.at)
             case "removed": return ("Removed by you", e.at)
             case "restored": return ("Restored", e.at)

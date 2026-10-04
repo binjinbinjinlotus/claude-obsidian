@@ -2434,14 +2434,12 @@
             "sparkles",
             "arrow.up",
             "progress.indicator"
-          ],
-          "swiftPending": "designed for the To do Filter button; not in Swift yet"
+          ]
         },
         {
           "name": "active",
           "type": "boolean",
-          "default": false,
-          "swiftPending": "designed for the To do Filter button; not in Swift yet"
+          "default": false
         }
       ],
       "board": {
@@ -3173,7 +3171,7 @@
     {
       "name": "FilterPanel",
       "title": "Filter panel",
-      "swift": null,
+      "swift": "clients/macos/Sources/Distill/FilterPanel.swift",
       "preview": [
         300,
         560
@@ -3411,7 +3409,7 @@
     {
       "name": "ActionsToolbar",
       "title": "Actions toolbar",
-      "swift": null,
+      "swift": "clients/macos/Sources/Distill/ActionsToolbar.swift",
       "preview": [
         820,
         30
@@ -3610,7 +3608,7 @@
     {
       "name": "ActionRow",
       "title": "Action row",
-      "swift": null,
+      "swift": "clients/macos/Sources/Distill/ActionRow.swift",
       "preview": [
         330,
         56

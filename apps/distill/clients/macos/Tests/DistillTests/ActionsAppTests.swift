@@ -39,6 +39,22 @@ final class ActionsAppTests: XCTestCase {
         XCTAssertFalse(store.gapTaken(conversationID: "c", turnIndex: 1, answer: "Other", isLast: true), "a dismissed gap item shows the callout again")
     }
 
+    func testBulkCompleteIsOneToastWhoseUndoCoversAll() {
+        let e = AppModel(fixtureSettings: Settings(), jobs: [], queue: [], status: nil)
+        let store = e.actions
+        let items = [ActionItem(id: "a", title: "A"), ActionItem(id: "b", type: "slack", status: .ready, title: "B", body: "x"),
+                     ActionItem(id: "c", type: "jira", status: .created, title: "C")]
+        store.loadFixture(types: [], items: items)
+        store.complete(items)
+        XCTAssertEqual(store.toast?.text, "Completed 3")
+        XCTAssertFalse(store.toast?.history ?? true, "the toast is Completed · Undo, nothing else")
+        XCTAssertEqual(store.completing, ["a", "b", "c"], "every row stays struck through while it leaves")
+        store.toast?.undo?()
+        XCTAssertTrue(store.completing.isEmpty, "Undo brings back all of them, not only the last")
+        store.complete(items[0])
+        XCTAssertEqual(store.toast?.text, "Completed")
+    }
+
     func testEventsUpdateTheStore() {
         let e = AppModel(fixtureSettings: Settings(), jobs: [], queue: [], status: nil)
         let store = e.actions

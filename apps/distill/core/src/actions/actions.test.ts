@@ -224,8 +224,9 @@ describe('registry', () => {
     assert.equal(infos.todo!.improveAfterEdit, false);
     assert.equal(infos.todo!.defaultDraftPrompt, null);
     assert.deepEqual(infos.slack!.fields.map((f) => f.key), ['to']);
-    assert.deepEqual(infos.slack!.handlers.map((h) => [h.id, h.available]), [['copy', true], ['markSent', true], ['send', false]]);
-    assert.equal(infos.slack!.handlers[2]!.reason, 'Later');
+    assert.deepEqual(infos.slack!.handlers.map((h) => [h.id, h.available]), [['copy', true], ['markSent', true], ['complete', true], ['send', false]]);
+    assert.equal(infos.slack!.handlers[3]!.reason, 'Later');
+    for (const id of ['todo', 'slack', 'jira', 'confluence']) assert.equal(infos[id]!.handlers.find((x) => x.id === 'complete')!.label, 'Complete');
     assert.deepEqual(infos.jira!.fields.map((f) => f.key), ['project', 'issueType', 'priority', 'assignee']);
     assert.deepEqual(infos.jira!.handlers.map((h) => [h.id, h.available]), [['create', false], ['refresh', false], ['complete', true]]);
     assert.equal(infos.jira!.connectionID, 'atlassian');
@@ -723,6 +724,45 @@ describe('lifecycle', () => {
     await assert.rejects(h.service.restoreAction(p.id), { code: 'invalid_state' });
   });
 
+  test('Complete: every handler type, from ready / created / sent, and restore puts it back', async () => {
+    const h = harness();
+    // Slack from ready.
+    const msg = await h.service.createAction({ type: 'slack', title: 'Tell Mei', body: 'Room booked', fields: { to: 'Mei' } });
+    assert.equal(msg.status, 'ready');
+    const done = await h.service.performAction(msg.id, 'complete');
+    assert.equal(done.status, 'done');
+    assert.deepEqual([done.events.at(-1)!.event, done.events.at(-1)!.detail], ['done', 'ready']);
+    assert.equal((await h.service.listActions()).some((i) => i.id === msg.id), false, 'it left the list');
+    assert.equal((await h.service.restoreAction(msg.id)).status, 'ready');
+    // Slack from sent (Mark as sent, then Complete).
+    await h.service.performAction(msg.id, 'markSent');
+    assert.equal((await h.service.performAction(msg.id, 'complete')).status, 'done');
+    assert.equal((await h.service.restoreAction(msg.id)).status, 'sent');
+    // Slack from open (not written yet).
+    const empty = await h.service.createAction({ type: 'slack', title: 'Tell Tom', fields: { to: 'Tom' } });
+    await h.service.whenIdle();
+    const before = (await h.service.getAction(empty.id))!.status;
+    await h.service.performAction(empty.id, 'complete');
+    assert.equal((await h.service.restoreAction(empty.id)).status, before);
+
+    // Refused from pending, removed and dismissed; a to-do sent to another type completes there.
+    const removed = await h.service.createAction({ type: 'slack', title: 'R', body: 'x', fields: { to: 'A' } });
+    await h.service.removeAction(removed.id);
+    await assert.rejects(h.service.performAction(removed.id, 'complete'), { code: 'invalid_state' });
+    await assert.rejects(h.service.performAction(msg.id, 'complete').then(() => h.service.performAction(msg.id, 'complete')), { code: 'invalid_state' }, 'done twice');
+    const todo = await h.service.createAction({ type: 'todo', title: 'Write it up' });
+    await h.service.sendActionTo(todo.id, 'confluence');
+    await assert.rejects(h.service.performAction(todo.id, 'complete'), { code: 'invalid_state' });
+    writeTea(h);
+    h.runner.find = () => ({ structured: { items: TEA_FOUND.items.slice(0, 2) } });
+    await h.service.findInJob(job(h, 'job-c', ['inbox/tea.md'], ['wiki/sources/tea.md']));
+    const [pending, other] = (await h.service.listActions()).filter((i) => i.status === 'pending');
+    assert.ok(pending && other, 'two found items wait to be confirmed');
+    await assert.rejects(h.service.performAction(pending.id, 'complete'), { code: 'invalid_state' });
+    await h.service.dismissActions([other.id]);
+    await assert.rejects(h.service.performAction(other.id, 'complete'), { code: 'invalid_state' });
+  });
+
   test('improve keeps previousBody; undo restores; an edit clears it', async () => {
     const h = harness();
     const msg = await h.service.createAction({ type: 'slack', title: 'Tell Mei', body: 'hey mei room is book', fields: { to: 'Mei' } });
@@ -902,11 +942,26 @@ describe('Jira and Confluence handlers (fake HTTP)', () => {
     assert.equal(fields.description.content[0].type, 'heading');
     await assert.rejects(h.service.performAction(t.id, 'create'), { code: 'invalid_state' }, 'created once');
 
+    // Complete a created ticket: done in Distill, the Jira status is left as it was; Undo -> created.
+    const statusBefore = (await h.service.getAction(t.id))!.external!.status;
+    const writes = h.http.calls.filter((c) => c.method !== 'GET').length;
+    const completed = await h.service.performAction(t.id, 'complete');
+    assert.equal(completed.status, 'done');
+    assert.equal(completed.external!.status, statusBefore);
+    assert.deepEqual([completed.events.at(-1)!.event, completed.events.at(-1)!.detail], ['done', 'created']);
+    assert.equal(h.http.calls.filter((c) => c.method !== 'GET').length, writes, 'Complete never writes to Jira');
+    assert.equal((await h.service.restoreAction(t.id)).status, 'created');
+
     status = { name: 'Done', statusCategory: { key: 'done' } };
     const refreshed = await h.service.performAction(t.id, 'refresh');
     assert.equal(refreshed.status, 'done');
     assert.equal(refreshed.external!.status, 'Done');
     assert.equal(refreshed.external!.key, 'PX-481');
+    // Automatic Done is kept; its Undo puts the ticket back as created.
+    assert.equal(refreshed.events.at(-1)!.event, 'done');
+    const restored = await h.service.restoreAction(t.id);
+    assert.equal(restored.status, 'created');
+    assert.equal(restored.external!.key, 'PX-481');
   });
 
   test('Jira errors map to ActionError codes and keep the draft', async () => {

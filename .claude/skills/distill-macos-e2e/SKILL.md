@@ -119,6 +119,10 @@ user runs.**
   widened the whole screen, centred it, and cut off the left edge, so the To do
   title and search field were gone. A quick wrap fixed the cut-off but looked
   bad, so judge the result by eye, not only that nothing is cut off.
+- **Footers at the minimum width.** The Jira detail footer read "Compl…" and
+  "Create…" in a 900 pt window, while every 1200 pt snapshot looked right.
+  Render the screen at 900 pt with real data (`ActionsLiveTests` does it
+  offscreen) and check that no button label is cut.
 - **Long content.** Controls meant to stay pinned at the bottom (the model row,
   the source picker in quick windows) scrolled away when the text got long.
   Test with long, multi-line text and with images inside the text.

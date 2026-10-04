@@ -17,6 +17,20 @@ supersede it with a new entry.
 
 ## 2026-10-03
 
+- **Actions redesign (canvas v57): Complete everywhere, one toolbar, list
+  plus detail.** Complete ("you've handled it") is a handler of every type,
+  Slack included. It works from ready, created and sent (and open), moves
+  the item to `done` whatever the external status says, records the status
+  it left as the `done` event's detail, and Undo (`restoreAction`) puts it
+  back exactly there. Bulk Complete shows one toast, "Completed N · Undo",
+  and its Undo restores all of them (before, only the last one came back).
+  To do keeps only its checkbox: to-do rows get no hover Complete, since the
+  checkbox already is Complete. The automatic Done when Jira or Confluence
+  reports Done on refresh is kept; its Undo returns the item to created.
+  Slack's empty state has one primary action, Open To do, because messages
+  come from notes and to-dos (Send to), not from a blank compose. History →
+  Actions filters dates by presets only (Today, This week, Last 30 days); no
+  date-range picker until someone needs one. See [Actions](actions.md).
 - **The schema owns the Actions boards from canvas v57:** ActionsTodo,
   ActionsSlack, ActionsJira, ActionsConfluence and ActionsHistory render from
   `design/screens/actions.json`; edits go there (and to its fragments), never

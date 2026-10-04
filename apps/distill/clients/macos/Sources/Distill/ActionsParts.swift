@@ -14,14 +14,14 @@ enum ActionsTheme {
     static let doneFill = Color(hex: 0xF3FDE4)
     static let changedFill = Color(hex: 0xF3FDE4)
 
-    /// Icon tile per type: (SF symbol, fill, ink).
+    /// Icon tile per type: (SF symbol, fill, ink), as the canvas ActionRow draws them.
     static func typeStyle(_ id: String) -> (String, Color, Color) {
         switch id {
-        case "todo": return ("checkmark.circle", Theme.limeTint, Theme.limeInk)
-        case "slack": return ("number", Theme.pinkTint, Theme.pinkInk)
-        case "jira": return ("square.stack.3d.up", Theme.skyTint, Theme.skyInk)
-        case "confluence": return ("doc.text", Theme.primaryTint, Theme.primary)
-        case "email": return ("envelope", Theme.panel, Theme.muted)
+        case "todo": return ("checkmark.circle", Theme.primaryTint, Theme.primary)
+        case "slack": return ("text.bubble", Theme.pinkTint, Theme.pinkInk)
+        case "jira": return ("ticket", Theme.skyTint, Theme.skyInk)
+        case "confluence": return ("doc.text", Theme.limeTint, Theme.limeInk)
+        case "email": return ("envelope", Theme.peachTint, Theme.peachInk)
         default: return ("bolt", Theme.peachTint, Theme.peachInk)
         }
     }
@@ -567,14 +567,16 @@ enum ActionsClock {
 /// Calm full-screen states: empty, update the core, type turned off.
 struct ActionsEmpty<Buttons: View>: View {
     var icon = "checklist"
+    /// The icon tile: (fill, ink); a type's own colours on its tab.
+    var colors: (Color, Color) = (Theme.limeTint, Theme.limeInk)
     let title: String
     let message: String
     @ViewBuilder var buttons: Buttons
 
     var body: some View {
         VStack(spacing: 12) {
-            Image(systemName: icon).font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.limeInk)
-                .frame(width: 52, height: 52).background(RoundedRectangle(cornerRadius: 16).fill(Theme.limeTint))
+            Image(systemName: icon).font(.system(size: 22, weight: .semibold)).foregroundStyle(colors.1)
+                .frame(width: 52, height: 52).background(RoundedRectangle(cornerRadius: 16).fill(colors.0))
             Text(title).font(.system(size: 20, weight: .semibold, design: .rounded))
             Text(message).font(Theme.body(14)).foregroundStyle(Theme.muted).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)

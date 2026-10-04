@@ -45,51 +45,7 @@ extension ActionsStore {
     }
 }
 
-// MARK: - Message types (Slack)
-
-struct MessageTypeScreen: View {
-    @ObservedObject var store: ActionsStore
-    let type: ActionTypeInfo
-    @State private var query = ""
-
-    var body: some View {
-        let list = store.items(type: type.id)
-            .filter { [.open, .drafting, .ready].contains($0.status) && ActionSearch.match($0, query) != nil }
-            .sorted { $0.createdAt > $1.createdAt }
-        let pending = store.pending.filter { $0.type == type.id }
-        VStack(alignment: .leading, spacing: 0) {
-            ActionsHeader(eyebrow: "ACTIONS", title: type.pluralLabel, subtitle: store.lastFound(type: type.id)) {
-                ActionButton(title: "History", icon: "clock", height: 34) { store.historyRequest += 1 }
-            }
-            HStack(spacing: 6) {
-                ActionSearchField(text: $query, placeholder: "Search \(type.pluralLabel.lowercased())", width: 200)
-                StatusBadge(text: "Status: Open", fill: Theme.primaryTint, ink: Theme.primary)
-                Spacer()
-                Text("Newest first").font(Theme.body(12)).foregroundStyle(Theme.muted)
-            }
-            .padding(.horizontal, 32).padding(.top, 14).padding(.bottom, 10)
-            Scrolling {
-                VStack(alignment: .leading, spacing: 14) {
-                    if store.phase != .loaded {
-                        ActionShimmerRows(count: 3)
-                    } else if list.isEmpty && pending.isEmpty {
-                        ActionsEmpty(icon: ActionsTheme.typeStyle(type.id).0, title: query.isEmpty ? "No \(type.pluralLabel.lowercased()) to send" : "No \(type.pluralLabel.lowercased()) match",
-                                     message: "When a note or an answer says someone should hear something, Distill writes it here. Sent and removed ones are in History.") {
-                            ActionButton(title: "History", icon: "clock") { store.historyRequest += 1 }
-                        }
-                        .padding(.top, 60)
-                    } else {
-                        if !pending.isEmpty { ToConfirmGroup(store: store, items: pending) }
-                        ForEach(list) { item in
-                            MessageCard(store: store, type: type, item: item).frame(maxWidth: 876, alignment: .leading)
-                        }
-                    }
-                }
-                .padding(.horizontal, 32).padding(.bottom, 80).padding(.top, 4)
-            }
-        }
-    }
-}
+// MARK: - Message types (Slack): the detail card (TypeListScreen lists them)
 
 struct MessageCard: View {
     @ObservedObject var store: ActionsStore
@@ -297,41 +253,62 @@ struct MessageCard: View {
 
     // MARK: Footer
 
+    /// Same order on every tab: edit and remove on the left; Complete, then the primary action
+    /// (Copy; Create message when not written; Send in Slack once it exists).
     @ViewBuilder private var footer: some View {
-        HStack(spacing: 8) {
-            if draft != nil {
+        if draft != nil {
+            HStack(spacing: 8) {
                 Spacer()
                 ActionButton(title: "Cancel", kind: .plain) { store.editing[item.id] = nil }
                 ActionButton(title: "Done", kind: .primary) { store.finishEdit(item) }
                     .keyboardShortcut(.return, modifiers: .command)
-            } else if item.status == .open && (item.body ?? "").isEmpty && run == nil {
-                ActionButton(title: "Create message", kind: .primary, height: 30) { store.draft(item) }
-                Text("\(model) writes it from the note").font(Theme.body(11)).foregroundStyle(Theme.muted)
-                Spacer()
-                IconButton(systemImage: "trash", size: 30, help: "Remove") { store.remove(item) }
-            } else {
-                let busy = run != nil || item.status == .drafting
+            }
+            .padding(.top, 4)
+        } else {
+            // Narrow windows drop the dashed "Send in Slack · Later" slot first, then the hint.
+            ViewThatFits(in: .horizontal) {
+                footerRow(later: true, hint: true)
+                footerRow(later: false, hint: true)
+                footerRow(later: false, hint: false)
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private func footerRow(later: Bool, hint: Bool) -> some View {
+        let notWritten = item.status == .open && (item.body ?? "").isEmpty && run == nil
+        let busy = run != nil || item.status == .drafting
+        let flash = store.copiedFlash.contains(item.id)
+        let send = type.handler("send")
+        return HStack(spacing: 8) {
+            if !busy && !notWritten { IconButton(systemImage: "pencil", size: 30, help: "Edit") { store.beginEdit(item) } }
+            IconButton(systemImage: "trash", size: 30, help: "Remove") { store.remove(item) }
+            if notWritten && hint {
+                Text("\(model) writes it from the note").font(Theme.body(11)).foregroundStyle(Theme.muted).lineLimit(1).fixedSize()
+            }
+            Spacer(minLength: 8)
+            if later, !notWritten, let send, !send.available { LaterSlot(title: send.label == "send" ? "Send in Slack" : send.label) }
+            SoftButton(title: "Complete", size: .small, systemImage: "checkmark") { store.complete(item) }
+                .fixedSize()
+                .disabled(busy).opacity(busy ? 0.45 : 1)
+                .help("Complete (you’ve handled it)")
+            if notWritten {
+                PrimaryButton(title: "Create message", size: .small) { store.draft(item) }.fixedSize()
+            } else if let send, send.available {
                 if type.handler("copy") != nil {
-                    ActionButton(title: store.copiedFlash.contains(item.id) ? "Copied" : "Copy",
-                                 icon: store.copiedFlash.contains(item.id) ? "checkmark" : "doc.on.doc",
-                                 kind: store.copiedFlash.contains(item.id) ? .done : .primary) { store.copy(item) }
-                        .disabled(busy || (item.body ?? "").isEmpty).opacity(busy ? 0.45 : 1)
+                    SoftButton(title: flash ? "Copied" : "Copy", size: .small, systemImage: flash ? "checkmark" : "doc.on.doc") { store.copy(item) }
+                        .disabled(busy).opacity(busy ? 0.45 : 1)
                 }
-                if let send = type.handler("send") {
-                    if send.available {
-                        ActionButton(title: send.label, icon: "paperplane", kind: .soft) { store.perform(item, handler: "send") }
-                    } else {
-                        LaterSlot(title: send.label == "send" ? "Send in Slack" : send.label)
-                    }
-                }
-                Spacer()
-                if !busy {
-                    IconButton(systemImage: "pencil", size: 30, help: "Edit") { store.beginEdit(item) }
-                    IconButton(systemImage: "trash", size: 30, help: "Remove") { store.remove(item) }
+                PrimaryButton(title: send.label, systemImage: "paperplane", size: .small, enabled: !busy) { store.perform(item, handler: "send") }
+            } else if type.handler("copy") != nil {
+                if flash {
+                    SoftButton(title: "Copied", tint: Theme.limeInk, fill: ActionsTheme.doneFill, size: .small, systemImage: "checkmark") { store.copy(item) }
+                } else {
+                    PrimaryButton(title: "Copy", systemImage: "doc.on.doc", size: .small, enabled: !busy && !(item.body ?? "").isEmpty) { store.copy(item) }
+                        .fixedSize()
                 }
             }
         }
-        .padding(.top, 4)
     }
 }
 
@@ -447,119 +424,7 @@ struct ActionBodyText: View {
     }
 }
 
-// MARK: - External types (Jira, Confluence)
-
-struct ExternalTypeScreen: View {
-    @ObservedObject var store: ActionsStore
-    let type: ActionTypeInfo
-    @State private var query = ""
-
-    private var service: String { store.typeName(type.id) }
-
-    var body: some View {
-        let all = store.items(type: type.id).filter { ActionSearch.match($0, query) != nil }
-        let drafts = all.filter { [.open, .drafting, .ready, .creating].contains($0.status) }.sorted { $0.createdAt > $1.createdAt }
-        let created = all.filter { $0.status == .created }.sorted { $0.updatedAt > $1.updatedAt }
-        let pending = store.pending.filter { $0.type == type.id }
-        let selectedID = store.selected[type.id]
-        let selected = (drafts + created).first { $0.id == selectedID } ?? drafts.first ?? created.first
-        VStack(alignment: .leading, spacing: 0) {
-            ActionsHeader(eyebrow: "ACTIONS", title: type.pluralLabel, subtitle: store.lastFound(type: type.id)) {
-                ActionButton(title: "History", icon: "clock", height: 34) { store.historyRequest += 1 }
-            }
-            HStack(spacing: 6) {
-                ActionSearchField(text: $query, placeholder: "Search \(type.pluralLabel.lowercased())", width: 180)
-                StatusBadge(text: "Status: Drafts, Created", fill: Theme.primaryTint, ink: Theme.primary)
-                Spacer()
-                connectionLine
-            }
-            .padding(.horizontal, 32).padding(.top, 14).padding(.bottom, 8)
-            .onAppear { store.engine?.loadConnections() }
-            if store.phase != .loaded {
-                ActionShimmerRows(count: 3).padding(.horizontal, 20)
-                Spacer()
-            } else if drafts.isEmpty && created.isEmpty && pending.isEmpty {
-                ActionsEmpty(icon: ActionsTheme.typeStyle(type.id).0, title: "No \(type.pluralLabel.lowercased()) yet",
-                             message: "When a note asks for one, Distill drafts it here. Nothing is created in \(service) until you press Create.") {
-                    ActionButton(title: "History", icon: "clock") { store.historyRequest += 1 }
-                }
-            } else {
-                HStack(alignment: .top, spacing: 18) {
-                    Scrolling {
-                        VStack(alignment: .leading, spacing: 1) {
-                            if !pending.isEmpty { ToConfirmGroup(store: store, items: pending) }
-                            if !drafts.isEmpty {
-                                ActionGroupHeader(title: "DRAFTS", count: drafts.count, icon: "pencil.line")
-                                ForEach(drafts) { row($0, selected: $0.id == selected?.id) }
-                            }
-                            if !created.isEmpty {
-                                ActionGroupHeader(title: "CREATED IN \(service.uppercased())", count: created.count, icon: "checkmark.seal")
-                                ForEach(created) { row($0, selected: $0.id == selected?.id) }
-                            }
-                        }
-                        .padding(.bottom, 60)
-                    }
-                    .frame(width: 330)
-                    Scrolling {
-                        if let selected {
-                            ExternalCard(store: store, type: type, item: selected)
-                                .frame(maxWidth: 560, alignment: .leading)
-                                .padding(2).padding(.bottom, 60)
-                        }
-                    }
-                }
-                .padding(.leading, 20).padding(.trailing, 24)
-            }
-        }
-    }
-
-    /// "acme.atlassian.net · connected": the connection's site (Settings → Connections), and
-    /// connected from the Create handler, which the core turns off without a connection.
-    private var connectionLine: some View {
-        let create = type.handler("create")
-        let connected = create?.available ?? false
-        let site = type.connectionID.flatMap { store.engine?.settingsUI.connection($0)?.site }
-            .map { $0.replacingOccurrences(of: "https://", with: "") + (type.id == "confluence" ? "/wiki" : "") }
-        return HStack(spacing: 5) {
-            Image(systemName: connected ? "checkmark.circle.fill" : "xmark.circle").font(.system(size: 11))
-                .foregroundStyle(connected ? Theme.limeInk : Theme.peachInk)
-            Text(site ?? (type.connectionID == "atlassian" ? "Atlassian" : service))
-            Text(connected ? "· connected" : "· not connected").foregroundStyle(connected ? Theme.muted : Theme.peachInk)
-        }
-        .font(Theme.body(12)).foregroundStyle(Theme.muted)
-        .help(create?.reason ?? "")
-    }
-
-    private func row(_ item: ActionItem, selected: Bool) -> some View {
-        let style = ActionsTheme.typeStyle(type.id)
-        return Button { store.selected[type.id] = item.id } label: {
-            HStack(spacing: 10) {
-                Image(systemName: style.0).font(.system(size: 11, weight: .semibold)).foregroundStyle(style.2)
-                    .frame(width: 28, height: 28).background(RoundedRectangle(cornerRadius: 8).fill(style.1))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(item.title).font(Theme.body(13, .semibold)).lineLimit(2).multilineTextAlignment(.leading)
-                    Text(meta(item)).font(Theme.body(11)).foregroundStyle(Theme.muted).lineLimit(1)
-                }
-                Spacer(minLength: 4)
-                ExternalStatusBadge(store: store, item: item, compact: true)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 10)
-            .background(RoundedRectangle(cornerRadius: 12).fill(selected ? ActionsTheme.selectedFill : .clear))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(selected ? ActionsTheme.selectedStroke : .clear, lineWidth: 1.5))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func meta(_ item: ActionItem) -> String {
-        if item.status == .created, let key = item.external?.key {
-            return "\(key) · created \(HistoryTime.phrase(item.lastEvent("created")?.at ?? item.updatedAt))"
-        }
-        let from = ActionList.noteTitle(item).map { "From \($0)" } ?? "Added by you"
-        let written = item.status == .open && (item.body ?? "").isEmpty ? "not written yet" : "created \(HistoryTime.phrase(item.createdAt))"
-        return "\(from) · \(written)"
-    }
-}
+// MARK: - External types (Jira, Confluence): status badge and detail card
 
 struct ExternalStatusBadge: View {
     @ObservedObject var store: ActionsStore
@@ -840,42 +705,62 @@ struct ExternalCard: View {
 
     // MARK: Footer
 
+    /// Same order on every tab: edit and remove on the left; Complete, then the primary action
+    /// (Create in Jira, Write draft when not written, Open in Jira once created).
     @ViewBuilder private var footer: some View {
-        HStack(spacing: 8) {
-            if draft != nil {
+        if draft != nil {
+            HStack(spacing: 8) {
                 Spacer()
                 ActionButton(title: "Cancel", kind: .plain) { store.editing[item.id] = nil }
                 ActionButton(title: "Done", kind: .primary) { store.finishEdit(item) }
                     .keyboardShortcut(.return, modifiers: .command)
-            } else if item.status == .created {
-                ActionButton(title: "Open in \(service)", icon: "arrow.up.right", kind: .primary) { open(item.external?.url) }
-                ActionButton(title: "Mark done", icon: "checkmark", kind: .soft) { store.markDone(item) }
-                Spacer()
+            }
+            .padding(.top, 4)
+        } else {
+            // Narrow windows drop the hint, then shorten "Create in Jira" / "Open in Jira" to "Create" / "Open".
+            ViewThatFits(in: .horizontal) {
+                footerRow(hint: true)
+                footerRow(hint: false)
+                footerRow(hint: false, short: true)
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private func footerRow(hint: Bool, short: Bool = false) -> some View {
+        let busy = creating || writing || improving
+        return HStack(spacing: 8) {
+            if item.status == .created {
                 IconButton(systemImage: "trash", size: 30, help: "Remove from Distill (stays in \(service))") { store.remove(item) }
-            } else if notWritten && !writing {
-                ActionButton(title: "Write draft", kind: .primary, height: 30) { store.draft(item) }
-                Text("with \(model)").font(Theme.body(11)).foregroundStyle(Theme.muted)
-                Spacer()
-                IconButton(systemImage: "trash", size: 30, help: "Remove") { store.remove(item) }
             } else {
-                if creating {
-                    Spinner(size: 14)
-                    Text("Creating in \(service)…").font(Theme.body(13, .semibold))
+                if !busy && !notWritten { IconButton(systemImage: "pencil", size: 30, help: "Edit") { store.beginEdit(item) } }
+                if !creating { IconButton(systemImage: "trash", size: 30, help: "Remove") { store.remove(item) } }
+                if notWritten && !writing && hint {
+                    Text("\(model) writes it").font(Theme.body(11)).foregroundStyle(Theme.muted).lineLimit(1).fixedSize()
+                }
+            }
+            Spacer(minLength: 8)
+            if creating {
+                Spinner(size: 14)
+                Text("Creating in \(service)…").font(Theme.body(13, .semibold)).lineLimit(1).fixedSize()
+            } else {
+                SoftButton(title: "Complete", size: .small, systemImage: "checkmark") { store.complete(item) }
+                    .fixedSize()
+                    .disabled(busy).opacity(busy ? 0.45 : 1)
+                    .help(item.status == .created ? "Complete (you’ve handled it; it stays as it is in \(service))" : "Complete (you’ve handled it)")
+                if item.status == .created {
+                    PrimaryButton(title: short ? "Open" : "Open in \(service)", systemImage: "arrow.up.right.square", size: .small) { open(item.external?.url) }
+                        .fixedSize().help("Open in \(service)")
+                } else if notWritten && !writing {
+                    PrimaryButton(title: "Write draft", size: .small) { store.draft(item) }.fixedSize()
                 } else {
                     let label = type.handler("create")?.label ?? "Create"
-                    ActionButton(title: label.lowercased().hasPrefix("create") && label.count > 6 ? label : "Create in \(service)", icon: "plus", kind: .primary) {
-                        store.perform(item, handler: "create")
-                    }
-                    .disabled(writing || improving).opacity(writing || improving ? 0.45 : 1)
-                }
-                Spacer()
-                if !creating && !writing && !improving {
-                    IconButton(systemImage: "pencil", size: 30, help: "Edit") { store.beginEdit(item) }
-                    IconButton(systemImage: "trash", size: 30, help: "Remove") { store.remove(item) }
+                    let full = label.lowercased().hasPrefix("create") && label.count > 6 ? label : "Create in \(service)"
+                    PrimaryButton(title: short ? "Create" : full, systemImage: "plus", size: .small, enabled: !busy) { store.perform(item, handler: "create") }
+                        .fixedSize().help(full)
                 }
             }
         }
-        .padding(.top, 4)
     }
 
     private func open(_ url: String?) {
