@@ -507,7 +507,7 @@ struct QueueView: View {
         VStack(spacing: 4) {
             if let batch = engine.runningBatch {
                 ForEach(batch.sources, id: \.self) { source in
-                    let entry = Self.batchEntry(source, vaultPath: batch.vaultPath)
+                    let entry = MainQueueEntries.entry(source, vaultPath: batch.vaultPath)
                     QueueRowView(title: QueueRows.title(entry), meta: QueueRows.meta(entry, inBatch: true), tileName: entry.name,
                                  status: .inBatch, help: QueueRows.pillHelp(.inBatch, settleSeconds: engine.settings.settleSeconds),
                                  noteTile: entry.kind == .note && entry.name.hasSuffix(".md"),

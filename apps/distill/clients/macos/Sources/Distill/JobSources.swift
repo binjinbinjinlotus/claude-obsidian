@@ -12,8 +12,12 @@ struct JobSourcesView: View {
     var mode: Mode
     /// Snapshots: folders that start open.
     var openFolders: Set<String> = []
+    /// Snapshots: which pages use each source (no bundle on disk).
+    var fixtureUsage: [String: [String]]? = nil
     @State private var opened: Set<String>?
-    @State private var usage: [String: [String]]?
+    @State private var loadedUsage: [String: [String]]?
+
+    private var usage: [String: [String]]? { fixtureUsage ?? loadedUsage }
 
     private var open: Set<String> { opened ?? openFolders }
 
@@ -151,7 +155,7 @@ struct JobSourcesView: View {
 
     /// Which pages use each source (Review only; see SourceUsage for the heuristic).
     private func loadUsage() {
-        guard mode == .review else { return }
+        guard mode == .review, fixtureUsage == nil else { return }
         let changed = job.state == .completed ? job.changedPaths : (job.approval?.plan?.changedPaths ?? [])
         let pages: [(path: String, text: String)]?
         if job.state == .completed {
@@ -161,12 +165,12 @@ struct JobSourcesView: View {
         } else {
             pages = nil
         }
-        guard let pages, !pages.isEmpty else { usage = nil; return }
+        guard let pages, !pages.isEmpty else { loadedUsage = nil; return }
         var out: [String: [String]] = [:]
         for file in job.files where !file.hasSuffix(QueueRows.manifestSuffix) {
             out[file] = SourceUsage.pages(using: file, in: pages)
         }
-        usage = out
+        loadedUsage = out
     }
 }
 
@@ -175,6 +179,17 @@ struct JobSourcesView: View {
 @MainActor
 enum MainQueueEntries {
     private static var cache: [String: QueueEntry] = [:]
+
+    /// A batch source as a row: a folder from the cache (or the vault), a file as before.
+    static func entry(_ source: BatchSource, vaultPath: String) -> QueueEntry {
+        switch source {
+        case .file(let f): return QueueView.batchEntry(f, vaultPath: vaultPath)
+        case .folder(let p, let files): return folder(p, files: files, vaultPath: vaultPath)
+        }
+    }
+
+    /// Snapshots: a folder the fixtures describe (no vault on disk).
+    static func seed(_ entry: QueueEntry, path: String, vaultPath: String) { cache[vaultPath + "|" + path] = entry }
 
     static func folder(_ path: String, files: [String], vaultPath: String) -> QueueEntry {
         let key = vaultPath + "|" + path

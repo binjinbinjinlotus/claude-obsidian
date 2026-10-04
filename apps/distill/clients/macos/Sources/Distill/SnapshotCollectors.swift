@@ -33,8 +33,9 @@ enum CollectorFixtures {
     }
 
     static let inboxFiles: [CollectorRunFile] = [
-        .init(name: "gongfu-brewing-guide.pdf", outcome: .copied), .init(name: "Screenshot 08.52.10.png", outcome: .copied),
-        .init(name: "tasting-notes.md", outcome: .copied), .init(name: "gyokuro.md", outcome: .skipped),
+        .init(name: "gongfu-brewing-guide.pdf", outcome: .copied),
+        .init(name: "Tea tasting trip/", outcome: .copied, queueName: "Tea tasting trip", kind: "folder", fileCount: 12, newCount: 5),
+        .init(name: "Q3 tea club plan.gdoc", outcome: .copied), .init(name: "gyokuro.md", outcome: .skipped),
         .init(name: "gyokuro copy.md", outcome: .skipped),
     ]
 
@@ -65,7 +66,7 @@ enum CollectorFixtures {
 
     static func inbox() -> Collector {
         Collector(id: "inbox", kind: .folder, name: "Distill Inbox", vaultPath: "", enabled: true, schedule: .hourly,
-                  folder: FolderCollectorSettings(source: home + "/Distill Inbox"),
+                  folder: FolderCollectorSettings(source: home + "/Distill Inbox", includeSubfolders: true),
                   status: CollectorStatus(nextRunAt: at(10), lastRun: inboxRuns()[0], collectedCount: 128))
     }
 

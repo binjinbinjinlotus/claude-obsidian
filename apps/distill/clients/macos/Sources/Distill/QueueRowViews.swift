@@ -53,22 +53,20 @@ struct QueueRowView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(title).font(Theme.body(14, .semibold)).lineLimit(1).truncationMode(.middle)
-                    if kind == .folder {
+                    if kind == .folder, !tree.isEmpty {
                         Image(systemName: isOpen ? "chevron.down" : "chevron.right")
                             .font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.faint)
                             .accessibilityHidden(true)
                     }
                 }
-                HStack(spacing: 4) {
-                    Text(meta).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
-                    if let onOpenLink {
-                        Button(action: onOpenLink) {
-                            Text("· Open in Google Docs").font(Theme.body(12, .semibold)).foregroundStyle(Theme.primary)
-                                .lineLimit(1).fixedSize().contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help("Open this document in your browser")
+                if let onOpenLink {
+                    // The link follows the meta; in a narrow window it moves under it rather than cutting the meta.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 4) { metaText.fixedSize(); openLink(onOpenLink, dot: true) }
+                        VStack(alignment: .leading, spacing: 2) { metaText; openLink(onOpenLink, dot: false) }
                     }
+                } else {
+                    metaText
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -85,6 +83,19 @@ struct QueueRowView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityAction(named: isOpen ? "Hide what is inside" : "Show what is inside") { if kind == .folder { toggle() } }
+    }
+
+    private var metaText: some View {
+        Text(meta).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
+    }
+
+    private func openLink(_ action: @escaping () -> Void, dot: Bool) -> some View {
+        Button(action: action) {
+            Text(dot ? "· Open in Google Docs" : "Open in Google Docs").font(Theme.body(12, .semibold)).foregroundStyle(Theme.primary)
+                .lineLimit(1).fixedSize().contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Open this document in your browser")
     }
 
     @ViewBuilder private var icon: some View {
