@@ -1,0 +1,119 @@
+{
+ "$doc": "Page boards (one app window each) imported by tools/import_board.py --page, then edited by hand. The document wrapper (title, CSS, data-props, script with the sc-for data) is kept verbatim in each base's doc.",
+ "row": 2519,
+ "templates": {
+  "page-header": "<header style=\"display: flex; align-items: flex-start; gap: 16px\">\n<div style=\"display: flex; flex-direction: column; gap: 6px; flex-grow: 1\">\n<h1 style=\"margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 34px; letter-spacing: -0.03em; line-height: 1.05\">{title}</h1>\n<span style=\"font-size: 15px; color: #6B6862\">{sub}</span>{path}\n</div>\n{right}\n</header>"
+ },
+ "layouts": {
+  "queue-page": "<div style=\"position: relative; width: 1200px; height: 760px; isolation: isolate\"><div style=\"position: absolute; inset: 0; z-index: -1\"><dc-import name=\"WindowShell\" layer=\"frame\" width=\"1200\" height=\"760\" hint-size=\"1200px,760px\"></dc-import></div><div style=\"position: absolute; left: 38px; top: 36px; z-index: 2\"><dc-import name=\"WindowShell\" layer=\"controls\" hint-size=\"52px,12px\"></dc-import></div>\n<div style=\"position: absolute; left: 20px; top: 20px; right: 20px; bottom: 20px; display: flex; border-radius: 16px; overflow: hidden; background: #FFFFFF\">\n\n<div style=\"width: 220px; height: 720px; flex-shrink: 0\">{sidebar}</div>\n\n<main style=\"flex-grow: 1; display: flex; flex-direction: column; gap: 26px; padding: 34px 44px; min-width: 0; box-sizing: border-box\">\n{header}\n\n<div style=\"display: flex; align-items: center; gap: 30px; padding: 28px 34px; border-radius: 24px; background: #F6F5F2\">\n<svg width=\"104\" height=\"124\" viewBox=\"0 0 104 124\" aria-hidden=\"true\" style=\"flex-shrink: 0\">\n<defs><clipPath id=\"heroFlask\"><path d=\"M38 8h28v34l30 56a12 12 0 0 1-10.6 17.6H18.6A12 12 0 0 1 8 98l30-56z\"></path></clipPath></defs>\n<path d=\"M38 8h28v34l30 56a12 12 0 0 1-10.6 17.6H18.6A12 12 0 0 1 8 98l30-56z\" fill=\"#FFFFFF\"></path>\n<g clip-path=\"url(#heroFlask)\">\n<rect x=\"0\" y=\"72\" width=\"104\" height=\"60\" fill=\"#B9F06A\"></rect>\n<path d=\"M0 74c10-6 21 6 32 0s21-6 32 0 21 6 40 0v-6H0z\" fill=\"#D9FFA3\"></path>\n</g>\n<circle cx=\"44\" cy=\"58\" r=\"4\" fill=\"#1F6FEB\"></circle>\n<circle cx=\"58\" cy=\"46\" r=\"3\" fill=\"#FF9A6B\"></circle>\n<circle cx=\"50\" cy=\"32\" r=\"2.2\" fill=\"#5FC8F5\"></circle>\n<path d=\"M38 8h28v34l30 56a12 12 0 0 1-10.6 17.6H18.6A12 12 0 0 1 8 98l30-56z\" fill=\"none\" stroke=\"#6B7785\" stroke-width=\"2.6\" stroke-linejoin=\"round\"></path>\n<rect x=\"33\" y=\"3\" width=\"38\" height=\"8\" rx=\"4\" fill=\"#6B7785\"></rect>\n</svg>\n<div style=\"display: flex; flex-direction: column; gap: 8px; flex-grow: 1\">\n<span style=\"font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600; font-size: 22px; letter-spacing: -0.01em\">Drop anything here</span>\n<span style=\"font-size: 14px; color: #6B6862; line-height: 1.5\">Files, PDFs and screenshots. Paste with <kbd style=\"font-family: inherit; font-weight: 600; font-size: 12px; padding: 2px 7px; border-radius: 6px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5\">⌘V</kbd>. They wait here and go into your vault together.</span>\n</div>\n<dc-import name=\"SoftButton\" title=\"Choose files\" size=\"regular\" tint=\"#1D1C1A\" fill=\"#FFFFFF\" stroke=\"#ECEAE5\" hint-size=\"136px,40px\"></dc-import>\n</div>\n\n<div style=\"display: flex; flex-direction: column; gap: 4px\">\n<sc-for list=\"{{{{files}}}}\" as=\"f\" hint-placeholder-count=\"3\">\n<div style=\"display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 14px\">\n<dc-import name=\"Tile\" text=\"{{{{f.ext}}}}\" fill=\"{{{{f.tint}}}}\" ink=\"{{{{f.ink}}}}\" hint-size=\"40px,40px\"></dc-import>\n<span style=\"display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0\">\n<span style=\"font-size: 14px; font-weight: 600\">{{{{f.name}}}}</span>\n<span style=\"font-size: 12px; color: #6B6862\">{{{{f.meta}}}}</span>\n<sc-if value=\"{{{{f.hasLabels}}}}\" hint-placeholder-val=\"{{{{ false }}}}\">\n<span style=\"display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap\">\n<svg width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"#3D6110\" aria-hidden=\"true\"><path d=\"M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z\"></path></svg>\n<span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Suggested by Haiku</span>\n<sc-for list=\"{{{{f.labels}}}}\" as=\"l\" hint-placeholder-count=\"3\">\n<dc-import name=\"LabelChip\" label-name=\"{{{{l.name}}}}\" style=\"{{{{l.style}}}}\" removable=\"true\" hint-size=\"199px,26px\"></dc-import>\n</sc-for>\n<button type=\"button\" style=\"height: 26px; padding: 0 8px; border: none; background: transparent; color: #1F6FEB; font-size: 12px; font-weight: 600\">Accept all</button>\n</span>\n</sc-if>\n</span>\n<span title=\"{{{{f.tip}}}}\" style=\"display: inline-flex; flex-shrink: 0\"><dc-import name=\"Pill\" text=\"{{{{f.state}}}}\" fill=\"{{{{f.stateBg}}}}\" ink=\"{{{{f.stateFg}}}}\" hint-size=\"110px,24px\"></dc-import></span>\n<dc-import name=\"IconButton\" system-image=\"xmark\" size=\"30\" tint=\"#9B978F\" help=\"Remove from queue\" hint-size=\"30px,30px\"></dc-import>\n</div>\n</sc-for>\n</div>\n</main>\n</div>\n</div>",
+  "queue-running-page": "<div style=\"position: relative; width: 1200px; height: 860px; isolation: isolate\"><div style=\"position: absolute; inset: 0; z-index: -1\"><dc-import name=\"WindowShell\" layer=\"frame\" width=\"1200\" height=\"860\" hint-size=\"1200px,860px\"></dc-import></div><div style=\"position: absolute; left: 38px; top: 36px; z-index: 2\"><dc-import name=\"WindowShell\" layer=\"controls\" hint-size=\"52px,12px\"></dc-import></div>\n<div style=\"position: absolute; left: 20px; top: 20px; right: 20px; bottom: 20px; display: flex; border-radius: 16px; overflow: hidden; background: #FFFFFF\">\n\n<div style=\"width: 220px; height: 820px; flex-shrink: 0\">{sidebar}</div>\n\n<main style=\"flex-grow: 1; display: flex; flex-direction: column; gap: 26px; padding: 34px 44px; min-width: 0; box-sizing: border-box\">\n{header}\n<div style=\"display: flex; flex-direction: column; gap: 10px; padding: 16px 20px; border-radius: 20px; background: #E3EEFF\">\n<div style=\"display: flex; align-items: center; gap: 12px\">\n<svg class=\"spin\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#1F6FEB\" stroke-width=\"2.6\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M12 3a9 9 0 1 1-9 9\"></path></svg>\n<span style=\"display: flex; flex-direction: column; gap: 2px; flex-grow: 1\">\n<span style=\"font-size: 15px; font-weight: 700\">Reading 3 sources into Research</span>\n<span style=\"font-size: 12px; color: #48463F\">Claude Code · Sonnet · started at 3:41 AM · nothing is written until you approve</span>\n</span>\n<dc-import name=\"SoftButton\" title=\"Cancel\" size=\"small\" tint=\"#1C1B19\" fill=\"#FFFFFF\" hint-size=\"71px,30px\"></dc-import>\n</div>\n<div style=\"display: flex; gap: 18px; font-size: 12px; color: #48463F\">\n<span><b style=\"color: #3D6110\">✓</b> Moved to inbox</span><span><b style=\"color: #3D6110\">✓</b> Read sources</span><span class=\"pulse\"><b style=\"color: #1F6FEB\">…</b> Drafting page changes</span><span style=\"color: #9B978F\">Ready for review</span><span style=\"color: #9B978F\">Finding actions (after you apply)</span>\n</div>\n</div>\n\n<div style=\"display: flex; align-items: center; gap: 30px; padding: 14px 24px; border-radius: 24px; background: #F6F5F2\">\n<svg width=\"52\" height=\"62\" viewBox=\"0 0 104 124\" aria-hidden=\"true\" style=\"flex-shrink: 0\">\n<defs><clipPath id=\"heroFlask\"><path d=\"M38 8h28v34l30 56a12 12 0 0 1-10.6 17.6H18.6A12 12 0 0 1 8 98l30-56z\"></path></clipPath></defs>\n<path d=\"M38 8h28v34l30 56a12 12 0 0 1-10.6 17.6H18.6A12 12 0 0 1 8 98l30-56z\" fill=\"#FFFFFF\"></path>\n<g clip-path=\"url(#heroFlask)\">\n<rect x=\"0\" y=\"72\" width=\"104\" height=\"60\" fill=\"#B9F06A\"></rect>\n<path d=\"M0 74c10-6 21 6 32 0s21-6 32 0 21 6 40 0v-6H0z\" fill=\"#D9FFA3\"></path>\n</g>\n<circle cx=\"44\" cy=\"58\" r=\"4\" fill=\"#1F6FEB\"></circle>\n<circle cx=\"58\" cy=\"46\" r=\"3\" fill=\"#FF9A6B\"></circle>\n<circle cx=\"50\" cy=\"32\" r=\"2.2\" fill=\"#5FC8F5\"></circle>\n<path d=\"M38 8h28v34l30 56a12 12 0 0 1-10.6 17.6H18.6A12 12 0 0 1 8 98l30-56z\" fill=\"none\" stroke=\"#6B7785\" stroke-width=\"2.6\" stroke-linejoin=\"round\"></path>\n<rect x=\"33\" y=\"3\" width=\"38\" height=\"8\" rx=\"4\" fill=\"#6B7785\"></rect>\n</svg>\n<div style=\"display: flex; flex-direction: column; gap: 8px; flex-grow: 1\">\n<span style=\"font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600; font-size: 22px; letter-spacing: -0.01em\">Drop anything here</span>\n<span style=\"font-size: 14px; color: #6B6862; line-height: 1.5\">Files, PDFs and screenshots. Paste with <kbd style=\"font-family: inherit; font-weight: 600; font-size: 12px; padding: 2px 7px; border-radius: 6px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5\">⌘V</kbd>. They wait here and go into your vault together.</span>\n</div>\n<dc-import name=\"SoftButton\" title=\"Choose files\" size=\"regular\" tint=\"#1D1C1A\" fill=\"#FFFFFF\" stroke=\"#ECEAE5\" hint-size=\"136px,40px\"></dc-import>\n</div>\n\n<div style=\"display: flex; flex-direction: column; gap: 4px\">\n<sc-for list=\"{{{{files}}}}\" as=\"f\" hint-placeholder-count=\"3\">\n<div style=\"display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 14px\">\n<dc-import name=\"Tile\" text=\"{{{{f.ext}}}}\" fill=\"{{{{f.tint}}}}\" ink=\"{{{{f.ink}}}}\" hint-size=\"40px,40px\"></dc-import>\n<span style=\"display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0\">\n<span style=\"font-size: 14px; font-weight: 600\">{{{{f.name}}}}</span>\n<span style=\"font-size: 12px; color: #6B6862\">{{{{f.meta}}}}</span>\n<sc-if value=\"{{{{f.hasLabels}}}}\" hint-placeholder-val=\"{{{{ false }}}}\">\n<span style=\"display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap\">\n<svg width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"#3D6110\" aria-hidden=\"true\"><path d=\"M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z\"></path></svg>\n<span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Suggested by Haiku</span>\n<sc-for list=\"{{{{f.labels}}}}\" as=\"l\" hint-placeholder-count=\"3\">\n<dc-import name=\"LabelChip\" label-name=\"{{{{l.name}}}}\" style=\"{{{{l.style}}}}\" removable=\"true\" hint-size=\"199px,26px\"></dc-import>\n</sc-for>\n<button type=\"button\" style=\"height: 26px; padding: 0 8px; border: none; background: transparent; color: #1F6FEB; font-size: 12px; font-weight: 600\">Accept all</button>\n</span>\n</sc-if>\n</span>\n<span style=\"font-size: 12px; color: #6B6862\">{{{{f.state}}}}</span>\n<dc-import name=\"IconButton\" system-image=\"xmark\" size=\"30\" tint=\"#9B978F\" help=\"Remove from queue\" hint-size=\"30px,30px\"></dc-import>\n</div>\n</sc-for>\n</div>\n</main>\n</div>\n</div>"
+ },
+ "bases": {
+  "queue": {
+   "doc": {
+    "title": "Distill — Queue",
+    "css": "\nbody{margin:0;font-family:\"DM Sans\",-apple-system,sans-serif;color:#1D1C1A;-webkit-font-smoothing:antialiased}\na{color:#1F6FEB}a:hover{color:#1858C4}\nbutton{font-family:inherit;cursor:pointer}\n",
+    "props": "{\"$preview\":{\"width\":1200,\"height\":760}}",
+    "script": "class Component extends DCLogic {\nrenderVals() {\nreturn {\nfiles: [\n{ ext: 'NOTE', name: 'Gyokuro at 60 °C', meta: 'Written note · In person · 1 image kept · added 2:41 AM', tint: '#E9FBC9', ink: '#3D6110', state: 'Ready', stateBg: '#F3FDE4', stateFg: '#3D6110', tip: 'Goes in with the next batch', hasLabels: true, labels: [{ name: 'tea', tag: 'existing', style: 'suggestedExisting', border: '#B9F06A', fg: '#3D6110' }, { name: 'gyokuro', tag: 'existing', style: 'suggestedExisting', border: '#B9F06A', fg: '#3D6110' }, { name: 'kettle', tag: 'new', style: 'suggestedNew', border: '#FFB894', fg: '#B03A0A' }] },\n{ ext: 'PNG', name: 'Screenshot 15.32.12.png', meta: 'Pasted at 3:04 AM · 1.8 MB', tint: '#E3EEFF', ink: '#1F6FEB', state: 'Ready at 3:14 AM', stateBg: '#F6F5F2', stateFg: '#48463F', tip: 'Distill waits 10 min after a file last changes so half-written files are not picked up. Process now skips the wait.' },\n{ ext: 'PDF', name: 'gongfu-brewing-guide.pdf', meta: 'Dropped at 2:12 AM · 2.3 MB', tint: '#FFE4D6', ink: '#B03A0A', state: 'Ready', stateBg: '#F3FDE4', stateFg: '#3D6110', tip: 'Goes in with the next batch' },\n{ ext: 'MD', name: 'Clipping 15.44.10.md', meta: 'Pasted at 3:09 AM · 4 KB · still changing', tint: '#E9FBC9', ink: '#3D6110', state: 'Ready at 3:19 AM', stateBg: '#F6F5F2', stateFg: '#48463F', tip: 'The file changed at 3:09 AM; the 10-minute wait restarts on every change.' }\n]\n};\n}\n}"
+   },
+   "window": {
+    "width": 1200,
+    "height": 760
+   },
+   "regions": {
+    "sidebar": {
+     "c": "Sidebar",
+     "props": {
+      "section": "queue",
+      "height": 720
+     },
+     "size": [
+      "220px",
+      "720px"
+     ]
+    },
+    "header": {
+     "t": "page-header",
+     "vars": {
+      "title": "4 sources in the queue",
+      "sub": "Next batch at <strong style=\"color: #1D1C1A; font-weight: 600\">5:30 AM</strong> · every 2 hours",
+      "path": "",
+      "right": {
+       "c": "PrimaryButton",
+       "props": {
+        "title": "Process now",
+        "systemImage": "play",
+        "size": "regular"
+       },
+       "size": [
+        "144px",
+        "40px"
+       ]
+      }
+     }
+    }
+   },
+   "layout": "queue-page"
+  },
+  "queue-running": {
+   "doc": {
+    "title": "Distill — Queue (batch running)",
+    "css": "\nbody{margin:0;font-family:\"DM Sans\",-apple-system,sans-serif;color:#1D1C1A;-webkit-font-smoothing:antialiased}\na{color:#1F6FEB}a:hover{color:#1858C4}\nbutton{font-family:inherit;cursor:pointer}\n@keyframes shimmer{0%{background-position:-240px 0}100%{background-position:240px 0}}\n.sk{display:inline-block;border-radius:8px;background:linear-gradient(90deg,#EFEDE8 0px,#F8F7F4 80px,#EFEDE8 160px);background-size:480px 100%;animation:shimmer 1.4s linear infinite}\n@keyframes spin{to{transform:rotate(360deg)}}.spin{animation:spin .9s linear infinite}\n@keyframes pulse{0%,100%{opacity:.45}50%{opacity:1}}.pulse{animation:pulse 1.4s ease-in-out infinite}\n@media (prefers-reduced-motion: reduce){.sk,.spin,.pulse{animation:none}}\n",
+    "props": "{\"$preview\":{\"width\":1200,\"height\":860}}",
+    "script": "class Component extends DCLogic {\nrenderVals() {\nreturn {\nfiles: [\n{ ext: 'NOTE', name: 'Gyokuro at 60 °C', meta: 'Written note · In person · Suggesting labels…', tint: '#E9FBC9', ink: '#3D6110', state: 'In batch', hasLabels: false, labels: [{ name: 'tea', tag: 'existing', style: 'suggestedExisting', border: '#B9F06A', fg: '#3D6110' }, { name: 'gyokuro', tag: 'existing', style: 'suggestedExisting', border: '#B9F06A', fg: '#3D6110' }, { name: 'kettle', tag: 'new', style: 'suggestedNew', border: '#FFB894', fg: '#B03A0A' }] },\n{ ext: 'PNG', name: 'Screenshot 15.32.12.png', meta: 'Pasted at 3:40 AM · 1.8 MB', tint: '#E3EEFF', ink: '#1F6FEB', state: 'In batch' },\n{ ext: 'PDF', name: 'gongfu-brewing-guide.pdf', meta: 'Dropped at 3:36 AM · 2.3 MB', tint: '#FFE4D6', ink: '#B03A0A', state: 'In batch' },\n{ ext: 'MD', name: 'Clipping 15.44.10.md', meta: 'Pasted text · 4 KB', tint: '#E9FBC9', ink: '#3D6110', state: 'Next batch' }\n]\n};\n}\n}"
+   },
+   "window": {
+    "width": 1200,
+    "height": 860
+   },
+   "regions": {
+    "sidebar": {
+     "c": "Sidebar",
+     "props": {
+      "section": "queue",
+      "height": 820,
+      "status": "Sonnet · working"
+     },
+     "size": [
+      "220px",
+      "820px"
+     ]
+    },
+    "header": {
+     "t": "page-header",
+     "vars": {
+      "title": "3 in this batch · 1 waiting",
+      "sub": "New drops wait for the next batch",
+      "path": "",
+      "right": "<span disabled style=\"display: inline-flex; flex-shrink: 0; text-decoration: none; \"><dc-import name=\"SoftButton\" title=\"Processing…\" system-image=\"progress.indicator\" size=\"regular\" tint=\"#6B6862\" fill=\"#F6F5F2\" hint-size=\"144px,40px\"></dc-import></span>"
+     }
+    }
+   },
+   "layout": "queue-running-page"
+  }
+ },
+ "states": [
+  {
+   "id": "queue",
+   "base": "queue",
+   "label": "Queue"
+  },
+  {
+   "id": "queue-running",
+   "base": "queue-running",
+   "label": "Queue · batch running"
+  }
+ ],
+ "boards": [
+  {
+   "file": "Main.dc.html",
+   "title": "Queue",
+   "page": "queue"
+  },
+  {
+   "file": "MainLoading.dc.html",
+   "title": "Queue · batch running",
+   "page": "queue-running"
+  }
+ ]
+}
