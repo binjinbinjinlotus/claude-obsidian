@@ -1,0 +1,13 @@
+<!-- IconButton: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<span role="button" title="{{help}}" aria-label="{{help}}" style="width: {{s}}; height: {{s}}; border-radius: {{r}}; background: {{fill}}; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="{{ic}}" height="{{ic}}" viewBox="0 0 24 24" fill="none" stroke="{{tint}}" stroke-width="{{sw}}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{d}}"></path></svg></span>
+</x-dc>
+<script type="text/x-dc-logic">
+const ICONS = @@ICONS@@;
+const num = (v, d) => (v === undefined || v === null || v === '' || isNaN(Number(v))) ? d : Number(v);
+const s = num(p.size, 26);
+const SW = { regular: 1.8, medium: 2, semibold: 2.2, bold: 2.6 };
+return { d: ICONS[p.systemImage || 'ellipsis'] || ICONS['ellipsis'], s: s + 'px', r: s / 2 + 'px', ic: num(p.iconSize, Math.round(s * 0.42)),
+  sw: SW[p.weight] || 2, tint: p.tint || '#6B6862', fill: p.fill || 'transparent', help: p.help || '' };
+</script>

@@ -1,0 +1,10 @@
+<!-- SendButton: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<span role="button" aria-label="Send" style="width: {{s}}; height: {{s}}; border-radius: 50%; background: {{bg}}; box-shadow: {{shadow}}; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="{{ic}}" height="{{ic}}" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"></path></svg></span>
+</x-dc>
+<script type="text/x-dc-logic">
+const num = (v, d) => (v === undefined || v === null || v === '' || isNaN(Number(v))) ? d : Number(v);
+const en = on(p.enabled, true), s = num(p.size, 38);
+return { s: s + 'px', ic: Math.round(s * 0.42), bg: en ? '#1F6FEB' : '#D6D3CC', shadow: en ? '0 4px 6px rgba(31,111,235,0.3)' : 'none' };
+</script>

@@ -1,0 +1,23 @@
+<!-- WindowShell: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<sc-if value="{{isFrame}}" hint-placeholder-val="{{ true }}">
+<div style="width: {{w}}; height: {{h}}; box-sizing: border-box; background: #EAE8E3; padding: 20px; border-radius: 20px">
+<div style="width: 100%; height: 100%; border-radius: 16px; background: #FFFFFF; box-shadow: 0 0 0 1px rgba(29,28,26,0.08), 0 20px 44px rgba(29,28,26,0.14)"></div>
+</div>
+</sc-if>
+<sc-if value="{{isControls}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; gap: 8px; width: 52px; height: 12px">
+<span style="width: 12px; height: 12px; border-radius: 6px; background: {{c1}}"></span>
+<span style="width: 12px; height: 12px; border-radius: 6px; background: {{c2}}"></span>
+<span style="width: 12px; height: 12px; border-radius: 6px; background: {{c3}}"></span>
+</div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc-logic">
+const layer = p.layer || 'frame';
+const px = (v, d) => (v === undefined || v === null || v === '') ? d : (/^[0-9.]+$/.test(String(v)) ? v + 'px' : String(v));
+const inactive = on(p.inactive, false);
+return { isFrame: layer === 'frame', isControls: layer === 'controls', w: px(p.width, '1200px'), h: px(p.height, '760px'),
+  c1: inactive ? '#DAD7D0' : '#FF5F57', c2: inactive ? '#DAD7D0' : '#FEBC2E', c3: inactive ? '#DAD7D0' : '#28C840' };
+</script>

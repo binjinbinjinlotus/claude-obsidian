@@ -1,0 +1,3851 @@
+{
+  "components": [
+    {
+      "name": "Sidebar",
+      "title": "Sidebar",
+      "swift": "clients/macos/Sources/Distill/MainView.swift",
+      "preview": [
+        220,
+        720
+      ],
+      "props": [
+        {
+          "name": "section",
+          "type": "enum",
+          "default": "queue",
+          "options": [
+            "queue",
+            "review",
+            "actions",
+            "ask",
+            "labels",
+            "history"
+          ]
+        },
+        {
+          "name": "sub",
+          "type": "enum",
+          "default": "",
+          "options": [
+            "",
+            "todo",
+            "slack",
+            "jira",
+            "confluence",
+            "jobs",
+            "chats",
+            "actions"
+          ],
+          "swift": false,
+          "why": "selection inside the open section: SidebarActions and the historyPart binding"
+        },
+        {
+          "name": "queueCount",
+          "type": "text",
+          "default": "3",
+          "swift": false,
+          "why": "computed by Sidebar from AppModel (queue, approvals, labels, actions)"
+        },
+        {
+          "name": "reviewCount",
+          "type": "text",
+          "default": "1",
+          "swift": false,
+          "why": "computed by Sidebar from AppModel (queue, approvals, labels, actions)"
+        },
+        {
+          "name": "labelsCount",
+          "type": "text",
+          "default": "12",
+          "swift": false,
+          "why": "computed by Sidebar from AppModel (queue, approvals, labels, actions)"
+        },
+        {
+          "name": "actionsCount",
+          "type": "text",
+          "default": "",
+          "swift": false,
+          "why": "computed by Sidebar from AppModel (queue, approvals, labels, actions)"
+        },
+        {
+          "name": "todoCount",
+          "type": "text",
+          "default": "6",
+          "section": "Actions sub-items",
+          "swift": false,
+          "why": "computed by Sidebar from AppModel (queue, approvals, labels, actions)"
+        },
+        {
+          "name": "slackCount",
+          "type": "text",
+          "default": "1",
+          "section": "Actions sub-items",
+          "swift": false,
+          "why": "computed by Sidebar from AppModel (queue, approvals, labels, actions)"
+        },
+        {
+          "name": "jiraCount",
+          "type": "text",
+          "default": "1",
+          "section": "Actions sub-items",
+          "swift": false,
+          "why": "computed by Sidebar from AppModel (queue, approvals, labels, actions)"
+        },
+        {
+          "name": "confluenceCount",
+          "type": "text",
+          "default": "1",
+          "section": "Actions sub-items",
+          "swift": false,
+          "why": "computed by Sidebar from AppModel (queue, approvals, labels, actions)"
+        },
+        {
+          "name": "recentRunning",
+          "type": "text",
+          "default": "",
+          "section": "Recent questions",
+          "swift": false,
+          "why": "RecentQuestions reads the Ask threads"
+        },
+        {
+          "name": "recentFailed",
+          "type": "text",
+          "default": "",
+          "section": "Recent questions",
+          "swift": false,
+          "why": "RecentQuestions reads the Ask threads"
+        },
+        {
+          "name": "recentOpen",
+          "type": "text",
+          "default": "",
+          "section": "Recent questions",
+          "swift": false,
+          "why": "RecentQuestions reads the Ask threads"
+        },
+        {
+          "name": "vault",
+          "type": "text",
+          "default": "Research",
+          "section": "Vault",
+          "swift": false,
+          "why": "VaultSwitcher reads the active vault"
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "default": "Sonnet · ready",
+          "options": [
+            "Sonnet · ready",
+            "Sonnet · working",
+            "Sonnet · waiting on you",
+            "Starting…",
+            "Needs setup",
+            ""
+          ],
+          "section": "Vault",
+          "swift": false,
+          "why": "VaultSwitcher reads the runner status"
+        },
+        {
+          "name": "height",
+          "type": "int",
+          "default": 720,
+          "swift": false,
+          "why": "canvas frame height; the Swift sidebar fills the window"
+        }
+      ],
+      "board": {
+        "file": "SidebarStates.dc.html",
+        "title": "Sidebar states",
+        "heading": "Sidebar",
+        "intro": "MainView.swift → <b>Sidebar</b> (with RecentQuestions and VaultSwitcher). One file, imported by every app window. Props: section, sub, queueCount, reviewCount, actionsCount, labelsCount, todoCount, slackCount, jiraCount, confluenceCount, recentRunning, recentFailed, recentOpen, vault, status, height. Swift’s Section has no Actions yet and no sub-items: both are design ahead of the app.",
+        "width": 1920,
+        "cols": 6,
+        "wrap": "<div style=\"width: 220px; border-radius: 14px; overflow: hidden; box-shadow: 0 0 0 1px #ECEAE5\">{import}</div>"
+      },
+      "states": [
+        {
+          "name": "Queue (default)",
+          "props": {
+            "section": "queue",
+            "height": 720
+          },
+          "size": [
+            "220px",
+            "720px"
+          ],
+          "caption": "Counts show only above 0. Review and Actions use a pill (they need you); others are plain."
+        },
+        {
+          "name": "Review",
+          "props": {
+            "section": "review",
+            "status": "Sonnet · waiting on you",
+            "height": 720
+          },
+          "size": [
+            "220px",
+            "720px"
+          ],
+          "caption": "Vault card: “waiting on you” while a batch waits for Review."
+        },
+        {
+          "name": "Actions, open on To do",
+          "props": {
+            "section": "actions",
+            "sub": "todo",
+            "height": 720
+          },
+          "size": [
+            "220px",
+            "720px"
+          ],
+          "caption": "Sub-items show only while their page is open. The open parent drops its total; each sub-item carries its own count."
+        },
+        {
+          "name": "Actions › Slack messages",
+          "props": {
+            "section": "actions",
+            "sub": "slack",
+            "height": 720
+          },
+          "size": [
+            "220px",
+            "720px"
+          ],
+          "caption": "The selected sub-item is highlighted; the parent keeps its blue icon."
+        },
+        {
+          "name": "Ask with recent questions",
+          "props": {
+            "section": "ask",
+            "recentRunning": "Oolong vs pu-erh caffeine",
+            "recentFailed": "Summarize the hiring loop",
+            "recentOpen": "Green tea water temperature",
+            "height": 720
+          },
+          "size": [
+            "220px",
+            "720px"
+          ],
+          "caption": "As in Swift’s RecentQuestions: a running question has a spinner, a failed one shows its title (tooltip “Couldn’t answer — open it”), the open chat is blue. At most 5."
+        },
+        {
+          "name": "Labels",
+          "props": {
+            "section": "labels",
+            "height": 720
+          },
+          "size": [
+            "220px",
+            "720px"
+          ],
+          "caption": "Labels has 2 tabs (To review, Unlabeled), so they stay as tabs on the page."
+        },
+        {
+          "name": "History › Jobs",
+          "props": {
+            "section": "history",
+            "sub": "jobs",
+            "status": "Sonnet · working",
+            "height": 720
+          },
+          "size": [
+            "220px",
+            "720px"
+          ],
+          "caption": "History’s parts become sub-items. Vault card: “working” while a batch runs."
+        },
+        {
+          "name": "History › Ask chats",
+          "props": {
+            "section": "history",
+            "sub": "chats",
+            "height": 720
+          },
+          "size": [
+            "220px",
+            "720px"
+          ]
+        },
+        {
+          "name": "History › Actions",
+          "props": {
+            "section": "history",
+            "sub": "actions",
+            "height": 720
+          },
+          "size": [
+            "220px",
+            "720px"
+          ]
+        },
+        {
+          "name": "Collapsed Actions total",
+          "props": {
+            "section": "queue",
+            "todoCount": 5,
+            "jiraCount": 2,
+            "height": 720
+          },
+          "size": [
+            "220px",
+            "720px"
+          ],
+          "caption": "Collapsed, the parent shows the sum of its sub-items: 5 + 1 + 2 + 1 = 9."
+        },
+        {
+          "name": "Starting",
+          "props": {
+            "section": "queue",
+            "status": "Starting…",
+            "height": 720
+          },
+          "size": [
+            "220px",
+            "720px"
+          ]
+        },
+        {
+          "name": "No vault yet",
+          "props": {
+            "section": "queue",
+            "vault": "Choose a vault",
+            "queueCount": 0,
+            "reviewCount": 0,
+            "labelsCount": 0,
+            "todoCount": 0,
+            "slackCount": 0,
+            "jiraCount": 0,
+            "confluenceCount": 0,
+            "height": 720
+          },
+          "size": [
+            "220px",
+            "720px"
+          ],
+          "caption": "Swift: “Choose a vault”, no status line."
+        }
+      ]
+    },
+    {
+      "name": "WindowShell",
+      "title": "Window shell",
+      "swift": null,
+      "preview": [
+        1200,
+        760
+      ],
+      "props": [
+        {
+          "name": "layer",
+          "type": "enum",
+          "default": "frame",
+          "options": [
+            "frame",
+            "controls"
+          ]
+        },
+        {
+          "name": "width",
+          "type": "int",
+          "default": 1200
+        },
+        {
+          "name": "height",
+          "type": "int",
+          "default": 760
+        },
+        {
+          "name": "inactive",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "board": {
+        "file": "WindowShellStates.dc.html",
+        "title": "Window shell states",
+        "heading": "WindowShell",
+        "intro": "The macOS window: backdrop, rounded surface and shadow (frame), and the traffic lights (controls). No Swift view: AppKit draws it. Props: layer (frame | controls), width, height, inactive. Design Components have no child slots, so a board stacks: frame → content → controls.",
+        "width": 1920,
+        "cols": 3,
+        "wrap": "<div style=\"transform: scale(.5); transform-origin: top left; width: {half}px; height: 380px\"><div style=\"position: relative; width: {0[width]}px; height: {0[height]}px\"><div style=\"position: absolute; left: 0; top: 0\">{import0}</div><div style=\"position: absolute; left: 38px; top: 36px\">{import1}</div></div></div>"
+      },
+      "states": [
+        {
+          "name": "Frame + controls",
+          "layers": [
+            {
+              "props": {
+                "layer": "frame",
+                "width": 1200,
+                "height": 760
+              },
+              "size": [
+                "1200px",
+                "760px"
+              ]
+            },
+            {
+              "props": {
+                "layer": "controls"
+              },
+              "size": [
+                "52px",
+                "12px"
+              ]
+            }
+          ],
+          "caption": "layer=\"frame\" sits behind the window’s content; layer=\"controls\" (the traffic lights) sits on top, 18 × 16 pt in from the window corner, over the sidebar’s empty strip.",
+          "vars": {
+            "half": 600
+          }
+        },
+        {
+          "name": "Inactive window",
+          "layers": [
+            {
+              "props": {
+                "inactive": true,
+                "layer": "frame",
+                "width": 1200,
+                "height": 760
+              },
+              "size": [
+                "1200px",
+                "760px"
+              ]
+            },
+            {
+              "props": {
+                "inactive": true,
+                "layer": "controls"
+              },
+              "size": [
+                "52px",
+                "12px"
+              ]
+            }
+          ],
+          "caption": "inactive: grey lights.",
+          "vars": {
+            "half": 600
+          }
+        },
+        {
+          "name": "Settings window size",
+          "layers": [
+            {
+              "props": {
+                "layer": "frame",
+                "width": 1180,
+                "height": 760
+              },
+              "size": [
+                "1180px",
+                "760px"
+              ]
+            },
+            {
+              "props": {
+                "layer": "controls"
+              },
+              "size": [
+                "52px",
+                "12px"
+              ]
+            }
+          ],
+          "caption": "width and height set the frame; content is laid on top by each board.",
+          "vars": {
+            "half": 590
+          }
+        }
+      ]
+    },
+    {
+      "name": "QuickShell",
+      "title": "Quick shell",
+      "swift": "clients/macos/Sources/Distill/QuickShell.swift",
+      "preview": [
+        560,
+        214
+      ],
+      "props": [
+        {
+          "name": "part",
+          "type": "enum",
+          "default": "frame",
+          "options": [
+            "frame",
+            "bar"
+          ],
+          "swift": false,
+          "why": "canvas layering only (Design Components have no slots); Swift draws frame and bar in one view"
+        },
+        {
+          "name": "title",
+          "type": "enum",
+          "default": "Quick note",
+          "options": [
+            "Quick note",
+            "Quick ask"
+          ]
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": "560",
+          "swift": "snapshotWidth"
+        },
+        {
+          "name": "height",
+          "type": "text",
+          "default": "214",
+          "swift": "snapshotHeight"
+        },
+        {
+          "name": "grip",
+          "type": "boolean",
+          "default": true,
+          "swift": false,
+          "why": "the window’s resize grip, hidden in snapshots"
+        },
+        {
+          "name": "cut",
+          "type": "boolean",
+          "default": false,
+          "swift": false,
+          "why": "Swift derives the cut from snapshotHeight and the desired height"
+        }
+      ],
+      "board": {
+        "file": "QuickShellStates.dc.html",
+        "title": "Quick shell states",
+        "heading": "QuickShell",
+        "intro": "QuickShell.swift → <b>QuickShell</b>: close bar (QUICK NOTE / QUICK ASK and ×), card, resize grip. Props: part (frame | bar), title, width, height, grip, cut. Default width is 560 here; Swift’s QuickWindowGeometry.defaultWidth is still 420.",
+        "width": 1920,
+        "cols": 3,
+        "wrap": "<div style=\"position: relative; width: {0[width]}px; height: {0[height]}px\"><div style=\"position: absolute; inset: 0\">{import0}</div><div style=\"position: relative; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 12px\">{import1}</div></div>"
+      },
+      "states": [
+        {
+          "name": "Quick note, default 560 × 214",
+          "layers": [
+            {
+              "props": {
+                "part": "frame",
+                "width": 560,
+                "height": 214,
+                "cut": false,
+                "grip": true
+              },
+              "size": [
+                "560px",
+                "214px"
+              ]
+            },
+            {
+              "props": {
+                "part": "bar",
+                "title": "Quick note"
+              },
+              "size": [
+                "100%",
+                "22px"
+              ]
+            }
+          ],
+          "caption": "part=\"frame\" behind, part=\"bar\" (title + ×) at the top. The footer is the board’s own content: no slots."
+        },
+        {
+          "name": "Quick ask",
+          "layers": [
+            {
+              "props": {
+                "part": "frame",
+                "width": 560,
+                "height": 214,
+                "cut": false,
+                "grip": true
+              },
+              "size": [
+                "560px",
+                "214px"
+              ]
+            },
+            {
+              "props": {
+                "part": "bar",
+                "title": "Quick ask"
+              },
+              "size": [
+                "100%",
+                "22px"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Minimum 360 × 160",
+          "layers": [
+            {
+              "props": {
+                "part": "frame",
+                "width": 360,
+                "height": 160,
+                "cut": false,
+                "grip": true
+              },
+              "size": [
+                "360px",
+                "160px"
+              ]
+            },
+            {
+              "props": {
+                "part": "bar",
+                "title": "Quick note"
+              },
+              "size": [
+                "100%",
+                "22px"
+              ]
+            }
+          ],
+          "caption": "Swift QuickWindowGeometry.minSize."
+        },
+        {
+          "name": "Cut at the screen limit",
+          "layers": [
+            {
+              "props": {
+                "part": "frame",
+                "width": 560,
+                "height": 360,
+                "cut": true,
+                "grip": true
+              },
+              "size": [
+                "560px",
+                "360px"
+              ]
+            },
+            {
+              "props": {
+                "part": "bar",
+                "title": "Quick note"
+              },
+              "size": [
+                "100%",
+                "22px"
+              ]
+            }
+          ],
+          "caption": "cut: fade and overlay scroller over the middle (Swift snapshotOverflow)."
+        },
+        {
+          "name": "No grip (snapshot)",
+          "layers": [
+            {
+              "props": {
+                "part": "frame",
+                "width": 560,
+                "height": 214,
+                "cut": false,
+                "grip": false
+              },
+              "size": [
+                "560px",
+                "214px"
+              ]
+            },
+            {
+              "props": {
+                "part": "bar",
+                "title": "Quick ask"
+              },
+              "size": [
+                "100%",
+                "22px"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "MarkdownStyleBar",
+      "title": "Markdown style bar",
+      "swift": "clients/macos/Sources/Distill/MarkdownEditorBar.swift",
+      "preview": [
+        480,
+        40
+      ],
+      "props": [
+        {
+          "name": "variant",
+          "type": "enum",
+          "default": "full",
+          "options": [
+            "full",
+            "compact"
+          ]
+        },
+        {
+          "name": "pressed",
+          "type": "enum",
+          "default": "",
+          "options": [
+            "",
+            "bold",
+            "italic",
+            "strike",
+            "heading",
+            "bullet",
+            "numbered",
+            "checklist",
+            "quote",
+            "code",
+            "codeBlock",
+            "link",
+            "wikilink"
+          ]
+        },
+        {
+          "name": "image",
+          "type": "boolean",
+          "default": false,
+          "swift": "onImage"
+        },
+        {
+          "name": "size",
+          "type": "enum",
+          "default": "regular",
+          "options": [
+            "regular",
+            "small"
+          ],
+          "swiftPending": "size=\"small\" (cards) is not in Swift yet"
+        }
+      ],
+      "board": {
+        "file": "MarkdownStyleBarStates.dc.html",
+        "title": "Markdown style bar states",
+        "heading": "MarkdownStyleBar",
+        "intro": "MarkdownEditorBar.swift → <b>MarkdownStyleBar</b>. Groups follow MarkdownBarItem.groups. Props: variant (full | compact), pressed (an item), image (the Image button), size (regular | small).",
+        "width": 1920,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "Full",
+          "props": {
+            "variant": "full"
+          },
+          "size": [
+            "auto",
+            "34px"
+          ],
+          "caption": "Write a note."
+        },
+        {
+          "name": "Full + Image",
+          "props": {
+            "variant": "full",
+            "image": true
+          },
+          "size": [
+            "auto",
+            "34px"
+          ],
+          "caption": "Editors that take images inline."
+        },
+        {
+          "name": "Full, heading menu open",
+          "props": {
+            "variant": "full",
+            "pressed": "heading"
+          },
+          "size": [
+            "auto",
+            "34px"
+          ],
+          "caption": "pressed forces an item on."
+        },
+        {
+          "name": "Compact",
+          "props": {
+            "variant": "compact"
+          },
+          "size": [
+            "auto",
+            "34px"
+          ],
+          "caption": "Replies, drafts, quick windows."
+        },
+        {
+          "name": "Compact, bold on",
+          "props": {
+            "variant": "compact",
+            "pressed": "bold"
+          },
+          "size": [
+            "auto",
+            "34px"
+          ]
+        },
+        {
+          "name": "Compact, small",
+          "props": {
+            "variant": "compact",
+            "size": "small"
+          },
+          "size": [
+            "auto",
+            "34px"
+          ],
+          "caption": "size=\"small\" for cards (Slack, Jira, Confluence drafts)."
+        }
+      ]
+    },
+    {
+      "name": "PrimaryButton",
+      "title": "Primary button",
+      "swift": "clients/macos/Sources/Distill/Theme.swift",
+      "preview": [
+        180,
+        40
+      ],
+      "props": [
+        {
+          "name": "title",
+          "type": "text",
+          "default": "Add to queue"
+        },
+        {
+          "name": "systemImage",
+          "type": "enum",
+          "default": "",
+          "options": [
+            "",
+            "checkmark",
+            "clock",
+            "plus",
+            "magnifyingglass",
+            "chevron.down",
+            "chevron.right",
+            "checkmark.circle",
+            "text.bubble",
+            "ticket",
+            "doc.text",
+            "envelope",
+            "doc.on.doc",
+            "paperplane",
+            "trash",
+            "clock.arrow.circlepath",
+            "arrow.up.right.square",
+            "note.text",
+            "person",
+            "flag",
+            "calendar",
+            "pencil",
+            "line.3.horizontal.decrease",
+            "ellipsis",
+            "arrow.clockwise",
+            "globe",
+            "lock",
+            "exclamationmark.circle",
+            "list.bullet",
+            "arrow.up.arrow.down",
+            "xmark",
+            "link",
+            "arrow.uturn.backward",
+            "number",
+            "gearshape",
+            "bolt",
+            "tray",
+            "checkmark.square",
+            "bubble.left",
+            "tag",
+            "checklist",
+            "circle.grid.2x2",
+            "play",
+            "square.and.arrow.down",
+            "sparkles",
+            "arrow.up",
+            "progress.indicator"
+          ]
+        },
+        {
+          "name": "size",
+          "type": "enum",
+          "default": "regular",
+          "options": [
+            "regular",
+            "small",
+            "mini"
+          ]
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "default": true
+        }
+      ],
+      "board": {
+        "file": "ButtonsStates.dc.html",
+        "title": "Button and pill states",
+        "heading": "PrimaryButton, SoftButton and Pill",
+        "intro": "Theme.swift → <b>PrimaryButton</b> (title, systemImage, size, enabled) and <b>SoftButton</b> (title, tint, fill, stroke, systemImage, size, enabled); size is regular 40 · small 30 · mini 26 pt. <b>Pill</b> (text, fill, ink, size regular 24 | small 20, systemImage, busy, stroke, dashed) for counts and states. Every button and status pill on the boards imports one of these.",
+        "width": 1920,
+        "cols": 6,
+        "components": [
+          "PrimaryButton",
+          "SoftButton",
+          "Pill"
+        ]
+      },
+      "states": [
+        {
+          "name": "PrimaryButton",
+          "props": {
+            "title": "Add to queue"
+          },
+          "size": [
+            "auto",
+            "40px"
+          ],
+          "caption": "title"
+        },
+        {
+          "name": "With systemImage",
+          "props": {
+            "title": "Apply 3 labels",
+            "systemImage": "checkmark"
+          },
+          "size": [
+            "auto",
+            "40px"
+          ],
+          "caption": "systemImage: checkmark"
+        },
+        {
+          "name": "Process now",
+          "props": {
+            "title": "Process now",
+            "systemImage": "play"
+          },
+          "size": [
+            "auto",
+            "40px"
+          ]
+        },
+        {
+          "name": "Busy title",
+          "props": {
+            "title": "Applying…",
+            "systemImage": "checkmark"
+          },
+          "size": [
+            "auto",
+            "40px"
+          ],
+          "caption": "Swift shows progress by changing the title."
+        },
+        {
+          "name": "Small",
+          "props": {
+            "title": "Review them",
+            "size": "small"
+          },
+          "size": [
+            "110px",
+            "30px"
+          ],
+          "caption": "size=\"small\" · 30 pt (cards, sheets)"
+        },
+        {
+          "name": "Mini",
+          "props": {
+            "title": "Add all",
+            "size": "mini"
+          },
+          "size": [
+            "70px",
+            "26px"
+          ],
+          "caption": "size=\"mini\" · 26 pt (quick windows, found blocks)"
+        },
+        {
+          "name": "Disabled",
+          "props": {
+            "title": "Add to queue",
+            "enabled": false
+          },
+          "size": [
+            "auto",
+            "40px"
+          ],
+          "caption": "enabled=\"false\" (nothing to add yet)"
+        }
+      ]
+    },
+    {
+      "name": "SoftButton",
+      "title": "Soft button",
+      "swift": "clients/macos/Sources/Distill/Theme.swift",
+      "preview": [
+        160,
+        40
+      ],
+      "props": [
+        {
+          "name": "title",
+          "type": "text",
+          "default": "Skip labels"
+        },
+        {
+          "name": "tint",
+          "type": "color",
+          "default": "#1D1C1A",
+          "options": [
+            "#1D1C1A",
+            "#B03A0A",
+            "#1F6FEB"
+          ]
+        },
+        {
+          "name": "fill",
+          "type": "color",
+          "default": "#F6F5F2",
+          "options": [
+            "#F6F5F2",
+            "#FFFFFF",
+            "#FFF4EE",
+            "transparent"
+          ]
+        },
+        {
+          "name": "stroke",
+          "type": "color",
+          "default": "",
+          "options": [
+            "",
+            "#ECEAE5"
+          ]
+        },
+        {
+          "name": "systemImage",
+          "type": "enum",
+          "default": "",
+          "options": [
+            "",
+            "checkmark",
+            "clock",
+            "plus",
+            "magnifyingglass",
+            "chevron.down",
+            "chevron.right",
+            "checkmark.circle",
+            "text.bubble",
+            "ticket",
+            "doc.text",
+            "envelope",
+            "doc.on.doc",
+            "paperplane",
+            "trash",
+            "clock.arrow.circlepath",
+            "arrow.up.right.square",
+            "note.text",
+            "person",
+            "flag",
+            "calendar",
+            "pencil",
+            "line.3.horizontal.decrease",
+            "ellipsis",
+            "arrow.clockwise",
+            "globe",
+            "lock",
+            "exclamationmark.circle",
+            "list.bullet",
+            "arrow.up.arrow.down",
+            "xmark",
+            "link",
+            "arrow.uturn.backward",
+            "number",
+            "gearshape",
+            "bolt",
+            "tray",
+            "checkmark.square",
+            "bubble.left",
+            "tag",
+            "checklist",
+            "circle.grid.2x2",
+            "play",
+            "square.and.arrow.down",
+            "sparkles",
+            "arrow.up",
+            "progress.indicator"
+          ]
+        },
+        {
+          "name": "size",
+          "type": "enum",
+          "default": "regular",
+          "options": [
+            "regular",
+            "small",
+            "mini"
+          ]
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "default": true,
+          "swiftPending": "SoftButton has no enabled parameter in Swift yet"
+        }
+      ],
+      "board": {
+        "file": "ButtonsStates.dc.html"
+      },
+      "states": [
+        {
+          "name": "SoftButton",
+          "props": {
+            "title": "Skip labels"
+          },
+          "size": [
+            "auto",
+            "40px"
+          ],
+          "caption": "title"
+        },
+        {
+          "name": "Tinted",
+          "props": {
+            "title": "Reject",
+            "tint": "#B03A0A",
+            "fill": "#FFF4EE"
+          },
+          "size": [
+            "auto",
+            "40px"
+          ],
+          "caption": "tint, fill"
+        },
+        {
+          "name": "Outlined",
+          "props": {
+            "title": "Choose files",
+            "fill": "#FFFFFF",
+            "stroke": "#E4E1DA"
+          },
+          "size": [
+            "auto",
+            "40px"
+          ],
+          "caption": "stroke on white surfaces"
+        },
+        {
+          "name": "Small",
+          "props": {
+            "title": "Cancel",
+            "size": "small"
+          },
+          "size": [
+            "70px",
+            "30px"
+          ],
+          "caption": "size=\"small\""
+        },
+        {
+          "name": "Mini, link",
+          "props": {
+            "title": "+ Label",
+            "tint": "#1F6FEB",
+            "fill": "transparent",
+            "size": "mini"
+          },
+          "size": [
+            "64px",
+            "26px"
+          ],
+          "caption": "fill=\"transparent\""
+        },
+        {
+          "name": "Destructive",
+          "props": {
+            "title": "Delete forever",
+            "tint": "#FFFFFF",
+            "fill": "#B03A0A",
+            "size": "small"
+          },
+          "size": [
+            "110px",
+            "30px"
+          ],
+          "caption": "the only confirm"
+        },
+        {
+          "name": "With systemImage",
+          "props": {
+            "title": "Send to",
+            "systemImage": "paperplane",
+            "fill": "#FFFFFF",
+            "stroke": "#ECEAE5",
+            "size": "small"
+          },
+          "size": [
+            "90px",
+            "30px"
+          ],
+          "caption": "systemImage takes the tint"
+        },
+        {
+          "name": "Disabled",
+          "props": {
+            "title": "Create draft",
+            "systemImage": "plus",
+            "fill": "#FFFFFF",
+            "stroke": "#ECEAE5",
+            "size": "small",
+            "enabled": false
+          },
+          "size": [
+            "110px",
+            "30px"
+          ],
+          "caption": "enabled=\"false\""
+        }
+      ]
+    },
+    {
+      "name": "Pill",
+      "title": "Pill",
+      "swift": "clients/macos/Sources/Distill/Theme.swift",
+      "preview": [
+        80,
+        24
+      ],
+      "props": [
+        {
+          "name": "text",
+          "type": "text",
+          "default": "1"
+        },
+        {
+          "name": "fill",
+          "type": "color",
+          "default": "#FFE4D6",
+          "options": [
+            "#FFE4D6",
+            "#E3EEFF",
+            "#F3FDE4",
+            "#F6F5F2",
+            "#FFFFFF"
+          ]
+        },
+        {
+          "name": "ink",
+          "type": "color",
+          "default": "#B03A0A",
+          "options": [
+            "#B03A0A",
+            "#1F6FEB",
+            "#3D6110",
+            "#6B6862",
+            "#9B978F"
+          ]
+        },
+        {
+          "name": "size",
+          "type": "enum",
+          "default": "regular",
+          "options": [
+            "regular",
+            "small"
+          ]
+        },
+        {
+          "name": "systemImage",
+          "type": "enum",
+          "default": "",
+          "options": [
+            "",
+            "checkmark",
+            "clock",
+            "plus",
+            "magnifyingglass",
+            "chevron.down",
+            "chevron.right",
+            "checkmark.circle",
+            "text.bubble",
+            "ticket",
+            "doc.text",
+            "envelope",
+            "doc.on.doc",
+            "paperplane",
+            "trash",
+            "clock.arrow.circlepath",
+            "arrow.up.right.square",
+            "note.text",
+            "person",
+            "flag",
+            "calendar",
+            "pencil",
+            "line.3.horizontal.decrease",
+            "ellipsis",
+            "arrow.clockwise",
+            "globe",
+            "lock",
+            "exclamationmark.circle",
+            "list.bullet",
+            "arrow.up.arrow.down",
+            "xmark",
+            "link",
+            "arrow.uturn.backward",
+            "number",
+            "gearshape",
+            "bolt",
+            "tray",
+            "checkmark.square",
+            "bubble.left",
+            "tag",
+            "checklist",
+            "circle.grid.2x2",
+            "play",
+            "square.and.arrow.down",
+            "sparkles",
+            "arrow.up",
+            "progress.indicator"
+          ]
+        },
+        {
+          "name": "busy",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "stroke",
+          "type": "color",
+          "default": "",
+          "options": [
+            "",
+            "#ECEAE5",
+            "#B9F06A"
+          ]
+        },
+        {
+          "name": "dashed",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "board": {
+        "file": "ButtonsStates.dc.html"
+      },
+      "states": [
+        {
+          "name": "Pill",
+          "props": {
+            "text": 1
+          },
+          "size": [
+            "30px",
+            "24px"
+          ],
+          "caption": "Review count (peach)"
+        },
+        {
+          "name": "Pill, ready",
+          "props": {
+            "text": "Ready to paste",
+            "fill": "#F3FDE4",
+            "ink": "#3D6110"
+          },
+          "size": [
+            "110px",
+            "24px"
+          ],
+          "caption": "State pills on drafts"
+        },
+        {
+          "name": "Pill, blue",
+          "props": {
+            "text": 9,
+            "fill": "#E3EEFF",
+            "ink": "#1F6FEB"
+          },
+          "size": [
+            "30px",
+            "24px"
+          ],
+          "caption": "Actions count"
+        },
+        {
+          "name": "Pill, muted",
+          "props": {
+            "text": "Not written",
+            "fill": "#F6F5F2",
+            "ink": "#6B6862"
+          },
+          "size": [
+            "96px",
+            "24px"
+          ]
+        },
+        {
+          "name": "Pill, busy",
+          "props": {
+            "text": "Writing",
+            "fill": "#E3EEFF",
+            "ink": "#1F6FEB",
+            "busy": true
+          },
+          "size": [
+            "90px",
+            "24px"
+          ],
+          "caption": "busy: spinner while AI works"
+        },
+        {
+          "name": "Pill, systemImage",
+          "props": {
+            "text": "Connected",
+            "fill": "#F3FDE4",
+            "ink": "#3D6110",
+            "systemImage": "checkmark"
+          },
+          "size": [
+            "100px",
+            "24px"
+          ],
+          "caption": "systemImage before the text"
+        },
+        {
+          "name": "Pill, small",
+          "props": {
+            "text": "Edited",
+            "fill": "#FFE4D6",
+            "ink": "#B03A0A",
+            "size": "small"
+          },
+          "size": [
+            "60px",
+            "20px"
+          ],
+          "caption": "size=\"small\" · 20 pt in dense rows"
+        },
+        {
+          "name": "Pill, stroke",
+          "props": {
+            "text": "Coming later",
+            "fill": "#FFFFFF",
+            "ink": "#9B978F",
+            "stroke": "#ECEAE5"
+          },
+          "size": [
+            "100px",
+            "24px"
+          ],
+          "caption": "stroke: types not built yet"
+        },
+        {
+          "name": "Pill, dashed",
+          "props": {
+            "text": "Send in Slack · later",
+            "fill": "#FFFFFF",
+            "ink": "#9B978F",
+            "dashed": true
+          },
+          "size": [
+            "150px",
+            "24px"
+          ],
+          "caption": "dashed: a future handler slot"
+        }
+      ]
+    },
+    {
+      "name": "SettingsSectionNav",
+      "title": "Settings section nav",
+      "swift": "clients/macos/Sources/Distill/SettingsNav.swift",
+      "preview": [
+        236,
+        520
+      ],
+      "props": [
+        {
+          "name": "selected",
+          "type": "enum",
+          "default": "Vaults",
+          "options": [
+            "",
+            "Vaults",
+            "Batching",
+            "Sources",
+            "Labels",
+            "Ask history",
+            "Keyboard shortcuts",
+            "AI runners",
+            "Models for tasks",
+            "Actions",
+            "To-do defaults",
+            "Connections"
+          ]
+        },
+        {
+          "name": "query",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "matches",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "height",
+          "type": "text",
+          "default": "",
+          "swift": false,
+          "why": "canvas frame height; the Swift nav fills the window"
+        }
+      ],
+      "board": {
+        "file": "SettingsSectionNavStates.dc.html",
+        "title": "Settings section nav states",
+        "heading": "SettingsSectionNav",
+        "intro": "Settings window → <b>SettingsSectionNav</b>: the search field and the section list on the left of the Settings window. Props: selected (a section), query (the search text), matches (section:count, comma-separated), height.",
+        "width": 1920,
+        "cols": 5,
+        "wrap": "<div style=\"border-radius: 14px; overflow: hidden; box-shadow: 0 0 0 1px #ECEAE5; width: 236px\">{import}</div>"
+      },
+      "states": [
+        {
+          "name": "Selected",
+          "props": {
+            "selected": "Vaults",
+            "height": 560
+          },
+          "size": [
+            "236px",
+            "560px"
+          ],
+          "caption": "selected: the section on the right"
+        },
+        {
+          "name": "An Actions page",
+          "props": {
+            "selected": "Actions",
+            "height": 560
+          },
+          "size": [
+            "236px",
+            "560px"
+          ],
+          "caption": "Action types and Where actions come from stay under Actions"
+        },
+        {
+          "name": "Searching",
+          "props": {
+            "selected": "",
+            "query": "prompt",
+            "matches": "Actions:6,Models for tasks:1",
+            "height": 560
+          },
+          "size": [
+            "236px",
+            "560px"
+          ],
+          "caption": "query + matches: sections with results show a count; the rest dim"
+        },
+        {
+          "name": "No matches",
+          "props": {
+            "selected": "",
+            "query": "webhook",
+            "matches": "",
+            "height": 560
+          },
+          "size": [
+            "236px",
+            "560px"
+          ],
+          "caption": "Every section dims; the page says “No settings match”"
+        },
+        {
+          "name": "Connections",
+          "props": {
+            "selected": "Connections",
+            "height": 560
+          },
+          "size": [
+            "236px",
+            "560px"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Segmented",
+      "title": "Segmented",
+      "swift": "clients/macos/Sources/Distill/AskParts.swift",
+      "preview": [
+        180,
+        28
+      ],
+      "props": [
+        {
+          "name": "options",
+          "type": "text",
+          "default": "Any label|All labels"
+        },
+        {
+          "name": "selection",
+          "type": "text",
+          "default": "Any label"
+        },
+        {
+          "name": "height",
+          "type": "int",
+          "default": 24
+        }
+      ],
+      "board": {
+        "file": "SegmentedStates.dc.html",
+        "title": "Segmented states",
+        "heading": "Segmented",
+        "intro": "AskParts.swift → <b>Segmented</b>. Any or all labels, effort, History Jobs / Ask chats. In Swift SegmentedPills is a typealias of Segmented: one view. Props: options (“|”-separated), selection, height.",
+        "width": 960,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "Any label",
+          "props": {
+            "options": "Any label|All labels",
+            "selection": "Any label"
+          },
+          "size": [
+            "180px",
+            "28px"
+          ],
+          "caption": "Ask filters, height 24"
+        },
+        {
+          "name": "All labels",
+          "props": {
+            "options": "Any label|All labels",
+            "selection": "All labels"
+          },
+          "size": [
+            "180px",
+            "28px"
+          ]
+        },
+        {
+          "name": "Quick ask",
+          "props": {
+            "options": "Any label|All labels",
+            "selection": "Any label",
+            "height": 22
+          },
+          "size": [
+            "160px",
+            "26px"
+          ],
+          "caption": "height 22"
+        },
+        {
+          "name": "Effort",
+          "props": {
+            "options": "Low|Medium|High",
+            "selection": "Medium",
+            "height": 26
+          },
+          "size": [
+            "200px",
+            "30px"
+          ],
+          "caption": "EffortPicker, height 26"
+        },
+        {
+          "name": "History",
+          "props": {
+            "options": "Jobs|Ask chats",
+            "selection": "Jobs",
+            "height": 26
+          },
+          "size": [
+            "170px",
+            "30px"
+          ],
+          "caption": "History, height 26"
+        }
+      ]
+    },
+    {
+      "name": "SegmentedPills",
+      "title": "Segmented pills",
+      "swift": "clients/macos/Sources/Distill/ComposeComponents.swift",
+      "preview": [
+        180,
+        28
+      ],
+      "props": [
+        {
+          "name": "options",
+          "type": "text",
+          "default": "Any label|All labels"
+        },
+        {
+          "name": "selection",
+          "type": "text",
+          "default": "Any label"
+        },
+        {
+          "name": "height",
+          "type": "int",
+          "default": 24
+        },
+        {
+          "name": "track",
+          "type": "color",
+          "default": "#FFFFFF",
+          "options": [
+            "#FFFFFF",
+            "#F6F5F2"
+          ]
+        }
+      ],
+      "board": {
+        "file": "SegmentedPillsStates.dc.html",
+        "title": "Segmented pills states",
+        "heading": "SegmentedPills",
+        "intro": "ComposeComponents.swift → <b>SegmentedPills</b>. SegmentedPills = Segmented in Swift (a typealias); kept as its own board so the Settings uses read the same. Props: options, selection, height, track.",
+        "width": 960,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "Draft timing",
+          "props": {
+            "options": "When a note is processed|Only when I ask",
+            "selection": "When a note is processed"
+          },
+          "size": [
+            "330px",
+            "28px"
+          ],
+          "caption": "Settings → Actions → a type"
+        },
+        {
+          "name": "Keep history",
+          "props": {
+            "options": "30 days|90 days|1 year|Forever",
+            "selection": "90 days"
+          },
+          "size": [
+            "260px",
+            "28px"
+          ]
+        },
+        {
+          "name": "Panel track",
+          "props": {
+            "options": "Any label|All labels",
+            "selection": "All labels",
+            "track": "#F6F5F2"
+          },
+          "size": [
+            "180px",
+            "28px"
+          ],
+          "caption": "track=\"#F6F5F2\""
+        },
+        {
+          "name": "Show",
+          "props": {
+            "options": "Open|Open and completed",
+            "selection": "Open"
+          },
+          "size": [
+            "220px",
+            "28px"
+          ],
+          "caption": "To-do defaults"
+        }
+      ]
+    },
+    {
+      "name": "PillSwitch",
+      "title": "Pill switch",
+      "swift": "clients/macos/Sources/Distill/ComposeComponents.swift",
+      "preview": [
+        40,
+        24
+      ],
+      "props": [
+        {
+          "name": "isOn",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "name": "label",
+          "type": "text",
+          "default": "Setting"
+        },
+        {
+          "name": "width",
+          "type": "int",
+          "default": 40
+        },
+        {
+          "name": "height",
+          "type": "int",
+          "default": 24
+        }
+      ],
+      "board": {
+        "file": "PillSwitchStates.dc.html",
+        "title": "Pill switch states",
+        "heading": "PillSwitch",
+        "intro": "ComposeComponents.swift → <b>PillSwitch</b>. The on/off switch, blue when on. Props: isOn, label (accessibility), width, height. Settings uses 36 × 22.",
+        "width": 960,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "On",
+          "props": {
+            "isOn": true,
+            "label": "Automatic batching"
+          },
+          "size": [
+            "40px",
+            "24px"
+          ],
+          "caption": "40 × 24"
+        },
+        {
+          "name": "Off",
+          "props": {
+            "isOn": false,
+            "label": "Automatic batching"
+          },
+          "size": [
+            "40px",
+            "24px"
+          ]
+        },
+        {
+          "name": "Settings on",
+          "props": {
+            "isOn": true,
+            "label": "Detect to-dos",
+            "width": 36,
+            "height": 22
+          },
+          "size": [
+            "36px",
+            "22px"
+          ],
+          "caption": "36 × 22 in Settings rows"
+        },
+        {
+          "name": "Settings off",
+          "props": {
+            "isOn": false,
+            "label": "Detect to-dos",
+            "width": 36,
+            "height": 22
+          },
+          "size": [
+            "36px",
+            "22px"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CapsuleSwitch",
+      "title": "Capsule switch",
+      "swift": "clients/macos/Sources/Distill/AskParts.swift",
+      "preview": [
+        160,
+        20
+      ],
+      "props": [
+        {
+          "name": "title",
+          "type": "text",
+          "default": "Include unconfirmed"
+        },
+        {
+          "name": "isOn",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "name": "fontSize",
+          "type": "enum",
+          "default": 12,
+          "options": [
+            12,
+            11
+          ],
+          "swift": "font"
+        }
+      ],
+      "board": {
+        "file": "CapsuleSwitchStates.dc.html",
+        "title": "Capsule switch states",
+        "heading": "CapsuleSwitch",
+        "intro": "AskParts.swift → <b>CapsuleSwitch</b>. A switch with its title (Ask filters). Props: title, isOn, fontSize (12 | 11 in the quick ask).",
+        "width": 960,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "On",
+          "props": {
+            "title": "Include unconfirmed",
+            "isOn": true
+          },
+          "size": [
+            "160px",
+            "20px"
+          ]
+        },
+        {
+          "name": "Off",
+          "props": {
+            "title": "Include unconfirmed",
+            "isOn": false
+          },
+          "size": [
+            "160px",
+            "20px"
+          ]
+        },
+        {
+          "name": "Quick ask",
+          "props": {
+            "title": "Include unconfirmed",
+            "isOn": true,
+            "fontSize": 11
+          },
+          "size": [
+            "150px",
+            "20px"
+          ],
+          "caption": "fontSize 11"
+        }
+      ]
+    },
+    {
+      "name": "LabelChip",
+      "title": "Label chip",
+      "swift": "clients/macos/Sources/Distill/ComposeComponents.swift",
+      "preview": [
+        100,
+        26
+      ],
+      "props": [
+        {
+          "name": "labelName",
+          "type": "text",
+          "default": "tea",
+          "swift": "name"
+        },
+        {
+          "name": "style",
+          "type": "enum",
+          "default": "plain",
+          "options": [
+            "plain",
+            "suggestedExisting",
+            "suggestedNew",
+            "muted"
+          ]
+        },
+        {
+          "name": "sparkle",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "height",
+          "type": "int",
+          "default": 26
+        },
+        {
+          "name": "showNewTag",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "name": "removable",
+          "type": "boolean",
+          "default": false,
+          "swift": "onRemove"
+        }
+      ],
+      "board": {
+        "file": "LabelChipStates.dc.html",
+        "title": "Label chip states",
+        "heading": "LabelChip",
+        "intro": "ComposeComponents.swift → <b>LabelChip</b>. A label. Suggested chips are dashed (green = existing, peach = new); confirmed ones are solid. Props: labelName (Swift: name), style, sparkle, height, showNewTag, removable (onRemove).",
+        "width": 960,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "Plain",
+          "props": {
+            "labelName": "tea"
+          },
+          "size": [
+            "60px",
+            "26px"
+          ],
+          "caption": "confirmed"
+        },
+        {
+          "name": "Suggested, existing",
+          "props": {
+            "labelName": "gyokuro",
+            "style": "suggestedExisting",
+            "removable": true
+          },
+          "size": [
+            "100px",
+            "26px"
+          ],
+          "caption": "click to accept, × to drop"
+        },
+        {
+          "name": "Suggested, new",
+          "props": {
+            "labelName": "kettle",
+            "style": "suggestedNew",
+            "removable": true
+          },
+          "size": [
+            "110px",
+            "26px"
+          ],
+          "caption": "“new” tag"
+        },
+        {
+          "name": "Sparkle",
+          "props": {
+            "labelName": "brewing",
+            "style": "suggestedExisting",
+            "sparkle": true
+          },
+          "size": [
+            "110px",
+            "26px"
+          ],
+          "caption": "AI suggestion inline"
+        },
+        {
+          "name": "Muted",
+          "props": {
+            "labelName": "hiring",
+            "style": "muted"
+          },
+          "size": [
+            "80px",
+            "26px"
+          ],
+          "caption": "skipped"
+        },
+        {
+          "name": "Removable",
+          "props": {
+            "labelName": "tea",
+            "removable": true
+          },
+          "size": [
+            "80px",
+            "26px"
+          ],
+          "caption": "chosen in the label step"
+        }
+      ]
+    },
+    {
+      "name": "FilterChip",
+      "title": "Filter chip",
+      "swift": "clients/macos/Sources/Distill/AskParts.swift",
+      "preview": [
+        80,
+        28
+      ],
+      "props": [
+        {
+          "name": "text",
+          "type": "text",
+          "default": "#tea"
+        },
+        {
+          "name": "fill",
+          "type": "color",
+          "default": "#E3EEFF",
+          "options": [
+            "#E3EEFF",
+            "#E9FBC9",
+            "#F6F5F2"
+          ]
+        },
+        {
+          "name": "ink",
+          "type": "color",
+          "default": "#1F6FEB",
+          "options": [
+            "#1F6FEB",
+            "#3D6110",
+            "#1D1C1A"
+          ]
+        },
+        {
+          "name": "height",
+          "type": "int",
+          "default": 28
+        },
+        {
+          "name": "removable",
+          "type": "boolean",
+          "default": true,
+          "swift": "onRemove"
+        }
+      ],
+      "board": {
+        "file": "FilterChipStates.dc.html",
+        "title": "Filter chip states",
+        "heading": "FilterChip",
+        "intro": "AskParts.swift → <b>FilterChip</b>. A removable filter (#tea ×, Slack ×). Props: text, fill, ink, height, removable (onRemove).",
+        "width": 960,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "Label",
+          "props": {
+            "text": "#tea"
+          },
+          "size": [
+            "70px",
+            "28px"
+          ]
+        },
+        {
+          "name": "Source",
+          "props": {
+            "text": "Slack",
+            "fill": "#E9FBC9",
+            "ink": "#3D6110"
+          },
+          "size": [
+            "80px",
+            "28px"
+          ],
+          "caption": "source filters are lime"
+        },
+        {
+          "name": "Not removable",
+          "props": {
+            "text": "#tea",
+            "removable": false
+          },
+          "size": [
+            "70px",
+            "28px"
+          ]
+        },
+        {
+          "name": "To-do filter",
+          "props": {
+            "text": "Status: Open ▾"
+          },
+          "size": [
+            "130px",
+            "28px"
+          ],
+          "caption": "To do filter bar (an active filter)"
+        }
+      ]
+    },
+    {
+      "name": "SourceChip",
+      "title": "Source chip",
+      "swift": "clients/macos/Sources/Distill/SettingsSections.swift",
+      "preview": [
+        80,
+        26
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "text",
+          "default": "Slack"
+        },
+        {
+          "name": "hovering",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "board": {
+        "file": "SourceChipStates.dc.html",
+        "title": "Source chip states",
+        "heading": "SourceChip",
+        "intro": "SettingsSections.swift → <b>SourceChip</b>. A source in Settings → Sources. Props: label, hovering (shows ×; also Remove in the context menu).",
+        "width": 960,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "Default",
+          "props": {
+            "label": "Slack"
+          },
+          "size": [
+            "60px",
+            "26px"
+          ]
+        },
+        {
+          "name": "Hovering",
+          "props": {
+            "label": "Meeting",
+            "hovering": true
+          },
+          "size": [
+            "80px",
+            "26px"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ModelChip",
+      "title": "Model chip",
+      "swift": "clients/macos/Sources/Distill/AskParts.swift",
+      "preview": [
+        180,
+        30
+      ],
+      "props": [
+        {
+          "name": "runner",
+          "type": "text",
+          "default": "Claude Code",
+          "swift": false,
+          "why": "read from the thread’s runner selection (AskModel)"
+        },
+        {
+          "name": "model",
+          "type": "text",
+          "default": "Sonnet",
+          "swift": false,
+          "why": "read from the thread’s runner selection (AskModel)"
+        },
+        {
+          "name": "effort",
+          "type": "enum",
+          "default": "Medium",
+          "options": [
+            "Low",
+            "Medium",
+            "High"
+          ],
+          "swift": false,
+          "why": "read from the thread’s runner selection (AskModel)"
+        },
+        {
+          "name": "showRunner",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "name": "showEffort",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "compact",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "board": {
+        "file": "ModelChipStates.dc.html",
+        "title": "Model chip states",
+        "heading": "ModelChip",
+        "intro": "AskParts.swift → <b>ModelChip</b>. Runner · model chip with the runner menu (Ask). Props: runner, model, effort, showRunner, showEffort, compact.",
+        "width": 960,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "Default",
+          "props": {
+            "runner": "Claude Code",
+            "model": "Sonnet"
+          },
+          "size": [
+            "180px",
+            "30px"
+          ],
+          "caption": "main Ask"
+        },
+        {
+          "name": "With effort",
+          "props": {
+            "runner": "Claude Code",
+            "model": "Sonnet",
+            "showEffort": true
+          },
+          "size": [
+            "230px",
+            "30px"
+          ],
+          "caption": "showEffort"
+        },
+        {
+          "name": "Compact",
+          "props": {
+            "model": "Sonnet",
+            "effort": "Medium",
+            "showRunner": false,
+            "showEffort": true,
+            "compact": true
+          },
+          "size": [
+            "130px",
+            "26px"
+          ],
+          "caption": "quick ask footer"
+        }
+      ]
+    },
+    {
+      "name": "DropdownButton",
+      "title": "Dropdown button",
+      "swift": "clients/macos/Sources/Distill/ComposeComponents.swift",
+      "preview": [
+        160,
+        32
+      ],
+      "props": [
+        {
+          "name": "title",
+          "type": "text",
+          "default": "Claude Code"
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "height",
+          "type": "int",
+          "default": 32
+        },
+        {
+          "name": "radius",
+          "type": "int",
+          "default": 10
+        },
+        {
+          "name": "fontSize",
+          "type": "enum",
+          "default": 12,
+          "options": [
+            12,
+            11,
+            13
+          ],
+          "swift": "font"
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "default": true,
+          "swiftPending": "designed for disabled pickers; not in Swift yet"
+        },
+        {
+          "name": "systemImage",
+          "type": "enum",
+          "default": "",
+          "options": [
+            "",
+            "checkmark",
+            "clock",
+            "plus",
+            "magnifyingglass",
+            "chevron.down",
+            "chevron.right",
+            "checkmark.circle",
+            "text.bubble",
+            "ticket",
+            "doc.text",
+            "envelope",
+            "doc.on.doc",
+            "paperplane",
+            "trash",
+            "clock.arrow.circlepath",
+            "arrow.up.right.square",
+            "note.text",
+            "person",
+            "flag",
+            "calendar",
+            "pencil",
+            "line.3.horizontal.decrease",
+            "ellipsis",
+            "arrow.clockwise",
+            "globe",
+            "lock",
+            "exclamationmark.circle",
+            "list.bullet",
+            "arrow.up.arrow.down",
+            "xmark",
+            "link",
+            "arrow.uturn.backward",
+            "number",
+            "gearshape",
+            "bolt",
+            "tray",
+            "checkmark.square",
+            "bubble.left",
+            "tag",
+            "checklist",
+            "circle.grid.2x2",
+            "play",
+            "square.and.arrow.down",
+            "sparkles",
+            "arrow.up",
+            "progress.indicator"
+          ],
+          "swiftPending": "designed for the To do Filter button; not in Swift yet"
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "default": false,
+          "swiftPending": "designed for the To do Filter button; not in Swift yet"
+        }
+      ],
+      "board": {
+        "file": "DropdownButtonStates.dc.html",
+        "title": "Dropdown button states",
+        "heading": "DropdownButton",
+        "intro": "ComposeComponents.swift → <b>DropdownButton</b>. A white field-looking button with ▾ that opens a menu (model pickers, To-do defaults, the To do Filter button). Props: title, width, height, radius, fontSize, enabled, systemImage, active (blue: filters are set). systemImage and active are new: Swift needs them for Filter.",
+        "width": 960,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "Runner",
+          "props": {
+            "title": "Claude Code",
+            "width": 128,
+            "height": 30
+          },
+          "size": [
+            "128px",
+            "30px"
+          ],
+          "caption": "ModelPickers in Settings"
+        },
+        {
+          "name": "Model",
+          "props": {
+            "title": "Sonnet",
+            "width": 100,
+            "height": 30
+          },
+          "size": [
+            "100px",
+            "30px"
+          ]
+        },
+        {
+          "name": "Effort",
+          "props": {
+            "title": "Medium",
+            "width": 96,
+            "height": 30
+          },
+          "size": [
+            "96px",
+            "30px"
+          ]
+        },
+        {
+          "name": "Round",
+          "props": {
+            "title": "Haiku · Low",
+            "height": 30,
+            "radius": 15
+          },
+          "size": [
+            "110px",
+            "30px"
+          ],
+          "caption": "Labels and image sheets: radius 15"
+        },
+        {
+          "name": "Disabled",
+          "props": {
+            "title": "Default",
+            "width": 96,
+            "height": 30,
+            "enabled": false
+          },
+          "size": [
+            "96px",
+            "30px"
+          ],
+          "caption": "no effort levels"
+        },
+        {
+          "name": "Filter",
+          "props": {
+            "title": "Filter",
+            "systemImage": "line.3.horizontal.decrease",
+            "height": 30,
+            "radius": 15
+          },
+          "size": [
+            "90px",
+            "30px"
+          ],
+          "caption": "To do: no filters beyond Status: Open"
+        },
+        {
+          "name": "Filter · 2",
+          "props": {
+            "title": "Filter · 2",
+            "systemImage": "line.3.horizontal.decrease",
+            "height": 30,
+            "radius": 15,
+            "active": true
+          },
+          "size": [
+            "110px",
+            "30px"
+          ],
+          "caption": "active: two filters set"
+        },
+        {
+          "name": "Group and sort",
+          "props": {
+            "title": "Due date",
+            "systemImage": "arrow.up.arrow.down",
+            "height": 30,
+            "radius": 15
+          },
+          "size": [
+            "110px",
+            "30px"
+          ],
+          "caption": "right end of the bar"
+        }
+      ]
+    },
+    {
+      "name": "QuickSourceButton",
+      "title": "Quick source button",
+      "swift": "clients/macos/Sources/Distill/QuickNote.swift",
+      "preview": [
+        90,
+        24
+      ],
+      "props": [
+        {
+          "name": "source",
+          "type": "text",
+          "default": "",
+          "swift": false,
+          "why": "read from the draft binding (ComposeDraft source)"
+        }
+      ],
+      "board": {
+        "file": "QuickSourceButtonStates.dc.html",
+        "title": "Quick source button states",
+        "heading": "QuickSourceButton",
+        "intro": "QuickNote.swift → <b>QuickSourceButton</b>. “+ Source” in the quick note footer; becomes the chosen source (green, ▾). Props: source.",
+        "width": 960,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "No source",
+          "props": {},
+          "size": [
+            "70px",
+            "24px"
+          ],
+          "caption": "a fresh quick note"
+        },
+        {
+          "name": "Chosen",
+          "props": {
+            "source": "In person"
+          },
+          "size": [
+            "90px",
+            "24px"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "MarkdownBarToggle",
+      "title": "Aa toggle",
+      "swift": "clients/macos/Sources/Distill/MarkdownEditorBar.swift",
+      "preview": [
+        36,
+        24
+      ],
+      "props": [
+        {
+          "name": "isOn",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "height",
+          "type": "enum",
+          "default": 24,
+          "options": [
+            24,
+            26,
+            22
+          ]
+        }
+      ],
+      "board": {
+        "file": "MarkdownBarToggleStates.dc.html",
+        "title": "Aa toggle states",
+        "heading": "MarkdownBarToggle",
+        "intro": "MarkdownEditorBar.swift → <b>MarkdownBarToggle</b>. The Aa button that shows or hides the compact style bar. Props: isOn, height (24 main windows, 26 quick windows).",
+        "width": 960,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "Off",
+          "props": {},
+          "size": [
+            "36px",
+            "24px"
+          ]
+        },
+        {
+          "name": "On",
+          "props": {
+            "isOn": true
+          },
+          "size": [
+            "36px",
+            "24px"
+          ]
+        },
+        {
+          "name": "Quick, off",
+          "props": {
+            "height": 26
+          },
+          "size": [
+            "38px",
+            "26px"
+          ],
+          "caption": "QuickMarkdownBarToggle"
+        },
+        {
+          "name": "Quick, on",
+          "props": {
+            "height": 26,
+            "isOn": true
+          },
+          "size": [
+            "38px",
+            "26px"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SendButton",
+      "title": "Send button",
+      "swift": "clients/macos/Sources/Distill/AskParts.swift",
+      "preview": [
+        38,
+        38
+      ],
+      "props": [
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "name": "size",
+          "type": "int",
+          "default": 38
+        }
+      ],
+      "board": {
+        "file": "SendButtonStates.dc.html",
+        "title": "Send button states",
+        "heading": "SendButton",
+        "intro": "AskParts.swift → <b>SendButton</b>. Round send button (⌘↩). Props: enabled, size.",
+        "width": 960,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "Enabled",
+          "props": {},
+          "size": [
+            "38px",
+            "38px"
+          ]
+        },
+        {
+          "name": "Disabled",
+          "props": {
+            "enabled": false
+          },
+          "size": [
+            "38px",
+            "38px"
+          ],
+          "caption": "empty question"
+        },
+        {
+          "name": "Quick ask",
+          "props": {
+            "size": 30
+          },
+          "size": [
+            "30px",
+            "30px"
+          ],
+          "caption": "size 30"
+        }
+      ]
+    },
+    {
+      "name": "IconButton",
+      "title": "Icon button",
+      "swift": "clients/macos/Sources/Distill/Theme.swift",
+      "preview": [
+        26,
+        26
+      ],
+      "props": [
+        {
+          "name": "systemImage",
+          "type": "enum",
+          "default": "ellipsis",
+          "options": [
+            "checkmark",
+            "clock",
+            "plus",
+            "magnifyingglass",
+            "chevron.down",
+            "chevron.right",
+            "checkmark.circle",
+            "text.bubble",
+            "ticket",
+            "doc.text",
+            "envelope",
+            "doc.on.doc",
+            "paperplane",
+            "trash",
+            "clock.arrow.circlepath",
+            "arrow.up.right.square",
+            "note.text",
+            "person",
+            "flag",
+            "calendar",
+            "pencil",
+            "line.3.horizontal.decrease",
+            "ellipsis",
+            "arrow.clockwise",
+            "globe",
+            "lock",
+            "exclamationmark.circle",
+            "list.bullet",
+            "arrow.up.arrow.down",
+            "xmark",
+            "link",
+            "arrow.uturn.backward",
+            "number",
+            "gearshape",
+            "bolt",
+            "tray",
+            "checkmark.square",
+            "bubble.left",
+            "tag",
+            "checklist",
+            "circle.grid.2x2",
+            "play",
+            "square.and.arrow.down",
+            "sparkles",
+            "arrow.up",
+            "progress.indicator"
+          ]
+        },
+        {
+          "name": "size",
+          "type": "int",
+          "default": 26
+        },
+        {
+          "name": "tint",
+          "type": "color",
+          "default": "#6B6862",
+          "options": [
+            "#6B6862",
+            "#9B978F",
+            "#1F6FEB",
+            "#B03A0A"
+          ]
+        },
+        {
+          "name": "fill",
+          "type": "color",
+          "default": "transparent",
+          "options": [
+            "transparent",
+            "#F6F5F2",
+            "#FFFFFF"
+          ]
+        },
+        {
+          "name": "iconSize",
+          "type": "int",
+          "default": ""
+        },
+        {
+          "name": "weight",
+          "type": "enum",
+          "default": "medium",
+          "options": [
+            "regular",
+            "medium",
+            "semibold",
+            "bold"
+          ]
+        },
+        {
+          "name": "help",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "IconButtonStates.dc.html",
+        "title": "Icon button states",
+        "heading": "IconButton",
+        "intro": "Theme.swift → <b>IconButton</b>. A round icon-only button (⋯, edit, remove, close, refresh). Swift: <b>IconButton</b>(systemImage:, size: = 26, tint: = Theme.muted, fill: Color? = nil, iconSize:, weight:, help:, label:, action:). The icon is 0.42 × size unless iconSize is set; fill and the hover fill (ink at 6%) are circles; help is both the tooltip and the accessibility label. Props: systemImage (SF Symbol), size, tint, fill, iconSize, weight, help.",
+        "width": 960,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "More",
+          "props": {
+            "systemImage": "ellipsis",
+            "size": 28,
+            "help": "More"
+          },
+          "size": [
+            "28px",
+            "28px"
+          ],
+          "caption": "size 28"
+        },
+        {
+          "name": "Edit",
+          "props": {
+            "systemImage": "pencil",
+            "size": 28,
+            "help": "Edit"
+          },
+          "size": [
+            "28px",
+            "28px"
+          ],
+          "caption": "size 28"
+        },
+        {
+          "name": "Remove",
+          "props": {
+            "systemImage": "trash",
+            "size": 28,
+            "help": "Remove"
+          },
+          "size": [
+            "28px",
+            "28px"
+          ],
+          "caption": "size 28"
+        },
+        {
+          "name": "Dismiss",
+          "props": {
+            "systemImage": "xmark",
+            "tint": "#9B978F",
+            "help": "Dismiss"
+          },
+          "size": [
+            "26px",
+            "26px"
+          ],
+          "caption": "default size 26, faint"
+        },
+        {
+          "name": "Refresh",
+          "props": {
+            "systemImage": "arrow.clockwise",
+            "size": 30,
+            "fill": "#F6F5F2",
+            "help": "Refresh"
+          },
+          "size": [
+            "30px",
+            "30px"
+          ],
+          "caption": "fill panel"
+        },
+        {
+          "name": "Blue",
+          "props": {
+            "systemImage": "arrow.up.right.square",
+            "tint": "#1F6FEB",
+            "help": "Open"
+          },
+          "size": [
+            "26px",
+            "26px"
+          ]
+        },
+        {
+          "name": "Bold, larger icon",
+          "props": {
+            "systemImage": "xmark",
+            "iconSize": 12,
+            "weight": "bold",
+            "help": "Close"
+          },
+          "size": [
+            "26px",
+            "26px"
+          ],
+          "caption": "iconSize 12, weight bold"
+        }
+      ]
+    },
+    {
+      "name": "LinkButton",
+      "title": "Link button",
+      "swift": "clients/macos/Sources/Distill/AskParts.swift",
+      "preview": [
+        80,
+        28
+      ],
+      "props": [
+        {
+          "name": "title",
+          "type": "text",
+          "default": "+ Label"
+        },
+        {
+          "name": "size",
+          "type": "enum",
+          "default": 12,
+          "options": [
+            12,
+            11,
+            13
+          ]
+        }
+      ],
+      "board": {
+        "file": "LinkButtonStates.dc.html",
+        "title": "Link button states",
+        "heading": "LinkButton",
+        "intro": "AskParts.swift → <b>LinkButton</b>. Blue text button (+ Label, + Limit by source, Open Settings). Props: title, size.",
+        "width": 960,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "+ Label",
+          "props": {
+            "title": "+ Label"
+          },
+          "size": [
+            "64px",
+            "28px"
+          ]
+        },
+        {
+          "name": "+ Limit by source",
+          "props": {
+            "title": "+ Limit by source"
+          },
+          "size": [
+            "120px",
+            "28px"
+          ]
+        },
+        {
+          "name": "Open Settings",
+          "props": {
+            "title": "Open Settings"
+          },
+          "size": [
+            "100px",
+            "28px"
+          ]
+        },
+        {
+          "name": "Small",
+          "props": {
+            "title": "+ Limit",
+            "size": 11
+          },
+          "size": [
+            "60px",
+            "28px"
+          ],
+          "caption": "size 11"
+        }
+      ]
+    },
+    {
+      "name": "Tile",
+      "title": "Tile",
+      "swift": "clients/macos/Sources/Distill/Theme.swift",
+      "preview": [
+        40,
+        40
+      ],
+      "props": [
+        {
+          "name": "text",
+          "type": "text",
+          "default": "NOTE"
+        },
+        {
+          "name": "fill",
+          "type": "color",
+          "default": "#E9FBC9",
+          "options": [
+            "#E9FBC9",
+            "#E3EEFF",
+            "#FFE4D6",
+            "#FFE0EC"
+          ]
+        },
+        {
+          "name": "ink",
+          "type": "color",
+          "default": "#3D6110",
+          "options": [
+            "#3D6110",
+            "#1F6FEB",
+            "#B03A0A",
+            "#A3245A"
+          ]
+        },
+        {
+          "name": "size",
+          "type": "int",
+          "default": 40
+        },
+        {
+          "name": "display",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "board": {
+        "file": "TileStates.dc.html",
+        "title": "Tile states",
+        "heading": "Tile",
+        "intro": "Theme.swift → <b>Tile</b>. Colored rounded tile with a short label: the file type in Queue rows, a vault’s initial. Props: text, fill, ink, size, display (Bricolage initial instead of a 10 pt label).",
+        "width": 960,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "Note",
+          "props": {
+            "text": "NOTE"
+          },
+          "size": [
+            "40px",
+            "40px"
+          ],
+          "caption": "Queue row"
+        },
+        {
+          "name": "PNG",
+          "props": {
+            "text": "PNG",
+            "fill": "#E3EEFF",
+            "ink": "#1F6FEB"
+          },
+          "size": [
+            "40px",
+            "40px"
+          ]
+        },
+        {
+          "name": "PDF",
+          "props": {
+            "text": "PDF",
+            "fill": "#FFE4D6",
+            "ink": "#B03A0A"
+          },
+          "size": [
+            "40px",
+            "40px"
+          ]
+        },
+        {
+          "name": "MD",
+          "props": {
+            "text": "MD"
+          },
+          "size": [
+            "40px",
+            "40px"
+          ]
+        },
+        {
+          "name": "Vault initial",
+          "props": {
+            "text": "R",
+            "fill": "#FFE0EC",
+            "ink": "#A3245A",
+            "size": 34,
+            "display": true
+          },
+          "size": [
+            "34px",
+            "34px"
+          ],
+          "caption": "Settings → Vaults, size 34, display"
+        },
+        {
+          "name": "Sidebar vault",
+          "props": {
+            "text": "W",
+            "fill": "#E3EEFF",
+            "ink": "#1F6FEB",
+            "size": 30,
+            "display": true
+          },
+          "size": [
+            "30px",
+            "30px"
+          ],
+          "caption": "VaultSwitcher"
+        }
+      ]
+    },
+    {
+      "name": "FilterPanel",
+      "title": "Filter panel",
+      "swift": null,
+      "preview": [
+        300,
+        560
+      ],
+      "props": [
+        {
+          "name": "kind",
+          "type": "enum",
+          "default": "todo",
+          "options": [
+            "todo",
+            "slack",
+            "jira",
+            "confluence",
+            "history"
+          ]
+        },
+        {
+          "name": "selected",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "default": "Open",
+          "options": [
+            "Open",
+            "Completed",
+            "All"
+          ]
+        },
+        {
+          "name": "due",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "person",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "label",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "priority",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "more",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "personQuery",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "expanded",
+          "type": "enum",
+          "default": "",
+          "options": [
+            "",
+            "person",
+            "label",
+            "note"
+          ]
+        },
+        {
+          "name": "scrollTo",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "focus",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "width",
+          "type": "int",
+          "default": 300
+        },
+        {
+          "name": "height",
+          "type": "int",
+          "default": 560
+        }
+      ],
+      "board": {
+        "file": "FilterPanelStates.dc.html",
+        "title": "Filter panel states",
+        "heading": "FilterPanel",
+        "intro": "To do’s one Filter menu, a popover under the Filter button. Sections STATUS (one choice), DUE, PERSON (with search), LABEL, SOURCE NOTE, PRIORITY and MORE (several each, check marks). Long sections show the top 5, then “Show all N”. Footer: Clear all · Done. No Swift view yet: add <b>FilterPanel</b> with the same inputs. Props: status, due, person, label, note, priority, more (“|”-separated selections), personQuery, expanded, scrollTo (opened from a chip), focus, width, height.",
+        "width": 1680,
+        "cols": 5
+      },
+      "states": [
+        {
+          "name": "Nothing set",
+          "props": {},
+          "size": [
+            "300px",
+            "560px"
+          ],
+          "caption": "Status: Open is the default and shows no chip"
+        },
+        {
+          "name": "Two filters",
+          "props": {
+            "due": "Today",
+            "label": "#tea"
+          },
+          "size": [
+            "300px",
+            "560px"
+          ],
+          "caption": "Due: Today and #tea; the button reads Filter · 2"
+        },
+        {
+          "name": "Opened from a chip",
+          "props": {
+            "scrollTo": "person",
+            "focus": "person",
+            "person": "You (Jin Liu)"
+          },
+          "size": [
+            "300px",
+            "560px"
+          ],
+          "caption": "Clicking “You (Jin Liu) ×” opens the panel at PERSON"
+        },
+        {
+          "name": "Searching people",
+          "props": {
+            "scrollTo": "person",
+            "focus": "person",
+            "personQuery": "mei",
+            "height": 420
+          },
+          "size": [
+            "300px",
+            "420px"
+          ],
+          "caption": "The search narrows PERSON as you type"
+        },
+        {
+          "name": "Show all labels",
+          "props": {
+            "scrollTo": "label",
+            "expanded": "label",
+            "label": "#tea|#tea-club"
+          },
+          "size": [
+            "300px",
+            "560px"
+          ],
+          "caption": "Show all 7 expands the section in place"
+        },
+        {
+          "name": "Status: All",
+          "props": {
+            "status": "All",
+            "height": 420
+          },
+          "size": [
+            "300px",
+            "420px"
+          ],
+          "caption": "Status: All shows a chip; Clear all returns to Status: Open"
+        },
+        {
+          "name": "Slack messages",
+          "props": {
+            "kind": "slack",
+            "selected": "Ready to paste",
+            "height": 480
+          },
+          "size": [
+            "300px",
+            "480px"
+          ],
+          "caption": "kind=\"slack\": Status, Recipient, Source note, Label"
+        },
+        {
+          "name": "Jira tickets",
+          "props": {
+            "kind": "jira",
+            "selected": "Draft|PX · Project X",
+            "height": 480
+          },
+          "size": [
+            "300px",
+            "480px"
+          ],
+          "caption": "kind=\"jira\": Status, Project, Type, Priority, Assignee, Source note"
+        },
+        {
+          "name": "Confluence pages",
+          "props": {
+            "kind": "confluence",
+            "height": 420
+          },
+          "size": [
+            "300px",
+            "420px"
+          ],
+          "caption": "kind=\"confluence\": Status, Space, Source note"
+        },
+        {
+          "name": "History → Actions",
+          "props": {
+            "kind": "history",
+            "selected": "Completed|This week",
+            "height": 480
+          },
+          "size": [
+            "300px",
+            "480px"
+          ],
+          "caption": "kind=\"history\": Type, Outcome, Date, Source"
+        }
+      ]
+    },
+    {
+      "name": "ActionsToolbar",
+      "title": "Actions toolbar",
+      "swift": null,
+      "preview": [
+        820,
+        30
+      ],
+      "props": [
+        {
+          "name": "search",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "placeholder",
+          "type": "text",
+          "default": "Search to-dos"
+        },
+        {
+          "name": "focus",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "searchWidth",
+          "type": "int",
+          "default": 190
+        },
+        {
+          "name": "chips",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "visibleChips",
+          "type": "int",
+          "default": ""
+        },
+        {
+          "name": "right",
+          "type": "enum",
+          "default": "sort",
+          "options": [
+            "sort",
+            "connection",
+            "none"
+          ]
+        },
+        {
+          "name": "sortTitle",
+          "type": "text",
+          "default": "Due date"
+        },
+        {
+          "name": "connection",
+          "type": "enum",
+          "default": "connected",
+          "options": [
+            "connected",
+            "disconnected",
+            "connecting"
+          ]
+        },
+        {
+          "name": "site",
+          "type": "text",
+          "default": "acme.atlassian.net"
+        },
+        {
+          "name": "service",
+          "type": "text",
+          "default": "Atlassian"
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "ActionsToolbarStates.dc.html",
+        "title": "Actions toolbar states",
+        "heading": "ActionsToolbar",
+        "intro": "One toolbar for every Actions tab: [search] [Filter ▾ · N] [active filter chips] … [right slot]. It stays one line: chips that don’t fit collapse into “+N” (opens the Filter panel) before anything wraps. Right slot: group/sort (To do), Newest first ▾ (Slack, History), connection status and Connect now (Jira, Confluence). No Swift view yet: add <b>ActionsToolbar</b>. Props: search, placeholder, focus, searchWidth, chips (“|”), visibleChips, right (sort | connection | none), sortTitle, connection (connected | disconnected | connecting), site, service, width.",
+        "width": 1920,
+        "cols": 2
+      },
+      "states": [
+        {
+          "name": "To do, no filters",
+          "props": {
+            "placeholder": "Search to-dos",
+            "width": 820
+          },
+          "size": [
+            "820px",
+            "30px"
+          ],
+          "caption": "Status: Open is the default: no chip, plain Filter"
+        },
+        {
+          "name": "Two filters",
+          "props": {
+            "placeholder": "Search to-dos",
+            "chips": "Person: You|#project-x",
+            "width": 820
+          },
+          "size": [
+            "820px",
+            "30px"
+          ],
+          "caption": "Filter · 2, one removable chip each"
+        },
+        {
+          "name": "Narrow (890 pt window)",
+          "props": {
+            "placeholder": "Search to-dos",
+            "searchWidth": 160,
+            "chips": "Status: All|Due: This week|Person: You|#project-x|#tea",
+            "visibleChips": 1,
+            "width": 566
+          },
+          "size": [
+            "566px",
+            "30px"
+          ],
+          "caption": "Chips past the room collapse into +4; still one line"
+        },
+        {
+          "name": "Slack",
+          "props": {
+            "placeholder": "Search messages",
+            "sortTitle": "Newest first",
+            "width": 820
+          },
+          "size": [
+            "820px",
+            "30px"
+          ],
+          "caption": "right: Newest first ▾"
+        },
+        {
+          "name": "Jira, not connected",
+          "props": {
+            "placeholder": "Search tickets",
+            "right": "connection",
+            "connection": "disconnected",
+            "width": 820
+          },
+          "size": [
+            "820px",
+            "30px"
+          ],
+          "caption": "Connect now opens Settings → Connections (token sign-in)"
+        },
+        {
+          "name": "Jira, connecting",
+          "props": {
+            "placeholder": "Search tickets",
+            "right": "connection",
+            "connection": "connecting",
+            "width": 820
+          },
+          "size": [
+            "820px",
+            "30px"
+          ],
+          "caption": "While the browser sign-in is open"
+        },
+        {
+          "name": "Jira, connected",
+          "props": {
+            "placeholder": "Search tickets",
+            "right": "connection",
+            "chips": "Draft",
+            "width": 820
+          },
+          "size": [
+            "820px",
+            "30px"
+          ],
+          "caption": "acme.atlassian.net · connected"
+        },
+        {
+          "name": "History → Actions",
+          "props": {
+            "placeholder": "Search history",
+            "chips": "Completed",
+            "sortTitle": "Newest first",
+            "width": 820
+          },
+          "size": [
+            "820px",
+            "30px"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ActionRow",
+      "title": "Action row",
+      "swift": null,
+      "preview": [
+        330,
+        56
+      ],
+      "props": [
+        {
+          "name": "type",
+          "type": "enum",
+          "default": "slack",
+          "options": [
+            "todo",
+            "slack",
+            "jira",
+            "confluence",
+            "email"
+          ]
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "default": "Message to Mei Tanaka"
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "default": "From Tea club planning · today at 3:44 PM"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "default": "Draft"
+        },
+        {
+          "name": "statusKind",
+          "type": "enum",
+          "default": "draft",
+          "options": [
+            "draft",
+            "ready",
+            "busy",
+            "created",
+            "error",
+            "muted",
+            "completed",
+            "removed",
+            "sent",
+            "dismissed"
+          ]
+        },
+        {
+          "name": "selected",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "hover",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "mode",
+          "type": "enum",
+          "default": "list",
+          "options": [
+            "list",
+            "history"
+          ]
+        },
+        {
+          "name": "faded",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "ActionRowStates.dc.html",
+        "title": "Action row states",
+        "heading": "ActionRow",
+        "intro": "One row for every handler list (Slack messages, Jira tickets, Confluence pages) and History → Actions: type icon, title, source line, status pill. On hover: ✓ Complete (“you’ve handled it”, independent of Jira’s or Confluence’s own status) and ⋯; in History, Restore and ⋯. To do keeps its own row (a checkbox that completes, due date, person, labels and priority), because to-dos are worked through as a checklist. No Swift view yet: add <b>ActionRow</b>. Props: type, title, source, status, statusKind, selected, hover, mode (list | history), faded, width.",
+        "width": 1280,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "Slack, ready",
+          "props": {
+            "type": "slack",
+            "title": "Message to Mei Tanaka",
+            "source": "From Tea club planning · today at 3:44 PM",
+            "status": "Ready to paste",
+            "statusKind": "ready",
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ]
+        },
+        {
+          "name": "Selected",
+          "props": {
+            "type": "jira",
+            "title": "Cap payment client retries at 3",
+            "source": "From Auth retry bug · today at 3:50 PM",
+            "status": "Draft",
+            "selected": true,
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ],
+          "caption": "its detail is open on the right"
+        },
+        {
+          "name": "Hover: Complete and ⋯",
+          "props": {
+            "type": "jira",
+            "title": "PX-482 Add an alert for retry storms",
+            "source": "Created today at 3:51 PM · In progress in Jira",
+            "status": "Created",
+            "statusKind": "created",
+            "hover": true,
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ],
+          "caption": "Complete works on drafts, created and ready items alike"
+        },
+        {
+          "name": "Not written",
+          "props": {
+            "type": "confluence",
+            "title": "Tea club: brewing temperatures cheat sheet",
+            "source": "From Gyokuro at 60 °C · not written yet",
+            "status": "Not written",
+            "statusKind": "muted",
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ]
+        },
+        {
+          "name": "Writing",
+          "props": {
+            "type": "slack",
+            "title": "Message to #project-x",
+            "source": "From Auth retry bug",
+            "status": "Writing",
+            "statusKind": "busy",
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ]
+        },
+        {
+          "name": "Completed (leaving)",
+          "props": {
+            "type": "slack",
+            "title": "Message to Mei Tanaka",
+            "source": "Completed just now",
+            "status": "Completed",
+            "statusKind": "completed",
+            "faded": true,
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ],
+          "caption": "struck through, then it moves to History; toast “Completed · Undo”"
+        },
+        {
+          "name": "History, hover: Restore",
+          "props": {
+            "type": "confluence",
+            "title": "On-call handoff checklist",
+            "source": "Completed by you yesterday at 5:40 PM",
+            "status": "Completed",
+            "statusKind": "completed",
+            "mode": "history",
+            "hover": true,
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ],
+          "caption": "mode=\"history\""
+        },
+        {
+          "name": "History, removed",
+          "props": {
+            "type": "slack",
+            "title": "Message to #project-x about retries",
+            "source": "Removed today at 4:02 PM",
+            "status": "Removed",
+            "statusKind": "removed",
+            "mode": "history",
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ]
+        },
+        {
+          "name": "History, sent",
+          "props": {
+            "type": "todo",
+            "title": "Cap payment client retries at 3",
+            "source": "Sent to Jira tickets today at 3:50 PM",
+            "status": "Sent",
+            "statusKind": "sent",
+            "mode": "history",
+            "width": 330
+          },
+          "size": [
+            "330px",
+            "56px"
+          ],
+          "caption": "sent items have no Restore"
+        }
+      ]
+    }
+  ]
+}

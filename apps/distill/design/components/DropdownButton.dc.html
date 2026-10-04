@@ -1,0 +1,17 @@
+<!-- DropdownButton: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<span style="width: {{w}}; height: {{h}}; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: {{r}}; background: {{bg}}; box-shadow: inset 0 0 0 1px {{ring}}; opacity: {{op}}; box-sizing: border-box; white-space: nowrap">
+<sc-if value="{{hasIcon}}" hint-placeholder-val="{{ false }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{iconInk}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0"><path d="{{d}}"></path></svg></sc-if>
+<span style="flex-grow: 1; font-size: {{fs}}; font-weight: {{fw}}; color: {{ink}}; overflow: hidden; text-overflow: ellipsis">{{title}}</span><span style="font-size: 11px; color: {{caret}}">▾</span></span>
+</x-dc>
+<script type="text/x-dc-logic">
+const px = (v, d) => (v === undefined || v === null || v === '') ? d : (/^[0-9.]+$/.test(String(v)) ? v + 'px' : String(v));
+const num = (v, d) => (v === undefined || v === null || v === '' || isNaN(Number(v))) ? d : Number(v);
+const ICONS = @@ICONS@@;
+const d = ICONS[p.systemImage || ''] || '', active = on(p.active, false);
+return { title: p.title || 'Claude Code', w: px(p.width, 'auto'), h: num(p.height, 32) + 'px', r: num(p.radius, 10) + 'px',
+  fs: num(p.fontSize, 12) + 'px', op: on(p.enabled, true) ? 1 : 0.45, d, hasIcon: !!d,
+  bg: active ? '#E3EEFF' : '#FFFFFF', ring: active ? '#BFD5FA' : '#ECEAE5', ink: active ? '#1F6FEB' : '#1D1C1A', fw: active ? 700 : 600,
+  iconInk: active ? '#1F6FEB' : '#6B6862', caret: active ? '#1F6FEB' : '#9B978F' };
+</script>

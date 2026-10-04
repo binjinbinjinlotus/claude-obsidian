@@ -1,0 +1,12 @@
+<!-- PillSwitch: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<span role="switch" aria-checked="{{on}}" aria-label="{{label}}" style="width: {{w}}; height: {{h}}; border-radius: {{r}}; background: {{bg}}; display: inline-flex; align-items: center; justify-content: {{justify}}; padding: 3px; box-sizing: border-box; flex-shrink: 0"><span style="width: {{k}}; height: {{k}}; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 1px rgba(0,0,0,.12)"></span></span>
+</x-dc>
+<script type="text/x-dc-logic">
+const num = (v, d) => (v === undefined || v === null || v === '' || isNaN(Number(v))) ? d : Number(v);
+const isOn = on(p.isOn, true);
+const w = num(p.width, 40), h = num(p.height, 24);
+return { on: isOn ? 'true' : 'false', label: p.label || 'Setting', w: w + 'px', h: h + 'px', r: h / 2 + 'px', k: (h - 6) + 'px',
+  bg: isOn ? '#1F6FEB' : '#D6D3CC', justify: isOn ? 'flex-end' : 'flex-start' };
+</script>

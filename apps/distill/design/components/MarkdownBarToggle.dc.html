@@ -1,0 +1,11 @@
+<!-- MarkdownBarToggle: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<span role="switch" aria-checked="{{on}}" aria-label="Text style bar" style="height: {{h}}; display: inline-flex; align-items: center; padding: 0 {{pad}}; border-radius: {{r}}; background: {{bg}}; color: {{fg}}; font-size: {{fs}}; font-weight: 800; box-sizing: border-box; flex-shrink: 0">Aa</span>
+</x-dc>
+<script type="text/x-dc-logic">
+const num = (v, d) => (v === undefined || v === null || v === '' || isNaN(Number(v))) ? d : Number(v);
+const isOn = on(p.isOn, false), h = num(p.height, 24);
+return { on: isOn ? 'true' : 'false', h: h + 'px', r: h / 2 + 'px', pad: (h >= 26 ? 9 : 8) + 'px', fs: (h >= 26 ? 12 : 11) + 'px',
+  bg: isOn ? '#E3EEFF' : '#F6F5F2', fg: isOn ? '#1F6FEB' : '#48463F' };
+</script>
