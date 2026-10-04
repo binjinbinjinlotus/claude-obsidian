@@ -31,7 +31,8 @@ supersede it with a new entry.
     subfolders, and files changed within the settle delay (the same 10
     minutes as batching). On a name clash it adds " 2" and never
     overwrites.
-  - **Dedupe is by content.** The vault ledger is keyed by sha256, with
+  - **Dedupe is by content.** The vault ledger (Folder collectors only;
+    script runs never enter it) is keyed by sha256, with
     path, size and mtime as a shortcut that skips hashing. A file whose
     content was collected before is skipped and stays in the source
     folder, whatever its name. Same path with new content is collected
@@ -56,7 +57,8 @@ supersede it with a new entry.
     the collector. There is no notification on success; a macOS
     notification is sent only on the first failure after a success.
   - **The queue path on Queue is shown with `~`.** Copy copies the
-    absolute path, and the hover shows it. The Folder default source is
+    absolute path, and the hover shows it. This is open: the user asked for
+    the "full path". The Folder default source is
     `~/Distill Inbox`, and Distill creates it on first save.
   - **API and contract are proposed only.** The lead owns `contracts.ts`.
 - **Design schema: page boards.** Main and MainLoading moved from

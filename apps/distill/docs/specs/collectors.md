@@ -94,8 +94,8 @@ job.
 
 ## Ledger and dedupe
 
-- The core keeps one ledger per collector kind and vault in its state
-  directory: `<state>/collectors/ledger-<vault-id>.jsonl`, append-only, under
+- The core keeps one ledger per vault, used by Folder collectors, in its
+  state directory: `<state>/collectors/ledger-<vault-id>.jsonl`, append-only, under
   the user-data rules in [User data](user-data.md). Each entry holds the
   source path, size, mtime, sha256, collected-at time, collector id, and the
   queue file name.
@@ -113,9 +113,10 @@ job.
   ledger, so a new Folder collector on the same folder does not take old
   files again. A **Forget collected files** action, behind a confirmation,
   is the only way to clear it.
-- Custom scripts are not deduped by Distill: they own what they write. The
-  ledger records files that appear in the queue during their run, for the
-  run log only.
+- Custom scripts are not deduped by Distill: they own what they write. Files
+  that appear in the queue during a script run are recorded only in that
+  run's record (`runs/<collector-id>.jsonl`), never in the ledger, so they
+  never cause a Folder collector to skip anything.
 
 ## Schedule model
 
@@ -278,13 +279,22 @@ interface CollectorRun {
 ## Open questions
 
 See the 2026-10-04 entry in [Decisions](decisions.md) for the defaults
-chosen. Still open for the user:
+chosen. The questions still open for the user each have a recommendation:
 
-1. Should collectors be per vault (the list follows the active vault), or
-   global with a target vault each? The design shows a global list, with the
-   target on each collector.
-2. Should Folder ever copy instead of move, for example from a synced folder
-   the user wants to keep? The design always moves.
-3. Is the content-keyed dedupe right? With it, a file the user re-drops into
-   `~/Distill Inbox` on purpose stays skipped. The alternative is to key the
-   ledger by path and content.
+1. **Per-vault or global list?** The design shows a global list, with a
+   target vault on each collector (defaulting to the active vault).
+   Recommended: keep it global, so one inbox folder can feed a chosen vault
+   without switching vaults.
+2. **Should Folder ever copy instead of move**, for example from a synced
+   folder the user wants to keep? Recommended: always move in v1, and add
+   "Copy, keep the originals" later only if asked. Moving is what makes the
+   source folder an inbox.
+3. **Dedupe by content or by path and content?** By content, a file the user
+   re-drops into `~/Distill Inbox` on purpose stays skipped. Recommended:
+   dedupe by content, with a per-file "Collect anyway" in the run history for
+   the rare re-drop.
+4. **Queue path display.** The design shows `~/Documents/Distill
+   Queue/Research`, with the absolute path on hover and on Copy path. The
+   user asked for the "full path". Recommended: keep `~` (shorter, still
+   unambiguous), but switch to the absolute `/Users/…` path if the user
+   meant it literally.

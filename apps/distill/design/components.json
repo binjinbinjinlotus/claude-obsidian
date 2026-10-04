@@ -168,7 +168,7 @@
         "heading": "Sidebar",
         "intro": "MainView.swift → <b>Sidebar</b> (with RecentQuestions and VaultSwitcher). One file, imported by every app window. Props: section, sub, queueCount, collectorsAlert, reviewCount, actionsCount, labelsCount, todoCount, slackCount, jiraCount, confluenceCount, recentRunning, recentFailed, recentOpen, vault, status, height. Swift’s Section has no Actions yet and no sub-items: both are design ahead of the app. Collectors (designed 2026-10-04) sits under Queue because it feeds the queue; it shows a peach count only when a collector failed or waits for your OK.",
         "width": 1920,
-        "cols": 6,
+        "cols": 7,
         "wrap": "<div style=\"width: 220px; border-radius: 14px; overflow: hidden; box-shadow: 0 0 0 1px #ECEAE5\">{import}</div>"
       },
       "states": [
