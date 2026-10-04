@@ -105,11 +105,9 @@ struct TypeListScreen: View {
 
     // MARK: Toolbar
 
+    /// Connected, or it needs setting up (Settings → Connections); never "connecting".
     private var connection: ToolbarConnection {
-        if type.handler("create")?.available == true { return .connected }
-        if let id = type.connectionID, let ui = store.engine?.settingsUI,
-           ui.signingIn.contains(id) || ui.connection(id)?.status == .signingIn { return .connecting }
-        return .disconnected
+        type.handler("create")?.available == true ? .connected : .disconnected
     }
 
     private var site: String {
@@ -232,15 +230,8 @@ struct TypeListScreen: View {
         let colors = (ActionsTheme.typeStyle(type.id).1, ActionsTheme.typeStyle(type.id).2)
         if creates && connection != .connected {
             ActionsEmpty(icon: ActionsTheme.typeStyle(type.id).0, colors: colors, title: "No \(things) yet",
-                         message: connection == .connecting
-                            ? "Finish signing in, in your browser. This page updates by itself."
-                            : "Connect \(type.connectionID == "atlassian" ? "Atlassian" : service) once and Distill can create \(things) on \(site == "Atlassian" ? "your Atlassian site" : site) with one click. Drafts from your notes and To do appear here.") {
-                if connection == .connecting {
-                    HStack(spacing: 6) { Spinner(color: .white, size: 10); Text("Connecting…").font(Theme.body(13, .semibold)) }
-                        .foregroundStyle(.white).padding(.horizontal, 14).frame(height: 30).background(Capsule().fill(Theme.primary))
-                } else {
-                    PrimaryButton(title: "Connect now", systemImage: "link", size: .small) { store.openSettings("connections") }
-                }
+                         message: "Set up the \(type.connectionID == "atlassian" ? "Atlassian" : service) connection once in Settings and Distill can create \(things) on \(site == "Atlassian" ? "your Atlassian site" : site) with one click. Drafts from your notes and To do appear here.") {
+                PrimaryButton(title: ToolbarConnection.setUpTitle, systemImage: "link", size: .small) { store.openSettings("connections") }
                 SoftButton(title: "History", fill: .white, size: .small, stroke: true, systemImage: "clock") { store.historyRequest += 1 }
             }
         } else if creates {

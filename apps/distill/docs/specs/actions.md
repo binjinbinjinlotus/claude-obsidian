@@ -73,8 +73,9 @@ SettingsNav). Contract: `core/src/contracts.ts` → "Actions (actions.json)",
   disabled **Send in Slack · Later** slot marks the future handler.
 - Jira / Confluence: created only on the user's click, never during
   processing. Created items show key/link and status (manual **Refresh**;
-  Done in Jira → done). Errors: not connected / sign-in expired →
-  "Sign in to Jira in your browser", refused (field marked), unreachable.
+  Done in Jira → done). Errors: not connected → "Set up connection"
+  (Settings → Connections), sign-in expired → "Update the token" plus Retry,
+  refused (field marked), unreachable.
   Removing a created item removes it from Distill only.
 - History → Actions: removed, done, sent; Restore; Delete forever (the only
   confirm). Kept `historyDays` (default 90). A restored item of a type now
@@ -125,13 +126,21 @@ Everything is stored in `settings.actionPreferences`.
   priority, note), Keep action history (30 days, 90 days, 1 year, Forever = 0,
   default 90), and Remind me of overdue to-dos (default off).
 - **Connections**: Slack ("Not needed yet — Copy works without connecting",
-  Connect disabled). One Atlassian card for Jira and Confluence. The card's
-  states:
-  - not connected: Sign in in your browser
-  - signing in: "Waiting for browser" and the token form
-  - connected: site, account, Disconnect
-  - sign-in expired: sign in again
-  - error or denied: a message and Try again
+  Connect disabled). One Atlassian card for Jira and Confluence (canvas
+  SettingsNav 8, 9, 9b; v59). It is connected, or it isn't: there is no
+  "connecting" or "waiting for the browser" state.
+  - connected: "Connected" pill, site · as account, Disconnect
+  - not connected: "Not connected" pill and the token form, always open:
+    Site, Email, API token, then Connect (on once all three are filled) and
+    Get an API token (opens Atlassian's token page in the browser; nothing
+    waits for it)
+  - token refused: still not connected, the form keeps what was typed, and a
+    banner "Atlassian didn’t accept this token · Check the site and email, or
+    create a new token. Nothing was saved." Any other failure shows the core's
+    own words with "Nothing was saved."
+  - sign-in expired, denied, or an older core's `signing_in`: shown as not
+    connected with the form (expired adds "the token stopped working; paste a
+    new one" to the subtitle)
   - older core: "Update the Distill core"
 
   `connection` events update the card.
@@ -139,12 +148,16 @@ Everything is stored in `settings.actionPreferences`.
 ## Connections
 
 Atlassian Cloud REST with the user's email and an API token stored in the
-Keychain. "Sign in in your browser" asks the core for the sign-in URL
+Keychain. "Get an API token" asks the core for the token page URL
 (`GET /v1/connections/atlassian/sign-in-url?site=`) and opens it in the
 default browser. Only http(s) addresses are opened. The user creates an API
 token there and pastes it with the site URL and email into the card's form,
-which calls `POST /v1/connections/atlassian/connect`. The token field is a
-secure field, cleared on submit whatever the answer. It never reaches
+which calls `POST /v1/connections/atlassian/connect` (the app waits 45 s, longer
+than the core's 30 s check with Atlassian, so a slow site ends in the core's
+answer). While it runs Connect is only disabled; no "Connecting…" label. The
+token field is a secure field; it is cleared once Atlassian accepts the token
+and kept in the form (memory only) after a refusal so a typo in the site or
+email can be fixed. It never reaches
 settings.json, logs or error messages (`ConnectRequest`'s description hides
 it). An OAuth app would need a client secret Distill can't ship; the
 `ConnectionInfo` interface allows OAuth later.
@@ -428,7 +441,7 @@ Status per part; `built` parts ship in `clients/macos`.
   off "Added 2 to-dos and created 1 draft · Undo", Undo = dismiss; the same
   for Undo after Add all in Ask; a 409, the item was edited meanwhile, removes it instead). Every other
   Undo is `restore` (complete, remove, mark as sent, Send to, a dismissed Ask
-  row); Undo improve is `undo-improve`. The sign-in buttons post
+  row); Undo improve is `undo-improve`. Set up connection and Update the token post
   `distill.openSettingsSection` "connections" and open Settings; "Settings for
   this type" posts `actions/<type>`.
 - **Toolbar and Filter panel** (built 2026-10-03, canvas v57; `ActionsToolbar.swift`,
@@ -440,9 +453,9 @@ Status per part; `built` parts ship in `clients/macos`.
   panel at the first hidden one), then the right slot: sort on To do and
   Slack (Newest / Oldest first on Slack; To do's group and sort panel),
   connection status on Jira and Confluence ("acme.atlassian.net ·
-  connected", "Atlassian · not connected" + Connect now, which opens Settings
-  → Connections through `openSettings(section: "connections")`, or
-  Connecting… while the browser sign-in runs), nothing on History. It never
+  connected", or "Atlassian · not connected" + Set up connection, which opens
+  Settings → Connections through `openSettings(section: "connections")`; no
+  in-between state, v59), nothing on History. It never
   wraps and never asks for more width than it has: `ToolbarFit` decides from
   the measured widths; chips collapse into +N first, then the search narrows
   (160, then 140), and only then does the connection drop its status text.
@@ -500,11 +513,11 @@ Status per part; `built` parts ship in `clients/macos`.
   `ActionTypeInfo` (the refused field marked), the description as headings,
   bullets and checkboxes, Writing / Improving with Cancel, Creating in Jira…,
   Created with key link, status, "Status from Jira at 3:52 PM · Refresh";
-  errors: not connected ("Sign in to Jira in your browser" → Settings →
-  Connections), sign-in expired (plus Retry), Signed in → Retry, refused,
+  errors: not connected ("Set up connection" → Settings → Connections, plus
+  Settings), sign-in expired ("Update the token" plus Retry), Signed in → Retry, refused,
   unreachable, AI failed. States per tab: empty with one primary action (Slack
-  and connected Jira / Confluence: Open To do; not connected: Connect now,
-  in the toolbar too; connecting: Connecting…), no results naming the filters
+  and connected Jira / Confluence: Open To do; not connected: Set up
+  connection, in the toolbar too), no results naming the filters
   with Clear filters.
 - **History → Actions** (built, `ActionsHistoryView.swift`): the toolbar
   (search, Filter with Type, Outcome, Date, Source) and ActionRows by day.
@@ -534,13 +547,13 @@ Status per part; `built` parts ship in `clients/macos`.
   History, Ask and quick ask state above, plus the sidebar collapsed total
   and History › Actions. `DISTILL_STATES_ONLY=<prefix>` renders a subset. The
   v57 frames render under the schema's state ids (`todo-frame-7` at a 900 pt
-  window, `todo-card-*`, `slack-frame-2…4`, `jira-frame-3…6`,
-  `confluence-frame-3…6`, `*-card-completed`, `history-card-no-results-for-the`)
+  window, `todo-card-*`, `slack-frame-2…4`, `jira-frame-3`, `jira-frame-5…6`,
+  `confluence-frame-3`, `confluence-frame-5…6`, `*-card-completed`, `history-card-no-results-for-the`)
   plus the open Filter panel per kind (`actions-*-filter`).
 - **Live check** (opt-in, `Tests/DistillTests/ActionsLiveTests.swift`): with
   `DISTILL_LIVE_STATE=<temp state dir>` of a running core with seeded actions,
   it completes a Slack message and undoes it, bulk-completes three to-dos and
-  undoes all three, checks Connect now asks Settings for Connections, and
+  undoes all three, checks Set up connection asks Settings for Connections, and
   renders the real screens offscreen at 900 and 1110 pt, with filters set on
   every tab (`DISTILL_LIVE_OUT` keeps the PNGs; they are looked at, not
   measured).

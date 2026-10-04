@@ -35,7 +35,7 @@ final class ActionsFiltersTests: XCTestCase {
     }
 
     func testDisconnectedRightSlotDropsItsTextLast() {
-        // Jira at the minimum window: "Atlassian · not connected" + Connect now is about 290 pt.
+        // Jira at the minimum window: "Atlassian · not connected" + Set up connection is about 300 pt.
         let fit = ToolbarFit.plan(total: 600, search: 180, filter: 90, right: 290, rightCompact: 110, chips: [80], plus: { _ in 40 })
         XCTAssertEqual(fit.searchWidth, 140)
         // 600 - (140+6+90+6+8+6+290) = 54: no room for the chip, but "+1" fits; the text stays.

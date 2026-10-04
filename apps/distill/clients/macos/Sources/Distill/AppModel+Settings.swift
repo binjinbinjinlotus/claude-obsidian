@@ -4,7 +4,7 @@ import DistillKit
 
 /// Settings window state that isn't stored in settings.json: the selected
 /// section, the search query, the action types and connections from the core,
-/// and an Atlassian sign-in in progress. One per AppModel (like NotesStore).
+/// and the last Connect failure. One per AppModel (like NotesStore).
 @MainActor
 final class SettingsStore: ObservableObject {
     enum Load: Equatable { case idle, loading, loaded, unavailable, failed(String) }
@@ -18,12 +18,11 @@ final class SettingsStore: ObservableObject {
     @Published var typesLoad: Load = .idle
     @Published var connections: [ConnectionInfo] = []
     @Published var connectionsLoad: Load = .idle
-    /// Connections whose browser sign-in was opened here and whose token form shows.
-    @Published var signingIn: Set<String> = []
-    /// A request to the core for this connection is running.
-    @Published var connectionBusy: [String: String] = [:]
-    /// The last failure per connection (never contains the token).
-    @Published var connectionError: [String: String] = [:]
+    /// A request to the core for this connection is running (Connect or
+    /// Disconnect). Only disables the buttons: there is no "Connecting…" state.
+    @Published var connectionBusy: Set<String> = []
+    /// Why the last Connect or Disconnect failed, per connection (never contains the token).
+    @Published var connectionError: [String: ConnectionProblem] = [:]
     /// Prompts replaced by Reset to default ("jira.draft" → the user's text), undoable until Settings closes.
     @Published var promptUndo: [String: String] = [:]
 
@@ -171,55 +170,56 @@ extension AppModel {
     func applyConnection(_ c: ConnectionInfo) {
         let store = settingsUI
         if let i = store.connections.firstIndex(where: { $0.id == c.id }) { store.connections[i] = c } else { store.connections.append(c) }
-        if c.status == .connected { store.signingIn.remove(c.id); store.connectionError[c.id] = nil }
+        if c.status == .connected { store.connectionError[c.id] = nil }
     }
 
-    /// "Sign in in your browser": opens the core's sign-in (API token) page in
-    /// the default browser and shows the token form.
-    func startSignIn(_ id: String, site: String?) {
+    /// "Get an API token": opens Atlassian's API token page (the core names it)
+    /// in the default browser. Nothing waits for it: the token form stays as it is.
+    func openTokenPage(_ id: String, site: String?) {
         let store = settingsUI
-        store.signingIn.insert(id)
-        store.connectionError[id] = nil
-        guard let client else { store.connectionError[id] = "The Distill core is not connected."; return }
+        guard let client else {
+            store.connectionError[id] = ConnectionProblem(title: "The Distill core isn’t running", detail: "Start Distill’s core, then try again.")
+            return
+        }
         Task {
             do {
-                let url = try await client.signInURL(id, site: site)
-                NSWorkspace.shared.open(url)
+                NSWorkspace.shared.open(try await client.signInURL(id, site: site))
             } catch {
-                store.connectionError[id] = Self.connectionMessage(error, "Couldn’t open the sign-in page")
+                store.connectionError[id] = ConnectionProblem(title: Self.connectionMessage(error, "Couldn’t open the token page"), detail: "")
             }
         }
     }
 
-    func cancelSignIn(_ id: String) {
-        settingsUI.signingIn.remove(id)
-        settingsUI.connectionError[id] = nil
-    }
-
-    /// Sends site, email and token to the core (which keeps the token in the
-    /// Keychain). `done(true)` clears the form; the token is never kept here.
+    /// Sends site, email and token to the core, which checks them with
+    /// Atlassian and keeps the token in the Keychain. `done(true)`: connected,
+    /// the form clears. `done(false)`: still not connected, nothing saved, and
+    /// `connectionError` says why. No in-between state is shown while it runs.
     func connect(_ id: String, site: String, email: String, token: String, done: @escaping (Bool) -> Void) {
         let store = settingsUI
-        guard let client else { store.connectionError[id] = "The Distill core is not connected."; done(false); return }
-        store.connectionBusy[id] = "Connecting…"
+        guard let client else {
+            store.connectionError[id] = ConnectionProblem(title: "The Distill core isn’t running", detail: "Nothing was saved.")
+            done(false)
+            return
+        }
+        guard !store.connectionBusy.contains(id) else { return }
+        store.connectionBusy.insert(id)
         store.connectionError[id] = nil
         let request = ConnectRequest(site: site.trimmingCharacters(in: .whitespacesAndNewlines),
                                      email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                                      token: token.trimmingCharacters(in: .whitespacesAndNewlines))
         Task {
-            defer { store.connectionBusy[id] = nil }
+            defer { store.connectionBusy.remove(id) }
             do {
                 let info = try await client.connect(id, request)
                 self.applyConnection(info)
                 if info.status == .connected {
-                    store.signingIn.remove(id)
                     done(true)
                 } else {
-                    store.connectionError[id] = info.message ?? "Couldn’t sign in. Check the site, email and token."
+                    store.connectionError[id] = info.message.map { ConnectionProblem(title: $0, detail: "Nothing was saved.") } ?? .tokenRefused
                     done(false)
                 }
             } catch {
-                store.connectionError[id] = Self.connectionMessage(error, "Couldn’t sign in")
+                store.connectionError[id] = ConnectionProblem.connectFailed(error)
                 done(false)
             }
         }
@@ -227,24 +227,45 @@ extension AppModel {
 
     func disconnect(_ id: String) {
         let store = settingsUI
-        guard let client else { return }
-        store.connectionBusy[id] = "Disconnecting…"
+        guard let client, !store.connectionBusy.contains(id) else { return }
+        store.connectionBusy.insert(id)
         Task {
-            defer { store.connectionBusy[id] = nil }
+            defer { store.connectionBusy.remove(id) }
             do { self.applyConnection(try await client.disconnect(id)) } catch {
-                store.connectionError[id] = Self.connectionMessage(error, "Couldn’t disconnect")
+                store.connectionError[id] = ConnectionProblem(title: Self.connectionMessage(error, "Couldn’t disconnect"), detail: "")
             }
         }
     }
 
     /// A short message for the card. Only the core's own message is shown (it never echoes a token).
-    static func connectionMessage(_ error: Error, _ prefix: String) -> String {
+    nonisolated static func connectionMessage(_ error: Error, _ prefix: String) -> String {
         if let e = error as? CoreClientError {
             if e.isNotAvailable { return "Update the Distill core to connect accounts." }
             if case .api(_, _, let message) = e { return "\(prefix): \(message)" }
             if e.isUnreachable { return "\(prefix): the Distill core isn’t running." }
         }
         return "\(prefix)."
+    }
+}
+
+/// What the Atlassian card shows when Connect didn't connect. The connection
+/// stays "not connected"; the form keeps what was typed.
+struct ConnectionProblem: Equatable {
+    var title: String
+    var detail: String
+
+    /// Atlassian answered 401/403 to the site, email and token (canvas SettingsNav 9b).
+    static let tokenRefused = ConnectionProblem(title: "Atlassian didn’t accept this token",
+                                                detail: "Check the site and email, or create a new token. Nothing was saved.")
+
+    /// A failed POST /connect. The core says "… didn't accept that email and API
+    /// token" for a refused token; any other answer is shown in its own words.
+    static func connectFailed(_ error: Error) -> ConnectionProblem {
+        if let e = error as? CoreClientError, !e.isNotAvailable, case .api(_, let code, let message) = e {
+            if code == "invalid_request" && message.contains("accept") { return .tokenRefused }
+            return ConnectionProblem(title: message, detail: "Nothing was saved.")
+        }
+        return ConnectionProblem(title: AppModel.connectionMessage(error, "Couldn’t connect"), detail: "Nothing was saved.")
     }
 }
 

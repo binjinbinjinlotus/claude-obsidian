@@ -17,6 +17,34 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **No Connecting state: connected, or Set up connection (canvas v59,
+  mac-connections).** Specs: [Actions](actions.md) → Settings · Connections,
+  Connections, Toolbar. The owner: "let not display the connecting at all. It
+  will be either connected or it needs to set up the connection." Built:
+  - The Actions toolbar, empty states and the "isn't connected" card say
+    **Set up connection** and open Settings → Connections; the expired card
+    says **Update the token**. `ToolbarConnection` has two cases. The
+    `jira-frame-4` / `confluence-frame-4` snapshot states are gone.
+  - Settings → Connections: the Atlassian token form is open whenever it
+    isn't connected (no "Sign in in your browser", "Waiting for browser",
+    Open the page again or Cancel). **Get an API token** only opens the
+    page. The app's `signingIn` set and `startSignIn`/`cancelSignIn` are
+    removed; DistillKit still decodes `signing_in` (additive decoding) and the
+    UI shows it as not connected, like `expired` and `error`.
+  - Connect shows no "Connecting…": the button is disabled while the request
+    runs. The client waits 45 s for `POST /connect` (the core gives Atlassian
+    30 s), so a refusal or a slow site always ends in the core's answer.
+  - A refused token (the core's 400 "didn't accept that email and API token")
+    shows the canvas 9b banner and keeps the form filled, **including the
+    token**, until Atlassian accepts one. This supersedes "cleared on submit
+    whatever the answer": the token lives only in the view's memory.
+  - The core's `not_connected` / `auth_expired` messages now say to paste an
+    API token in Settings → Connections, not "Sign in"; the Mac card appends
+    its own next step to the shorter expired message.
+  - Not built from v59: the connected card's default project / issue type /
+    space pickers (the core has no projects or spaces route yet), and the
+    account as an email (the core stores Atlassian's display name).
+
 - **Queue folders, Google Docs and the queue scan built in the core, API
   and CLI (core-queue).** Specs: [Queue and batching](queue-and-batching.md)
   → "Built in the core", [Collectors](collectors.md) → "Built: subfolders and
