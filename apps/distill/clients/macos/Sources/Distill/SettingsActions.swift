@@ -183,7 +183,8 @@ struct ActionTypeRow: View {
                 Text(subtitle).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Text(models).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1).frame(width: 190, alignment: .leading)
+            Text(models).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
+                .frame(minWidth: 90, idealWidth: 190, maxWidth: 190, alignment: .leading)
             control(enabled)
             Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.faint)
                 .opacity(type.reserved ? 0 : 1)
@@ -209,7 +210,7 @@ struct ActionTypeRow: View {
 
     private func open() {
         if type.reserved { return }
-        ui.show(type.id == "todo" ? SettingsTarget(.todo) : SettingsTarget(.actions, actionType: type.id))
+        ui.select(type.id == "todo" ? SettingsTarget(.todo) : SettingsTarget(.actions, actionType: type.id))
     }
 
     private var subtitle: String {
@@ -243,7 +244,7 @@ struct ActionTypeSettingsPage: View {
         let enabled = SettingsEdits.typeEnabled(type, engine.settings)
         let thing = type.label
         VStack(alignment: .leading, spacing: 8) {
-            Button { ui.show(SettingsTarget(.actions)) } label: {
+            Button { ui.select(SettingsTarget(.actions)) } label: {
                 Text("‹ Actions").font(Theme.body(12, .semibold)).foregroundStyle(Theme.primary)
             }
             .buttonStyle(.plain)

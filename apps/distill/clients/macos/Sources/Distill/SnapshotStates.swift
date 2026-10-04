@@ -959,15 +959,15 @@ extension StatesSnapshot {
     static func settingsStates() {
         let f = Flow.app
         func settings(_ file: String, _ state: String, _ desc: String, group: SettingsGroup = .general, advanced: Bool = false,
-                      defaults: [String: Any] = [:], _ e: AppModel) {
+                      width: CGFloat = settingsSize.width, defaults: [String: Any] = [:], _ e: AppModel) {
             // A whole group page: measure the stacked (snapshot-mode) layout, then draw
             // the live window that tall so its scroll view shows everything.
             e.settingsUI.target = SettingsTarget(group.sections[0])
             let measure = ImageRenderer(content: SettingsView(showAdvanced: advanced).environmentObject(e)
-                .environment(\.snapshotMode, true).frame(width: settingsSize.width).fixedSize(horizontal: false, vertical: true))
+                .environment(\.snapshotMode, true).frame(width: width).fixedSize(horizontal: false, vertical: true))
             let height = max(settingsSize.height, ((measure.nsImage?.size.height ?? 2400) + (advanced ? 160 : 40)).rounded(.up))
             settingsWindow(file, state, desc, e, target: SettingsTarget(group.sections[0]),
-                           size: CGSize(width: settingsSize.width, height: height), advanced: advanced, defaults: defaults)
+                           size: CGSize(width: width, height: height), advanced: advanced, defaults: defaults)
         }
         let busy: (AppModel) -> Void = { $0.notes.runnerBusy = ["openai": "Checking…"] }
         var e = engine { $0.enabledRunners = ["claude-code", "ai-sdk"] }
@@ -976,6 +976,29 @@ extension StatesSnapshot {
         e = engine { $0.enabledRunners = ["claude-code", "ai-sdk"] }
         busy(e)
         settings("settings-ai", "AI · every section", "Runners (on, off, set up, checking, error) and Models for tasks with Finding actions and the Action drafts link.", group: .ai, e)
+        // Narrow windows: nothing clipped, rows reflow (the minimum and the usual ~890 pt).
+        let minWidth = SettingsWindowSize.minimum.width
+        for (suffix, width) in [("min", minWidth), ("890", 890)] {
+            e = engine { $0.enabledRunners = ["claude-code", "ai-sdk"] }
+            busy(e)
+            settings("settings-ai-\(suffix)", "AI · \(Int(width)) pt wide", "Runner cards and Models for tasks reflow to fit; the section nav is never cut off.",
+                     group: .ai, width: width, e)
+            e = engine { $0.enabledRunners = ["claude-code", "ai-sdk"] }
+            settings("settings-general-\(suffix)", "General · \(Int(width)) pt wide", "Vaults, batching, sources, labels, Ask history and shortcuts fit.", width: width, e)
+            e = engine()
+            settings("settings-actions-\(suffix)", "Actions · \(Int(width)) pt wide", "Sources, finding model, action types, to-do defaults and connections fit.",
+                     group: .actions, width: width, e)
+            e = engine()
+            settingsWindow("settings-type-jira-\(suffix)", "Actions › Jira ticket · \(Int(width)) pt wide", "Rows keep their controls; prompts fit.",
+                           e, target: SettingsTarget(.actions, actionType: "jira"), size: CGSize(width: width, height: 1100))
+            e = engine()
+            e.settingsUI.connections = [ConnectionInfo(id: "atlassian", label: "Atlassian", status: .notConnected, site: nil, account: nil, message: nil,
+                                                       usedBy: ["jira", "confluence"])]
+            e.settingsUI.connectionsLoad = .loaded
+            settingsWindow("settings-connections-\(suffix)", "Connections · \(Int(width)) pt wide", "Pill and button move under the title when narrow; no label is cut.",
+                           e, target: SettingsTarget(.connections), size: CGSize(width: width, height: settingsSize.height))
+        }
+
         e = engine()
         settings("settings-actions-all", "Actions and connections · every section", "Where actions come from, finding model, action types, to-do defaults, connections.", group: .actions, e)
 

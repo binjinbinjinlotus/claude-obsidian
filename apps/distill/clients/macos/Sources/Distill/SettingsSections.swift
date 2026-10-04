@@ -383,15 +383,26 @@ struct RunnersSettings: View {
                         .font(Theme.body(12)).foregroundStyle(Theme.faint)
                 }
             } else {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible())], spacing: 10) {
-                    ForEach(Array(notes.runners.enumerated()), id: \.element.id) { index, runner in
-                        card(runner, tint: tints[index % tints.count])
-                    }
+                // Two columns while each card has room for its note; one column below that.
+                ViewThatFits(in: .horizontal) {
+                    grid(columns: 2).frame(minWidth: 2 * Self.minCard + 10)
+                    grid(columns: 1)
                 }
             }
         }
         .sheet(item: $setup) { runner in
             RunnerSetupSheet(runnerID: runner.id, done: { setup = nil }).environmentObject(engine)
+        }
+    }
+
+    /// The narrowest runner card that still shows its note readably.
+    static let minCard: CGFloat = 290
+
+    private func grid(columns: Int) -> some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: columns), spacing: 10) {
+            ForEach(Array(notes.runners.enumerated()), id: \.element.id) { index, runner in
+                card(runner, tint: tints[index % tints.count])
+            }
         }
     }
 

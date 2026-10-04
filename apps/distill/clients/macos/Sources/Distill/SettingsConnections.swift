@@ -49,17 +49,35 @@ private struct ConnectionHeader<Trailing: View>: View {
     let subtitle: String
     @ViewBuilder var trailing: Trailing
 
+    /// Pill and button keep their full labels. Beside the title while the title
+    /// keeps 220 pt; in a narrower window they move under it.
     var body: some View {
-        HStack(spacing: 12) {
-            HStack(spacing: -8) {
-                ForEach(tiles, id: \.self) { ActionTypeTile(id: $0, size: 34).overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white, lineWidth: 2)) }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                tilesView
+                titleView.frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 12) { trailing }.fixedSize()
             }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(Theme.body(14, .bold))
-                Text(subtitle).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(2)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    tilesView
+                    titleView.frame(maxWidth: .infinity, alignment: .leading)
+                }
+                HStack(spacing: 12) { trailing }.fixedSize()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            trailing
+        }
+    }
+
+    private var tilesView: some View {
+        HStack(spacing: -8) {
+            ForEach(tiles, id: \.self) { ActionTypeTile(id: $0, size: 34).overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white, lineWidth: 2)) }
+        }
+    }
+
+    private var titleView: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(Theme.body(14, .bold))
+            Text(subtitle).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(2)
         }
     }
 }

@@ -1,7 +1,7 @@
 ---
 title: App shell and visual design
 status: built
-updated: 2026-10-01
+updated: 2026-10-04
 ---
 
 # App shell and visual design
@@ -72,7 +72,7 @@ using it. `distill.sh core-stop` stops it.
 ## Windows and menus
 
 - AppKit lifecycle (`main.swift` → `AppDelegate`), SwiftUI content.
-- Main window 1120×720 (min 900×600) and Settings window 1140×720 (min 900×600; section list on the left, see [Vaults and settings](vaults-and-settings.md)) use a transparent,
+- Main window 1120×720 (min 900×600) and Settings window 1140×720 (min 820×600; section list on the left, see [Vaults and settings](vaults-and-settings.md)) use a transparent,
   title-less title bar so the traffic lights sit on the light sidebar.
 - Menus: Distill (Settings ⌘,), Edit, Queue (Paste into Queue ⇧⌘V, Process
   Queue Now ⌘R), Window (Show Worker ⌘0, Toggle Floating Icon ⌘I, Quick Ask).

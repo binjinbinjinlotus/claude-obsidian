@@ -1,7 +1,7 @@
 ---
 title: Vaults and settings
 status: built
-updated: 2026-10-02
+updated: 2026-10-04
 ---
 
 # Vaults and settings
@@ -11,14 +11,15 @@ The macOS UI lives in `clients/macos/Sources/Distill/SettingsView.swift` (window
 group pages, Vaults, Batching, Advanced), `SettingsNav.swift` (section list,
 search results), `SettingsCatalog.swift` (sections and search index),
 `SettingsSections.swift`, `SettingsModels.swift`, `SettingsActions.swift` and
-`SettingsConnections.swift`. The DTO is in
+`SettingsConnections.swift`; `SettingsWindow.swift` holds the window
+(size, close hook) and the scroll position helper. The DTO is in
 `clients/macos/Sources/DistillKit/Models.swift` (`Settings`) and
 `ActionSettings.swift` (`actionPreferences`, connections).
 Canvas: SettingsNav, Settings.
 
 ## Window, sections and search
 
-- The Settings window opens at 1140×720 (min 900×600). Its left column,
+- The Settings window opens at 1140×720 (min 820×600). Its left column,
   `SettingsSectionNav` (236 pt), lists the sections in three groups:
   - **General**: Vaults, Batching (Batch every and Wait before picking up a
     file), Sources, Labels, Ask history, Keyboard shortcuts.
@@ -28,6 +29,37 @@ Canvas: SettingsNav, Settings.
 - Picking a section shows its group's page, one scroll with an h2 per
   section, scrolled to that section. An action type opens its own page
   (Actions › Slack message) with a "‹ Actions" link back.
+- **Narrow windows.** Every page fits from the minimum width up; the
+  section nav (236 pt) is never squeezed or cut off. The page column is
+  `minWidth: 0` and clipped, so a page can never widen the window, and rows
+  reflow instead:
+  - Models for tasks: the runner, model and effort pickers move under the
+    task's title when the row doesn't fit beside it (below about 1000 pt).
+  - AI runners: two columns while each card keeps 290 pt, one column below
+    that (so one column at the usual ~890 pt).
+  - Batching: the "Wait before picking up a file" counters move under the
+    text when it would get less than 240 pt.
+  - Connections: the status pill and button move under the title when the
+    title would get less than 220 pt; button labels are never cut.
+  - Action types list: the model summary column shrinks (190 → 90 pt) before
+    anything else.
+  `SettingsWindowTests` measures every section at the minimum and at 890 pt;
+  snapshot states `settings-{ai,general,actions,type-jira,connections}-{min,890}`.
+- **Scroll position.** Each page remembers where you left it, for this
+  Settings session only:
+  - A section you haven't visited since Settings opened opens at its top
+    (its heading; the top of the page for a group's first section and for
+    an action type's page).
+  - A section you have visited reopens at the scroll position you left it
+    at, clamped if the page got shorter. This applies to the section list
+    and to links inside Settings ("Open Actions ›", an action type row,
+    "‹ Actions").
+  - Search results and deep links from other screens (`openSettings`) always
+    go to the matched section, ignoring the remembered position.
+  - Closing the Settings window forgets every position (and the prompt
+    "Undo reset"s); so does quitting. Positions live in memory
+    (`SettingsStore.offsets`), never on disk. The next open builds the page
+    fresh, so no old offset survives in the scroll view either.
 - Setup problems and an unreachable core (with Retry) show at the top of
   every page.
 - **Search** sits above the list. Typing filters settings across every

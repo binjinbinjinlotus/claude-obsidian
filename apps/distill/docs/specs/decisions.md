@@ -3,7 +3,7 @@ type: spec
 title: Decisions
 status: built
 created: 2026-10-02
-updated: 2026-10-03
+updated: 2026-10-04
 tags:
   - distill
   - decisions
@@ -16,6 +16,23 @@ entry in the same change that makes a decision; never rewrite an old one —
 supersede it with a new entry.
 
 ## 2026-10-04
+
+- **Settings fits narrow windows; minimum 820×600 (was 900×600).** The
+  Models for tasks row (title 190 pt + three fixed pickers) needed ~650 pt
+  of page, so at 900 the content was wider than the window and SwiftUI
+  centred and clipped it: the nav lost its left edge, the right column its
+  right. The page column is now `minWidth: 0` and clipped (as the main
+  window), and rows reflow (pickers under the title, one runner column,
+  counters and connection buttons under their text). The minimum went below
+  the user's usual ~890 pt so that width is reachable and tested. The narrow
+  reflow is not drawn on the canvas yet. → [vaults-and-settings](vaults-and-settings.md#window-sections-and-search)
+- **Settings remembers scroll per section, in memory, per window session.**
+  An unvisited section opens at its top; a visited one where you left it;
+  search results and deep links go to the section; closing Settings or
+  quitting forgets it all. Read and set through the page's NSScrollView
+  (macOS 14 has no SwiftUI offset API); where to land is decided when the
+  page is asked for, because a new scroll view reports 0 before it is
+  restored. The window's content is rebuilt on reopen. → [vaults-and-settings](vaults-and-settings.md#window-sections-and-search)
 
 - **Atlassian sign-in stays a pasted API token (for now):** browser sign-in was
   considered via Atlassian's remote MCP server (OAuth 2.1 + PKCE, no shipped

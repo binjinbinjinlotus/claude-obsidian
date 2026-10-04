@@ -25,6 +25,7 @@ private struct SettingsWindowContent: View {
     @ObservedObject var ui: SettingsStore
     @State private var showAdvanced: Bool
     @State private var editingVault: VaultProfile?
+    @State private var scroller = SettingsScroller()
     @Environment(\.snapshotMode) private var snapshot
 
     init(ui: SettingsStore, showAdvanced: Bool) {
@@ -38,10 +39,13 @@ private struct SettingsWindowContent: View {
     var body: some View {
         HStack(spacing: 0) {
             SettingsSectionNav(selected: ui.target.section, query: $ui.query,
-                               matches: searching ? SettingsIndex.counts(results) : nil) { ui.show(SettingsTarget($0)) }
-                .frame(width: 236)
+                               matches: searching ? SettingsIndex.counts(results) : nil) { ui.select(SettingsTarget($0)) }
+                .frame(width: SettingsWindowSize.nav)
+            // minWidth 0 + clipped: a page that asks for more width than the window
+            // has is squeezed (rows reflow) instead of pushing the nav off the left.
             content
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .clipped()
                 .background(Theme.window)
         }
         .onAppear {
@@ -51,7 +55,7 @@ private struct SettingsWindowContent: View {
             engine.loadConnections()
         }
         .onDisappear { ui.promptUndo = [:] }
-        .frame(minWidth: 900, minHeight: 600)
+        .frame(minWidth: SettingsWindowSize.minimum.width, minHeight: SettingsWindowSize.minimum.height)
         .background(Theme.panel)
         .foregroundStyle(Theme.ink)
         .ignoresSafeArea()
@@ -68,13 +72,18 @@ private struct SettingsWindowContent: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else if let typeID = ui.target.actionType {
-            Scrolling {
-                VStack(alignment: .leading, spacing: 18) {
-                    SettingsStatusBanner()
-                    ActionTypeSettingsPage(ui: ui, typeID: typeID, confirmingReset: ui.fixtureConfirmReset)
+            ScrollViewReader { proxy in
+                Scrolling {
+                    VStack(alignment: .leading, spacing: 18) {
+                        SettingsStatusBanner()
+                        ActionTypeSettingsPage(ui: ui, typeID: typeID, confirmingReset: ui.fixtureConfirmReset)
+                    }
+                    .padding(.horizontal, 36).padding(.vertical, 30)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(SettingsScrollProbe(scroller: scroller, page: "type:\(typeID)"))
                 }
-                .padding(.horizontal, 36).padding(.vertical, 30)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .onAppear { land(proxy) }
+                .onChange(of: ui.scrollRequest) { land(proxy) }
             }
             .id(typeID)
         } else {
@@ -102,20 +111,58 @@ private struct SettingsWindowContent: View {
                 }
                 .padding(.horizontal, 36).padding(.top, 30).padding(.bottom, 40)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .background(SettingsScrollProbe(scroller: scroller, page: "\(group)"))
             }
-            .onAppear { scroll(proxy, delayed: true) }
-            .onChange(of: ui.scrollRequest) { scroll(proxy, delayed: true) }
+            .onAppear { land(proxy) }
+            .onChange(of: ui.scrollRequest) { land(proxy) }
         }
         .id(group)
     }
 
-    private func scroll(_ proxy: ScrollViewProxy, delayed: Bool) {
-        let section = ui.target.section
-        guard section != section.group.sections.first else { return }
-        // The page may have just been built: scroll once it has laid out.
-        DispatchQueue.main.asyncAfter(deadline: .now() + (delayed ? 0.05 : 0)) {
-            proxy.scrollTo(section, anchor: .top)
+    /// The scroll view key of the page showing `target`.
+    private static func page(_ target: SettingsTarget) -> String {
+        target.actionType.map { "type:\($0)" } ?? "\(target.section.group)"
+    }
+
+    /// Scrolls the shown page to where it should open (see SettingsStore's scroll
+    /// memory), then records the user's scrolling for the current page. Both the
+    /// page being replaced and the new one may call this; the target decides.
+    private func land(_ proxy: ScrollViewProxy) {
+        let landing = ui.landing ?? ui.landing(for: ui.target)
+        ui.landing = landing // nothing is recorded until the page is there
+        let request = ui.scrollRequest
+        let target = ui.target
+        scroller.page = Self.page(target)
+        scroller.onScroll = { [weak ui] y in ui?.remember(y) }
+        // The page may have just been built: wait until its scroll view is in the
+        // window and laid out (at most about a second), then scroll.
+        func attempt(_ tries: Int) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                guard ui.scrollRequest == request, ui.target == target else { return }
+                guard let scroll = scroller.scrollView else {
+                    if tries > 0 { attempt(tries - 1) } else { ui.landing = nil }
+                    return
+                }
+                scroll.layoutSubtreeIfNeeded()
+                switch landing {
+                case .offset(let y):
+                    scroller.set(y)
+                case .sectionTop:
+                    if target.actionType != nil || target.section == target.section.group.sections.first {
+                        scroller.set(0)
+                    } else {
+                        proxy.scrollTo(target.section, anchor: .top)
+                    }
+                }
+                // proxy.scrollTo lands on the next layout pass: start recording after it.
+                DispatchQueue.main.async {
+                    guard ui.scrollRequest == request, ui.target == target else { return }
+                    ui.landing = nil
+                    if let y = scroller.offset { ui.remember(y) }
+                }
+            }
         }
+        attempt(20)
     }
 
     @ViewBuilder private func sectionContent(_ section: SettingsSection) -> some View {
@@ -294,20 +341,36 @@ struct BatchingSettings: View {
                     chip(BatchInterval(totalMinutes: engine.settings.batchIntervalMinutes).description, selected: true) {}
                 }
             }
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Wait before picking up a file").font(Theme.body(13, .semibold))
-                    Text("A file must stay unchanged this long before a batch takes it, so half-written notes wait. Process now ignores it.")
-                        .font(Theme.body(11)).foregroundStyle(Theme.muted).lineSpacing(2)
-                        .fixedSize(horizontal: false, vertical: true)
+            // The two counters sit beside the text when it keeps 240 pt; below it otherwise.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    settleText.frame(minWidth: 240, maxWidth: .infinity, alignment: .leading)
+                    settleCounters
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                IntervalCounter(label: "minutes", value: settlePart(\.minutes), range: SettleWait.range, compact: true)
-                    .frame(width: 170)
-                IntervalCounter(label: "seconds", value: settlePart(\.seconds), range: SettleWait.range, compact: true)
-                    .frame(width: 170)
+                VStack(alignment: .leading, spacing: 10) {
+                    settleText
+                    settleCounters
+                }
             }
             .padding(.top, 6)
+        }
+    }
+
+    private var settleText: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Wait before picking up a file").font(Theme.body(13, .semibold))
+            Text("A file must stay unchanged this long before a batch takes it, so half-written notes wait. Process now ignores it.")
+                .font(Theme.body(11)).foregroundStyle(Theme.muted).lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var settleCounters: some View {
+        HStack(spacing: 12) {
+            IntervalCounter(label: "minutes", value: settlePart(\.minutes), range: SettleWait.range, compact: true)
+                .frame(width: 170)
+            IntervalCounter(label: "seconds", value: settlePart(\.seconds), range: SettleWait.range, compact: true)
+                .frame(width: 170)
         }
     }
 

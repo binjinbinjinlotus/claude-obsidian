@@ -11,7 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         paths: StatePaths.resolve(),
         bundledProductRoot: Bundle.main.object(forInfoDictionaryKey: "ClaudeObsidianProductRoot") as? String))
     private var mainWindow: NSWindow?
-    private var settingsWindow: NSWindow?
+    private lazy var settingsWindow = SettingsWindowController(engine: engine)
     private var floatingIcon: FloatingIconController?
     private var quickAsk: QuickAskController?
     private var pasteMonitor: Any?
@@ -133,7 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     /// Light, title-less chrome so the traffic lights sit on the design's own surface.
-    private static func styleChrome(_ window: NSWindow) {
+    static func styleChrome(_ window: NSWindow) {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true
@@ -142,20 +142,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc func showSettings() {
-        if settingsWindow == nil {
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 1140, height: 720),
-                styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
-                backing: .buffered, defer: false)
-            window.title = "Distill Settings"
-            Self.styleChrome(window)
-            window.isReleasedWhenClosed = false
-            window.contentViewController = NSHostingController(rootView: SettingsView().environmentObject(engine))
-            window.center()
-            settingsWindow = window
-        }
         NSApp.activate(ignoringOtherApps: true)
-        settingsWindow?.makeKeyAndOrderFront(nil)
+        settingsWindow.show()
     }
 
     @objc func toggleFloatingIcon() {
