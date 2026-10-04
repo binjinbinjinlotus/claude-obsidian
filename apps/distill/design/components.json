@@ -3888,7 +3888,7 @@
         {
           "name": "summary",
           "type": "text",
-          "default": "Copied 3 · skipped 2 already collected · 9:00 AM"
+          "default": "Every hour · copied 3 at 9:00 AM"
         },
         {
           "name": "status",
@@ -3927,7 +3927,7 @@
         "file": "CollectorRowStates.dc.html",
         "title": "Collector row states",
         "heading": "CollectorRow",
-        "intro": "One row per collector in the Collectors list: kind tile (Folder = green folder, Custom script = violet terminal), name, last-run line, status pill. Same shape as ActionRow, so the two lists read alike. Hover shows Run now and ⋯. The last-run line turns peach when the collector needs you. No Swift view yet: add <b>CollectorRow</b>. Props: kind, title, summary, status, statusKind (on | off | running | error | consent), selected, hover, width.",
+        "intro": "One row per collector in the Collectors list: kind tile (Folder = green folder, Custom script = violet terminal), name, and one status line. A healthy collector shows no pill: the line says when it runs and what it last did. A pill appears only when something needs a look: Running, Failed, Needs your OK. Off rows are dimmed. Hover shows Run now and ⋯. No Swift view yet: add <b>CollectorRow</b>. Props: kind, title, summary, status (pill text), statusKind (on | off | running | error | consent), selected, hover, width.",
         "width": 1280,
         "cols": 3
       },
@@ -3937,8 +3937,7 @@
           "props": {
             "kind": "folder",
             "title": "Distill Inbox",
-            "summary": "Copied 3 · skipped 2 already collected · 9:00 AM",
-            "status": "Every hour",
+            "summary": "Every hour · copied 3 at 9:00 AM",
             "statusKind": "on",
             "width": 330
           },
@@ -3946,15 +3945,14 @@
             "330px",
             "56px"
           ],
-          "caption": "The pill says when it runs; the line says what the last run did."
+          "caption": "Healthy: one line, no pill."
         },
         {
           "name": "Selected",
           "props": {
             "kind": "script",
             "title": "Pocket export",
-            "summary": "Added 4 files · today at 7:00 AM",
-            "status": "Daily 7:00",
+            "summary": "Daily at 7:00 · added 4 at 7:00 AM",
             "statusKind": "on",
             "selected": true,
             "width": 330
@@ -3970,8 +3968,7 @@
           "props": {
             "kind": "folder",
             "title": "Distill Inbox",
-            "summary": "Nothing new · 10:00 AM",
-            "status": "Every hour",
+            "summary": "Every hour · nothing new at 10:00 AM",
             "statusKind": "on",
             "hover": true,
             "width": 330
@@ -3980,7 +3977,7 @@
             "330px",
             "56px"
           ],
-          "caption": "⋯ holds Rename, Duplicate, Turn off and Delete."
+          "caption": "⋯ holds Edit, Rename, Duplicate, Turn off and Delete."
         },
         {
           "name": "Running",
@@ -4002,7 +3999,7 @@
           "props": {
             "kind": "script",
             "title": "Slack saved items",
-            "summary": "Failed · exit 1 · 8:30 AM",
+            "summary": "Exit 1 at 8:30 AM",
             "status": "Failed",
             "statusKind": "error",
             "width": 330
@@ -4018,7 +4015,7 @@
           "props": {
             "kind": "script",
             "title": "Kindle highlights",
-            "summary": "Allow it to run · never run yet",
+            "summary": "Never run",
             "status": "Needs your OK",
             "statusKind": "consent",
             "width": 330
@@ -4034,8 +4031,7 @@
           "props": {
             "kind": "folder",
             "title": "Scans",
-            "summary": "Off · last run Sep 28 at 9:00 AM",
-            "status": "Off",
+            "summary": "Off",
             "statusKind": "off",
             "width": 330
           },
@@ -4049,7 +4045,7 @@
           "props": {
             "kind": "folder",
             "title": "Phone uploads",
-            "summary": "~/Phone uploads is missing",
+            "summary": "Folder missing",
             "status": "Failed",
             "statusKind": "error",
             "width": 330
@@ -4235,6 +4231,11 @@
           "default": false
         },
         {
+          "name": "showCron",
+          "type": "boolean",
+          "default": false
+        },
+        {
           "name": "width",
           "type": "text",
           "default": ""
@@ -4244,7 +4245,7 @@
         "file": "ScheduleFieldStates.dc.html",
         "title": "Schedule field states",
         "heading": "ScheduleField",
-        "intro": "One schedule control for every collector: a preset (Every 15 minutes, Every hour, Every day, Weekdays, Custom), a time for daily presets, and the cron expression it stands for with a plain-English preview and the next run. Presets show their cron read-only, so the two always agree; Custom makes it editable. Times are local. No Swift view yet: add <b>ScheduleField</b>. Props: preset, time, cron, preview, next, invalid, menuOpen, width.",
+        "intro": "One schedule control for every collector: a preset (Every 15 minutes, Every hour, Every day, Weekdays, Custom), a time for daily presets, and a plain-English preview with the next run. The cron expression shows only for Custom, or under Advanced (showCron); presets are shorthands for it, so the two always agree. Times are local. No Swift view yet: add <b>ScheduleField</b>. Props: preset, time, cron, preview, next, invalid, menuOpen, showCron, width.",
         "width": 1280,
         "cols": 2,
         "wrap": "<div style=\"width: 480px; padding: 10px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
@@ -4259,7 +4260,7 @@
           },
           "size": [
             "460px",
-            "70px"
+            "56px"
           ]
         },
         {
@@ -4273,16 +4274,17 @@
           },
           "size": [
             "460px",
-            "70px"
+            "56px"
           ]
         },
         {
-          "name": "Weekdays",
+          "name": "Weekdays, cron shown (Advanced)",
           "props": {
             "preset": "weekdays",
             "time": "9:00 AM",
             "preview": "Monday to Friday at 9:00 AM",
-            "next": "next Mon, Oct 5 at 9:00 AM"
+            "next": "next Mon, Oct 5 at 9:00 AM",
+            "showCron": true
           },
           "size": [
             "460px",
@@ -4326,7 +4328,7 @@
           },
           "size": [
             "460px",
-            "70px"
+            "56px"
           ],
           "caption": "Menu: Every 15 minutes, Every hour, Every day, Weekdays, Custom (cron)."
         }

@@ -17,6 +17,17 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Collectors UI: a calmer pass (the owner found it crowded).** The detail
+  now answers one question at a glance: a status card with the last run,
+  then a compact read-only settings block with Edit (the form opens in
+  place), then the last three runs. Script internals (interpreter, timeout,
+  cron, arguments) sit under a collapsed Advanced row. Per-file results and
+  output show only in an opened run. List rows have one status line, and a
+  pill only when something needs a look. Adding is a three-step sheet
+  (kind, source, schedule) with defaults. The header has a single button,
+  and the queue path moved into the Into setting. The content decisions are
+  unchanged. Spec: [Collectors](collectors.md).
+
 - **Collectors: the owner's answers.** These supersede the defaults in the
   "Collectors (designed, not built)" entry below where they differ. Spec:
   [Collectors](collectors.md).
