@@ -154,6 +154,7 @@ struct LabelsSettings: View {
                         Text("Uses “Label suggestions” default").font(Theme.body(12, .bold))
                     }
                     .padding(.leading, 6).padding(.trailing, 10).frame(height: 28)
+                    .fixedSize() // the full name; the row title wraps instead
                     .background(Capsule().fill(Color.white)).overlay(Capsule().strokeBorder(Theme.border))
                     .help("Set it under Default model for each task")
                     PillSwitch(isOn: $suggestAfterQueue, label: "Suggest labels")
