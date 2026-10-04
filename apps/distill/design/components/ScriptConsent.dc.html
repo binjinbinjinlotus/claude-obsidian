@@ -26,12 +26,15 @@
 const px = (v, d) => (v === undefined || v === null || v === '') ? d : (/^[0-9.]+$/.test(String(v)) ? v + 'px' : String(v));
 const st = p.state || 'ask', changed = st === 'changed';
 const interp = p.interpreter || 'python3', src = p.source || '~/Scripts/pocket-export.py';
+// changes: what differs from the allowed version ("package.json", "the script and requirements.txt"); empty = the script.
+const what = p.changes || '', manifestOnly = /^(package\.json|requirements\.txt)$/.test(what);
 return { w: px(p.width, '100%'), isAllowed: st === 'allowed', isCard: st !== 'allowed',
   allowedText: p.allowedText || 'You allowed this exact script on Oct 2 at 9:14 AM. Distill asks again if it changes.',
-  heading: changed ? 'The script changed since you allowed it' : 'Allow Distill to run this script?',
-  body: changed ? 'Distill paused this collector. Check the change, then allow this version. Until then it does not run, on schedule or with Run now.'
+  heading: changed ? (what ? (/^the /.test(what) ? 'T' + what.slice(1) : what) : 'The script') + ' changed since you allowed it' : 'Allow Distill to run this script?',
+  body: changed ? (manifestOnly ? 'Its packages changed, and installing them runs code from their authors. Distill paused this collector; check the change, then allow this version. Nothing installs or runs until then.'
+      : 'Distill paused this collector. Check the change, then allow this version. Until then it does not run, on schedule or with Run now.')
     : 'Distill will run this code on your Mac as you. It can read and change anything you can and use the network. It runs only on this schedule or with Run now, never while your notes are processed.',
   command: interp + ' ' + src, hash: p.hash || (changed ? 'sha256 81bc…0e4f (was 3f9a…c217)' : 'sha256 3f9a…c217'),
   allowTitle: changed ? 'Allow this version' : 'Allow and turn on',
-  secondTitle: changed ? 'Show script' : 'Not now' };
+  secondTitle: changed ? (what ? 'Show changes' : 'Show script') : 'Not now' };
 </script>

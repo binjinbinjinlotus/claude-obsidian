@@ -26,7 +26,7 @@ export function scriptBytes(source: ScriptSource): Buffer {
   return 'inline' in source ? Buffer.from(source.inline, 'utf8') : fs.readFileSync(source.file);
 }
 
-export const INLINE_EXTENSION: Record<CollectorInterpreter, string> = { zsh: 'zsh', python3: 'py', node: 'mjs' };
+export const INLINE_EXTENSION: Record<CollectorInterpreter, string> = { zsh: 'zsh', python3: 'py', node: 'mjs', typescript: 'ts' };
 
 /** Last `limit` bytes of a stream. */
 export class Tail {
@@ -78,6 +78,8 @@ export function loginShellPath(env: NodeJS.ProcessEnv = process.env): Promise<st
 
 export interface ScriptRunInput {
   interpreterPath: string;
+  /** v6: before the script path (e.g. --experimental-strip-types, or tsx's CLI). */
+  interpreterArgs?: string[];
   scriptPath: string;
   vaultPath: string;
   queueDir: string;
@@ -106,6 +108,22 @@ export interface ScriptHandle {
 }
 
 export function startScript(input: ScriptRunInput): ScriptHandle {
+  const { interpreterPath, interpreterArgs, scriptPath, vaultPath, queueDir, ...rest } = input;
+  return startProcess({ ...rest, command: interpreterPath, args: [...(interpreterArgs ?? []), scriptPath, vaultPath, queueDir] });
+}
+
+export interface ProcessInput {
+  command: string;
+  args: string[];
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+  timeoutMs: number;
+  killGraceMs?: number;
+  onOutput?: (stream: 'stdout' | 'stderr', chunk: Buffer) => void;
+}
+
+/** Any process run the collector way (own process group, stdin closed, tails, timeout, Stop). Package installs use it too. */
+export function startProcess(input: ProcessInput): ScriptHandle {
   const grace = input.killGraceMs ?? DEFAULT_KILL_GRACE_MS;
   const stdout = new Tail();
   const stderr = new Tail();
@@ -115,7 +133,7 @@ export function startScript(input: ScriptRunInput): ScriptHandle {
   let killTimer: NodeJS.Timeout | undefined;
   let timeoutTimer: NodeJS.Timeout | undefined;
 
-  const child = spawn(input.interpreterPath, [input.scriptPath, input.vaultPath, input.queueDir], {
+  const child = spawn(input.command, input.args, {
     cwd: input.cwd,
     env: input.env,
     stdio: ['ignore', 'pipe', 'pipe'],

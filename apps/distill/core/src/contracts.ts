@@ -862,7 +862,11 @@ export interface ConnectRequest {
 // Spec: apps/distill/docs/specs/collectors.md
 
 export type CollectorKind = 'folder' | 'script';
-export type CollectorInterpreter = 'zsh' | 'python3' | 'node';
+/**
+ * The script's language. v6: 'typescript' runs on the login shell's node with its built-in type stripping
+ * (Node 22.6+; tsx when the script's folder has it installed). An old client keeps it as a raw string.
+ */
+export type CollectorInterpreter = 'zsh' | 'python3' | 'node' | 'typescript';
 /** Presets are shorthands for the cron: every15 = "*\/15 * * * *", hourly = "0 * * * *", daily = "M H * * *", weekdays = "M H * * 1-5". */
 export type SchedulePreset = 'every15' | 'hourly' | 'daily' | 'weekdays' | 'custom';
 
@@ -885,7 +889,13 @@ export interface FolderCollectorSettings {
   includeSubfolders?: boolean;
 }
 
-export type ScriptSource = { file: string } | { inline: string };
+/**
+ * v6: `{file, managed: true}` is a script Distill keeps as a real file in its own folder,
+ * <state>/collectors/scripts/<collector-id>/collector.<ext>, next to its package manifest. `{file}` alone is
+ * the user's own file. `{inline}` is accepted on input (and still decoded from an old collectors.json):
+ * the core writes the code to the managed file, so collectors.json only holds the reference.
+ */
+export type ScriptSource = { file: string; managed?: boolean } | { inline: string };
 
 export interface ScriptCollectorSettings {
   source: ScriptSource;
@@ -895,6 +905,8 @@ export interface ScriptCollectorSettings {
   /** The script sha256 the user allowed (consent). A run starts only while the script hashes to this. */
   allowedSha256?: string | null;
   allowedAt?: string | null;
+  /** v6: the sha256 of each file the consent covered, so the app can say what changed since ("package.json"). */
+  allowedFiles?: { script: string; manifest: string | null } | null;
 }
 
 /** Computed by the core on every read; ignored on input. */
@@ -912,8 +924,104 @@ export interface CollectorStatus {
   needsConsent: boolean;
   /** Folder: ledger entries whose source is this collector's folder ("Already collected: 128 files"). */
   collectedCount?: number;
+  /** v6, script: where the script lives and its packages. */
+  script?: CollectorScriptStatus;
   /** The sidebar count: the last run failed or timed out, or the script needs consent. */
   needsAttention: boolean;
+}
+
+/** v6: package manifest of a Distill-managed script: package.json (node, typescript) or requirements.txt (python3). zsh has none. */
+export type CollectorManifestName = 'package.json' | 'requirements.txt';
+
+export interface CollectorManifestStatus {
+  name: CollectorManifestName;
+  /** Absolute path (in the script's folder), whether the file exists or not. */
+  path: string;
+  exists: boolean;
+  /** The manifest lists at least one package (an empty one needs no install). */
+  hasDependencies: boolean;
+  /** How many packages it lists (package.json: dependencies + devDependencies + optionalDependencies; requirements.txt: requirement lines). */
+  packageCount: number;
+  /** sha256 of the manifest's bytes (null when it doesn't exist). */
+  sha256: string | null;
+  /** The manifest sha256 of the last successful install. */
+  installedSha256: string | null;
+  /** It has packages and they weren't installed for this version (or node_modules / .venv is missing). The next run installs first. */
+  needsInstall: boolean;
+  installing: boolean;
+  /** The newest install (output left out; see getCollectorInstall). */
+  lastInstall: CollectorInstall | null;
+}
+
+/** v6: computed on every read. */
+export interface CollectorScriptStatus {
+  /** The script file that runs (absolute). For an old inline record that couldn't be moved to a file: "". */
+  path: string;
+  /** The collector's own folder (managed scripts), else null. */
+  dir: string | null;
+  managed: boolean;
+  /** Managed scripts only; null for zsh and for the user's own file. */
+  manifest: CollectorManifestStatus | null;
+  /** Needs consent after an allowed version: which files changed since. Absent when never allowed or unknown (allowed before v6). */
+  changes?: ('script' | 'manifest')[];
+}
+
+/**
+ * v6: one package install in a managed script's folder: `npm install` (node, typescript) or
+ * `python3 -m venv .venv` + `.venv/bin/python3 -m pip install -r requirements.txt` (python3).
+ * Kept at <state>/collectors/installs/<collector-id>.json (the newest only).
+ */
+export interface CollectorInstall {
+  id: string; // ins-<uuid>
+  collectorId: string;
+  /** manual = Install (API); beforeRun = the manifest changed since the last install, so a run installed first. */
+  trigger: 'manual' | 'beforeRun';
+  startedAt: string;
+  endedAt?: string;
+  durationMs?: number;
+  result: 'running' | 'success' | 'failed' | 'timedout' | 'stopped';
+  /** What ran, for display ("npm install --no-audit --no-fund"). */
+  command: string;
+  manifestName: CollectorManifestName;
+  manifestSha256: string;
+  /** node_modules / .venv was removed first. */
+  clean?: boolean;
+  exitCode?: number | null;
+  signal?: string | null;
+  error?: { code: CollectorErrorCode; message: string };
+  /** stdout and stderr interleaved, the last 64 KB, with credentials in URLs and auth tokens masked. */
+  outputTail?: string;
+}
+
+/** v6: GET /v1/collectors/:id/script. */
+export interface CollectorScriptFiles {
+  collectorId: string;
+  interpreter: CollectorInterpreter;
+  managed: boolean;
+  /** The script file (absolute). */
+  path: string;
+  dir: string | null;
+  /** The script's text; null when it can't be read (problem says why). */
+  code: string | null;
+  /** sha256 of the script's bytes alone (send it back as baseSha256 when saving). */
+  sha256: string | null;
+  problem?: string;
+  /** Managed scripts with a manifest kind (not zsh): its text, or null when there is none yet. */
+  manifest: { name: CollectorManifestName; path: string; text: string | null; sha256: string | null } | null;
+}
+
+/**
+ * v6: PUT /v1/collectors/:id/script. Managed scripts only. A changed script or manifest needs consent again,
+ * like any script change. baseSha256 / baseManifestSha256 (from CollectorScriptFiles) refuse the save
+ * (invalid_state) when the file changed on disk since it was loaded (e.g. in an external editor).
+ */
+export interface CollectorScriptUpdate {
+  code?: string;
+  /** The manifest's new text; null removes it. */
+  manifest?: string | null;
+  baseSha256?: string;
+  /** null = it didn't exist when loaded. */
+  baseManifestSha256?: string | null;
 }
 
 export interface Collector {
@@ -942,7 +1050,8 @@ export interface NewCollectorInput {
   /** Default every hour. */
   schedule?: CollectorSchedule;
   folder?: Partial<FolderCollectorSettings>;
-  script?: { source: ScriptSource; interpreter: CollectorInterpreter; timeoutSeconds?: number };
+  /** v6: `manifest` is the package manifest's text for a managed script (package.json / requirements.txt). */
+  script?: { source: ScriptSource; interpreter: CollectorInterpreter; timeoutSeconds?: number; manifest?: string };
 }
 
 export interface CollectorPatch {
@@ -980,6 +1089,7 @@ export type CollectorErrorCode =
   | 'notAllowed'
   | 'scriptChanged'
   | 'interrupted'
+  | 'installFailed' // v6: the install before the run failed (installId)
   | 'other';
 
 export interface CollectorRunFile {
@@ -1027,6 +1137,8 @@ export interface CollectorRun {
   /** Script: the last 64 KB of each stream. */
   stdoutTail?: string;
   stderrTail?: string;
+  /** v6: the install this run did first (the manifest changed since the last install). */
+  installId?: string;
 }
 
 /** One entry of a vault's ledger: a file a Folder collector took (name, size, times, hash; never content). */
@@ -1071,6 +1183,10 @@ export type CoreEvent =
   /** Throttled script output: the text added since the last event. */
   | { type: 'collector.run.output'; collectorId: string; runId: string; stream: 'stdout' | 'stderr'; text: string }
   | { type: 'collector.run.finished'; run: CollectorRun }
+  // v6: package installs of managed scripts
+  | { type: 'collector.install.started'; install: CollectorInstall }
+  | { type: 'collector.install.output'; collectorId: string; installId: string; text: string }
+  | { type: 'collector.install.finished'; install: CollectorInstall }
   // v5: a queue scan finished (Refresh, window, periodic). A `queue` event precedes it when the list changed.
   | { type: 'queue.scanned'; result: QueueScanResult };
 
@@ -1234,6 +1350,16 @@ export interface DistillCore {
   /** Create a missing source folder (Folder) or the target vault's queue folder. */
   createCollectorFolder(id: string, which: 'source' | 'queue'): Promise<Collector>;
   checkSchedule(cron: string): Promise<ScheduleCheck>;
+  /** v6: the script's text and its package manifest. */
+  getCollectorScript(id: string): Promise<CollectorScriptFiles>;
+  /** v6: save a managed script's code and/or manifest (consent again when they change). Returns the files as saved. */
+  writeCollectorScript(id: string, update: CollectorScriptUpdate): Promise<CollectorScriptFiles>;
+  /** v6: install the manifest's packages (needs a current consent; busy while a run or install is going). Resolves when it started. */
+  installCollectorPackages(id: string, opts?: { clean?: boolean }): Promise<CollectorInstall>;
+  /** v6: stop a running install. Null when none runs. */
+  stopCollectorInstall(id: string): Promise<CollectorInstall | null>;
+  /** v6: the newest install with its output; null when there was none. */
+  getCollectorInstall(id: string): Promise<CollectorInstall | null>;
 
   subscribe(listener: (event: CoreEvent) => void): () => void;
 }

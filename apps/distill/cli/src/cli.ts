@@ -746,6 +746,7 @@ function describeCollector(c: Collector): string {
   if (s?.nextRunAt && c.enabled) flags.push(`next ${s.nextRunAt}`);
   if (s?.needsConsent) flags.push('needs your OK in the app');
   const lines = [`${c.id}  ${c.name}  ${what}  [${flags.join(' · ')}]`, `    vault: ${c.vaultPath}`];
+  if (s?.script?.path) lines.push(`    file:  ${s.script.path}`);
   if (s?.lastRun) lines.push(`    last:  ${describeRun(s.lastRun)}`);
   return lines.join('\n');
 }

@@ -75,6 +75,65 @@ supersede it with a new entry.
     files keep the one-click ×.
   - **Collector run lines follow the board** ("Tea tasting trip/ (folder · 5
     new of 12 files)"), and a run with a subfolder counts items.
+- **Collector scripts as real files, TypeScript, packages, and Run now
+  everywhere (owner request; core, API and CLI built; Mac UI designed on
+  board CollectorsScriptFiles, not built).** Spec: [Collectors](collectors.md)
+  → "Script files and packages (v6)". Supersedes "inline code stored in the
+  collector's record" from the first Collectors entries. Decided by default
+  (owner may revisit):
+  - **Storage:** one folder per script Distill keeps,
+    `<state>/collectors/scripts/<id>/collector.<ext>` plus its manifest and
+    installed packages; `collectors.json` keeps `{file, managed: true}`
+    with the real absolute path, so an older core (or the shipped app)
+    still runs and shows it. The user's own file stays supported and is
+    never written by Distill.
+  - **Migration at start, not on demand:** same bytes, so consent survives;
+    `collectors.json.pre-script-files-<time>` is written next to the file
+    (not in `<state>/backups/`, which `distill.sh` prunes and restores
+    from). Migrated node code keeps `.mjs` so it runs exactly as before; new
+    JavaScript is `collector.js` (Node's module detection handles `import`).
+  - **Old clients keep working:** `{inline}` is still accepted and written
+    to the managed file; a `{file}` equal to the managed path stays managed;
+    a `{file}` inside another collector's folder (Duplicate) makes a copy, so
+    deleting the original can't break the duplicate.
+  - **Delete → trash for 30 days**, without `node_modules`/`.venv` (they
+    can be reinstalled and can be large), with the record as
+    `collector.json`. Kept simple for the lead: the activity-log teammate
+    may build a shared trash; this one can fold into it.
+  - **TypeScript runtime: Node's built-in type stripping, no new
+    dependency.** Node 22.22.1 (the owner's) strips by default without a
+    warning; 22.6–22.17 get the flag; older Node fails with a clear message.
+    Fallback: if the user adds `tsx` to the script's package.json and
+    installs, tsx runs it (for `enum`/`namespace`). The version probe runs
+    on the login shell's `node`, not the core's.
+  - **Packages: JavaScript/TypeScript via `npm install` in the folder, and
+    Python too (my call):** `requirements.txt` → a `.venv` in the folder,
+    and runs use `.venv/bin/python3`. The owner's meeting-notes script needs
+    pip packages, and a per-collector venv avoids `pip install --user` into
+    the shared Python. Packages only for scripts Distill keeps (Node
+    resolves packages from the script's location).
+  - **Consent covers the manifest** (installing runs third-party code):
+    without a manifest the hash is exactly `sha256(script)` as before; with
+    one it is a hash over both files' hashes. The lockfile is not covered
+    (npm writes it during install), documented as a known gap. Installs
+    need the current version allowed. `allowedFiles` records each file's
+    hash so the consent card can say what changed.
+  - **Installs:** explicit (`POST …/install`) and before a run when the
+    manifest changed since the last successful install (or packages are
+    missing). One operation per collector (Run now / Install refuse while
+    the other runs). 10-minute timeout, Stop, last 64 KB of interleaved
+    output with URL credentials and auth tokens masked. Installs don't wait
+    for batches. npm lifecycle scripts are allowed (packages like esbuild
+    need them); consent to the manifest covers them.
+  - **Saving from the app can't clobber an external edit:** `PUT …/script`
+    takes the sha256 the editor loaded and refuses when the file changed.
+  - **Run now:** the core already ran every kind in every state; the Mac app
+    hid it (hover-only in the list, hidden while a script needs OK and while
+    editing, missing from ⋯). Designed: one title-row slot for every state,
+    "Allow and run" when a script needs OK (calmer than a disabled button
+    with a reason), first item in ⋯, a play button on the selected row, and
+    the manual run's result plus output tail in the status card. "Save and
+    run" was dropped: a saved change always needs a new OK first.
 
 - **Queue folders, Google Docs and the queue scan built in the core, API
   and CLI (core-queue).** Specs: [Queue and batching](queue-and-batching.md)

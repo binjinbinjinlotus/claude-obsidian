@@ -1,0 +1,34 @@
+<!-- ScriptEditor: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<div style="width: {{w}}; display: flex; flex-direction: column; gap: 8px; min-width: 0; box-sizing: border-box">
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0"><dc-import name="SegmentedPills" options="zsh|Python|JavaScript|TypeScript" selection="{{langLabel}}" height="26" track="#F6F5F2" hint-size="300px,26px"></dc-import><span style="flex-grow: 1"></span><span style="font-size: 11.5px; color: #9B978F; white-space: nowrap">{{runsWith}}</span></div>
+<div title="{{full}}" style="display: flex; align-items: center; gap: 6px; min-width: 0">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9B978F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0"><path d="M6 3h9l5 5v13H6zM14 3v6h6"></path></svg>
+<span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; color: #48463F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-grow: 1">{{path}}</span>
+<span role="button" style="font-size: 12px; font-weight: 600; color: #1F6FEB; white-space: nowrap; flex-shrink: 0; padding: 0 4px">Reveal in Finder</span>
+<span role="button" style="font-size: 12px; font-weight: 600; color: #1F6FEB; white-space: nowrap; flex-shrink: 0; padding: 0 4px">Open in editor</span>
+<sc-if value="{{external}}" hint-placeholder-val="{{ false }}"><span role="button" style="font-size: 12px; font-weight: 600; color: #1F6FEB; white-space: nowrap; flex-shrink: 0; padding: 0 4px">Choose…</span></sc-if>
+</div>
+<sc-if value="{{managed}}" hint-placeholder-val="{{ true }}"><div style="display: flex; flex-direction: column; padding: 10px 12px; border-radius: 10px; background: #FFFFFF; box-shadow: inset 0 0 0 1.5px #BFD5FA; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; line-height: 1.6; overflow: hidden">
+<sc-for list="{{lines}}" as="l" hint-placeholder-count="5"><div style="display: flex; gap: 12px; min-width: 0"><span style="width: 16px; flex-shrink: 0; text-align: right; color: #C2BEB6">{{l.n}}</span><span style="white-space: pre; color: #1D1C1A; overflow: hidden; text-overflow: ellipsis; min-width: 0">{{l.t}}</span></div></sc-for>
+</div></sc-if>
+<span style="font-size: 11.5px; color: #9B978F; line-height: 1.45">{{hint}}</span>
+</div>
+</x-dc>
+<script type="text/x-dc-logic">
+const px = (v, d) => (v === undefined || v === null || v === '') ? d : (/^[0-9.]+$/.test(String(v)) ? v + 'px' : String(v));
+const L = {"zsh": ["zsh", "zsh", "collector.zsh", "#!/bin/zsh|# Copy the Kindle clippings into the queue|src=\"$HOME/Documents/My Clippings.txt\"|[[ -f $src ]] || exit 0|cp \"$src\" \"$2/kindle-$(date +%F).txt\""],
+  "python": ["Python", "python3 · packages from requirements.txt", "collector.py", "import sys, pathlib|import requests|queue = pathlib.Path(sys.argv[2])|r = requests.get(\"https://getpocket.com/v3/get\", timeout=30)|(queue / \"pocket.json\").write_text(r.text)"],
+  "javascript": ["JavaScript", "node · packages from package.json", "collector.js", "import { writeFile } from 'node:fs/promises';|import { WebClient } from '@slack/web-api';|const [, , vault, queue] = process.argv;|const saved = await new WebClient(process.env.SLACK_TOKEN).stars.list();|await writeFile(`${queue}/slack-saved.json`, JSON.stringify(saved));"],
+  "typescript": ["TypeScript", "node, types stripped · packages from package.json", "collector.ts", "import { writeFile } from 'node:fs/promises';|import { format } from 'date-fns';|const queue: string = process.argv[3];|const name: string = `notes-${format(new Date(), 'yyyy-MM-dd')}.md`;|await writeFile(`${queue}/${name}`, '# Notes\\n');"]};
+const lang = L[p.language] || L.python, external = p.source === 'external';
+const dir = '~/Library/Application Support/Distill/collectors/scripts/col-3f2a…/';
+const path = p.path || (external ? '~/Scripts/meeting-notes/fetch_meeting_notes.py' : dir + lang[2]);
+const lines = (p.code || lang[3]).split('|').map((t, i) => ({ n: i + 1, t }));
+const hint = external ? 'Your own file: Distill runs it from there and asks again when it changes. Packages are yours to install.'
+  : p.language === 'typescript' ? 'Runs on your Node (22.6 or later) with the types stripped. For enums or decorators, add tsx to package.json.'
+  : 'Saved as a real file in the collector’s folder, so you can edit it in any editor. A saved change asks for your OK again.';
+return { w: px(p.width, '100%'), langLabel: lang[0], runsWith: external ? 'your own file' : lang[1], path, full: path.replace(/^~/, '/Users/mei'),
+  external, managed: !external, lines, hint };
+</script>

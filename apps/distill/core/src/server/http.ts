@@ -5,6 +5,7 @@ import type {
   CollectorInterpreter,
   CollectorKind,
   CollectorPatch,
+  CollectorScriptUpdate,
   CollectorSchedule,
   NewCollectorInput,
   ScriptSource,
@@ -439,7 +440,7 @@ function optTimeout(o: Record<string, unknown>): number | undefined {
   return v;
 }
 
-const INTERPRETERS = ['zsh', 'python3', 'node'] as const;
+const INTERPRETERS = ['zsh', 'python3', 'node', 'typescript'] as const;
 
 function parseFolderPatch(v: unknown): NewCollectorInput['folder'] {
   if (v === undefined || v === null) return undefined;
@@ -472,9 +473,10 @@ function parseNewCollector(body: unknown): NewCollectorInput {
     const source = parseScriptSource(so.source);
     const interpreter = optEnum<CollectorInterpreter>(so, 'interpreter', INTERPRETERS);
     if (!source) throw bad('"script.source" is required');
-    if (!interpreter) throw bad('"script.interpreter" is required (zsh, python3 or node)');
+    if (!interpreter) throw bad('"script.interpreter" is required (zsh, python3, node or typescript)');
     const timeoutSeconds = optTimeout(so);
-    input.script = { source, interpreter, ...(timeoutSeconds !== undefined ? { timeoutSeconds } : {}) };
+    const manifest = optString(so, 'manifest');
+    input.script = { source, interpreter, ...(timeoutSeconds !== undefined ? { timeoutSeconds } : {}), ...(manifest !== undefined ? { manifest } : {}) };
   }
   if (kind === 'script' && !input.script) throw bad('a script collector needs "script"');
   return input;
@@ -505,6 +507,28 @@ function parseCollectorPatch(body: unknown): CollectorPatch {
     patch.script = script;
   }
   return patch;
+}
+
+/** v6: PUT /v1/collectors/:id/script {code?, manifest? (text or null), baseSha256?, baseManifestSha256? (text or null)}. */
+function parseScriptUpdate(body: unknown): CollectorScriptUpdate {
+  const o = asObject(body, false);
+  const out: CollectorScriptUpdate = {};
+  const code = optString(o, 'code');
+  if (code !== undefined) out.code = code;
+  if (o.manifest === null) out.manifest = null;
+  else {
+    const manifest = optString(o, 'manifest');
+    if (manifest !== undefined) out.manifest = manifest;
+  }
+  const base = optString(o, 'baseSha256');
+  if (base !== undefined) out.baseSha256 = base;
+  if (o.baseManifestSha256 === null) out.baseManifestSha256 = null;
+  else {
+    const baseManifest = optString(o, 'baseManifestSha256');
+    if (baseManifest !== undefined) out.baseManifestSha256 = baseManifest;
+  }
+  if (out.code === undefined && out.manifest === undefined) throw bad('send "code" and/or "manifest"');
+  return out;
 }
 
 function parseCollectedFiles(o: Record<string, unknown>): CollectedFile[] {
@@ -1036,6 +1060,19 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
         return core.createCollectorFolder(params[0]!, which);
       },
     },
+    // v6: script files and packages (docs/specs/collectors.md → Script files)
+    { method: 'GET', pattern: /^\/v1\/collectors\/([^/]+)\/script$/, handler: async ({ params }) => core.getCollectorScript(params[0]!) },
+    { method: 'PUT', pattern: /^\/v1\/collectors\/([^/]+)\/script$/, handler: async ({ params, body }) => core.writeCollectorScript(params[0]!, parseScriptUpdate(await body())) },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/collectors\/([^/]+)\/install$/,
+      handler: async ({ params, body }) => {
+        const clean = optBoolean(asObject(await body(), true), 'clean');
+        return { install: await core.installCollectorPackages(params[0]!, clean ? { clean: true } : undefined) };
+      },
+    },
+    { method: 'POST', pattern: /^\/v1\/collectors\/([^/]+)\/install\/stop$/, handler: async ({ params }) => ({ install: await core.stopCollectorInstall(params[0]!) }) },
+    { method: 'GET', pattern: /^\/v1\/collectors\/([^/]+)\/install$/, handler: async ({ params }) => ({ install: await core.getCollectorInstall(params[0]!) }) },
     {
       method: 'GET',
       pattern: /^\/v1\/events$/,
