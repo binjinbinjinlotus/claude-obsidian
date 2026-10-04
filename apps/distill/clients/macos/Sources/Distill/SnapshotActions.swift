@@ -23,6 +23,7 @@ enum ActionFixtures {
         ActionTypeInfo(id: "slack", label: "Slack message", pluralLabel: "Slack messages",
                        fields: [ActionFieldSpec(key: "to", label: "To", kind: "person", required: true)],
                        handlers: [ActionHandlerInfo(id: "copy", label: "Copy"), ActionHandlerInfo(id: "markSent", label: "Mark as sent"),
+                                  ActionHandlerInfo(id: "complete", label: "Complete"),
                                   ActionHandlerInfo(id: "send", label: "Send in Slack", available: false, reason: "Later")],
                        draftWhen: "onFind", improveAfterEdit: true),
         ActionTypeInfo(id: "jira", label: "Jira ticket", pluralLabel: "Jira tickets",
@@ -31,12 +32,12 @@ enum ActionFixtures {
                                 ActionFieldSpec(key: "priority", label: "Priority", kind: "choice", choices: ["Highest", "High", "Medium", "Low"]),
                                 ActionFieldSpec(key: "assignee", label: "Assignee", kind: "person")],
                        handlers: [ActionHandlerInfo(id: "create", label: "Create in Jira"), ActionHandlerInfo(id: "refresh", label: "Refresh"),
-                                  ActionHandlerInfo(id: "complete", label: "Mark done")],
+                                  ActionHandlerInfo(id: "complete", label: "Complete")],
                        connectionID: "atlassian", draftWhen: "onFind", improveAfterEdit: true),
         ActionTypeInfo(id: "confluence", label: "Confluence page", pluralLabel: "Confluence pages",
                        fields: [ActionFieldSpec(key: "space", label: "Space", required: true), ActionFieldSpec(key: "parent", label: "Parent page")],
                        handlers: [ActionHandlerInfo(id: "create", label: "Create in Confluence"), ActionHandlerInfo(id: "refresh", label: "Refresh"),
-                                  ActionHandlerInfo(id: "complete", label: "Mark done")],
+                                  ActionHandlerInfo(id: "complete", label: "Complete")],
                        connectionID: "atlassian", draftWhen: "onFind", improveAfterEdit: true),
         ActionTypeInfo(id: "email", label: "Email", pluralLabel: "Emails", enabled: false, reserved: true,
                        handlers: [ActionHandlerInfo(id: "copy", label: "Copy", available: false, reason: "Later")]),
@@ -163,7 +164,7 @@ enum ActionFixtures {
             ActionItem(id: "h3", type: "jira", status: .done, title: "Add an alert for retry storms", source: note("Incident review prep", "We need an alert."),
                        createdAt: at(13, 5), updatedAt: at(15, 55),
                        external: ActionExternal(key: "PX-482", url: "https://acme.atlassian.net/browse/PX-482", status: "Done", checkedAt: at(15, 55)),
-                       events: [ActionEvent(at: at(15, 55), event: "done")]),
+                       events: [ActionEvent(at: at(15, 51), event: "created", detail: "PX-482"), ActionEvent(at: at(15, 55), event: "done", detail: "created")]),
             ActionItem(id: "h4", type: "todo", status: .sent, title: "Cap payment client retries at 3 with backoff", why: "You assigned it to yourself.",
                        source: note("Auth retry bug", auth, job: "job-auth"), createdAt: at(11, 24), updatedAt: at(15, 50),
                        events: [ActionEvent(at: at(11, 24), event: "found", detail: "Sonnet"), ActionEvent(at: at(15, 50), event: "sent-to:jira", detail: "j1"),
@@ -172,12 +173,18 @@ enum ActionFixtures {
                        source: note("Tea club planning", tea), createdAt: at(17, 0, daysAgo: 1), updatedAt: at(18, 12, daysAgo: 1),
                        events: [ActionEvent(at: at(18, 12, daysAgo: 1), event: "sent")]),
             ActionItem(id: "h6", type: "confluence", status: .done, title: "On-call handoff checklist", source: note("Q3 architecture sync", "Publish it."),
-                       createdAt: at(10, 0, daysAgo: 1), updatedAt: at(17, 40, daysAgo: 1), events: [ActionEvent(at: at(17, 40, daysAgo: 1), event: "done")]),
+                       createdAt: at(10, 0, daysAgo: 1), updatedAt: at(17, 40, daysAgo: 1), events: [ActionEvent(at: at(17, 40, daysAgo: 1), event: "done", detail: "ready")]),
             todo("h7", "Order tasting cups for the club", due: nil, priority: nil, person: nil, labels: ["tea-club"],
                  source: note("Tea club planning", "Order tasting cups."), why: "The club needs cups.", status: .removed)
                 .with { $0.updatedAt = at(9, 14, daysAgo: 2); $0.events.append(ActionEvent(at: at(9, 14, daysAgo: 2), event: "removed", detail: "open")) },
         ]
     }
+
+    /// A third message, already copied ("Copied" in the list).
+    static let tomKim = ActionItem(id: "s3", type: "slack", status: .ready, title: "Message to Tom Kim", body: "Tom, the Q3 sync notes are in the wiki now.",
+                                   fields: ["to": "Tom Kim"], why: "You said you would send him the notes.",
+                                   source: note("Q3 architecture sync", "Send Tom the sync notes.", job: "job-q3"), createdAt: at(10, 2), draftModel: "Sonnet",
+                                   events: [ActionEvent(at: at(10, 2), event: "found", detail: "Sonnet"), ActionEvent(at: at(15, 52), event: "copied")])
 
     static func pending() -> [ActionItem] {
         [todo("p1", "Book the tasting room for Saturday", due: day(0), priority: nil, person: "Mei Tanaka", labels: ["tea-club"],
@@ -218,8 +225,9 @@ extension StatesSnapshot {
 
     static func actionsTodoStates() {
         let f = Flow.actions
-        func todo(_ file: String, _ state: String, _ desc: String, _ e: AppModel, ui: TodoUI = TodoUI(), defaults: [String: Any] = [:]) {
-            main(file, f, "Actions · To do", state, desc, e, section: .actions, defaults: defaults) {
+        func todo(_ file: String, _ state: String, _ desc: String, _ e: AppModel, ui: TodoUI = TodoUI(), defaults: [String: Any] = [:],
+                  size: CGSize = mainSize) {
+            main(file, f, "Actions · To do", state, desc, e, section: .actions, defaults: defaults, size: size) {
                 TodoScreen(store: e.actions, ui: ui)
                     .overlay(alignment: .bottom) {
                         if let toast = e.actions.toast { ActionToastView(toast: toast, openHistory: {}, dismiss: {}) }
@@ -242,15 +250,33 @@ extension StatesSnapshot {
              defaults: ["distill.todo.group": "note", "distill.todo.sort": "title"])
 
         e = actionsEngine(select: "t2")
-        ui = TodoUI(); ui.filter.due = [.today, .thisWeek]; ui.menu = "due"
-        todo("actions-todo-filter-due", "Filter: due date", "Due: Today, This week turns the chip blue; × clears it.", e, ui: ui)
+        ui = TodoUI(); ui.filter.due = [.today]; ui.panel = "due"; ui.inlinePanel = true
+        todo("actions-todo-filter-due", "Filter: due date", "One Filter panel for every filter; choosing Due: Today adds a chip and the list updates as you pick.", e, ui: ui)
 
         e = actionsEngine(select: "t1")
-        ui = TodoUI(); ui.filter.people = ["You (Jin Liu)"]; ui.menu = "person"
-        todo("actions-todo-filter-person", "Filter: person", "People from the to-dos, with counts and a search field.", e, ui: ui)
+        ui = TodoUI(); ui.filter.people = ["You (Jin Liu)"]; ui.filter.labels = ["project-x"]
+        todo("actions-todo-filter-person", "Two filters set", "Filter · 2 and one chip each; × clears it, clicking a chip opens the panel at its section.", e, ui: ui)
+
+        e = actionsEngine(select: "t4")
+        ui = TodoUI(); ui.filter.status = .all; ui.filter.due = [.thisWeek]; ui.filter.people = ["You (Jin Liu)"]; ui.filter.labels = ["project-x", "tea"]
+        todo("todo-frame-7", "Narrow window (900 pt)", "Still one line: chips that don't fit collapse into +N, which opens the Filter panel.", e, ui: ui,
+             size: CGSize(width: 900, height: 760))
 
         e = actionsEngine(select: "t2")
-        todo("actions-todo-more", "More filters", "Added by, vault (and this batch's notes when opened from a job).", e, ui: TodoUI(menu: "more"))
+        ui = TodoUI(); ui.panel = ""; ui.inlinePanel = true
+        todo("todo-card-filter-menu", "Filter menu", "Status (Open is the default and shows no chip), Due, Person with search, Label, Source note, Priority, More.", e, ui: ui)
+
+        e = actionsEngine(select: "t1")
+        ui = TodoUI(); ui.filter.people = ["You (Jin Liu)"]; ui.filter.labels = ["project-x"]; ui.panel = "person"; ui.inlinePanel = true
+        todo("todo-card-opened-from-a-chip", "Opened from a chip", "Clicking “Person: You ×” opens the panel at PERSON, its heading in blue.", e, ui: ui)
+
+        e = actionsEngine(items: ActionFixtures.live() + ActionFixtures.history(), select: "t1")
+        ui = TodoUI(); ui.filter.status = .all
+        todo("todo-card-status-all-shows-a", "Status: All shows a chip", "Any status other than Open is a chip; Clear all returns to Status: Open.", e, ui: ui)
+
+        e = actionsEngine(select: "t2")
+        ui = TodoUI(); ui.panel = "more"; ui.inlinePanel = true
+        todo("actions-todo-more", "More filters", "MORE: added by, vault (and this batch's notes when opened from a job).", e, ui: ui)
 
         e = actionsEngine(select: "t2")
         todo("actions-todo-group-sort", "Group and sort", "Group by due (default), note, label, person, priority, created or none; sort inside groups.", e, ui: TodoUI(menu: "group"))
@@ -267,7 +293,7 @@ extension StatesSnapshot {
         todo("actions-todo-edit", "Edit", "Every field editable in place; saved as you type; Done.", e, ui: TodoUI(editing: true))
 
         e = actionsEngine(select: "t1")
-        e.actions.toast = ActionToast(text: "Completed “Book the tasting room for Saturday”", undo: {})
+        e.actions.toast = ActionToast(text: "Completed", undo: {})
         todo("actions-todo-complete", "Complete", "Struck through for 2 seconds, then to History; Undo or ⌘Z.", e, ui: TodoUI(completing: ["t2"]))
 
         e = actionsEngine(items: ActionFixtures.live().filter { $0.id != "t2" } + ActionFixtures.history(), select: "t1")
@@ -334,6 +360,9 @@ extension StatesSnapshot {
         func slack(_ file: String, _ state: String, _ desc: String, _ e: AppModel) {
             main(file, f, "Actions · Slack messages", state, desc, e, section: .actions) { ActionsScreen() }
         }
+        func typed(_ file: String, _ tab: String, _ screen: String, _ state: String, _ desc: String, _ e: AppModel, ui: TypeListUI = TypeListUI()) {
+            typedState(file, tab, screen, state, desc, e, ui: ui)
+        }
         var e = actionsEngine(tab: "slack")
         slack("actions-slack", "Ready and not written", "A message ready to paste; one written only when you ask (Create message).", e)
 
@@ -382,6 +411,28 @@ extension StatesSnapshot {
 
         e = actionsEngine(tab: "slack", slackOff: true)
         slack("actions-slack-off", "Turned off", "What a link to a type that is off opens: its items are to-dos now; Open Settings.", e)
+
+        // v57: list plus detail, ActionRow hover, Complete, empty and no-results.
+        e = actionsEngine(items: ActionFixtures.live() + [ActionFixtures.tomKim], tab: "slack", select: "s1")
+        e.actions.toast = ActionToast(text: "Completed", undo: {})
+        typed("slack-frame-2", "slack", "Actions · Slack messages", "Hover: Complete and ⋯", "Hovering a row shows ✓ Complete and ⋯; Complete moves it to History (toast: Completed · Undo).",
+              e, ui: TypeListUI(hover: "s3"))
+
+        e = actionsEngine(items: ActionFixtures.live().filter { $0.type != "slack" }, tab: "slack")
+        slack("slack-frame-3", "Empty", "No Slack messages to send: one primary action, Open To do.", e)
+
+        e = actionsEngine(items: ActionFixtures.live() + [ActionFixtures.tomKim], tab: "slack")
+        var tl = TypeListUI(); tl.filter.toggle("status", "Ready to paste"); tl.filter.toggle("label", "#tea")
+        typed("slack-frame-4", "slack", "Actions · Slack messages", "No results for the filters", "Names the filters; Clear filters.", e, ui: tl)
+
+        e = actionsEngine(items: ActionFixtures.live() + [ActionFixtures.tomKim], tab: "slack", select: "s2")
+        e.actions.completing = ["s1"]
+        e.actions.toast = ActionToast(text: "Completed", undo: {})
+        typed("slack-card-completed", "slack", "Actions · Slack messages", "Completed", "Struck through, then it moves to History as Completed; Undo brings it back.", e)
+
+        e = actionsEngine(items: ActionFixtures.live() + [ActionFixtures.tomKim], tab: "slack", select: "s1")
+        tl = TypeListUI(); tl.panel = ""; tl.inlinePanel = true; tl.filter.toggle("status", "Ready to paste")
+        typed("actions-slack-filter", "slack", "Actions · Slack messages", "Filter panel", "kind slack: Status, Recipient, Source note, Label.", e, ui: tl)
     }
 
     static func actionsExternalStates() {
@@ -425,7 +476,7 @@ extension StatesSnapshot {
         ext("actions-jira-creating", "jira", "Creating in Jira", "Locked while it runs; it can't be cancelled halfway.", e)
 
         e = actionsEngine(tab: "jira", select: "j3")
-        ext("actions-jira-created", "jira", "Created", "Key, link, status from Jira with its clock time, Refresh, Open in Jira, Mark done.", e)
+        ext("actions-jira-created", "jira", "Created", "Key, link, status from Jira with its clock time, Refresh; Complete, then Open in Jira.", e)
 
         e = actionsEngine(tab: "jira", select: "j1", disconnected: true)
         e.actions.items["j1"]?.error = ActionError(code: "auth_expired", message: "It expired on Sep 30 at 6:00 PM.")
@@ -449,7 +500,7 @@ extension StatesSnapshot {
 
         e = actionsEngine(items: ActionFixtures.live().filter { $0.id != "j3" }, tab: "jira", select: "j1")
         e.actions.toast = ActionToast(text: "PX-482 is Done in Jira. Moved to History.", undo: {}, history: true)
-        ext("actions-jira-done", "jira", "Done in Jira", "Done there (or Mark done): it leaves the list for History.", e)
+        ext("actions-jira-done", "jira", "Done in Jira", "Done there (or Complete): it leaves the list for History.", e)
 
         e = actionsEngine(tab: "confluence", select: "c1")
         ext("actions-confluence", "confluence", "Drafts and created", "Space and parent page; Create in Confluence only on your click.", e)
@@ -459,7 +510,54 @@ extension StatesSnapshot {
         ext("actions-confluence-not-connected", "confluence", "Not connected", "One Atlassian sign-in covers Jira and Confluence.", e)
 
         e = actionsEngine(tab: "confluence", select: "c3")
-        ext("actions-confluence-created", "confluence", "Created", "A link to the published page until you mark it done.", e)
+        ext("actions-confluence-created", "confluence", "Created", "A link to the published page until you complete it.", e)
+
+        // File names are the schema's state ids (design/screens/actions.json).
+        let ids: [(tab: String, things: String, empty: String, connecting: String, hover: String, noMatch: String, completed: String, filter: String)] = [
+            ("jira", "tickets", "jira-frame-3", "jira-frame-4", "jira-frame-5", "jira-frame-6", "jira-card-completed", "actions-jira-filter"),
+            ("confluence", "pages", "confluence-frame-3", "confluence-frame-4", "confluence-frame-5", "confluence-frame-6", "confluence-card-completed", "actions-confluence-filter"),
+        ]
+        for (tab, things, emptyID, connectingID, hoverID, noMatchID, completedID, filterID) in ids {
+            let screen = tab == "jira" ? "Actions · Jira tickets" : "Actions · Confluence pages"
+            let created = tab == "jira" ? "j3" : "c3"
+            e = actionsEngine(items: ActionFixtures.live().filter { $0.type != tab }, tab: tab, disconnected: true)
+            ext(emptyID, tab, "Not connected, nothing yet", "Connect now in the toolbar and in the empty state; it opens Settings → Connections.", e)
+
+            e = actionsEngine(items: ActionFixtures.live().filter { $0.type != tab }, tab: tab, disconnected: true)
+            e.settingsUI.signingIn.insert("atlassian")
+            ext(connectingID, tab, "Connecting", "Connecting… until the sign-in finishes; then the line reads the site · connected.", e)
+
+            e = actionsEngine(tab: tab, select: tab == "jira" ? "j1" : "c1")
+            e.actions.toast = ActionToast(text: "Completed", undo: {})
+            typedState(hoverID, tab, screen, "Hover: Complete and ⋯", "On drafts and created \(things) alike; completing a created one doesn't change it in \(tab == "jira" ? "Jira" : "Confluence").",
+                       e, ui: TypeListUI(hover: created))
+
+            e = actionsEngine(tab: tab)
+            var tl = TypeListUI(); tl.filter.toggle("status", "Draft"); tl.filter.toggle(tab == "jira" ? "project" : "space", "Operations")
+            typedState(noMatchID, tab, screen, "No results for the filters", "Names the filters; Clear filters.", e, ui: tl)
+
+            e = actionsEngine(tab: tab, select: tab == "jira" ? "j1" : "c1")
+            e.actions.completing = [created]
+            e.actions.toast = ActionToast(text: "Completed", undo: {})
+            typedState(completedID, tab, screen, "Completed", "Complete on a created item leaves it as it is there; it goes to History as Completed, with Restore.", e)
+
+            e = actionsEngine(tab: tab, select: tab == "jira" ? "j1" : "c1")
+            tl = TypeListUI(); tl.panel = ""; tl.inlinePanel = true
+            typedState(filterID, tab, screen, "Filter panel", tab == "jira" ? "kind jira: Status, Project, Type, Priority, Assignee, Source note." : "kind confluence: Status, Space, Source note.", e, ui: tl)
+        }
+    }
+
+    /// A handler tab with its UI state set (panel open, a row hovered, filters).
+    static func typedState(_ file: String, _ tab: String, _ screen: String, _ state: String, _ desc: String, _ e: AppModel,
+                           ui: TypeListUI = TypeListUI(), size: CGSize = mainSize) {
+        main(file, Flow.actions, screen, state, desc, e, section: .actions, size: size) {
+            if let type = e.actions.type(tab) {
+                TypeListScreen(store: e.actions, type: type, ui: ui)
+                    .overlay(alignment: .bottom) {
+                        if let toast = e.actions.toast { ActionToastView(toast: toast, openHistory: {}, dismiss: {}) }
+                    }
+            }
+        }
     }
 
     static func actionsHistoryStates() {
@@ -471,7 +569,8 @@ extension StatesSnapshot {
         }
         var e = actionsEngine()
         e.actions.selectedHistory = "h1"
-        history("actions-history", "A removed message", "Removed, completed, done and sent by day; the removed message with its timeline, Restore, Delete forever.", e)
+        history("actions-history", "A removed message", "ActionRows by day; hovering a completed ticket shows Restore and ⋯; the removed message with its timeline, Restore, Delete forever.", e,
+                ui: ActionsHistoryUI(hover: "h3"))
 
         e = actionsEngine()
         e.actions.selectedHistory = "h4"
@@ -479,8 +578,12 @@ extension StatesSnapshot {
 
         e = actionsEngine()
         e.actions.selectedHistory = "h1"
-        var ui = ActionsHistoryUI(); ui.what = [.removed]; ui.menu = "what"
-        history("actions-history-filter", "Filter: what happened", "Completed, Removed, Sent, Marked as sent, Done.", e, ui: ui)
+        var ui = ActionsHistoryUI(); ui.filter.toggle("outcome", "Removed"); ui.panel = "outcome"; ui.inlinePanel = true
+        history("actions-history-filter", "Filter: outcome", "The same Filter panel: TYPE, OUTCOME (Completed, Sent, Created, Removed, Dismissed), DATE presets, SOURCE.", e, ui: ui)
+
+        e = actionsEngine()
+        ui = ActionsHistoryUI(); ui.filter.toggle("outcome", "Dismissed"); ui.filter.toggle("date", "This week")
+        history("history-card-no-results-for-the", "No results for the filters", "Names the filters; Clear filters goes back to everything.", e, ui: ui)
 
         e = actionsEngine(items: ActionFixtures.live() + ActionFixtures.history().filter { $0.id != "h1" })
         history("actions-history-restored", "Restored", "Restored to Slack messages · Open.", e,

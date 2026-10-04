@@ -14,9 +14,13 @@ struct ActionsHistoryView: View {
 
 /// What the History screen shows besides the items (snapshots set it).
 struct ActionsHistoryUI {
-    var query = ""
-    var what: Set<ActionHistory.What> = []
-    var types: Set<String> = []
+    /// Search and the Filter panel's TYPE, OUTCOME, DATE and SOURCE.
+    var filter = FacetFilter()
+    var panel: String?
+    var inlinePanel = false
+    var panelHeight: CGFloat = 480
+    /// Snapshots: the row drawn hovered (Restore and ⋯).
+    var hover: String?
     var menu: String?
     var confirmDelete: String?
     /// After Restore: "Restored to Slack messages · Open", or the missing-note / type-off notes.
@@ -41,33 +45,51 @@ struct ActionsHistoryContent: View {
         self.now = now
     }
 
+    /// Every item that left a list: completed, sent, created (done in Jira / Confluence), removed, dismissed.
+    private var all: [ActionItem] { store.items.values.filter { ActionHistory.outcome($0) != nil } }
+
     private var items: [ActionItem] {
-        store.items.values.filter { item in
-            guard let what = ActionHistory.what(item) else { return false }
-            if !ui.what.isEmpty && !ui.what.contains(what) { return false }
-            if !ui.types.isEmpty && !ui.types.contains(item.type) { return false }
-            return ActionSearch.match(item, ui.query) != nil
+        all.filter { ActionFacets.matches("history", ui.filter, $0, now: now, types: store.types) }
+    }
+
+    private func groups(_ list: [ActionItem]) -> [ActionGroup] {
+        var out: [ActionGroup] = []
+        for item in list.sorted(by: { ActionHistory.whenOutcome($0) > ActionHistory.whenOutcome($1) }) {
+            let title = HistoryDay.title(ActionHistory.whenOutcome(item), now: now)
+            if let i = out.firstIndex(where: { $0.title == title }) { out[i].items.append(item) }
+            else { out.append(ActionGroup(id: title, title: title, items: [item])) }
         }
+        return out
     }
 
     var body: some View {
         let list = items
-        let selected = store.selectedHistory.flatMap { id in list.first { $0.id == id } } ?? ActionHistory.groups(list, now: now).first?.items.first
+        let grouped = groups(list)
+        let selected = store.selectedHistory.flatMap { id in list.first { $0.id == id } } ?? grouped.first?.items.first
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("HISTORY").font(Theme.body(11, .heavy)).kerning(0.6).foregroundStyle(Theme.faint)
                     Text("Actions").font(Theme.display(24))
                 }
-                ActionSearchField(text: $ui.query, placeholder: "Search history", width: 284)
-                filters.zIndex(5)
+                ActionsToolbar(search: $ui.filter.text, placeholder: "Search history", searchWidth: 200,
+                               chips: ActionFacets.chips("history", ui.filter, types: store.types), right: .none,
+                               panel: $ui.panel, inlinePanel: ui.inlinePanel,
+                               removeChip: { ui.filter.remove($0.section, $0.value) },
+                               sortItems: { EmptyView() },
+                               panelContent: { section in
+                                   FilterPanel(kind: "history", sections: ActionFacets.sections("history", items: all, filter: ui.filter, now: now, types: store.types),
+                                               scrollTo: section, focus: section.isEmpty ? nil : section, height: ui.panelHeight, inline: ui.inlinePanel,
+                                               toggle: { ui.filter.toggle($0, $1) }, clearAll: { ui.filter.clear() }, done: { ui.panel = nil })
+                               })
+                    .zIndex(5)
                 if let notice = ui.notice { noticeView(notice) }
                 Scrolling {
                     VStack(alignment: .leading, spacing: 2) {
                         if !store.historyLoaded && store.phase != .unavailable {
                             ActionShimmerRows(count: 4)
                         }
-                        ForEach(ActionHistory.groups(list, now: now)) { group in
+                        ForEach(grouped) { group in
                             Text(group.title).font(Theme.body(10, .heavy)).kerning(0.6).foregroundStyle(Theme.faint)
                                 .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 4)
                             ForEach(group.items) { item in
@@ -81,14 +103,19 @@ struct ActionsHistoryContent: View {
             .padding(.vertical, 24).padding(.horizontal, 18)
             .frame(width: 340)
             .background(Theme.window)
+            .zIndex(5)
             Divider().overlay(Theme.border)
             Group {
                 if store.phase == .unavailable {
                     ActionsUpdateCore()
+                } else if all.isEmpty && store.historyLoaded {
+                    ActionsEmpty(icon: "checkmark.circle", colors: (Theme.primaryTint, Theme.primary), title: "Nothing here yet",
+                                 message: "Completed, removed and sent actions show up here, so you can see what happened and bring things back.") {
+                        PrimaryButton(title: "Open To do", systemImage: "checkmark.circle", size: .small) { store.open(tab: "todo") }
+                    }
                 } else if list.isEmpty && store.historyLoaded {
-                    ActionsEmpty(icon: "clock", title: ui.what.isEmpty && ui.query.isEmpty ? "Nothing here yet" : "Nothing matches",
-                                 message: "Completed, removed, sent and done actions show up here, so you can see what happened and bring things back.") {
-                        EmptyView()
+                    ActionsEmpty(icon: "magnifyingglass", colors: (.clear, Theme.faint), title: "No actions match", message: noMatchText) {
+                        SoftButton(title: "Clear filters", fill: .white, size: .small, stroke: true) { ui.filter = FacetFilter() }
                     }
                 } else if let selected {
                     Scrolling { detail(selected).padding(.horizontal, 32).padding(.vertical, 28) }
@@ -108,90 +135,72 @@ struct ActionsHistoryContent: View {
         .onAppear { if !store.historyLoaded { store.loadHistory() } }
     }
 
+    /// "Nothing matches Dismissed · This week. 4 actions are hidden by the filters."
+    private var noMatchText: String {
+        var parts: [String] = []
+        let chips = ActionFacets.chips("history", ui.filter, types: store.types).map(\.text)
+        if !chips.isEmpty { parts.append(chips.joined(separator: " · ")) }
+        let q = ui.filter.text.trimmingCharacters(in: .whitespaces)
+        if !q.isEmpty { parts.append("“\(q)”") }
+        let n = all.count
+        return "Nothing matches \(parts.joined(separator: " and ")). \(n) \(n == 1 ? "action is" : "actions are") hidden by the filters."
+    }
+
     // MARK: List
 
-    private var filters: some View {
-        HStack(spacing: 6) {
-            FilterMenuChip(title: "What", value: ui.what.isEmpty ? nil : ActionHistory.What.allCases.filter { ui.what.contains($0) }.map(\.title).joined(separator: ", "),
-                           onClear: { ui.what = [] }, open: menu("what")) {
-                ActionMenuPanel(title: "WHAT HAPPENED", width: 260) {
-                    ActionMenuRow(title: "Everything", checked: ui.what.isEmpty) { ui.what = []; ui.menu = nil }
-                    ForEach(ActionHistory.What.allCases, id: \.self) { w in
-                        ActionMenuRow(title: w.title, detail: w.help, checked: ui.what.contains(w)) {
-                            if ui.what.contains(w) { ui.what.remove(w) } else { ui.what.insert(w) }
-                        }
-                    }
+    private func row(_ item: ActionItem, selected: Bool) -> some View {
+        let outcome = ActionHistory.outcome(item)
+        let canRestore = ActionHistory.canRestoreOutcome(item)
+        return ActionRow(type: item.type, title: rowTitle(item), source: ActionHistory.outcomeLine(item, types: store.types, now: now),
+                         status: outcome?.title ?? "", statusKind: kind(outcome), selected: selected, hover: ui.hover == item.id, mode: .history,
+                         select: { store.selectedHistory = item.id; ui.notice = nil },
+                         restore: canRestore ? { restore(item) } : nil) {
+            ActionRowMore {
+                if canRestore { Button("Restore") { restore(item) } }
+                if let to = ActionHistory.sentTo(item) {
+                    Button("Open in \(store.label(to))") { openSent(item, to: to) }
                 }
+                Divider()
+                Button("Delete forever…") { ui.confirmDelete = item.id }
             }
-            FilterMenuChip(title: "Type", value: ui.types.isEmpty ? nil : ui.types.map { store.label($0) }.sorted().joined(separator: ", "),
-                           onClear: { ui.types = [] }, open: menu("type")) {
-                ActionMenuPanel(title: "ACTION TYPE", width: 220) {
-                    ForEach(store.types.filter { !$0.reserved }) { t in
-                        ActionMenuRow(title: store.label(t.id), icon: ActionsTheme.typeStyle(t.id).0, checked: ui.types.contains(t.id)) {
-                            if ui.types.contains(t.id) { ui.types.remove(t.id) } else { ui.types.insert(t.id) }
-                        }
-                    }
-                }
-            }
-            Spacer(minLength: 0)
         }
     }
 
-    private func menu(_ id: String) -> Binding<Bool> { Binding(get: { ui.menu == id }, set: { ui.menu = $0 ? id : nil }) }
-
-    private func row(_ item: ActionItem, selected: Bool) -> some View {
-        let what = ActionHistory.what(item)
-        let style = ActionsTheme.typeStyle(item.type)
-        return Button { store.selectedHistory = item.id; ui.notice = nil } label: {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: style.0).font(.system(size: 10, weight: .semibold)).foregroundStyle(style.2)
-                    .frame(width: 24, height: 24).background(RoundedRectangle(cornerRadius: 7).fill(style.1))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(rowTitle(item)).font(Theme.body(13, .semibold)).lineLimit(1)
-                        .strikethrough(what == .completed, color: Theme.faint)
-                    HStack(spacing: 6) {
-                        if let what { HistoryBadge(what: what) }
-                        Text(ActionHistory.detail(item, types: store.types, now: now)).font(Theme.body(11)).foregroundStyle(Theme.muted).lineLimit(1)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 9)
-            .background(RoundedRectangle(cornerRadius: 12).fill(selected ? Theme.panel : .clear))
-            .contentShape(Rectangle())
+    private func kind(_ o: ActionHistory.Outcome?) -> ActionRowStatusKind {
+        switch o {
+        case .completed: .completed; case .sent: .sent; case .created: .created; case .removed: .removed
+        case .dismissed, nil: .dismissed
         }
-        .buttonStyle(.plain)
     }
 
     private func rowTitle(_ item: ActionItem) -> String {
-        if let key = item.external?.key { return "\(key) \(item.title)" }
+        if let key = item.external?.key, !key.contains(" ") { return "\(key) \(item.title)" }
         return item.title
+    }
+
+    private func openSent(_ item: ActionItem, to: String) {
+        if let made = store.items.values.first(where: { $0.fromActionID == item.id }) { store.open(made) } else { store.open(tab: to) }
     }
 
     // MARK: Detail
 
     @ViewBuilder private func detail(_ item: ActionItem) -> some View {
-        let what = ActionHistory.what(item)
+        let outcome = ActionHistory.outcome(item)
         VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 8) {
-                if let what { HistoryBadge(what: what) }
-                Text(headline(item)).font(Theme.body(13)).foregroundStyle(Theme.muted)
-            }
+            Text(headline(item)).font(Theme.body(13)).foregroundStyle(Theme.muted)
             HistoryCard(store: store, item: item)
             timeline(item)
-            if what == .sent {
-                if let to = ActionHistory.sentTo(item) {
-                    let made = store.items.values.first { $0.fromActionID == item.id }
-                    ActionButton(title: "Open in \(store.label(to))", icon: "arrow.right", kind: .primary) {
-                        if let made { store.open(made) } else { store.open(tab: to) }
-                    }
+            if outcome == .sent, let to = ActionHistory.sentTo(item) {
+                HStack(spacing: 10) {
+                    SoftButton(title: "Open in \(store.label(to))", fill: .white, size: .small, stroke: true,
+                               systemImage: ActionsTheme.typeStyle(to).0) { openSent(item, to: to) }
+                    Text("No Restore here: it lives on in \(store.label(to)). To undo the send, remove the draft before it is created.")
+                        .font(Theme.body(12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 }
-                Text("No Restore here: it lives on in \(ActionHistory.sentTo(item).map { store.label($0) } ?? "its new list"). To undo the send, remove the draft before it is created.")
-                    .font(Theme.body(12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             } else {
                 HStack(spacing: 10) {
-                    ActionButton(title: "Restore", icon: "arrow.uturn.backward", kind: .primary) { restore(item) }
-                    Text("Puts it back in \(store.label(listFor(item))) exactly as it was.").font(Theme.body(12)).foregroundStyle(Theme.muted)
+                    PrimaryButton(title: "Restore", systemImage: "clock.arrow.circlepath", size: .small) { restore(item) }
+                    Text(restoreHint(item)).font(Theme.body(12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     Spacer()
                     Button("Delete forever") { ui.confirmDelete = item.id }.buttonStyle(.plain)
                         .font(Theme.body(12, .semibold)).foregroundStyle(Theme.peachInk)
@@ -202,14 +211,22 @@ struct ActionsHistoryContent: View {
         .frame(maxWidth: 600, alignment: .leading)
     }
 
+    private func restoreHint(_ item: ActionItem) -> String {
+        let list = store.label(listFor(item))
+        if item.status == .dismissed { return "Puts it back in \(list) to confirm." }
+        return "Puts it back in \(list) exactly as it was."
+    }
+
     private func headline(_ item: ActionItem) -> String {
-        let at = HistoryTime.phrase(ActionHistory.when(item), now: now)
-        switch ActionHistory.what(item) {
+        let at = HistoryTime.phrase(ActionHistory.whenOutcome(item), now: now)
+        switch ActionHistory.outcome(item) {
         case .removed: return "Removed \(at) from \(store.label(item.type))"
-        case .sent: return "Sent to \(ActionHistory.sentTo(item).map { store.label($0) } ?? "another list") \(at)"
-        case .markedSent: return "Marked as sent \(at)"
-        case .completed: return "Completed \(at)"
-        case .done: return "Done \(at)"
+        case .sent:
+            if let to = ActionHistory.sentTo(item) { return "Sent to \(store.label(to)) \(at)" }
+            return "Marked as sent \(at)"
+        case .completed: return "Completed by you \(at)"
+        case .created: return ActionHistory.outcomeLine(item, types: store.types, now: now)
+        case .dismissed: return "Dismissed \(at): found but not added"
         case nil: return at
         }
     }
@@ -221,7 +238,7 @@ struct ActionsHistoryContent: View {
     private func keptUntil(_ item: ActionItem) -> String {
         let days = engine.settings.actionPreferences?.historyDays ?? 90 // Settings → To-do defaults; 0 = forever
         if days <= 0 { return "you delete it" }
-        let until = Calendar.current.date(byAdding: .day, value: days, to: ActionHistory.when(item)) ?? now
+        let until = Calendar.current.date(byAdding: .day, value: days, to: ActionHistory.whenOutcome(item)) ?? now
         let f = DateFormatter(); f.setLocalizedDateFormatFromTemplate("MMM d")
         return f.string(from: until)
     }
@@ -255,7 +272,7 @@ struct ActionsHistoryContent: View {
             ui.notice = .typeOff(id: item.id, type: item.type)
             return
         }
-        let to = store.label(listFor(item))
+        let to = item.status == .dismissed ? "To confirm in \(store.label(listFor(item)))" : store.label(listFor(item))
         store.restore(item.id)
         store.selectedHistory = nil
         if case .note(_, let path?, _, _) = item.source, let vault = item.vaultPath ?? engine.activeVault?.path,
@@ -315,13 +332,16 @@ struct ActionsHistoryContent: View {
     }
 }
 
+/// The outcome pill (the same colours as ActionRow's status kinds).
 struct HistoryBadge: View {
-    let what: ActionHistory.What
+    let outcome: ActionHistory.Outcome
     var body: some View {
-        switch what {
-        case .removed: StatusBadge(text: what.title, fill: Theme.panel, ink: Theme.muted)
-        case .completed, .done: StatusBadge(text: what.title, fill: Theme.limeTint, ink: Theme.limeInk)
-        case .sent, .markedSent: StatusBadge(text: what.title, fill: Theme.primaryTint, ink: Theme.primary)
+        switch outcome {
+        case .removed: StatusBadge(text: outcome.title, fill: Theme.peachTint, ink: Theme.peachInk)
+        case .completed: StatusBadge(text: outcome.title, fill: Theme.limeTint, ink: Theme.limeInk)
+        case .sent: StatusBadge(text: outcome.title, fill: Theme.primaryTint, ink: Theme.primary)
+        case .created: StatusBadge(text: outcome.title, fill: Theme.skyTint, ink: Theme.skyInk)
+        case .dismissed: StatusBadge(text: outcome.title, fill: Theme.panel, ink: Theme.muted)
         }
     }
 }
@@ -344,7 +364,7 @@ struct HistoryCard: View {
                     else if let key = item.external?.key { Text("\(key) · \(item.external?.status ?? "")").font(Theme.body(13, .semibold)) }
                 }
                 Spacer()
-                if let what = ActionHistory.what(item) { HistoryBadge(what: what) }
+                if let o = ActionHistory.outcome(item) { HistoryBadge(outcome: o) }
             }
             Text(item.title).font(.system(size: 16, weight: .semibold, design: .rounded)).fixedSize(horizontal: false, vertical: true)
             if let body = item.body, !body.isEmpty {

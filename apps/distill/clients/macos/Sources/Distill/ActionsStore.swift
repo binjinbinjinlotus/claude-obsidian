@@ -54,6 +54,8 @@ final class ActionsStore: ObservableObject {
     @Published var editing: [String: ActionEditDraft] = [:]
     /// Items whose "Show changes" is open.
     @Published var showingChanges: Set<String> = []
+    /// Just completed: the row stays, struck through and faded, for 2 s before it leaves the list.
+    @Published var completing: Set<String> = []
     /// Bumped to ask the main window to show Actions (Open from Ask, a toast).
     @Published var showRequest = 0
     /// Bumped to show History → Actions.
@@ -148,7 +150,8 @@ final class ActionsStore: ObservableObject {
         guard let client else { return }
         Task {
             do {
-                let list = try await client.actions(ActionQuery(status: ActionStatus.history, history: true))
+                // History → Actions also lists Dismissed (found but not added), with Restore.
+                let list = try await client.actions(ActionQuery(status: ActionStatus.history + [.dismissed], history: true))
                 for item in list { items[item.id] = item }
                 historyLoaded = true
             } catch let e as CoreClientError where e.isNotAvailable {
@@ -273,9 +276,28 @@ final class ActionsStore: ObservableObject {
         call { try await $0.updateAction(id, patch) }
     }
 
-    func complete(_ item: ActionItem) {
-        call { try await $0.performAction(item.id, handler: "complete") }
-        show(ActionToast(text: "Completed “\(item.title)”", undo: { [weak self] in self?.restore(item.id) }))
+    func complete(_ item: ActionItem) { complete([item]) }
+
+    /// Complete ("you've handled it") for one item or several: each goes to History as
+    /// Completed. One toast, "Completed · Undo" or "Completed 3 · Undo"; its Undo restores
+    /// every one of them to where it was. The rows stay struck through for 2 s first.
+    func complete(_ list: [ActionItem]) {
+        let ids = list.map(\.id)
+        guard !ids.isEmpty else { return }
+        completing.formUnion(ids)
+        for id in ids { call { try await $0.performAction(id, handler: "complete") } }
+        show(ActionToast(text: ids.count == 1 ? "Completed" : "Completed \(ids.count)",
+                         undo: { [weak self] in self?.restoreAll(ids) }))
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            self?.completing.subtract(ids)
+        }
+    }
+
+    /// Undo of a bulk step: every item back, in one go (errors are reported, never hidden).
+    func restoreAll(_ ids: [String]) {
+        completing.subtract(ids)
+        for id in ids { restore(id) }
     }
 
     func remove(_ item: ActionItem) {
@@ -289,11 +311,6 @@ final class ActionsStore: ObservableObject {
         call { try await $0.performAction(item.id, handler: "markSent") }
         copiedAt[item.id] = nil
         show(ActionToast(text: "\(item.title) marked as sent", undo: { [weak self] in self?.restore(item.id) }, history: true))
-    }
-
-    func markDone(_ item: ActionItem) {
-        call { try await $0.performAction(item.id, handler: "complete") }
-        show(ActionToast(text: "\(item.external?.key ?? item.title) marked done. Moved to History.", undo: { [weak self] in self?.restore(item.id) }, history: true))
     }
 
     func restore(_ id: String, toast: String? = nil) {

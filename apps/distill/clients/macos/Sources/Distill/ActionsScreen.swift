@@ -43,11 +43,7 @@ private struct ActionsScreenContent: View {
         if tab == "todo" {
             TodoScreen(store: store)
         } else if let type = store.type(tab), type.isUsable {
-            if type.handler("create") != nil {
-                ExternalTypeScreen(store: store, type: type)
-            } else {
-                MessageTypeScreen(store: store, type: type)
-            }
+            TypeListScreen(store: store, type: type).id(type.id)
         } else if let type = store.type(tab) {
             ActionsEmpty(icon: ActionsTheme.typeStyle(type.id).0, title: "\(type.pluralLabel) are off",
                          message: "\(type.pluralLabel) to send are added as to-dos instead. Turn them on in Settings → Actions.") {
@@ -79,8 +75,15 @@ struct TodoUI {
     var selection: Set<String> = []
     var adding: NewTodo?
     var editing = false
-    /// Struck through for 2 s after Complete, then gone.
+    /// Snapshots only: rows drawn as just completed (the app uses `ActionsStore.completing`).
     var completing: Set<String> = []
+    /// The Filter panel: nil closed, "" at the top, or the section a chip opened.
+    var panel: String?
+    /// Snapshots draw the panel in place (a popover isn't captured).
+    var inlinePanel = false
+    var panelHeight: CGFloat = 520
+    /// Panel sections showing all their rows.
+    var expanded: Set<String> = []
 }
 
 struct NewTodo: Equatable {
@@ -114,7 +117,8 @@ struct TodoScreen: View {
     }
 
     private var todos: [ActionItem] { store.items(type: "todo") }
-    private var visible: [ActionItem] { todos.filter { ui.filter.matches($0, now: now) || ui.completing.contains($0.id) } }
+    private var completing: Set<String> { ui.completing.union(store.completing) }
+    private var visible: [ActionItem] { todos.filter { ui.filter.matches($0, now: now) || completing.contains($0.id) } }
     private var toConfirm: [ActionItem] {
         guard !ui.filter.isNarrowed || ui.filter.jobID != nil else { return [] }
         return store.pending.filter { ui.filter.jobID == nil || $0.source.jobID == ui.filter.jobID }
@@ -186,7 +190,7 @@ struct TodoScreen: View {
                         ForEach(group.items) { item in
                             TodoRow(item: item, selected: store.selected["todo"] == item.id || (selectedItem == nil && item.id == visible.first?.id),
                                     checked: ui.selection.contains(item.id), selecting: !ui.selection.isEmpty,
-                                    struck: ui.completing.contains(item.id) || item.status == .done,
+                                    struck: completing.contains(item.id) || item.status == .done,
                                     match: ActionSearch.match(item, ui.filter.text), now: now,
                                     complete: { complete(item) },
                                     toggle: { toggle(item.id) },
@@ -302,12 +306,7 @@ struct TodoScreen: View {
 
     private func complete(_ item: ActionItem) {
         if item.status == .done { store.restore(item.id); return }
-        ui.completing.insert(item.id)
         store.complete(item)
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            ui.completing.remove(item.id)
-        }
     }
 
     private func toggle(_ id: String) {
@@ -432,7 +431,9 @@ struct ToConfirmGroup: View {
     }
 }
 
-/// The filter row: search, Status, Due, Person, Label, Note, Priority, More; group and sort.
+/// To do's toolbar (canvas ActionsToolbar): search, Filter ▾ with the FilterPanel
+/// (Status, Due, Person, Label, Source note, Priority, More), one chip per filter
+/// beyond Status: Open, and Group and sort on the right. One line at any width.
 struct TodoFilterBar: View {
     @ObservedObject var store: ActionsStore
     @Binding var ui: TodoUI
@@ -442,138 +443,38 @@ struct TodoFilterBar: View {
     var now = Date()
 
     var body: some View {
-        // The chips wrap onto a second line in a narrow window instead of widening the screen.
-        HStack(alignment: .top, spacing: 6) {
-            FlowLayout(spacing: 6) {
-                ActionSearchField(text: $ui.filter.text, placeholder: "Search to-dos")
-                chip("status", "Status", value: ui.filter.status.title, clear: ui.filter.status == .open ? nil : { ui.filter.status = .open }) {
-                    ActionMenuPanel(title: "STATUS", width: 200) {
-                        ForEach(ActionFilter.Status.allCases, id: \.self) { s in
-                            ActionMenuRow(title: s.title, checked: ui.filter.status == s) { ui.filter.status = s; ui.menu = nil }
-                        }
-                    }
-                }
-                chip("due", "Due", value: ui.filter.due.isEmpty ? nil : ActionDue.Bucket.allCases.filter { ui.filter.due.contains($0) }.map { $0.title.capitalized }.joined(separator: ", "),
-                     clear: { ui.filter.due = [] }) {
-                    ActionMenuPanel(title: "DUE", width: 220) {
-                        ActionMenuRow(title: "Any time", checked: ui.filter.due.isEmpty) { ui.filter.due = [] }
-                        ForEach(ActionDue.Bucket.allCases, id: \.self) { b in
-                            ActionMenuRow(title: b.title.capitalized, icon: "calendar", checked: ui.filter.due.contains(b)) { flip(&ui.filter.due, b) }
-                        }
-                    }
-                }
-                chip("person", "Person", value: joined(ui.filter.people), clear: { ui.filter.people = [] }) {
-                    facetPanel("PEOPLE", values: people, selected: ui.filter.people, search: true) { flip(&ui.filter.people, $0) }
-                }
-                chip("label", "Label", value: joined(ui.filter.labels.map { "#" + $0 }), clear: { ui.filter.labels = [] }) {
-                    facetPanel("LABELS", values: labels, selected: ui.filter.labels) { flip(&ui.filter.labels, $0) }
-                }
-                chip("note", "Note", value: joined(ui.filter.notes), clear: { ui.filter.notes = [] }) {
-                    facetPanel("SOURCE NOTE", values: notes, selected: ui.filter.notes) { flip(&ui.filter.notes, $0) }
-                }
-                chip("priority", "Priority", value: joined(ui.filter.priorities), clear: { ui.filter.priorities = [] }) {
-                    ActionMenuPanel(title: "PRIORITY", width: 200) {
-                        ForEach(ActionList.priorities + ["None"], id: \.self) { p in
-                            ActionMenuRow(title: p, icon: "flag", checked: ui.filter.priorities.contains(p)) { flip(&ui.filter.priorities, p) }
-                        }
-                    }
-                }
-                chip("more", "More", value: moreValue, clear: { ui.filter.addedBy = nil; ui.filter.vaults = []; ui.filter.jobID = nil }) {
-                    ActionMenuPanel(title: "MORE FILTERS", width: 280) {
-                        ActionMenuRow(title: "Added by Distill", icon: "sparkle", checked: ui.filter.addedBy == .distill) {
-                            ui.filter.addedBy = ui.filter.addedBy == .distill ? nil : .distill
-                        }
-                        ActionMenuRow(title: "Added by you", icon: "person", checked: ui.filter.addedBy == .you) {
-                            ui.filter.addedBy = ui.filter.addedBy == .you ? nil : .you
-                        }
-                        ForEach(vaults, id: \.self) { v in
-                            ActionMenuRow(title: (v as NSString).lastPathComponent, detail: "Vault", icon: "folder", checked: ui.filter.vaults.contains(v)) { flip(&ui.filter.vaults, v) }
-                        }
-                        if ui.filter.jobID != nil {
-                            ActionMenuRow(title: "Only this batch's notes", icon: "tray.full", checked: true) { ui.filter.jobID = nil }
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            chip("group", "", value: nil, clear: nil, label: AnyView(HStack(spacing: 5) {
-                Image(systemName: "arrow.up.arrow.down").font(.system(size: 10, weight: .semibold))
-                Text(grouping.title).fontWeight(.semibold).foregroundStyle(Theme.ink)
-            }.font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1).fixedSize())) {
-                ActionMenuPanel(width: 260) {
-                    Text("GROUP BY").font(Theme.body(10, .heavy)).kerning(0.6).foregroundStyle(Theme.faint).padding(.horizontal, 10).padding(.top, 6)
-                    ForEach(ActionGrouping.allCases, id: \.self) { g in
-                        ActionMenuRow(title: g.title, checked: grouping == g) { grouping = g }
-                    }
-                    Divider().padding(.vertical, 4)
-                    Text("SORT").font(Theme.body(10, .heavy)).kerning(0.6).foregroundStyle(Theme.faint).padding(.horizontal, 10)
-                    ForEach(ActionSort.allCases, id: \.self) { s in
-                        ActionMenuRow(title: s.title, checked: sort == s) { sort = s }
-                    }
-                    Divider().padding(.vertical, 4)
-                    ActionMenuRow(title: "Show completed", detail: "Greyed", checked: ui.filter.status == .all) {
-                        ui.filter.status = ui.filter.status == .all ? .open : .all
-                    }
-                }
-                .offset(x: -170)
-            }
+        ActionsToolbar(search: $ui.filter.text, placeholder: "Search to-dos", chips: ActionFacets.todoChips(ui.filter),
+                       right: .sort, sortTitle: grouping.title, panel: $ui.panel, inlinePanel: ui.inlinePanel,
+                       removeChip: { ui.filter.remove($0) },
+                       sortAction: { ui.menu = ui.menu == "group" ? nil : "group" },
+                       sortItems: { EmptyView() },
+                       panelContent: { section in
+                           FilterPanel(kind: "todo", sections: ActionFacets.todoSections(todos, filter: ui.filter),
+                                       scrollTo: section, focus: section.isEmpty ? nil : section, height: ui.panelHeight,
+                                       inline: ui.inlinePanel, personQuery: ui.personQuery, expanded: ui.expanded,
+                                       toggle: { ui.filter.toggle($0, $1) }, clearAll: { ui.filter.clearFilters() }, done: { ui.panel = nil })
+                       })
+        .overlay(alignment: .topTrailing) {
+            if ui.menu == "group" { groupPanel.offset(y: 38) }
         }
+        .zIndex(ui.menu == "group" || ui.panel != nil ? 20 : 0)
         .padding(.horizontal, 32).padding(.top, 14).padding(.bottom, 8)
     }
 
-    private var moreValue: String? {
-        var parts: [String] = []
-        if let a = ui.filter.addedBy { parts.append(a == .you ? "Added by you" : "Added by Distill") }
-        parts += ui.filter.vaults.map { ($0 as NSString).lastPathComponent }
-        if ui.filter.jobID != nil { parts.append("This batch") }
-        return parts.isEmpty ? nil : parts.joined(separator: ", ")
-    }
-
-    private var people: [(String, Int)] { counted(todos.flatMap { ui.filter.statusMatches($0) ? ActionList.people($0) : [] }) }
-    private var labels: [(String, Int)] { counted(todos.flatMap { ui.filter.statusMatches($0) ? $0.labels : [] }) }
-    private var notes: [(String, Int)] { counted(todos.compactMap { ui.filter.statusMatches($0) ? ActionList.noteTitle($0) : nil }) }
-    private var vaults: [String] { Array(Set(todos.compactMap(\.vaultPath))).sorted() }
-
-    private func counted(_ values: [String]) -> [(String, Int)] {
-        var c: [String: Int] = [:]
-        for v in values { c[v, default: 0] += 1 }
-        return c.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }.map { ($0.key, $0.value) }
-    }
-
-    private func joined(_ s: some Collection<String>) -> String? { s.isEmpty ? nil : s.sorted().joined(separator: ", ") }
-
-    private func flip<T: Hashable>(_ set: inout Set<T>, _ v: T) { if set.contains(v) { set.remove(v) } else { set.insert(v) } }
-
-    private func binding(_ id: String) -> Binding<Bool> {
-        Binding(get: { ui.menu == id }, set: { ui.menu = $0 ? id : nil })
-    }
-
-    @ViewBuilder
-    private func chip<P: View>(_ id: String, _ title: String, value: String?, clear: (() -> Void)?, label: AnyView? = nil,
-                               @ViewBuilder panel: () -> P) -> some View {
-        if let label {
-            Button { ui.menu = ui.menu == id ? nil : id } label: { label }
-                .buttonStyle(.plain)
-                .overlay(alignment: .topLeading) { if ui.menu == id { panel().offset(y: 26) } }
-                .zIndex(ui.menu == id ? 10 : 0)
-        } else {
-            FilterMenuChip(title: title, value: value, onClear: clear, open: binding(id)) { panel() }
-        }
-    }
-
-    private func facetPanel(_ title: String, values: [(String, Int)], selected: Set<String>, search: Bool = false,
-                            pick: @escaping (String) -> Void) -> some View {
+    private var groupPanel: some View {
         ActionMenuPanel(width: 260) {
-            if search {
-                ActionSearchField(text: $ui.personQuery, placeholder: "Find a person", width: 236).padding(.bottom, 4)
+            Text("GROUP BY").font(Theme.body(10, .heavy)).kerning(0.6).foregroundStyle(Theme.faint).padding(.horizontal, 10).padding(.top, 6)
+            ForEach(ActionGrouping.allCases, id: \.self) { g in
+                ActionMenuRow(title: g.title, checked: grouping == g) { grouping = g }
             }
-            Text(title).font(Theme.body(10, .heavy)).kerning(0.6).foregroundStyle(Theme.faint).padding(.horizontal, 10).padding(.vertical, 4)
-            let shown = values.filter { ui.personQuery.isEmpty || !search || $0.0.localizedCaseInsensitiveContains(ui.personQuery) }
-            if shown.isEmpty {
-                Text("Nothing yet").font(Theme.body(12)).foregroundStyle(Theme.faint).padding(10)
+            Divider().padding(.vertical, 4)
+            Text("SORT").font(Theme.body(10, .heavy)).kerning(0.6).foregroundStyle(Theme.faint).padding(.horizontal, 10)
+            ForEach(ActionSort.allCases, id: \.self) { s in
+                ActionMenuRow(title: s.title, checked: sort == s) { sort = s }
             }
-            ForEach(shown, id: \.0) { value, count in
-                ActionMenuRow(title: value, checked: selected.contains(value), trailing: "\(count) \(count == 1 ? "to-do" : "to-dos")") { pick(value) }
+            Divider().padding(.vertical, 4)
+            ActionMenuRow(title: "Show completed", detail: "Greyed", checked: ui.filter.status == .all) {
+                ui.filter.status = ui.filter.status == .all ? .open : .all
             }
         }
     }
@@ -653,7 +554,7 @@ struct BulkBar: View {
         let items = ui.selection.compactMap { store.items[$0] }
         HStack(spacing: 6) {
             Text("\(items.count) selected").font(Theme.body(13, .bold)).foregroundStyle(.white).padding(.trailing, 6)
-            bar("Complete", "checkmark.circle") { items.forEach { store.complete($0) }; ui.selection = [] }
+            bar("Complete", "checkmark.circle") { store.complete(items); ui.selection = [] }
             bar("Due date", "calendar") { ui.menu = ui.menu == "bulk-due" ? nil : "bulk-due" }
                 .overlay(alignment: .bottomLeading) {
                     if ui.menu == "bulk-due" {
@@ -794,15 +695,16 @@ struct TodoDetail: View {
                     ActionButton(title: "Done", kind: .primary) { editing = false }
                 }
             } else {
+                // Same order on every tab: remove on the left; Complete, then the primary action.
                 HStack(spacing: 8) {
-                    if item.status == .done {
-                        ActionButton(title: "Bring back", icon: "arrow.uturn.backward", kind: .soft) { store.restore(item.id) }
-                    } else {
-                        ActionButton(title: "Complete", icon: "checkmark", kind: .done) { store.complete(item) }
-                        ActionButton(title: "Send to", icon: "arrow.turn.up.right", kind: .soft) { menu = menu == "sendto" ? nil : "sendto" }
-                    }
-                    Spacer()
                     IconButton(systemImage: "trash", size: 30, help: "Remove (Delete)") { store.remove(item) }
+                    Spacer(minLength: 4)
+                    if item.status == .done {
+                        SoftButton(title: "Bring back", size: .small, systemImage: "arrow.uturn.backward") { store.restore(item.id) }
+                    } else {
+                        SoftButton(title: "Complete", size: .small, systemImage: "checkmark") { store.complete(item) }
+                        PrimaryButton(title: "Send to", systemImage: "paperplane", size: .small) { menu = menu == "sendto" ? nil : "sendto" }
+                    }
                 }
                 .overlay(alignment: .bottomTrailing) {
                     if menu == "sendto" {
