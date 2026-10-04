@@ -67,10 +67,26 @@ def kebab(k):
     return re.sub(r'([A-Z])', lambda m: '-' + m.group(1).lower(), k)
 
 
+def auto_width(name, props):
+    """hint-size must be a CSS length matching the child's root: an estimate for width "auto"."""
+    g = lambda k: '' if props.get(k) is None else attr(props[k])
+    if name == 'MarkdownStyleBar':
+        w = 470 if g('variant') != 'compact' else 290
+        w += 90 if g('image') == 'true' else 0
+        return int(w * (0.86 if g('size') == 'small' else 1))
+    if name in ('PrimaryButton', 'SoftButton'):
+        return 8 * len(g('title')) + (64 if g('systemImage') else 44)
+    if name == 'Pill':
+        return 7 * len(g('text')) + 22
+    return 200
+
+
 def dc_import(name, props, size):
     """<dc-import> of a sibling component; camelCase props become kebab attributes; None is left out."""
     a = ' '.join(f'{kebab(k)}="{attr(v)}"' for k, v in props.items() if v is not None)
     w, h = size
+    if w == 'auto':
+        w = f'{auto_width(name, props)}px'
     return f'<dc-import name="{name}" {a} hint-size="{w},{h}"></dc-import>'
 
 
