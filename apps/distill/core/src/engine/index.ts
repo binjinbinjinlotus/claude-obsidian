@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { asScheduler } from '../activity/context.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -1531,7 +1532,8 @@ export function createEngine(opts: EngineOptions): Engine {
       scheduleNextBatch(now());
       scheduleNextScan(now());
       if (timer) clearInterval(timer);
-      timer = setInterval(tick, tickMs);
+      // Batches and queue checks the timer starts are logged as the scheduler's (activity-log.md).
+      timer = setInterval(asScheduler(tick), tickMs);
     },
     async stop() {
       if (timer) clearInterval(timer);

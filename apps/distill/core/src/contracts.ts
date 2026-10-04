@@ -612,7 +612,7 @@ export interface Progress {
 // ───────────────────────────── Errors ─────────────────────────────
 
 /** HTTP mapping: not_found→404, invalid_request→400, invalid_state/busy/no_vault→409, not_implemented→501. */
-export type CoreErrorCode = 'not_found' | 'invalid_request' | 'invalid_state' | 'busy' | 'no_vault' | 'not_implemented';
+export type CoreErrorCode = 'not_found' | 'invalid_request' | 'invalid_state' | 'busy' | 'no_vault' | 'not_implemented' | 'conflict';
 
 export class CoreError extends Error {
   constructor(
@@ -1053,6 +1053,129 @@ export interface ScheduleCheck {
   nextRuns: string[];
 }
 
+// ───────────────────────────── Activity log (v6; spec activity-log.md) ─────────────────────────────
+
+/**
+ * Who asked for a change. Requests say who they are with the `X-Distill-Client` header
+ * (app, cli, agent); the Mac app is also recognised by its URLSession User-Agent.
+ *  app       – the Mac app
+ *  cli       – the `distill` CLI typed by a person
+ *  agent     – the CLI run by an AI agent (the plugin skills; Claude Code or Codex)
+ *  scheduler – Distill on its own: scheduled batches and collector runs, history retention
+ *  api       – an HTTP request that didn't say who it is
+ *  core      – in-process calls with no request (tests, dev scripts)
+ */
+export type ActivitySource = 'app' | 'cli' | 'agent' | 'scheduler' | 'api' | 'core';
+
+export type ActivityObjectKind =
+  | 'chat'
+  | 'collector'
+  | 'action'
+  | 'batch'
+  | 'queue'
+  | 'note'
+  | 'connection'
+  | 'settings'
+  | 'runner'
+  | 'labels'
+  | 'core';
+
+export interface ActivityObject {
+  kind: ActivityObjectKind;
+  /** Stable id (chat id, col-…, act-…, job-…, a queue file path). Absent for settings and the core. */
+  id?: string;
+  /** Human name at the time of the change (chat title, collector name, file name, …). */
+  name?: string;
+}
+
+/** Where a deleted thing can be got back from. */
+export type ActivityRecovery =
+  | { kind: 'trash'; trashId: string; expiresAt: string }
+  | { kind: 'macosTrash'; path: string }
+  | { kind: 'none'; reason: string };
+
+/** One line of `<state>/activity/activity.jsonl`. Never holds secrets or script bodies. */
+export interface ActivityEntry {
+  /** Time-sortable: "<13-digit ms>-<seq>-<random>". Also the pagination cursor. */
+  id: string;
+  /** ISO-8601. */
+  at: string;
+  /** Stable event type, "<family>.<verb>", e.g. "collector.deleted", "batch.applied". */
+  type: string;
+  source: ActivitySource;
+  object: ActivityObject;
+  /** One short sentence, e.g. "Deleted the script collector “Meeting notes”". */
+  summary: string;
+  outcome: 'ok' | 'failed';
+  /** Failed: the error, redacted and shortened. */
+  error?: string;
+  /** Small, flat, redacted facts (counts, sizes, paths, changed keys). */
+  details?: Record<string, string | number | boolean | null | string[]>;
+  /** Deletes: where to get it back. */
+  recovery?: ActivityRecovery;
+  /** Process that wrote the line (the server, or another process sharing the state dir). */
+  pid: number;
+}
+
+export interface ActivityQuery {
+  /** Exact types or families: "collector" matches "collector.*". */
+  types?: string[];
+  objectKind?: ActivityObjectKind;
+  objectID?: string;
+  sources?: ActivitySource[];
+  /** ISO-8601, inclusive. */
+  since?: string;
+  /** ISO-8601, exclusive. */
+  until?: string;
+  /** Case-insensitive text in the summary, type, object name/id and details. */
+  text?: string;
+  outcome?: 'ok' | 'failed';
+  /** Default 50, max 500. */
+  limit?: number;
+  /** nextCursor of the previous page: entries older than it. */
+  cursor?: string;
+}
+
+export interface ActivityPage {
+  /** Newest first. */
+  entries: ActivityEntry[];
+  /** Pass as `cursor` for the next (older) page; null at the end. */
+  nextCursor: string | null;
+}
+
+export type TrashItemKind = 'chat' | 'collector';
+
+/** A deleted chat or collector kept for a while so it can be restored. The payload stays on disk. */
+export interface TrashItem {
+  id: string; // trash-<…>
+  kind: TrashItemKind;
+  objectID: string;
+  name: string;
+  deletedAt: string;
+  /** When retention removes it (30 days after deletedAt by default). */
+  expiresAt: string;
+  source: ActivitySource;
+  /** Size of the kept copy in bytes. */
+  sizeBytes: number;
+  /** chat: turnCount; collector: kind, interpreter, scriptBytes, scriptLines, vaultPath. Never the script. */
+  details: Record<string, string | number | boolean | null>;
+}
+
+export interface RestoreResult {
+  item: TrashItem;
+  /** The restored chat id or collector id (a collector gets a new id when its old one is taken). */
+  objectID: string;
+  /** A restored script collector comes back off and needs consent again. */
+  note?: string;
+}
+
+/** The activity log and trash API (composed in index.ts; the server answers 501 without it). */
+export interface ActivityApi {
+  listActivity(query?: ActivityQuery): Promise<ActivityPage>;
+  listTrash(): Promise<TrashItem[]>;
+  restoreFromTrash(id: string): Promise<RestoreResult>;
+}
+
 // ───────────────────────────── Events ─────────────────────────────
 
 export type CoreEvent =
@@ -1072,7 +1195,9 @@ export type CoreEvent =
   | { type: 'collector.run.output'; collectorId: string; runId: string; stream: 'stdout' | 'stderr'; text: string }
   | { type: 'collector.run.finished'; run: CollectorRun }
   // v5: a queue scan finished (Refresh, window, periodic). A `queue` event precedes it when the list changed.
-  | { type: 'queue.scanned'; result: QueueScanResult };
+  | { type: 'queue.scanned'; result: QueueScanResult }
+  // v6: a line was added to the activity log (older Mac builds decode unknown events as `.unknown`).
+  | { type: 'activity'; entry: ActivityEntry };
 
 // ───────────────────────────── The core facade ─────────────────────────────
 

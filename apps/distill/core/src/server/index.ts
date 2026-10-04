@@ -14,8 +14,10 @@ import {
 export { startServer, HttpError, apiJob, type ServerOptions, type RunningServer, type ServerCore, type ApiPermissionDenial } from './http.js';
 export * from './lifecycle.js';
 export { statePaths } from '../store/paths.js';
+/** v6: who the current request came from (activity log). */
+export { currentSource, sourceFromHeaders, CLIENT_HEADER } from '../activity/context.js';
 /** In-memory DistillCore for tests and client development. */
-export { createFakeCore, sampleJob, sampleConversation, sampleAction, sampleCollector, sampleCollectorRun, FAKE_SUGGESTIONS, type FakeCore } from './fake-core.js';
+export { createFakeCore, sampleJob, sampleConversation, sampleAction, sampleCollector, sampleCollectorRun, sampleActivityEntry, sampleTrashItem, FAKE_SUGGESTIONS, type FakeCore } from './fake-core.js';
 
 export interface RunServerOptions {
   paths?: StatePaths;

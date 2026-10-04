@@ -1,5 +1,6 @@
 import path from 'node:path';
-import { CoreError, type CoreEvent, type DistillCore, type Progress, type StatePaths } from './contracts.js';
+import { CoreError, type ActivityApi, type CoreEvent, type DistillCore, type Progress, type StatePaths } from './contracts.js';
+import { createActivityService, createEventLogger, instrumentCore, type ActivityServiceOptions } from './activity/index.js';
 import { createEngine, type EngineExtras, type EngineOptions } from './engine/index.js';
 import { createAskService } from './ask/index.js';
 import { createRunnerAdmin } from './runners/admin.js';
@@ -11,6 +12,7 @@ import { statePaths } from './store/paths.js';
 
 export * from './contracts.js';
 export { statePaths } from './store/paths.js';
+export { currentSource, runWithSource, sourceFromHeaders } from './activity/context.js';
 
 export interface CoreOptions extends Partial<Omit<EngineOptions, 'paths'>> {
   paths?: StatePaths;
@@ -20,10 +22,12 @@ export interface CoreOptions extends Partial<Omit<EngineOptions, 'paths'>> {
   fetch?: FetchLike;
   /** Collectors: scheduler, process and environment overrides (tests). */
   collectors?: Partial<Omit<CollectorsOptions, 'emit' | 'getSettings' | 'file' | 'dir'>>;
+  /** Activity log and trash limits (tests). */
+  activity?: Pick<ActivityServiceOptions, 'log' | 'trash'>;
 }
 
 /** Compose the engine and Ask into the single DistillCore the server exposes. */
-export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras {
+export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras & ActivityApi {
   const paths = opts.paths ?? statePaths();
   // The actions service is created after the engine; the hook binds late.
   let actions: ActionsService | undefined;
@@ -83,7 +87,28 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras {
   engine.subscribe((e) => {
     if (e.type === 'job') collectors.pump();
   });
-  const { start: startCollectors, stop: stopCollectors, tick: _tick, pump: _pump, whenIdle: _collectorsIdle, ...collectorMethods } = collectors;
+  const {
+    start: startCollectors,
+    stop: stopCollectors,
+    tick: _tick,
+    pump: _pump,
+    whenIdle: _collectorsIdle,
+    restoreCollector,
+    ...collectorMethods
+  } = collectors;
+  // v6: the activity log (spec activity-log.md). New lines go out as `activity` events.
+  const askDir = path.join(paths.dir, 'ask');
+  const activity = createActivityService({
+    stateDir: paths.dir,
+    askDir,
+    emit,
+    restoreCollector,
+    ...(opts.now ? { now: opts.now } : {}),
+    ...opts.activity,
+  });
+  activity.log.onEntry((entry) => {
+    for (const l of [...extra]) l({ type: 'activity', entry });
+  });
   const service = actions;
   const {
     findInJob: _findInJob,
@@ -92,10 +117,13 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras {
     whenIdle: _actionsIdle,
     ...actionMethods
   } = service;
-  return {
+  const core: DistillCore & EngineExtras & ActivityApi = {
     ...engine,
     ...actionMethods,
     ...collectorMethods,
+    listActivity: (query) => activity.listActivity(query),
+    listTrash: () => activity.listTrash(),
+    restoreFromTrash: (id) => activity.restoreFromTrash(id),
     async start() {
       await engine.start();
       startCollectors();
@@ -137,4 +165,23 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras {
       };
     },
   };
+  // Work the core does on its own (batches moving on, runs, retention, queue scans) is logged from events.
+  const names = new Map<string, string>();
+  void collectors
+    .listCollectors()
+    .then((list) => list.forEach((c) => names.set(c.id, c.name)))
+    .catch(() => undefined);
+  const logEvent = createEventLogger(
+    { log: activity.log, getSettings: () => engine.getSettings(), collectorName: (id) => names.get(id) },
+    engine.listJobs(),
+  );
+  core.subscribe((e) => {
+    if (e.type === 'collector.changed') {
+      if (e.deleted) setTimeout(() => names.delete(e.collector.id), 60_000).unref();
+      else names.set(e.collector.id, e.collector.name);
+    }
+    logEvent(e);
+  });
+  // Every user-visible change through the core is logged here, whoever calls it.
+  return instrumentCore(core, { log: activity.log, trash: activity.trash, askDir });
 }

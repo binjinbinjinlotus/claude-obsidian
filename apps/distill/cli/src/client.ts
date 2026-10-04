@@ -108,6 +108,19 @@ export interface ConnectOptions {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * What the CLI tells the server it is (`X-Distill-Client`, for the activity log):
+ * DISTILL_CLIENT (cli, agent, plugin) wins; else "agent" inside Claude Code (CLAUDECODE=1) or a
+ * Codex sandbox (CODEX_SANDBOX*), which is how the plugin skills run it; else "cli".
+ */
+export function clientName(env: NodeJS.ProcessEnv): 'cli' | 'agent' {
+  const forced = env.DISTILL_CLIENT?.trim().toLowerCase();
+  if (forced === 'cli') return 'cli';
+  if (forced === 'agent' || forced === 'plugin') return 'agent';
+  if (env.CLAUDECODE === '1' || Object.keys(env).some((k) => k.startsWith('CODEX_SANDBOX'))) return 'agent';
+  return 'cli';
+}
+
 /** Find the running server (server.json + token), starting one detached when none is alive. */
 export async function connect(opts: ConnectOptions): Promise<ApiClient> {
   let lock = liveServer(opts.paths);
@@ -137,9 +150,10 @@ export async function connect(opts: ConnectOptions): Promise<ApiClient> {
   const token = readToken(opts.paths);
   if (!token) throw new CliError(`no API token at ${opts.paths.token}`, 'no_token');
   const found = lock;
+  const client = clientName(opts.env);
   return {
     lock: found,
-    request: (method, p, body) => apiRequest(found, token, method, p, body),
+    request: (method, p, body) => apiRequest(found, token, method, p, body, client),
     events: (onEvent) => openEvents(found, token, onEvent),
   };
 }
@@ -199,10 +213,10 @@ export function openEvents(lock: ServerLock, token: string, onEvent: (event: Cor
 }
 
 /** One JSON request over node:http (no client-side timeout: Ask can take minutes). */
-export function apiRequest<T>(lock: ServerLock, token: string, method: string, p: string, body?: unknown): Promise<T> {
+export function apiRequest<T>(lock: ServerLock, token: string, method: string, p: string, body?: unknown, client: 'cli' | 'agent' = 'cli'): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const payload = body === undefined ? undefined : JSON.stringify(body);
-    const headers: Record<string, string | number> = { authorization: `Bearer ${token}`, accept: 'application/json' };
+    const headers: Record<string, string | number> = { authorization: `Bearer ${token}`, accept: 'application/json', 'x-distill-client': client };
     if (payload !== undefined) {
       headers['content-type'] = 'application/json';
       headers['content-length'] = Buffer.byteLength(payload);
