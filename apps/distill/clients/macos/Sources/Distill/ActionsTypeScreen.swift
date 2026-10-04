@@ -114,7 +114,9 @@ struct TypeListScreen: View {
 
     private var site: String {
         let s = type.connectionID.flatMap { store.engine?.settingsUI.connection($0)?.site }?.replacingOccurrences(of: "https://", with: "")
-        return (s ?? "\(service.lowercased()).atlassian.net") + (type.id == "confluence" && s != nil ? "/wiki" : "")
+        // Never invent a site: without a stored connection it reads "Atlassian · connected".
+        guard let s else { return type.connectionID == "atlassian" ? "Atlassian" : service }
+        return s + (type.id == "confluence" ? "/wiki" : "")
     }
 
     @ViewBuilder private var toolbar: some View {
@@ -232,7 +234,7 @@ struct TypeListScreen: View {
             ActionsEmpty(icon: ActionsTheme.typeStyle(type.id).0, colors: colors, title: "No \(things) yet",
                          message: connection == .connecting
                             ? "Finish signing in, in your browser. This page updates by itself."
-                            : "Connect \(type.connectionID == "atlassian" ? "Atlassian" : service) once and Distill can create \(things) on \(site) with one click. Drafts from your notes and To do appear here.") {
+                            : "Connect \(type.connectionID == "atlassian" ? "Atlassian" : service) once and Distill can create \(things) on \(site == "Atlassian" ? "your Atlassian site" : site) with one click. Drafts from your notes and To do appear here.") {
                 if connection == .connecting {
                     HStack(spacing: 6) { Spinner(color: .white, size: 10); Text("Connecting…").font(Theme.body(13, .semibold)) }
                         .foregroundStyle(.white).padding(.horizontal, 14).frame(height: 30).background(Capsule().fill(Theme.primary))
