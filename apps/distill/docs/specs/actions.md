@@ -3,7 +3,7 @@ type: spec
 title: Actions
 status: built
 created: 2026-10-02
-updated: 2026-10-02
+updated: 2026-10-03
 tags:
   - distill
   - actions
@@ -25,13 +25,14 @@ SettingsNav). Contract: `core/src/contracts.ts` → "Actions (actions.json)",
 
 - Every item has a **type**. `todo` is the catch-all: anything that needs the
   user and that Distill can't do itself. Other types are things Distill can
-  do through **handlers**: `slack` (Copy now; Send later), `jira` and
-  `confluence` (Create, Refresh, Mark done). `email` is reserved.
+  do through **handlers**: `slack` (Copy, Mark as sent, Complete; Send
+  later), `jira` and `confluence` (Create, Refresh, Complete). Every type
+  has **Complete** ("you've handled it"). `email` is reserved.
 - Types and handlers are registry data (`core/src/actions/registry.ts`):
   adding a type or a handler never changes the contract or the clients'
   generic rendering. Clients render unknown types from `ActionTypeInfo`.
 - Status: pending (to confirm) → open / ready → creating → created → done;
-  sent (messages); removed (History, restorable); dismissed (found, never
+  sent (messages); done also by Complete from open, ready, created or sent; removed (History, restorable); dismissed (found, never
   added). Every change appends to the item's `events` timeline.
 
 ## Where items come from
@@ -167,7 +168,7 @@ Files in `core/src/actions/`:
 | Type | Fields | Handlers | Draft written | Improve after edit | Connection |
 | --- | --- | --- | --- | --- | --- |
 | `todo` (catch-all, always on) | due (date), priority, person | complete | — (no prompt) | no | — |
-| `slack` | to (required) | copy, markSent, send (reserved: "Later") | onFind | yes | — |
+| `slack` | to (required) | copy, markSent, complete, send (reserved: "Later") | onFind | yes | — |
 | `jira` | project (required), issueType, priority, assignee | create, refresh, complete | onFind | yes | atlassian |
 | `confluence` | space (required), parent | create, refresh, complete | onFind | yes | atlassian |
 | `email` (reserved, off) | to, subject | copy, openMail (both reserved) | — | — | — |
@@ -255,9 +256,13 @@ fields}`; improve: `{body}`); a JSON object in the text is the fallback.
   error; an AI failure returns it with `error.code = ai_failed`. Drafts fill
   only empty fields. Improve keeps `previousBody`; `undoImprove` puts it back.
 - `performAction`: copy (event only; needs text), markSent → `sent`,
-  complete → `done`, create → `creating` → `created` with `external {key,
+  complete → `done` (every type; from open, ready, created or sent; refused
+  from pending, removed, dismissed, done, while busy, and for a to-do sent to
+  another type, which completes there; the external status is left as it is;
+  event `done` with detail = the status it left), create → `creating` → `created` with `external {key,
   url, status, checkedAt}`, refresh → the status from Jira / Confluence (Jira
-  `statusCategory` done → `done`). A failed handler returns 200 with the item
+  `statusCategory` done → `done`, kept: the automatic Done; its event detail
+  is "in Jira (Done)"). A failed handler returns 200 with the item
   back in its status and `error` set; never an HTTP error.
 - `sendActionTo`: from pending/open/ready to an enabled type; the old item →
   `sent` with event `sent-to:<type>` (detail = the new id); the new item keeps
@@ -265,7 +270,9 @@ fields}`; improve: `{body}`); a JSON object in the text is the fallback.
   (`person` ↔ `to`), and starts its draft right away.
 - `removeAction` (not from History) → `removed`, event detail = the status to
   restore. `restoreAction` is every Undo: removed → where it was; done →
-  open (created when it has an external key); Mark as sent → ready; Send to →
+  the status Complete recorded (open, ready, created or sent; for an
+  automatic Done or an older item: created when it has an external key, else
+  open / ready); Mark as sent → ready; Send to →
   back where it was, and the item it became is deleted if still untouched
   (only added / drafted events; otherwise `invalid_state`, "it lives on in
   …"); dismissed → pending (or open/ready for an auto-added item). A type
@@ -275,7 +282,8 @@ fields}`; improve: `{body}`); a JSON object in the text is the fallback.
   reruns "Finding actions" for an applied batch; it returns the job with
   `actionsFound.status = "finding"` at once.
 - Handler ids for clients: `copy`, `markSent`, `create`, `refresh`,
-  `complete` (also "Mark done" for a created ticket or page).
+  `complete` (labelled "Complete" for every type, also a created ticket or
+  page).
 - Retention: on load and at most hourly on `listActions`, removed / done /
   sent / dismissed items whose last event is older than `historyDays` are
   dropped; `historyDays <= 0` keeps them forever. Live items are never dropped.

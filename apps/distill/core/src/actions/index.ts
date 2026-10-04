@@ -986,12 +986,18 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       const allowed: Record<string, ActionStatus[]> = {
         copy: ['open', 'ready'],
         markSent: ['open', 'ready'],
-        complete: ['open', 'ready', 'created'],
+        // Complete works from every live, non-busy state, and from sent (Mark as sent): pending (confirm or
+        // dismiss it), removed, dismissed and done are refused.
+        complete: ['open', 'ready', 'created', 'sent'],
         create: ['open', 'ready'],
         refresh: ['created'],
       };
       const ok = allowed[handlerID] ?? ['open', 'ready', 'created'];
       if (!ok.includes(item.status)) throw new CoreError('invalid_state', `Can't ${spec.label.toLowerCase()} an item that is ${item.status}.`);
+      if (handlerID === 'complete' && item.status === 'sent' && [...item.events].reverse().find((e) => e.event === 'sent' || e.event.startsWith('sent-to:'))?.event.startsWith('sent-to:')) {
+        // A to-do sent to another type lives on as that item; complete it there.
+        throw new CoreError('invalid_state', 'It lives on as the item it was sent to; complete that one instead.');
+      }
       if (handlerID === 'copy' && !item.body?.trim()) {
         throw new CoreError('invalid_state', 'There is no text to copy yet; write the draft first.');
       }
@@ -1092,9 +1098,16 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         case 'removed':
           status = back(lastEvent((n) => n === 'removed')?.detail, 'open');
           break;
-        case 'done':
-          status = item.external?.key ? 'created' : initialStatus(item.type, item.body);
+        case 'done': {
+          // Complete records the status it left; an automatic Done (Jira / Confluence) doesn't, so a
+          // created item goes back to created and anything else to its first live status.
+          const left = lastEvent((n) => n === 'done')?.detail;
+          status = (['open', 'ready', 'created', 'sent'] as ActionStatus[]).includes(left as ActionStatus)
+            ? (left as ActionStatus)
+            : item.external?.key ? 'created' : initialStatus(item.type, item.body);
+          if (status === 'created' && !item.external?.key) status = initialStatus(item.type, item.body);
           break;
+        }
         case 'dismissed':
           // Undo of Dismiss: back to "to confirm" (or where an auto-added item was).
           status = back(lastEvent((n) => n === 'dismissed')?.detail, 'pending');

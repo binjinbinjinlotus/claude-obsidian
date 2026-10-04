@@ -567,7 +567,8 @@ export type ActionTypeID = string;
  * ready     – draft written; ready to copy / create
  * creating  – a handler is running (e.g. creating in Jira)
  * created   – exists outside Distill (external key/url/status); stays listed until done
- * done      – completed (to-do checked, or Jira says Done / you marked it done)
+ * done      – completed: you pressed Complete (any type, from open / ready / created / sent; the
+ *             external status is left as it is), or Jira / Confluence reports Done on refresh
  * sent      – you marked a message as sent (or a future Send handler sent it)
  * removed   – you removed it; in History until historyDays, restorable
  * dismissed – you dismissed a found item before it was added (not shown in lists)
@@ -594,7 +595,11 @@ export interface ActionError {
 
 export interface ActionEvent {
   at: string; // ISO-8601
-  /** e.g. found, confirmed, drafted, edited, improved, improve-undone, copied, sent-to:<type>, created, status, done, removed, restored */
+  /**
+   * e.g. found, confirmed, drafted, edited, improved, improve-undone, copied, sent-to:<type>, created, status, done, removed, restored.
+   * `done` from Complete has detail = the status it left (open | ready | created | sent), which restoreAction
+   * returns it to; an automatic Done from a refresh has a description ("in Jira (Done)") instead.
+   */
   event: string;
   detail?: string | null;
 }
@@ -638,7 +643,7 @@ export interface ActionFieldSpec {
 }
 
 export interface ActionHandlerInfo {
-  /** copy | markSent | create | complete | refresh | send … */
+  /** copy | markSent | create | complete ("Complete", every handler type) | refresh | send … */
   id: string;
   label: string;
   /** false = shown disabled (reserved for later, or a connection is missing). */
@@ -885,11 +890,16 @@ export interface DistillCore {
   improveAction(id: string, opts?: { signal?: AbortSignal }): Promise<ActionItem>;
   /** Put previousBody back. */
   undoImprove(id: string): Promise<ActionItem>;
-  /** Run a handler: copy (records the event), markSent, create, complete, refresh, … */
+  /**
+   * Run a handler: copy (records the event), markSent, create, refresh, … complete: from open, ready, created
+   * or sent (not pending, removed, dismissed, done, busy, or a to-do already sent to another type) → done,
+   * whatever the external status says; event `done`, detail = the status it left.
+   */
   performAction(id: string, handlerID: string): Promise<ActionItem>;
   /** A to-do (or an item of another type) goes to a type's list; the new item keeps fromActionID; the old one leaves its list. */
   sendActionTo(id: string, type: ActionTypeID): Promise<ActionItem>;
   removeAction(id: string): Promise<ActionItem>;
+  /** Every Undo. done → the status Complete recorded (else created with an external key, else open/ready). */
   restoreAction(id: string): Promise<ActionItem>;
   /** From History only; cannot be undone. */
   deleteActionForever(id: string): Promise<void>;

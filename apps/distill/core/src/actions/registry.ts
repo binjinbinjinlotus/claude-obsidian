@@ -139,6 +139,7 @@ export const BUILTIN_TYPES: ActionTypeDef[] = [
     handlers: [
       { id: 'copy', label: 'Copy' },
       { id: 'markSent', label: 'Mark as sent' },
+      { id: 'complete', label: 'Complete' },
       { id: 'send', label: 'Send in Slack', reserved: true },
     ],
     defaults: { enabled: true, draftWhen: 'onFind', improveAfterEdit: true },
@@ -160,7 +161,7 @@ export const BUILTIN_TYPES: ActionTypeDef[] = [
     handlers: [
       { id: 'create', label: 'Create in Jira', needsConnection: true },
       { id: 'refresh', label: 'Refresh', needsConnection: true },
-      { id: 'complete', label: 'Mark done' },
+      { id: 'complete', label: 'Complete' },
     ],
     connectionID: 'atlassian',
     defaults: { enabled: true, draftWhen: 'onFind', improveAfterEdit: true },
@@ -180,7 +181,7 @@ export const BUILTIN_TYPES: ActionTypeDef[] = [
     handlers: [
       { id: 'create', label: 'Create in Confluence', needsConnection: true },
       { id: 'refresh', label: 'Refresh', needsConnection: true },
-      { id: 'complete', label: 'Mark done' },
+      { id: 'complete', label: 'Complete' },
     ],
     connectionID: 'atlassian',
     defaults: { enabled: true, draftWhen: 'onFind', improveAfterEdit: true },
@@ -369,8 +370,6 @@ export function handlerFn(typeID: string, handlerID: string): HandlerFn | undefi
 // Generic handlers. Copy only records the event: the client puts the text on the clipboard.
 registerHandler('*', 'copy', async () => ({ event: 'copied' }));
 registerHandler('*', 'markSent', async () => ({ status: 'sent', event: 'sent' }));
-registerHandler('*', 'complete', async (ctx) => ({
-  status: 'done',
-  event: 'done',
-  detail: ctx.item.external?.key ? `marked done (${ctx.item.external.key})` : 'by you',
-}));
+// Complete: the user has handled it, whatever the external status says. The event's detail is the
+// status it left (open, ready, created or sent) so restoreAction puts it back exactly there.
+registerHandler('*', 'complete', async (ctx) => ({ status: 'done', event: 'done', detail: ctx.item.status }));
