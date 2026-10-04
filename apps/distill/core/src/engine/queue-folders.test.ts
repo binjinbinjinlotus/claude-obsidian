@@ -232,8 +232,18 @@ describe('a folder in a batch', () => {
     const rel = `inbox/${day}/Tea tasting trip`;
     assert.deepEqual(job.folders, [rel]);
     assert.deepEqual([...job.files].sort(), ['inbox/loose.md', `${rel}/notes/day1-uji.md`, `${rel}/photos/kettle.jpg`].sort());
-    assert.ok(fs.existsSync(path.join(vault, rel, 'Itinerary.gdoc')), 'the folder moves whole, .gdoc included');
-    assert.ok(!fs.existsSync(trip));
+    assert.ok(fs.existsSync(path.join(vault, rel, 'notes', 'day1-uji.md')), 'the folder moves whole');
+    // ...except its .gdoc pointers: they never enter the vault, and stay queued under the same relative path.
+    assert.ok(!fs.existsSync(path.join(vault, rel, 'Itinerary.gdoc')));
+    assert.equal(fs.readFileSync(path.join(trip, 'Itinerary.gdoc'), 'utf8').includes('abcdefghij12345'), true);
+    assert.deepEqual(fs.readdirSync(queue).sort(), ['Tea tasting trip'], 'no staging folder is left behind');
+    const left = byName(engine.listQueue(), 'Tea tasting trip')!;
+    assert.deepEqual([left.kind, left.waiting, left.fileCount], ['folder', 'google-drive', 1]);
+    assert.equal(await engine.processQueue({ force: true }), null, 'it keeps waiting');
+    // The moved folder's manifest records the pointer (path, size, kind), never its contents.
+    const manifest = fs.readFileSync(path.join(vault, rel, '.distill-folder.json'), 'utf8');
+    assert.match(manifest, /"path": "Itinerary.gdoc"/);
+    assert.ok(!manifest.includes('me@example.com') && !manifest.includes('docs.google.com'));
 
     const prompt = runner.requests[0]!.prompt;
     assert.match(prompt, /Folder source: Tea tasting trip\/ \(3 files, 2 folders, [\d.]+ KB\)/);
@@ -251,6 +261,20 @@ describe('a folder in a batch', () => {
     // job.folders is stored (jobs.json), so History survives a restart.
     const stored = JSON.parse(fs.readFileSync(path.join(tmp, 'state', 'jobs.json'), 'utf8')) as { id: string; folders?: string[] }[];
     assert.deepEqual(stored.find((j) => j.id === job.id)?.folders, [rel]);
+  });
+
+  test('a nested .gdoc stays queued at its relative path; the tree in the prompt still lists it', async () => {
+    const { queue, vault, engine, runner } = setup();
+    put(path.join(queue, 'Trip'), 'a.md', '# A');
+    put(path.join(queue, 'Trip'), 'docs/deep/Plan.gdoc', '{"doc_id":"abcdefghij12345","email":"me@example.com"}');
+    const job = (await engine.processQueue({ force: true }))!;
+    await engine.whenIdle();
+    assert.ok(fs.existsSync(path.join(queue, 'Trip', 'docs', 'deep', 'Plan.gdoc')));
+    assert.ok(!fs.existsSync(path.join(vault, job.folders![0]!, 'docs')), 'nothing of it in the vault');
+    const prompt = runner.requests[0]!.prompt;
+    assert.match(prompt, /- Trip\/docs\/deep\/Plan\.gdoc \(Google Doc, not read\)/);
+    assert.ok(!prompt.includes('me@example.com') && !prompt.includes('abcdefghij12345'));
+    assert.equal(byName(engine.listQueue(), 'Trip')!.waiting, 'google-drive');
   });
 
   test('when the queue is the inbox, a folder is batched in place and then counts as taken', async () => {

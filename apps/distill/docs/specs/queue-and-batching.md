@@ -301,7 +301,14 @@ Code: `scanQueueFolder`, `walkFolder`, `folderTreeEntries`,
 - **Batch:** a folder moves whole to `inbox/<yyyy-MM-dd>/<name>` (`name 2`
   on a clash). Its sources (not hidden, partial, `.gdoc` or `seenBefore`) go
   into `job.files` one by one; the folder itself goes into the new
-  `job.folders`. When the queue is the inbox, folders stay where they are
+  `job.folders`. Its `.gdoc` pointers never enter the vault: before the
+  move they step into a hidden staging folder in the queue folder, then
+  come back as a folder of the original name (" 2" if taken), at their
+  relative paths, where they keep waiting ("google-drive"). Subfolders
+  left empty by that are not moved. The moved folder's
+  `.distill-folder.json` records each pointer (path, size, kind `gdoc`; no
+  contents), so the prompt still lists it as "Google Doc, not read" and
+  the header still counts it. When the queue is the inbox, folders stay where they are
   and a folder counts as taken once any of its files is in a job. "Reading N
   sources" and the app turn count a folder as one. Files inside a folder get
   no per-file AI labels (one folder would otherwise cost one label call per
