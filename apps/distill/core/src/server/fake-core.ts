@@ -683,6 +683,34 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
         ? { cron, valid: true, preset: 'custom' as const, nextRuns: ['2026-10-04T10:00:00Z'] }
         : { cron, valid: false, error: 'A schedule has 5 fields.', nextRuns: [] };
     },
+    async getCollectorScript(id) {
+      record('getCollectorScript', id);
+      const c = requireCollector(id);
+      if (!c.script) throw new CoreError('invalid_request', 'Only script collectors have a script.');
+      const file = 'file' in c.script.source ? c.script.source.file : '/state/collectors/scripts/x/collector.zsh';
+      return { collectorId: id, interpreter: c.script.interpreter, managed: true, path: file, dir: '/state/collectors/scripts/x', code: 'print hi', sha256: 'a'.repeat(64), manifest: null };
+    },
+    async writeCollectorScript(id, update) {
+      record('writeCollectorScript', id, update);
+      const c = requireCollector(id);
+      if (!c.script) throw new CoreError('invalid_request', 'Only script collectors have a script.');
+      return { collectorId: id, interpreter: c.script.interpreter, managed: true, path: '/state/collectors/scripts/x/collector.js', dir: '/state/collectors/scripts/x', code: update.code ?? 'print hi', sha256: 'b'.repeat(64), manifest: update.manifest !== undefined ? { name: 'package.json' as const, path: '/state/collectors/scripts/x/package.json', text: update.manifest, sha256: update.manifest === null ? null : 'c'.repeat(64) } : null };
+    },
+    async installCollectorPackages(id, opts) {
+      record('installCollectorPackages', id, opts);
+      requireCollector(id);
+      return { id: 'ins-1', collectorId: id, trigger: 'manual' as const, startedAt: '2026-10-04T09:00:00Z', result: 'running' as const, command: 'npm install --no-audit --no-fund', manifestName: 'package.json' as const, manifestSha256: 'c'.repeat(64), ...(opts?.clean ? { clean: true } : {}) };
+    },
+    async stopCollectorInstall(id) {
+      record('stopCollectorInstall', id);
+      requireCollector(id);
+      return null;
+    },
+    async getCollectorInstall(id) {
+      record('getCollectorInstall', id);
+      requireCollector(id);
+      return null;
+    },
     extractImageText: async (req: { imagePath: string; vaultPath?: string }) => {
       record('extractImageText', req);
       return { text: '', model: 'Haiku' };

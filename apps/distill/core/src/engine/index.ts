@@ -114,7 +114,8 @@ export type EngineOwned = Exclude<keyof DistillCore, AskOwned | RunnerAdminOwned
 export type CollectorsOwned =
   | 'listCollectors' | 'getCollector' | 'createCollector' | 'updateCollector' | 'deleteCollector' | 'runCollector'
   | 'stopCollector' | 'allowCollector' | 'revokeCollector' | 'listCollectorRuns' | 'listCollected' | 'forgetCollected'
-  | 'restoreCollected' | 'createCollectorFolder' | 'checkSchedule';
+  | 'restoreCollected' | 'createCollectorFolder' | 'checkSchedule'
+  | 'getCollectorScript' | 'writeCollectorScript' | 'installCollectorPackages' | 'stopCollectorInstall' | 'getCollectorInstall';
 /** Actions and connections: core/src/actions (createActionsService). */
 export type ActionsOwned =
   | 'listActionTypes' | 'listActions' | 'getAction' | 'createAction' | 'updateAction' | 'confirmActions'

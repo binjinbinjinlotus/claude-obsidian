@@ -13,8 +13,13 @@ import {
   type CollectedFile,
   type Collector,
   type CollectorPatch,
+  type CollectorInstall,
+  type CollectorInterpreter,
   type CollectorRun,
   type CollectorSchedule,
+  type CollectorScriptFiles,
+  type CollectorScriptStatus,
+  type CollectorScriptUpdate,
   type CollectorTrigger,
   type CoreEvent,
   type DistillCore,
@@ -30,7 +35,9 @@ import type { CollectorsOwned } from '../engine/index.js';
 import { isoDate } from '../store/json.js';
 import { checkSchedule, CronError, nextRun, parseCron, presetOf } from './cron.js';
 import { runFolder } from './folder.js';
-import { findOnPath, INLINE_EXTENSION, loginShellPath, scriptBytes, sha256Text, startScript, type ScriptHandle } from './script.js';
+import { backupFile, consentHash, hasDependencies, MANIFEST, packageCount, PACKAGES_DIR, ScriptFolders } from './files.js';
+import { InstallStore, planInstall, resolveRuntime, startInstall } from './packages.js';
+import { INLINE_EXTENSION, loginShellPath, scriptBytes, sha256Text, startScript, type ScriptHandle } from './script.js';
 import {
   clampTimeout,
   CollectorStore,
@@ -40,6 +47,7 @@ import {
   ledgerFile,
   MAX_TIMEOUT_SECONDS,
   newCollectorID,
+  newInstallID,
   newRunID,
   publicEntry,
   RunStore,
@@ -75,6 +83,8 @@ export interface CollectorsOptions {
   baseEnv?: NodeJS.ProcessEnv;
   /** Where run folders go (default os.tmpdir()). */
   tmpDir?: string;
+  /** v6: package install timeout (default 10 minutes). */
+  installTimeoutMs?: number;
 }
 
 export type CollectorsService = Pick<DistillCore, CollectorsOwned> & {
@@ -95,6 +105,8 @@ interface Active {
   /** The core is stopping (not the user's Stop). */
   shutdown?: boolean;
   script?: ScriptHandle;
+  /** v6: stops the install a run does first. */
+  stopInstall?: () => void;
   done: Promise<void>;
 }
 
@@ -118,6 +130,8 @@ function clock(d: Date): string {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
+const INTERPRETER_ERROR = '"interpreter" must be zsh, python3, node or typescript.';
+
 export function createCollectorsService(opts: CollectorsOptions): CollectorsService {
   const now = opts.now ?? (() => new Date());
   const home = opts.homeDir ?? os.homedir();
@@ -126,6 +140,11 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
   const runs = new RunStore(path.join(opts.dir, 'runs'));
   const ledgers = new Map<string, Ledger>();
   let collectors = store.load(now());
+  const folders = new ScriptFolders(opts.dir);
+  const installs = new InstallStore(path.join(opts.dir, 'installs'));
+  /** v6: package installs going on, by collector id (one operation per collector: never with a run). */
+  const installing = new Map<string, { install: CollectorInstall; stop(): void; done: Promise<void> }>();
+  migrateScripts();
   const active = new Map<string, Active>();
   /** Queued runs, FIFO. */
   let pending: CollectorRun[] = [];
@@ -169,9 +188,55 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     return l;
   }
 
-  function currentHash(script: ScriptCollectorSettings): { sha256: string } | { problem: string } {
+  // ───────────── script files (v6; files.ts, packages.ts) ─────────────
+
+  /**
+   * Old inline scripts become real files in their own folder (same bytes, so consent stays valid).
+   * collectors.json is copied to collectors.json.pre-script-files-<time> first. A script that can't be
+   * written stays inline and still runs (from a temp file, as before).
+   */
+  function migrateScripts(): void {
+    let changedAny = false;
+    let backedUp = false;
+    for (const c of collectors) {
+      const s = c.script;
+      if (c.kind !== 'script' || !s) continue;
+      if ('inline' in s.source) {
+        try {
+          if (!backedUp) backupFile(opts.file, 'pre-script-files', now());
+          backedUp = true;
+          const file = folders.writeScript(c.id, s.interpreter, Buffer.from(s.source.inline, 'utf8'), { migrated: true });
+          s.source = { file, managed: true };
+          changedAny = true;
+        } catch {
+          // stays inline
+        }
+      } else if (s.source.managed) {
+        // The state dir moved (a restore, another DISTILL_STATE_DIR): the folder is this state dir's.
+        const file = folders.managedPath(c.id, s.source.file);
+        if (file !== s.source.file) {
+          s.source = { file, managed: true };
+          changedAny = true;
+        }
+      }
+    }
+    if (changedAny) persist();
+  }
+
+  function isManaged(script: ScriptCollectorSettings): boolean {
+    return 'file' in script.source && script.source.managed === true;
+  }
+
+  function manifestOf(c: Collector) {
+    return c.script && isManaged(c.script) ? folders.manifest(c.id, c.script.interpreter) : null;
+  }
+
+  /** The consent hash: the script's bytes, and the manifest's when a managed script has one. */
+  function currentHash(c: Collector): { sha256: string } | { problem: string } {
+    const script = c.script!;
     try {
-      return { sha256: sha256Text(scriptBytes(script.source)) };
+      const m = manifestOf(c);
+      return { sha256: consentHash(scriptBytes(script.source), m?.bytes ? { name: m.name, bytes: m.bytes } : null) };
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       const file = 'file' in script.source ? script.source.file : '';
@@ -179,6 +244,245 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       if (code === 'EACCES' || code === 'EPERM') return { problem: `Distill isn't allowed to read ${file}.` };
       return { problem: (err as Error).message };
     }
+  }
+
+  function needsInstall(c: Collector): boolean {
+    const m = manifestOf(c);
+    if (!m?.bytes || !hasDependencies(m.name, m.bytes)) return false;
+    if (installs.get(c.id).installedSha256 !== sha256Text(m.bytes)) return true;
+    return !fs.existsSync(path.join(folders.folder(c.id), PACKAGES_DIR[m.name]));
+  }
+
+  function scriptStatus(c: Collector): CollectorScriptStatus {
+    const script = c.script!;
+    const managed = isManaged(script);
+    const out: CollectorScriptStatus = { path: 'file' in script.source ? script.source.file : '', dir: managed ? folders.folder(c.id) : null, managed, manifest: null };
+    const m = manifestOf(c);
+    if (m) {
+      const record = installs.get(c.id);
+      const running = installing.get(c.id)?.install;
+      const last = running ?? record.last;
+      let lastInstall: CollectorInstall | null = null;
+      if (last) {
+        const { outputTail: _tail, ...rest } = last;
+        lastInstall = clone(rest);
+      }
+      out.manifest = {
+        name: m.name,
+        path: m.path,
+        exists: !!m.bytes,
+        hasDependencies: !!m.bytes && hasDependencies(m.name, m.bytes),
+        packageCount: m.bytes ? Math.max(0, packageCount(m.name, m.bytes)) : 0,
+        sha256: m.bytes ? sha256Text(m.bytes) : null,
+        installedSha256: installs.get(c.id).installedSha256,
+        needsInstall: needsInstall(c),
+        installing: !!running,
+        lastInstall,
+      };
+    }
+    const allowed = script.allowedFiles;
+    if (allowed && script.allowedSha256) {
+      const h = currentHash(c);
+      if ('sha256' in h && h.sha256 !== script.allowedSha256) {
+        const parts = filesNow(c);
+        const changes: ('script' | 'manifest')[] = [];
+        if (parts.script !== allowed.script) changes.push('script');
+        if (parts.manifest !== allowed.manifest) changes.push('manifest');
+        out.changes = changes;
+      }
+    }
+    return out;
+  }
+
+  /** sha256 of the script's and the manifest's bytes right now (null when missing). */
+  function filesNow(c: Collector): { script: string | null; manifest: string | null } {
+    let scriptSha: string | null = null;
+    try {
+      scriptSha = sha256Text(scriptBytes(c.script!.source));
+    } catch {
+      scriptSha = null;
+    }
+    const m = manifestOf(c);
+    return { script: scriptSha, manifest: m?.bytes ? sha256Text(m.bytes) : null };
+  }
+
+  /** {inline} → the managed file (written now); {file} → the user's own file, unless it is this collector's managed file. */
+  function applySource(c: Collector, s: ScriptSource, interpreter: CollectorInterpreter): ScriptSource {
+    if (s && typeof s === 'object' && 'inline' in s && typeof s.inline === 'string') {
+      if (s.inline.trim() === '') throw new CoreError('invalid_request', 'The script is empty.');
+      const current = c.script && isManaged(c.script) && 'file' in c.script.source ? c.script.source.file : undefined;
+      const name = current && fs.existsSync(current) ? path.basename(current) : undefined;
+      try {
+        const file = folders.writeScript(c.id, interpreter, Buffer.from(s.inline, 'utf8'), name ? { name } : {});
+        return { file, managed: true };
+      } catch (err) {
+        throw new CoreError('invalid_state', `Couldn't save the script file: ${(err as Error).message}`);
+      }
+    }
+    if (s && typeof s === 'object' && 'file' in s && typeof s.file === 'string') {
+      const expanded = expandHome(s.file.trim());
+      if (!path.isAbsolute(expanded)) throw new CoreError('invalid_request', 'The script file must be an absolute path.');
+      const file = path.resolve(expanded);
+      if (folders.isManagedPath(c.id, file)) return { file, managed: true };
+      // Another collector's managed file (Duplicate sends it): this collector gets its own copy, manifest included.
+      const owner = folders.ownerOf(file);
+      if (owner) {
+        try {
+          const copy = folders.writeScript(c.id, interpreter, fs.readFileSync(file), { name: path.basename(file) });
+          const manifest = MANIFEST[interpreter];
+          const from = manifest ? path.join(path.dirname(file), manifest) : undefined;
+          const own = folders.manifest(c.id, interpreter);
+          if (from && fs.existsSync(from) && own && !own.bytes) folders.writeManifest(c.id, interpreter, fs.readFileSync(from, 'utf8'));
+          return { file: copy, managed: true };
+        } catch (err) {
+          throw new CoreError('invalid_state', `Couldn't copy the script: ${(err as Error).message}`);
+        }
+      }
+      return { file };
+    }
+    throw new CoreError('invalid_request', 'A script needs {"file": path} or {"inline": code}.');
+  }
+
+  function scriptFiles(c: Collector): CollectorScriptFiles {
+    if (c.kind !== 'script' || !c.script) throw new CoreError('invalid_request', 'Only script collectors have a script.');
+    const script = c.script;
+    const managed = isManaged(script);
+    const out: CollectorScriptFiles = {
+      collectorId: c.id,
+      interpreter: script.interpreter,
+      managed,
+      path: 'file' in script.source ? script.source.file : '',
+      dir: managed ? folders.folder(c.id) : null,
+      code: null,
+      sha256: null,
+      manifest: null,
+    };
+    try {
+      const bytes = scriptBytes(script.source);
+      out.code = bytes.toString('utf8');
+      out.sha256 = sha256Text(bytes);
+    } catch (err) {
+      const h = currentHash(c);
+      out.problem = 'problem' in h ? h.problem : (err as Error).message;
+    }
+    const m = manifestOf(c);
+    if (m) out.manifest = { name: m.name, path: m.path, text: m.bytes ? m.bytes.toString('utf8') : null, sha256: m.bytes ? sha256Text(m.bytes) : null };
+    return out;
+  }
+
+  /** The environment a script or an install gets: the core's minus every DISTILL_* variable, the login PATH, and `extra`. */
+  function scriptEnv(searchPath: string, extra: Record<string, string>): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = {};
+    for (const [k, v] of Object.entries(opts.baseEnv ?? process.env)) if (!k.startsWith('DISTILL_')) env[k] = v;
+    return Object.assign(env, { PATH: searchPath, ...extra });
+  }
+
+  /**
+   * Install the manifest's packages in the collector's folder; resolves with the finished record. `onStart`
+   * gets the running record (the API returns it at once); `onHandle` gets a stop function. The caller
+   * checks consent and that nothing else runs for this collector.
+   */
+  async function install(
+    c: Collector,
+    trigger: CollectorInstall['trigger'],
+    clean: boolean,
+    hooks: { onStart?: (i: CollectorInstall) => void; onHandle?: (stop: () => void) => void } = {},
+  ): Promise<CollectorInstall> {
+    const m = manifestOf(c);
+    if (!m?.bytes) throw new CoreError('invalid_state', 'This script has no package manifest.');
+    const folder = folders.folder(c.id);
+    const started = now();
+    const rec: CollectorInstall = {
+      id: newInstallID(),
+      collectorId: c.id,
+      trigger,
+      startedAt: isoDate(started),
+      result: 'running',
+      command: '',
+      manifestName: m.name,
+      manifestSha256: sha256Text(m.bytes),
+      ...(clean ? { clean: true } : {}),
+    };
+    let stopped = false;
+    let handle: { stop(): void } | undefined;
+    let resolveDone: () => void = () => {};
+    const entry = {
+      install: rec,
+      stop: () => {
+        stopped = true;
+        handle?.stop();
+      },
+      done: new Promise<void>((r) => (resolveDone = r)),
+    };
+    installing.set(c.id, entry);
+    hooks.onHandle?.(entry.stop);
+    try {
+      if (clean) folders.removePackages(c.id, m.name);
+      const searchPath = await loginPath();
+      const plan = planInstall(m.name, folder, searchPath);
+      if ('error' in plan) {
+        rec.result = 'failed';
+        rec.error = { code: 'interpreterMissing', message: plan.error };
+        hooks.onStart?.(clone(rec));
+      } else {
+        rec.command = plan.display;
+        installs.put(rec);
+        opts.emit({ type: 'collector.install.started', install: clone(rec) });
+        changed(c);
+        hooks.onStart?.(clone(rec));
+        const run = startInstall({
+          steps: plan.steps,
+          cwd: folder,
+          env: scriptEnv(searchPath, { DISTILL_COLLECTOR_ID: c.id, npm_config_update_notifier: 'false' }),
+          ...(opts.installTimeoutMs !== undefined ? { timeoutMs: opts.installTimeoutMs } : {}),
+          ...(opts.killGraceMs !== undefined ? { killGraceMs: opts.killGraceMs } : {}),
+          onOutput: (text) => opts.emit({ type: 'collector.install.output', collectorId: c.id, installId: rec.id, text: text.slice(-16 * 1024) }),
+        });
+        handle = run;
+        if (stopped) run.stop();
+        const o = await run.done;
+        rec.exitCode = o.exitCode;
+        rec.signal = o.signal;
+        rec.outputTail = o.outputTail;
+        if (o.spawnError) {
+          rec.result = 'failed';
+          rec.error = { code: 'interpreterMissing', message: `The install couldn't start: ${o.spawnError}` };
+        } else if (o.stopped) {
+          rec.result = 'stopped';
+        } else if (o.timedOut) {
+          rec.result = 'timedout';
+          rec.error = { code: 'installFailed', message: 'The install timed out.' };
+        } else if (o.exitCode === 0) {
+          rec.result = 'success';
+        } else {
+          rec.result = 'failed';
+          rec.error = {
+            code: 'installFailed',
+            message: o.exitCode !== null ? `The install exited with code ${o.exitCode}.` : `The install was killed (${o.signal ?? 'signal'}).`,
+          };
+        }
+      }
+    } catch (err) {
+      rec.result = 'failed';
+      rec.error = { code: 'other', message: (err as Error).message };
+    }
+    const end = now();
+    rec.endedAt = isoDate(end);
+    rec.durationMs = Math.max(0, end.getTime() - started.getTime());
+    installing.delete(c.id);
+    installs.put(rec);
+    opts.emit({ type: 'collector.install.finished', install: clone(rec) });
+    const current = find(c.id);
+    if (current) changed(current);
+    resolveDone();
+    checkIdle();
+    return clone(rec);
+  }
+
+  function busyWith(id: string): string | undefined {
+    if (active.has(id) || pending.some((r) => r.collectorId === id)) return 'run';
+    if (installing.has(id)) return 'install';
+    return undefined;
   }
 
   function lastTick(c: Collector): Date {
@@ -214,8 +518,12 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     const last = active.get(c.id)?.run ?? pending.find((r) => r.collectorId === c.id) ?? runs.latest(c.id, now());
     let needsConsent = false;
     out.status = { running: isRunning, nextRunAt: due ? isoDate(due.getTime() < now().getTime() ? now() : due) : null, lastRun: summary(last), needsConsent, needsAttention: false };
+    let installFailed = false;
     if (c.kind === 'script' && c.script) {
-      const h = currentHash(c.script);
+      const h = currentHash(c);
+      out.status.script = scriptStatus(c);
+      const m = out.status.script.manifest;
+      installFailed = !!m && m.needsInstall && !!m.lastInstall && ['failed', 'timedout'].includes(m.lastInstall.result);
       if ('sha256' in h) {
         out.status.currentSha256 = h.sha256;
         needsConsent = c.script.allowedSha256 !== h.sha256;
@@ -229,7 +537,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       out.status.collectedCount = collectedIn(c).length;
     }
     const failed = !!last && ['failed', 'timedout', 'notTrusted'].includes(last.result);
-    out.status.needsAttention = needsConsent || failed;
+    out.status.needsAttention = needsConsent || failed || installFailed;
     return out;
   }
 
@@ -277,19 +585,6 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     const out: FolderCollectorSettings = { source: path.resolve(source), afterCollect };
     if (includeSubfolders !== undefined) out.includeSubfolders = includeSubfolders;
     return out;
-  }
-
-  function validScriptSource(s: ScriptSource): ScriptSource {
-    if (s && typeof s === 'object' && 'inline' in s && typeof s.inline === 'string') {
-      if (s.inline.trim() === '') throw new CoreError('invalid_request', 'The script is empty.');
-      return { inline: s.inline };
-    }
-    if (s && typeof s === 'object' && 'file' in s && typeof s.file === 'string') {
-      const file = expandHome(s.file.trim());
-      if (!path.isAbsolute(file)) throw new CoreError('invalid_request', 'The script file must be an absolute path.');
-      return { file: path.resolve(file) };
-    }
-    throw new CoreError('invalid_request', 'A script needs {"file": path} or {"inline": code}.');
   }
 
   function validTimeout(v: unknown): number {
@@ -441,17 +736,18 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
 
   async function executeScript(c: Collector, script: ScriptCollectorSettings, vault: VaultProfile, queueDir: string, entry: Active): Promise<void> {
     const run = entry.run;
-    // Consent, checked right before every run.
+    // Consent, checked right before every run: the script's bytes (and the manifest's, when there is one).
     let bytes: Buffer;
     try {
       bytes = scriptBytes(script.source);
     } catch (err) {
-      const h = currentHash(script);
+      const h = currentHash(c);
       run.result = 'failed';
       run.error = { code: 'scriptMissing', message: 'problem' in h ? h.problem : (err as Error).message };
       return;
     }
-    const sha = sha256Text(bytes);
+    const manifest = manifestOf(c);
+    const sha = consentHash(bytes, manifest?.bytes ? { name: manifest.name, bytes: manifest.bytes } : null);
     run.sha256 = sha;
     if (!script.allowedSha256) {
       run.result = 'notTrusted';
@@ -471,10 +767,34 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       return;
     }
     const searchPath = await loginPath();
-    const interpreter = findOnPath(script.interpreter, searchPath);
-    if (!interpreter) {
+    // The manifest changed since the last install (or packages are missing): install first.
+    if (needsInstall(c)) {
+      const done = await install(c, 'beforeRun', false, {
+        onStart: (i) => {
+          run.installId = i.id;
+        },
+        onHandle: (stop) => {
+          entry.stopInstall = stop;
+          if (entry.stopRequested) stop();
+        },
+      });
+      delete entry.stopInstall;
+      run.installId = done.id;
+      if (done.result === 'stopped' || entry.stopRequested) {
+        run.result = 'stopped';
+        return;
+      }
+      if (done.result !== 'success') {
+        run.result = 'failed';
+        run.error = { code: 'installFailed', message: `Not run · installing packages failed: ${done.error?.message ?? done.result}` };
+        return;
+      }
+    }
+    const folder = isManaged(script) ? folders.folder(c.id) : null;
+    const runtime = await resolveRuntime(script.interpreter, folder, searchPath, scriptEnv(searchPath, {}));
+    if ('error' in runtime) {
       run.result = 'failed';
-      run.error = { code: 'interpreterMissing', message: `${script.interpreter} isn't on your PATH.` };
+      run.error = { code: 'interpreterMissing', message: runtime.error };
       return;
     }
     if (entry.stopRequested) {
@@ -493,10 +813,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       scriptPath = script.source.file;
     }
     const before = queueNames(queueDir);
-    const env: NodeJS.ProcessEnv = {};
-    for (const [k, v] of Object.entries(opts.baseEnv ?? process.env)) if (!k.startsWith('DISTILL_')) env[k] = v;
-    Object.assign(env, {
-      PATH: searchPath,
+    const env = scriptEnv(searchPath, {
       DISTILL_VAULT: path.resolve(vault.path),
       DISTILL_QUEUE_DIR: queueDir,
       DISTILL_COLLECTOR_ID: c.id,
@@ -505,7 +822,8 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     const output = throttledOutput(c.id, run.id);
     try {
       entry.script = startScript({
-        interpreterPath: interpreter,
+        interpreterPath: runtime.command,
+        interpreterArgs: runtime.args,
         scriptPath,
         vaultPath: path.resolve(vault.path),
         queueDir,
@@ -600,7 +918,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
   }
 
   function checkIdle(): void {
-    if (active.size > 0 || pending.length > 0) return;
+    if (active.size > 0 || pending.length > 0 || installing.size > 0) return;
     const waiters = idleWaiters;
     idleWaiters = [];
     for (const w of waiters) w();
@@ -626,9 +944,14 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
         finishedRun(c, trigger, 'skipped', { skipReason: `the ${clock(new Date(running.startedAt))} run was still going` });
         continue;
       }
+      const inst = installing.get(c.id)?.install;
+      if (inst) {
+        finishedRun(c, trigger, 'skipped', { skipReason: `packages were being installed (started ${clock(new Date(inst.startedAt))})` });
+        continue;
+      }
       if (c.kind === 'script' && c.script) {
         // A script waiting for consent records "Not run" once, not every tick.
-        const h = currentHash(c.script);
+        const h = currentHash(c);
         const last = runs.latest(c.id, t);
         if ('sha256' in h && c.script.allowedSha256 !== h.sha256 && last?.result === 'notTrusted' && last.sha256 === h.sha256) continue;
       }
@@ -651,6 +974,11 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
         }
       }
       if (touched) persist();
+      try {
+        folders.pruneTrash(now());
+      } catch {
+        // the trash is best effort
+      }
       tick();
       timer = setInterval(() => {
         try {
@@ -677,12 +1005,14 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
         a.shutdown = true;
         a.script?.stop();
       }
+      for (const i of installing.values()) i.stop();
       await Promise.all([...active.values()].map((a) => a.done));
+      await Promise.all([...installing.values()].map((i) => i.done));
     },
     tick,
     pump,
     whenIdle() {
-      if (active.size === 0 && pending.length === 0) return Promise.resolve();
+      if (active.size === 0 && pending.length === 0 && installing.size === 0) return Promise.resolve();
       return new Promise((resolve) => idleWaiters.push(resolve));
     },
 
@@ -712,12 +1042,17 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
         ensureDir(c.folder.source);
       } else {
         if (!input.script) throw new CoreError('invalid_request', 'A script collector needs "script".');
-        if (!INTERPRETERS.includes(input.script.interpreter)) throw new CoreError('invalid_request', '"interpreter" must be zsh, python3 or node.');
-        c.script = {
-          source: validScriptSource(input.script.source),
-          interpreter: input.script.interpreter,
-          timeoutSeconds: validTimeout(input.script.timeoutSeconds),
-        };
+        if (!INTERPRETERS.includes(input.script.interpreter)) throw new CoreError('invalid_request', INTERPRETER_ERROR);
+        const timeoutSeconds = validTimeout(input.script.timeoutSeconds);
+        const manifest = input.script.manifest;
+        if (manifest !== undefined && (typeof manifest !== 'string' || !MANIFEST[input.script.interpreter])) {
+          throw new CoreError('invalid_request', 'A zsh script has no package manifest.');
+        }
+        c.script = { source: applySource(c, input.script.source, input.script.interpreter), interpreter: input.script.interpreter, timeoutSeconds };
+        if (manifest !== undefined) {
+          if (!isManaged(c.script)) throw new CoreError('invalid_request', 'Packages are for scripts Distill keeps (inline code), not your own file.');
+          folders.writeManifest(c.id, c.script.interpreter, manifest);
+        }
       }
       collectors.push(c);
       store.ticks.set(c.id, t);
@@ -742,21 +1077,31 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       }
       if (next.kind === 'script' && patch.script !== undefined) {
         const s = next.script!;
-        if (patch.script.source !== undefined) s.source = validScriptSource(patch.script.source);
+        if (patch.script.interpreter !== undefined && !INTERPRETERS.includes(patch.script.interpreter)) throw new CoreError('invalid_request', INTERPRETER_ERROR);
         if (patch.script.timeoutSeconds !== undefined) s.timeoutSeconds = validTimeout(patch.script.timeoutSeconds);
+        const interpreter = patch.script.interpreter ?? s.interpreter;
+        if (patch.script.source !== undefined) s.source = applySource(c, patch.script.source, interpreter);
         if (patch.script.interpreter !== undefined) {
-          if (!INTERPRETERS.includes(patch.script.interpreter)) throw new CoreError('invalid_request', '"interpreter" must be zsh, python3 or node.');
           // The same code under another interpreter is another program: consent again.
           if (patch.script.interpreter !== s.interpreter) {
             s.allowedSha256 = null;
             s.allowedAt = null;
+            s.allowedFiles = null;
+            // A managed file takes the new language's extension (TypeScript needs .ts).
+            if (isManaged(s) && 'file' in s.source) {
+              try {
+                s.source = { file: folders.renameForLanguage(s.source.file, patch.script.interpreter, now()), managed: true };
+              } catch (err) {
+                throw new CoreError('invalid_state', `Couldn't rename the script file: ${(err as Error).message}`);
+              }
+            }
           }
           s.interpreter = patch.script.interpreter;
         }
       }
       if (patch.enabled !== undefined) next.enabled = patch.enabled;
       if (next.kind === 'script' && next.enabled && next.script) {
-        const h = currentHash(next.script);
+        const h = currentHash(next);
         if (!('sha256' in h) || next.script.allowedSha256 !== h.sha256) {
           if (patch.enabled === true) throw new CoreError('invalid_state', 'Allow this script before turning it on.');
         }
@@ -776,16 +1121,25 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     },
     async deleteCollector(id) {
       const c = require(id);
-      if (active.has(id) || pending.some((r) => r.collectorId === id)) throw new CoreError('busy', 'Stop the run before deleting this collector.');
+      const busy = busyWith(id);
+      if (busy) throw new CoreError('busy', busy === 'run' ? 'Stop the run before deleting this collector.' : 'Stop the install before deleting this collector.');
       collectors = collectors.filter((x) => x.id !== id);
       store.ticks.delete(id);
       persist();
       runs.remove(id);
+      installs.remove(id);
+      // Its script folder goes to the trash (kept 30 days), never deleted at once.
+      try {
+        folders.trash(c, now());
+      } catch {
+        // the folder stays where it is
+      }
       opts.emit({ type: 'collector.changed', collector: clone(c), deleted: true });
     },
     async runCollector(id) {
       const c = require(id);
-      if (active.has(id) || pending.some((r) => r.collectorId === id)) throw new CoreError('busy', `${c.name} is already running.`);
+      const busy = busyWith(id);
+      if (busy) throw new CoreError('busy', busy === 'run' ? `${c.name} is already running.` : `${c.name} is installing packages.`);
       return enqueue(c, 'now');
     },
     async stopCollector(id) {
@@ -805,19 +1159,22 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       const a = active.get(id);
       if (!a) return null;
       a.stopRequested = true;
+      a.stopInstall?.();
       a.script?.stop();
       return clone(a.run);
     },
     async allowCollector(id, sha256) {
       const c = require(id);
       if (c.kind !== 'script' || !c.script) throw new CoreError('invalid_request', 'Only script collectors need consent.');
-      const h = currentHash(c.script);
+      const h = currentHash(c);
       if (!('sha256' in h)) throw new CoreError('invalid_state', h.problem);
       if (typeof sha256 !== 'string' || sha256.toLowerCase() !== h.sha256) {
         throw new CoreError('invalid_state', 'The script changed since you reviewed it; review this version and allow it again.');
       }
       c.script.allowedSha256 = h.sha256;
       c.script.allowedAt = isoDate(now());
+      const parts = filesNow(c);
+      c.script.allowedFiles = parts.script ? { script: parts.script, manifest: parts.manifest } : null;
       if (!c.enabled) store.ticks.set(c.id, isoDate(now()));
       c.enabled = true;
       c.updatedAt = isoDate(now());
@@ -830,6 +1187,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       if (c.kind !== 'script' || !c.script) throw new CoreError('invalid_request', 'Only script collectors have consent.');
       c.script.allowedSha256 = null;
       c.script.allowedAt = null;
+      c.script.allowedFiles = null;
       c.enabled = false;
       c.updatedAt = isoDate(now());
       persist();
@@ -901,6 +1259,72 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     },
     async checkSchedule(cron): Promise<ScheduleCheck> {
       return checkSchedule(cron, now());
+    },
+    async getCollectorScript(id) {
+      return scriptFiles(require(id));
+    },
+    async writeCollectorScript(id, update: CollectorScriptUpdate) {
+      const c = require(id);
+      if (c.kind !== 'script' || !c.script) throw new CoreError('invalid_request', 'Only script collectors have a script.');
+      const s = c.script;
+      if (!isManaged(s) || !('file' in s.source)) {
+        throw new CoreError('invalid_state', 'This collector runs your own file; edit it in your editor.');
+      }
+      if (update.code === undefined && update.manifest === undefined) throw new CoreError('invalid_request', 'Nothing to save ("code" or "manifest").');
+      if (update.code !== undefined && (typeof update.code !== 'string' || update.code.trim() === '')) throw new CoreError('invalid_request', 'The script is empty.');
+      if (update.manifest !== undefined && update.manifest !== null && typeof update.manifest !== 'string') throw new CoreError('invalid_request', '"manifest" must be text or null.');
+      if (update.manifest !== undefined && !MANIFEST[s.interpreter]) throw new CoreError('invalid_request', 'A zsh script has no package manifest.');
+      if (busyWith(id) === 'install') throw new CoreError('busy', 'Wait for the install to finish.');
+      const before = scriptFiles(c);
+      // Saved over a version changed on disk (an external editor) since it was loaded: refuse, never clobber.
+      if (update.code !== undefined && update.baseSha256 !== undefined && update.baseSha256 !== before.sha256) {
+        throw new CoreError('invalid_state', 'The script changed on disk since you opened it; reload it first.');
+      }
+      if (update.manifest !== undefined && update.baseManifestSha256 !== undefined && update.baseManifestSha256 !== (before.manifest?.sha256 ?? null)) {
+        throw new CoreError('invalid_state', `${before.manifest?.name ?? 'The manifest'} changed on disk since you opened it; reload it first.`);
+      }
+      try {
+        if (update.code !== undefined) folders.writeScript(c.id, s.interpreter, Buffer.from(update.code, 'utf8'), { name: path.basename(s.source.file) });
+        if (update.manifest !== undefined) folders.writeManifest(c.id, s.interpreter, update.manifest);
+      } catch (err) {
+        throw new CoreError('invalid_state', `Couldn't save: ${(err as Error).message}`);
+      }
+      c.updatedAt = isoDate(now());
+      persist();
+      changed(c);
+      return scriptFiles(c);
+    },
+    async installCollectorPackages(id, o) {
+      const c = require(id);
+      if (c.kind !== 'script' || !c.script) throw new CoreError('invalid_request', 'Only script collectors have packages.');
+      if (!isManaged(c.script)) throw new CoreError('invalid_request', 'Packages are for scripts Distill keeps, not your own file.');
+      const m = manifestOf(c);
+      if (!m) throw new CoreError('invalid_request', 'A zsh script has no packages.');
+      if (!m.bytes) throw new CoreError('invalid_state', `There is no ${m.name} yet.`);
+      const busy = busyWith(id);
+      if (busy) throw new CoreError('busy', busy === 'run' ? `${c.name} is running.` : `${c.name} is already installing packages.`);
+      // Installing runs third-party code: only for the version the user allowed.
+      const h = currentHash(c);
+      if (!('sha256' in h) || c.script.allowedSha256 !== h.sha256) {
+        throw new CoreError('invalid_state', 'Allow this version of the script and its packages before installing.');
+      }
+      return new Promise<CollectorInstall>((resolve) => {
+        void install(c, 'manual', o?.clean === true, { onStart: resolve }).then(resolve);
+      });
+    },
+    async stopCollectorInstall(id) {
+      require(id);
+      const i = installing.get(id);
+      if (!i) return null;
+      i.stop();
+      return clone(i.install);
+    },
+    async getCollectorInstall(id) {
+      require(id);
+      const running = installing.get(id)?.install;
+      if (running) return clone(running);
+      const last = installs.get(id).last;
+      return last ? clone(last) : null;
     },
   };
 }

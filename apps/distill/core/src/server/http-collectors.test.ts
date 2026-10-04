@@ -131,4 +131,36 @@ describe('HTTP API: collectors', () => {
     assert.equal(check.body.valid, true);
     assert.equal((await request(port, 'POST', '/v1/collectors/check-schedule', {})).status, 400);
   });
+
+  it('v6: script files, packages and the typescript language', async () => {
+    const made = await request(port, 'POST', '/v1/collectors', {
+      kind: 'script', script: { source: { inline: 'console.log(1 as number)' }, interpreter: 'typescript', manifest: '{"dependencies":{}}' },
+    });
+    assert.equal(made.status, 201);
+    assert.deepEqual(last('createCollector')!.args[0], {
+      kind: 'script', script: { source: { inline: 'console.log(1 as number)' }, interpreter: 'typescript', manifest: '{"dependencies":{}}' },
+    });
+    const id = made.body.id as string;
+    const bad = await request(port, 'POST', '/v1/collectors', { kind: 'script', script: { source: { inline: 'x' }, interpreter: 'bash' } });
+    assert.equal(bad.status, 400);
+
+    const got = await request(port, 'GET', `/v1/collectors/${id}/script`);
+    assert.equal(got.status, 200);
+    assert.equal(got.body.managed, true);
+    const put = await request(port, 'PUT', `/v1/collectors/${id}/script`, { code: 'x', manifest: null, baseSha256: 'a'.repeat(64), baseManifestSha256: null });
+    assert.equal(put.status, 200);
+    assert.deepEqual(last('writeCollectorScript')!.args, [id, { code: 'x', manifest: null, baseSha256: 'a'.repeat(64), baseManifestSha256: null }]);
+    assert.equal((await request(port, 'PUT', `/v1/collectors/${id}/script`, {})).status, 400, 'nothing to save');
+
+    const inst = await request(port, 'POST', `/v1/collectors/${id}/install`, { clean: true });
+    assert.equal(inst.status, 200);
+    assert.equal(inst.body.install.result, 'running');
+    assert.deepEqual(last('installCollectorPackages')!.args, [id, { clean: true }]);
+    assert.equal((await request(port, 'POST', `/v1/collectors/${id}/install`)).status, 200, 'an empty body is fine');
+    assert.deepEqual(last('installCollectorPackages')!.args, [id, undefined]);
+    assert.deepEqual((await request(port, 'POST', `/v1/collectors/${id}/install/stop`)).body, { install: null });
+    assert.deepEqual((await request(port, 'GET', `/v1/collectors/${id}/install`)).body, { install: null });
+    core.failNext('installCollectorPackages', new CoreError('invalid_state', 'Allow first.'));
+    assert.equal((await request(port, 'POST', `/v1/collectors/${id}/install`, {})).status, 409);
+  });
 });

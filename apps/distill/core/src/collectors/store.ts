@@ -15,6 +15,8 @@ import path from 'node:path';
 import type {
   CollectedFile,
   Collector,
+  CollectorInstall,
+  CollectorManifestName,
   CollectorErrorCode,
   CollectorInterpreter,
   CollectorRun,
@@ -26,13 +28,13 @@ import type {
 } from '../contracts.js';
 import { bool, encodeJSON, isObject, normalizeDate, num, preserveUnreadable, readJSON, str, strArray, writeFileAtomic, type JSONObject } from '../store/json.js';
 
-export const INTERPRETERS: CollectorInterpreter[] = ['zsh', 'python3', 'node'];
+export const INTERPRETERS: CollectorInterpreter[] = ['zsh', 'python3', 'node', 'typescript'];
 export const PRESETS: SchedulePreset[] = ['every15', 'hourly', 'daily', 'weekdays', 'custom'];
 export const RUN_RESULTS: CollectorRunResult[] = ['queued', 'running', 'success', 'nothing', 'failed', 'timedout', 'skipped', 'notTrusted', 'stopped'];
 const TRIGGERS: CollectorTrigger[] = ['schedule', 'now', 'catchup'];
 const ERROR_CODES: CollectorErrorCode[] = [
   'sourceMissing', 'noPermission', 'queueMissing', 'vaultMissing', 'scriptMissing', 'interpreterMissing',
-  'scriptFailed', 'notAllowed', 'scriptChanged', 'interrupted', 'other',
+  'scriptFailed', 'notAllowed', 'scriptChanged', 'interrupted', 'installFailed', 'other',
 ];
 const FILE_OUTCOMES: CollectorRunFile['outcome'][] = ['copied', 'moved', 'skipped', 'waiting', 'error'];
 
@@ -42,6 +44,10 @@ export const DEFAULT_CRON = '0 * * * *';
 
 export function newCollectorID(): string {
   return `col-${randomUUID().toLowerCase()}`;
+}
+
+export function newInstallID(): string {
+  return `ins-${randomUUID().toLowerCase()}`;
 }
 
 export function newRunID(): string {
@@ -60,8 +66,44 @@ function nullableStr(v: unknown): string | null | undefined {
 function decodeScriptSource(v: unknown): ScriptSource | undefined {
   if (!isObject(v)) return undefined;
   if (typeof v.inline === 'string') return { inline: v.inline };
-  if (typeof v.file === 'string') return { file: v.file };
+  if (typeof v.file === 'string') return v.managed === true ? { file: v.file, managed: true } : { file: v.file };
   return undefined;
+}
+
+const INSTALL_RESULTS: CollectorInstall['result'][] = ['running', 'success', 'failed', 'timedout', 'stopped'];
+
+/** v6: a package install record (installs/<id>.json), decoded leniently. */
+export function decodeInstall(v: unknown, now = new Date()): CollectorInstall | undefined {
+  if (!isObject(v)) return undefined;
+  const id = str(v.id);
+  const collectorId = str(v.collectorId);
+  const result = str(v.result) as CollectorInstall['result'] | undefined;
+  const manifestName = str(v.manifestName) as CollectorManifestName | undefined;
+  if (!id || !collectorId || !result || !INSTALL_RESULTS.includes(result)) return undefined;
+  const out: CollectorInstall = {
+    id,
+    collectorId,
+    trigger: v.trigger === 'beforeRun' ? 'beforeRun' : 'manual',
+    startedAt: normalizeDate(v.startedAt, now),
+    result,
+    command: str(v.command) ?? '',
+    manifestName: manifestName === 'requirements.txt' ? 'requirements.txt' : 'package.json',
+    manifestSha256: str(v.manifestSha256) ?? '',
+  };
+  if (v.endedAt !== undefined) out.endedAt = normalizeDate(v.endedAt, now);
+  const duration = num(v.durationMs);
+  if (duration !== undefined) out.durationMs = duration;
+  if (v.clean === true) out.clean = true;
+  if (v.exitCode === null || typeof v.exitCode === 'number') out.exitCode = v.exitCode as number | null;
+  const signal = nullableStr(v.signal);
+  if (signal !== undefined) out.signal = signal;
+  if (isObject(v.error)) {
+    const code = str(v.error.code) as CollectorErrorCode | undefined;
+    out.error = { code: code && ERROR_CODES.includes(code) ? code : 'other', message: str(v.error.message) ?? '' };
+  }
+  const tail = str(v.outputTail);
+  if (tail !== undefined) out.outputTail = tail;
+  return out;
 }
 
 export function clampTimeout(v: unknown): number {
@@ -107,6 +149,11 @@ export function decodeCollector(v: unknown, now = new Date()): Collector | undef
     const allowedAt = nullableStr(s.allowedAt);
     if (allowed !== undefined) c.script.allowedSha256 = allowed;
     if (allowedAt !== undefined) c.script.allowedAt = allowedAt;
+    // v6
+    if (s.allowedFiles === null) c.script.allowedFiles = null;
+    else if (isObject(s.allowedFiles) && typeof s.allowedFiles.script === 'string') {
+      c.script.allowedFiles = { script: s.allowedFiles.script, manifest: str(s.allowedFiles.manifest) ?? null };
+    }
   }
   return c;
 }
@@ -248,7 +295,7 @@ export function decodeRun(v: unknown, now = new Date()): CollectorRun | undefine
   if (v.exitCode === null || typeof v.exitCode === 'number') run.exitCode = v.exitCode as number | null;
   const signal = nullableStr(v.signal);
   if (signal !== undefined) run.signal = signal;
-  for (const k of ['sha256', 'stdoutTail', 'stderrTail'] as const) {
+  for (const k of ['sha256', 'stdoutTail', 'stderrTail', 'installId'] as const) {
     const x = str(v[k]);
     if (x !== undefined) run[k] = x;
   }
