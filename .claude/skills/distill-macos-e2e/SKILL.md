@@ -74,6 +74,13 @@ itself:
   `DISTILL_STATE_DIR=T build/Distill.app/Contents/MacOS/Distill`. Stop the
   installed app first, because both use the bundle id
   `com.claude-obsidian.distill`.
+- **Never let input reach the user's own Distill.** Twice, keystrokes and
+  resizes sent to "Distill" by process name hit the user's installed app: it
+  opened their Settings and changed the window size. Around the same time
+  their Ask chats were deleted, though nothing shows what deleted them. Run
+  a copy of the binary under its own name, target it by PID, and never send
+  Return, Space or a click to a window you haven't confirmed is yours.
+  Destructive buttons sit behind confirmation dialogs that Return accepts.
 - **Drive it.** Choose your own means:
   - keyboard and menu actions through `osascript` / System Events, if
     accessibility is granted;
