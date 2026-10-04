@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import type {
   AgentRunner,
   AITask,
@@ -75,8 +75,16 @@ interface Fixture {
   settings: Settings;
 }
 
+// Every fixture root is removed once the file's tests finish, so repeated runs
+// do not pile distill-ask-* directories into the shared system temp root.
+const fixtureRoots: string[] = [];
+after(() => {
+  for (const root of fixtureRoots) rmSync(root, { recursive: true, force: true });
+});
+
 function fixture(): Fixture {
   const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'distill-ask-')));
+  fixtureRoots.push(root);
   const vault = path.join(root, 'vault');
   const productRoot = path.join(root, 'product');
   mkdirSync(path.join(productRoot, 'skills', 'wiki-query'), { recursive: true });
