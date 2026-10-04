@@ -81,19 +81,25 @@ The first built-in is **Folder**:
 - **Settings:**
   - the source folder (default `~/Distill Inbox`, created on first save if it
     is missing);
+  - **Include subfolders** (on by default): each subfolder at the top of the
+    source folder is collected as one folder item (see [Queue and
+    batching](queue-and-batching.md), "Folder items");
   - **After collecting:** "Keep the original (copy)" (the default) or "Move
     it to the queue";
   - the target vault (the active vault by default);
   - the schedule (default every hour).
 - **Run:** it copies every regular file at the top level of the source folder
-  into the target vault's queue folder and leaves the original in place. With
+  into the target vault's queue folder and leaves the original in place.
+  `.gdoc` files are collected like files and become Google Doc items in the
+  queue. With Include subfolders on, each top-level subfolder is collected
+  as one folder item (rules below). With
   "Move it to the queue" the file leaves the source instead. Run history and
   per-file lines say "Copied" or "Moved" to match the setting ("Copied 3 files
   · skipped 2 already collected").
 - **It leaves these where they are:**
   - hidden files (names starting with `.`) and macOS metadata such as
     `.DS_Store` and `Icon\r`;
-  - subfolders. They are not entered in v1; folders inside are left alone.
+  - subfolders, only when Include subfolders is off.
   - **partial files**: a file whose mtime is within the queue's settle delay
     (`settleSeconds`, 10 minutes by default; the same rule as batching). It is
     shown as "Waiting · still changing", and a later run picks it up.
@@ -151,6 +157,23 @@ job.
   folder. The row reads "Will be collected again" with Undo until the sheet
   closes. **Forget all…** asks for confirmation first.
   The ledger stores name, size, mtime and sha256, never file content.
+- **Subfolders (folder items):**
+  - The dedupe unit stays the file: each file inside is hashed and checked
+    against the ledger like a top-level file.
+  - A subfolder is collected when **any file in it is new or changed**.
+  - With Keep the original, only the new and changed files are copied, into
+    a folder of the same name with their relative paths kept. The item's
+    manifest (`.distill-folder.json`) still lists the whole tree, so the AI
+    sees the structure while unchanged files are not processed again.
+  - With Move, the whole folder moves. Files already collected inside it are
+    marked "seen before" in the manifest and are not given to the AI as
+    sources.
+  - A subfolder waits until no file in it changed within the settle delay.
+  - The folder limits apply: 200 files and 500 MB of new files per item.
+    Over the limit, the run logs "Skipped · too big" for that folder and
+    collects nothing from it.
+  - Run history shows one line per folder item: "Copied — Tea tasting trip/
+    (folder · 5 new of 12 files)".
 - Hashing is cheap to avoid: if path, size and mtime all equal an entry, the
   run treats the file as already collected without hashing it. Otherwise it
   hashes before copying or moving.

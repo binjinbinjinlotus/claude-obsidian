@@ -4649,6 +4649,350 @@
           "caption": "Editing inline code changes its hash, so a saved edit asks again."
         }
       ]
+    },
+    {
+      "name": "QueueRowView",
+      "title": "Queue row",
+      "swift": "clients/macos/Sources/Distill/QueueRowViews.swift",
+      "preview": [
+        760,
+        64
+      ],
+      "props": [
+        {
+          "name": "title",
+          "type": "text",
+          "default": "gongfu-brewing-guide.pdf"
+        },
+        {
+          "name": "meta",
+          "type": "text",
+          "default": "Dropped at 2:12 AM · 2.3 MB"
+        },
+        {
+          "name": "tileName",
+          "type": "text",
+          "default": "gongfu-brewing-guide.pdf"
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "default": "ready",
+          "options": [
+            "ready",
+            "readyAt",
+            "inBatch",
+            "nextBatch",
+            "problem"
+          ]
+        },
+        {
+          "name": "statusText",
+          "type": "text",
+          "default": "",
+          "swift": false,
+          "why": "QueueRows.pillText derives it from the status"
+        },
+        {
+          "name": "help",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "noteTile",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "kind",
+          "type": "enum",
+          "default": "file",
+          "options": [
+            "file",
+            "folder",
+            "gdoc"
+          ],
+          "swiftPending": "folder and Google Doc rows, designed 2026-10-04"
+        },
+        {
+          "name": "expanded",
+          "type": "boolean",
+          "default": false,
+          "swiftPending": "folder and Google Doc rows, designed 2026-10-04"
+        },
+        {
+          "name": "tree",
+          "type": "text",
+          "default": "",
+          "swiftPending": "folder and Google Doc rows, designed 2026-10-04"
+        },
+        {
+          "name": "hint",
+          "type": "text",
+          "default": "",
+          "swiftPending": "folder and Google Doc rows, designed 2026-10-04"
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": "",
+          "swift": false,
+          "why": "the row fills the list"
+        }
+      ],
+      "board": {
+        "file": "QueueRowViewStates.dc.html",
+        "title": "Queue row states",
+        "heading": "QueueRowView",
+        "intro": "QueueRowViews.swift → <b>QueueRowView</b>. One row per queue item: a file, a <b>folder</b> (one item, not N files: folder icon, name, “12 files · 3 folders · 18.4 MB”; the chevron expands its tree, read-only) or a <b>Google Doc</b> (a .gdoc pointer: the doc’s title, “Google Doc · link only”, Open in Google Docs, and a hint while Distill can’t read Google Docs). Pill and × as for files; in a batch the row is locked. Props: title, meta, tileName, status, statusText, help, noteTile; designed, not in Swift yet: kind (file | folder | gdoc), expanded, tree (“name · size” items separated by |, two spaces per level, folders end with /), hint.",
+        "width": 1680,
+        "cols": 2,
+        "wrap": "<div style=\"width: 780px; padding: 6px; border-radius: 16px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
+      },
+      "states": [
+        {
+          "name": "File (today)",
+          "props": {
+            "title": "gongfu-brewing-guide.pdf",
+            "meta": "Dropped at 2:12 AM · 2.3 MB",
+            "tileName": "gongfu-brewing-guide.pdf",
+            "status": "ready",
+            "width": 760
+          },
+          "size": [
+            "760px",
+            "64px"
+          ]
+        },
+        {
+          "name": "Folder",
+          "props": {
+            "title": "Tea tasting trip",
+            "meta": "12 files · 3 folders · 18.4 MB · moved in at 2:40 AM",
+            "status": "ready",
+            "kind": "folder",
+            "width": 760
+          },
+          "size": [
+            "760px",
+            "64px"
+          ],
+          "caption": "One item for the whole folder. Click the row or the chevron to see what is inside."
+        },
+        {
+          "name": "Folder, expanded",
+          "props": {
+            "title": "Tea tasting trip",
+            "meta": "12 files · 3 folders · 18.4 MB · moved in at 2:40 AM",
+            "status": "ready",
+            "kind": "folder",
+            "expanded": true,
+            "tree": "notes/ · 3 files|  day1-uji.md · 4 KB|  day2-wazuka.md · 6 KB|  tasting-sheet.gdoc · link|photos/ · 8 files|  IMG_2041.HEIC · 2.1 MB|  … 7 more · 14.9 MB|receipts/ · 1 file|  tea-shop.pdf · 220 KB",
+            "width": 760
+          },
+          "size": [
+            "760px",
+            "300px"
+          ],
+          "caption": "Read-only. Long folders show the first 5 entries per folder, then “… N more”."
+        },
+        {
+          "name": "Folder, still changing",
+          "props": {
+            "title": "Scans 2026-10",
+            "meta": "4 files · 9.2 MB · a file changed at 3:05 AM",
+            "status": "readyAt",
+            "statusText": "Ready at 3:15 AM",
+            "kind": "folder",
+            "width": 760
+          },
+          "size": [
+            "760px",
+            "64px"
+          ],
+          "caption": "The settle wait counts from the newest change of any file inside."
+        },
+        {
+          "name": "Folder too big",
+          "props": {
+            "title": "Photo library export",
+            "meta": "1,240 files · 41 folders · 6.2 GB",
+            "status": "problem",
+            "statusText": "Too big",
+            "help": "A folder item can hold up to 200 files and 500 MB. Split it into smaller folders.",
+            "kind": "folder",
+            "width": 760
+          },
+          "size": [
+            "760px",
+            "64px"
+          ],
+          "caption": "Limit: 200 files and 500 MB per folder item. It stays in the queue until you split or remove it."
+        },
+        {
+          "name": "Folder in a batch",
+          "props": {
+            "title": "Tea tasting trip",
+            "meta": "12 files · 3 folders · 18.4 MB",
+            "status": "inBatch",
+            "kind": "folder",
+            "width": 760
+          },
+          "size": [
+            "760px",
+            "64px"
+          ]
+        },
+        {
+          "name": "Google Doc",
+          "props": {
+            "title": "Q3 tea club plan",
+            "meta": "Google Doc · link only · added 2:55 AM",
+            "tileName": "Q3 tea club plan.gdoc",
+            "status": "ready",
+            "kind": "gdoc",
+            "hint": "Distill can’t read Google Docs yet, so the vault gets the title and link. To include the text, download it as .docx or PDF and drop that too.",
+            "width": 760
+          },
+          "size": [
+            "760px",
+            "84px"
+          ],
+          "caption": "Title = the .gdoc file name. The vault gets a link note: title, URL and doc id."
+        },
+        {
+          "name": "Google Doc in a batch",
+          "props": {
+            "title": "Q3 tea club plan",
+            "meta": "Google Doc · link only",
+            "status": "inBatch",
+            "kind": "gdoc",
+            "width": 760
+          },
+          "size": [
+            "760px",
+            "64px"
+          ]
+        },
+        {
+          "name": "Google Doc pointer unreadable",
+          "props": {
+            "title": "Untitled document",
+            "meta": "Google Doc · no link inside",
+            "status": "problem",
+            "help": "The .gdoc file has no url or doc id (it may not be synced yet).",
+            "kind": "gdoc",
+            "width": 760
+          },
+          "size": [
+            "760px",
+            "64px"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "QueueRefresh",
+      "title": "Queue refresh",
+      "swift": null,
+      "preview": [
+        320,
+        28
+      ],
+      "props": [
+        {
+          "name": "state",
+          "type": "enum",
+          "default": "idle",
+          "options": [
+            "idle",
+            "checking",
+            "found",
+            "nothing",
+            "error"
+          ]
+        },
+        {
+          "name": "checked",
+          "type": "text",
+          "default": "checked at 3:41 AM"
+        },
+        {
+          "name": "found",
+          "type": "text",
+          "default": "2 new items found"
+        },
+        {
+          "name": "error",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "QueueRefreshStates.dc.html",
+        "title": "Queue refresh states",
+        "heading": "QueueRefresh",
+        "intro": "Refresh on the Queue screen, after Copy path and Reveal in Finder: it re-syncs the list with the queue folder now (the same check runs every 5 minutes and when the window opens). “Checking…” while the core scans, then the result for 4 seconds, then back to “checked at …”. No Swift view yet: add <b>QueueRefresh</b>. Props: state (idle | checking | found | nothing | error), checked, found, error.",
+        "width": 1280,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "Idle",
+          "props": {
+            "state": "idle"
+          },
+          "size": [
+            "320px",
+            "28px"
+          ],
+          "caption": "The last check, as a clock time (automatic or by hand)."
+        },
+        {
+          "name": "Checking",
+          "props": {
+            "state": "checking"
+          },
+          "size": [
+            "320px",
+            "28px"
+          ],
+          "caption": "Usually under a second; the button is disabled meanwhile."
+        },
+        {
+          "name": "Found",
+          "props": {
+            "state": "found",
+            "found": "2 new items found"
+          },
+          "size": [
+            "320px",
+            "28px"
+          ],
+          "caption": "New rows slide in and flash once. Removed items say “1 item gone”."
+        },
+        {
+          "name": "Nothing new",
+          "props": {
+            "state": "nothing"
+          },
+          "size": [
+            "320px",
+            "28px"
+          ]
+        },
+        {
+          "name": "Error",
+          "props": {
+            "state": "error"
+          },
+          "size": [
+            "380px",
+            "28px"
+          ],
+          "caption": "The folder is missing or unreadable; QueuePath shows Create folder."
+        }
+      ]
     }
   ]
 }
