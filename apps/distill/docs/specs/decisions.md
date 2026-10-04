@@ -17,6 +17,12 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Collectors: the one-way batch gate is accepted for v1 (lead).** A script
+  never starts while a job in its vault is running, but a batch that starts
+  while a script runs doesn't wait for it. That's safe enough, because a
+  batch only takes files that have stayed unchanged for the wait-before-pickup
+  time, so a half-written file isn't taken. Revisit if scripts write
+  anywhere other than the queue folder.
 - **Collectors built in the core, API and CLI; the contract is final for
   the Mac UI.** Code: `core/src/collectors/`, routes under
   `/v1/collectors`, `distill collectors list|run|history`. Spec:
