@@ -17,7 +17,7 @@
    {
     "kind": "folder",
     "title": "Distill Inbox",
-    "summary": "Moved 3 · skipped 2 already collected · 9:00 AM",
+    "summary": "Copied 3 · skipped 2 already collected · 9:00 AM",
     "status": "Every hour",
     "statusKind": "on"
    },
@@ -54,7 +54,7 @@
    {
     "kind": "folder",
     "title": "Distill Inbox",
-    "summary": "Moving 2 of 5…",
+    "summary": "Copying 2 of 5…",
     "status": "Running",
     "statusKind": "running"
    },
@@ -91,7 +91,7 @@
    {
     "kind": "folder",
     "title": "Distill Inbox",
-    "summary": "Moved 3 · skipped 2 already collected · 9:00 AM",
+    "summary": "Copied 3 · skipped 2 already collected · 9:00 AM",
     "status": "Every hour",
     "statusKind": "on"
    },
@@ -128,7 +128,7 @@
    {
     "kind": "folder",
     "title": "Distill Inbox",
-    "summary": "Moved 3 · skipped 2 already collected · 9:00 AM",
+    "summary": "Copied 3 · skipped 2 already collected · 9:00 AM",
     "status": "Every hour",
     "statusKind": "on"
    },
@@ -172,7 +172,7 @@
    {
     "kind": "folder",
     "title": "Distill Inbox",
-    "summary": "Moved 3 · skipped 2 already collected · 9:00 AM",
+    "summary": "Copied 3 · skipped 2 already collected · 9:00 AM",
     "status": "Every hour",
     "statusKind": "on"
    },
@@ -188,7 +188,7 @@
    {
     "kind": "folder",
     "title": "Distill Inbox",
-    "summary": "Moved 3 · skipped 2 already collected · 9:00 AM",
+    "summary": "Copied 3 · skipped 2 already collected · 9:00 AM",
     "status": "Every hour",
     "statusKind": "on"
    },
@@ -309,6 +309,16 @@
    "label": "D · Folder: source, target queue, schedule, last run, history"
   },
   {
+   "id": "collectors-folder-collected",
+   "base": "collectors",
+   "label": "D2 · Already collected: what Distill remembers, Forget one to collect it again",
+   "set": {
+    "overlay": {
+     "frag": "collected-sheet"
+    }
+   }
+  },
+  {
    "id": "collectors-folder-running",
    "base": "collectors",
    "label": "E · Folder running (Run now or on schedule)",
@@ -326,7 +336,7 @@
   {
    "id": "collectors-folder-history",
    "base": "collectors",
-   "label": "F · Run history: each file Moved, Skipped · already collected, or Waiting",
+   "label": "F · Run history: each file Copied, Skipped · already collected, or Waiting",
    "set": {
     "detail": {
      "frag": "folder-history"
@@ -336,7 +346,7 @@
   {
    "id": "collectors-folder-missing",
    "base": "collectors",
-   "label": "G · Error: the source folder is missing",
+   "label": "G · Error: the source folder is missing (this collector is set to Move)",
    "set": {
     "sidebar.collectorsAlert": "1",
     "list": {
@@ -479,7 +489,7 @@
    "file": "Collectors.dc.html",
    "title": "Collectors · list, add, Folder collector",
    "heading": "Collectors · built-in Folder",
-   "intro": "Collectors bring material into the queue automatically, on a schedule. <b>Collectors</b> is a sidebar item under Queue because it feeds it. Two kinds: <b>built-in</b> (code ships in Distill; you set a folder, query, token and schedule; the first one is <b>Folder</b>) and <b>custom script</b> (your code, run like a cron job). Folder moves every file from a folder you pick into the vault’s queue folder (<code>~/Distill Inbox</code> by default). It never moves a file it collected before: the core keeps a ledger (path, size, mtime, sha256) in its state folder, and a file whose content is already in it stays put, shown as <b>Skipped · already collected</b>. It leaves hidden files, subfolders, and files changed in the last 10 minutes (the batching settle wait). Collectors only fill the queue; nothing reaches the vault before your review.",
+   "intro": "Collectors bring material into the queue automatically, on a schedule. <b>Collectors</b> is a sidebar item under Queue because it feeds it. Two kinds: <b>built-in</b> (code ships in Distill; you set a folder, query, token and schedule; the first one is <b>Folder</b>) and <b>custom script</b> (your code, run like a cron job). Folder copies every file from a folder you pick into the vault’s queue folder (<code>~/Distill Inbox</code> by default) and leaves the original in place; <b>After collecting: Move it to the queue</b> is the option. Because originals stay, the ledger is what keeps each run from copying the same files again: the core remembers every file it took (path, size, mtime, sha256) in its state folder, a file whose content is already there is <b>Skipped · already collected</b>, and the detail shows <b>Already collected: 128 files</b> with View… and Forget. It leaves hidden files, subfolders, and files changed in the last 10 minutes (the batching settle wait). Collectors only fill the queue; nothing reaches the vault before your review.",
    "width": 2520,
    "sections": [
     {
@@ -498,17 +508,20 @@
     },
     {
      "row": [
-      "collectors-folder-running",
-      "collectors-folder-history"
+      "collectors-folder-collected",
+      "collectors-folder-running"
      ],
      "style": "display: flex; gap: 40px; align-items: flex-start"
     },
     {
      "row": [
-      "collectors-folder-missing",
-      "collectors-folder-no-permission"
+      "collectors-folder-history",
+      "collectors-folder-missing"
      ],
      "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "frame": "collectors-folder-no-permission"
     },
     {
      "title": "Around the list"

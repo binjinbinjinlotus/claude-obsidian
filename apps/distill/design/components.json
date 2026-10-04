@@ -3888,7 +3888,7 @@
         {
           "name": "summary",
           "type": "text",
-          "default": "Moved 3 · skipped 2 already collected · 9:00 AM"
+          "default": "Copied 3 · skipped 2 already collected · 9:00 AM"
         },
         {
           "name": "status",
@@ -3937,7 +3937,7 @@
           "props": {
             "kind": "folder",
             "title": "Distill Inbox",
-            "summary": "Moved 3 · skipped 2 already collected · 9:00 AM",
+            "summary": "Copied 3 · skipped 2 already collected · 9:00 AM",
             "status": "Every hour",
             "statusKind": "on",
             "width": 330
@@ -3987,7 +3987,7 @@
           "props": {
             "kind": "folder",
             "title": "Distill Inbox",
-            "summary": "Moving 2 of 5…",
+            "summary": "Copying 2 of 5…",
             "status": "Running",
             "statusKind": "running",
             "width": 330
@@ -4362,7 +4362,7 @@
         {
           "name": "summary",
           "type": "text",
-          "default": "Moved 3 files · skipped 2 already collected"
+          "default": "Copied 3 files · skipped 2 already collected"
         },
         {
           "name": "meta",
@@ -4399,7 +4399,7 @@
         "file": "RunLogEntryStates.dc.html",
         "title": "Run log entry states",
         "heading": "RunLogEntry",
-        "intro": "One run of a collector in its run history: result, start time, what it did, duration (and exit code for scripts). Click to expand: Folder runs list each file (Moved, Skipped · already collected, Waiting · still changing); script runs show their output, stderr in peach. No Swift view yet: add <b>RunLogEntry</b>. Props: result (success | nothing | failed | timedout | skipped | running), time, summary, meta, outputKind (files | stdout | stderr), lines (“What — name” items separated by |), expanded, width.",
+        "intro": "One run of a collector in its run history: result, start time, what it did, duration (and exit code for scripts). Click to expand: Folder runs list each file (Copied, or Moved when the collector is set to move; Skipped · already collected; Waiting · still changing); script runs show their output, stderr in peach. No Swift view yet: add <b>RunLogEntry</b>. Props: result (success | nothing | failed | timedout | skipped | running), time, summary, meta, outputKind (files | stdout | stderr), lines (“What — name” items separated by |), expanded, width.",
         "width": 1280,
         "cols": 2,
         "wrap": "<div style=\"width: 580px; padding: 10px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
@@ -4410,16 +4410,32 @@
           "props": {
             "result": "success",
             "time": "9:00 AM",
-            "summary": "Moved 3 files · skipped 2 already collected",
+            "summary": "Copied 3 files · skipped 2 already collected",
             "meta": "0.4 s",
-            "lines": "Moved — gongfu-brewing-guide.pdf|Moved — Screenshot 08.52.10.png|Moved — tasting-notes.md|Skipped · already collected — gyokuro.md (Oct 2, 8:00 AM)|Skipped · already collected — gyokuro copy.md (same content)",
+            "lines": "Copied — gongfu-brewing-guide.pdf|Copied — Screenshot 08.52.10.png|Copied — tasting-notes.md|Skipped · already collected — gyokuro.md (Oct 2, 8:00 AM)|Skipped · already collected — gyokuro copy.md (same content)",
             "expanded": true
           },
           "size": [
             "560px",
             "150px"
           ],
-          "caption": "Skipped files stay in ~/Distill Inbox; the ledger knows their content."
+          "caption": "Skipped files are not copied again: Distill remembers their content (Already collected)."
+        },
+        {
+          "name": "Folder set to Move",
+          "props": {
+            "result": "success",
+            "time": "8:00 AM",
+            "summary": "Moved 2 files",
+            "meta": "0.3 s",
+            "lines": "Moved — IMG_2041.HEIC|Moved — IMG_2042.HEIC",
+            "expanded": true
+          },
+          "size": [
+            "560px",
+            "96px"
+          ],
+          "caption": "With “Move it to the queue”, the lines say Moved and the files leave the folder."
         },
         {
           "name": "Nothing new",
@@ -4440,9 +4456,9 @@
           "props": {
             "result": "success",
             "time": "7:00 AM",
-            "summary": "Moved 1 file · 1 still changing",
+            "summary": "Copied 1 file · 1 still changing",
             "meta": "0.2 s",
-            "lines": "Moved — receipt.pdf|Waiting · still changing — export.zip (changed 3 min ago)",
+            "lines": "Copied — receipt.pdf|Waiting · still changing — export.zip (changed 3 min ago)",
             "expanded": true
           },
           "size": [
