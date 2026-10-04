@@ -25,7 +25,7 @@ struct TaskDefaultsSettings: View {
                         Text("Writing and improving are set per action type in Actions").font(Theme.body(11)).foregroundStyle(Theme.muted)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    Button("Open Actions ›") { engine.settingsUI.select(SettingsTarget(.actions)) }
+                    Button("Open Actions ›") { engine.settingsUI.show(SettingsTarget(.actions)) }
                         .buttonStyle(.plain).font(Theme.body(13, .semibold)).foregroundStyle(Theme.primary)
                 }
                 .padding(.horizontal, 14).padding(.vertical, 12)
@@ -63,6 +63,7 @@ struct TaskDefaultsSettings: View {
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .settingsAnchor(name)
     }
 
     @ViewBuilder private func pickers(_ task: AITask, _ name: String) -> some View {

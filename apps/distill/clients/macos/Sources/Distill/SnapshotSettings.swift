@@ -24,7 +24,7 @@ extension StatesSnapshot {
         for section in SettingsSection.allCases {
             let e = engine { $0.enabledRunners = ["claude-code", "ai-sdk"] }
             settingsWindow("settings-nav-\(section.rawValue)", "\(section.group.title) · \(section.title)",
-                           "Nav selects \(section.title); its group page scrolls to it.", e, target: SettingsTarget(section))
+                           "Nav selects \(section.title); its own page opens at the top.", e, target: SettingsTarget(section))
         }
 
         // Search.

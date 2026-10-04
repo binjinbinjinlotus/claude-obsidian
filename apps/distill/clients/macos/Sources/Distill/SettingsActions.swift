@@ -81,6 +81,7 @@ struct ActionsSettings: View {
                 ActionSourceCard(source: .ask, title: "Ask answers", subtitle: "main window and quick ask", icon: "bubble.left",
                                  confirmNote: "“Found in this answer” with Add and Dismiss", types: detectable)
             }
+            .settingsAnchor("Where actions come from")
             SettingsRow(title: "Model for finding actions", note: "Also listed in Models for tasks", bold: true) {
                 ModelPickers(task: .actionFind, name: "finding actions", notes: notes, selection: SettingsEdits.findSelection(engine.settings),
                              widths: (128, 100, 96), height: 30) { sel in
@@ -126,6 +127,7 @@ struct ActionSourceCard: View {
             row("Ask me to confirm before adding", confirmNote, on: prefs.confirm(source)) { v in
                 SettingsEdits.setActions(&engine.settings) { $0.setConfirm(source, v) }
             }
+            .settingsAnchor("Ask me to confirm before adding")
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
         .background(RoundedRectangle(cornerRadius: 14).fill(Color.white))
@@ -264,7 +266,7 @@ struct ActionTypeSettingsPage: View {
             }
             Group {
                 row(type.id == "slack" ? "Write the message" : "Write the draft",
-                    type.id == "slack" ? "When off, Slack messages show a Create message button" : nil) {
+                    type.id == "slack" ? "When off, Slack messages show a Create message button" : nil, anchor: "When to write the draft") {
                     SegmentedPills(options: [("onFind", "When a note is processed"), ("onRequest", "Only when I ask")],
                                    selection: Binding(get: { SettingsEdits.draftWhen(type, engine.settings) },
                                                       set: { v in SettingsEdits.setActions(&engine.settings) { $0.setTypeValue(type.id, "draftWhen", .string(v)) } }),
@@ -284,7 +286,7 @@ struct ActionTypeSettingsPage: View {
                         }
                     }
                 }
-                row("Model for writing", nil) {
+                row("Model for writing", nil, anchor: "Models") {
                     ModelPickers(task: .actionDraft, name: "writing \(type.pluralLabel)", notes: engine.notes,
                                  selection: SettingsEdits.draftSelection(type.id, engine.settings), widths: (128, 100, 96), height: 30) { sel in
                         SettingsEdits.setActions(&engine.settings) { $0.setTypeValue(type.id, "draftSelection", ActionPreferences.json(sel)) }
@@ -311,8 +313,10 @@ struct ActionTypeSettingsPage: View {
             VStack(alignment: .leading, spacing: 22) {
                 ActionPromptEditor(ui: ui, type: type, improve: false, title: "Create prompt",
                                    note: "Used to write a new \(thing) from a note", confirming: confirmingReset == "draft")
+                    .settingsAnchor("Create prompt")
                 ActionPromptEditor(ui: ui, type: type, improve: true, title: "Improve prompt",
                                    note: "Used after you edit a \(thing). Different from the create prompt.", confirming: confirmingReset == "improve")
+                    .settingsAnchor("Improve prompt")
             }
             .padding(.top, 10)
         }
@@ -328,7 +332,8 @@ struct ActionTypeSettingsPage: View {
         }
     }
 
-    private func row<C: View>(_ title: String, _ note: String?, @ViewBuilder _ control: () -> C) -> some View {
+    /// `anchor`: the search entry that lands on this row, when it reads differently from the title.
+    private func row<C: View>(_ title: String, _ note: String?, anchor: String? = nil, @ViewBuilder _ control: () -> C) -> some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(Theme.body(13, .semibold))
@@ -338,6 +343,7 @@ struct ActionTypeSettingsPage: View {
             control()
         }
         .padding(.vertical, 11)
+        .settingsAnchor(anchor ?? title)
     }
 }
 
@@ -490,13 +496,13 @@ struct TodoDefaultsSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            row("Group by", nil) {
+            row("Group by", nil, anchor: "Default group") {
                 DropdownButton(title: title(groups, prefs.todoGroup), width: 160, height: 30) {
                     ForEach(groups, id: \.0) { g in Button(g.1) { SettingsEdits.setActions(&engine.settings) { $0.todoGroup = g.0 } } }
                 }
                 .accessibilityLabel("Group to-dos by")
             }
-            row("Sort", "Inside each group") {
+            row("Sort", "Inside each group", anchor: "Default sort") {
                 DropdownButton(title: title(sorts, prefs.todoSort), width: 210, height: 30) {
                     ForEach(sorts, id: \.0) { s in Button(s.1) { SettingsEdits.setActions(&engine.settings) { $0.todoSort = s.0 } } }
                 }
@@ -529,7 +535,8 @@ struct TodoDefaultsSettings: View {
 
     private func title(_ options: [(String, String)], _ id: String) -> String { options.first { $0.0 == id }?.1 ?? id }
 
-    private func row<C: View>(_ title: String, _ note: String?, @ViewBuilder _ control: () -> C) -> some View {
+    /// `anchor`: the search entry that lands on this row, when it reads differently from the title.
+    private func row<C: View>(_ title: String, _ note: String?, anchor: String? = nil, @ViewBuilder _ control: () -> C) -> some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(Theme.body(13, .semibold))
@@ -539,5 +546,6 @@ struct TodoDefaultsSettings: View {
             control()
         }
         .padding(.vertical, 11)
+        .settingsAnchor(anchor ?? title)
     }
 }

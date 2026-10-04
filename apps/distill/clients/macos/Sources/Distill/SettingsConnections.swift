@@ -14,10 +14,11 @@ struct ConnectionsSettings: View {
             if ui.connectionsLoad == .unavailable {
                 CoreUpdateNote(text: "Update the Distill core to connect Jira and Confluence. Slack messages work without connecting.")
             }
-            SlackConnectionCard()
+            SlackConnectionCard().settingsAnchor("Slack")
             if ui.connectionsLoad != .unavailable {
                 AtlassianConnectionCard(ui: ui, info: ui.connection("atlassian") ?? Self.atlassianPlaceholder,
                                         email: ui.fixtureForm?.email ?? "", token: ui.fixtureForm?.token ?? "")
+                    .settingsAnchor("Atlassian")
             }
             Text("Jira and Confluence on the same Atlassian site use one sign-in; signing in to one connects both.")
                 .font(Theme.body(12)).foregroundStyle(Theme.muted)

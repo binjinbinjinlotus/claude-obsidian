@@ -2,11 +2,11 @@ import SwiftUI
 import DistillKit
 
 // The Settings window (canvas: SettingsNav, Settings): a section list on the
-// left (General, AI, Actions) with search on top, and on the right the page of
-// the selected section's group, scrolled to that section. Search results,
-// "No settings match" and each action type's page replace the group page.
-// Every edit changes `engine.settings`; AppModel sends the changed top-level
-// key about 0.5 s later.
+// left (General, AI, Actions) with search on top, and on the right one page per
+// section: its title and note, then only that section's content. Each action
+// type has its own page too. Search results and "No settings match" replace
+// the page. Every edit changes `engine.settings`; AppModel sends the changed
+// top-level key about 0.5 s later.
 
 struct SettingsView: View {
     @EnvironmentObject var engine: AppModel
@@ -71,71 +71,48 @@ private struct SettingsWindowContent: View {
                     .padding(.horizontal, 36).padding(.vertical, 30)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-        } else if let typeID = ui.target.actionType {
-            ScrollViewReader { proxy in
-                Scrolling {
-                    VStack(alignment: .leading, spacing: 18) {
-                        SettingsStatusBanner()
-                        ActionTypeSettingsPage(ui: ui, typeID: typeID, confirmingReset: ui.fixtureConfirmReset)
-                    }
-                    .padding(.horizontal, 36).padding(.vertical, 30)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(SettingsScrollProbe(scroller: scroller, page: "type:\(typeID)"))
-                }
-                .onAppear { land(proxy) }
-                .onChange(of: ui.scrollRequest) { land(proxy) }
-            }
-            .id(typeID)
         } else {
-            groupPage(ui.target.section.group)
+            page(ui.target)
         }
     }
 
-    private func groupPage(_ group: SettingsGroup) -> some View {
-        ScrollViewReader { proxy in
-            Scrolling {
-                VStack(alignment: .leading, spacing: 30) {
-                    SettingsStatusBanner()
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(group.title).font(Theme.display(26))
-                        Text(group.note).font(Theme.body(13)).foregroundStyle(Theme.muted)
-                    }
-                    ForEach(group.sections) { section in
-                        VStack(alignment: .leading, spacing: 14) {
-                            SettingsSectionHeader(section: section)
-                            sectionContent(section)
-                        }
-                        .id(section)
-                    }
-                    if group == .ai { advanced }
-                }
-                .padding(.horizontal, 36).padding(.top, 30).padding(.bottom, 40)
+    /// How far above a search result's row the page stops, so the row isn't flush with the edge.
+    static let rowMargin: CGFloat = 12
+
+    /// One page per section and per action type, each with its own scroll view.
+    /// `.id(target)` builds it fresh when shown, so no offset carries over from another page.
+    private func page(_ target: SettingsTarget) -> some View {
+        let ui = ui
+        return Scrolling {
+            SettingsPage(ui: ui, target: target, editingVault: $editingVault, showAdvanced: $showAdvanced)
+                .padding(.horizontal, SettingsPage.sidePadding).padding(.top, 30).padding(.bottom, 40)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(SettingsScrollProbe(scroller: scroller, page: "\(group)"))
+            // Rows report their distance from here: the top of the scroll view's document.
+            .coordinateSpace(name: SettingsAnchor.space)
+            .onPreferenceChange(SettingsAnchor.Positions.self) { positions in
+                MainActor.assumeIsolated { ui.anchors[target] = positions }
             }
-            .onAppear { land(proxy) }
-            .onChange(of: ui.scrollRequest) { land(proxy) }
+            .background(SettingsScrollProbe(scroller: scroller, page: target.id))
         }
-        .id(group)
-    }
-
-    /// The scroll view key of the page showing `target`.
-    private static func page(_ target: SettingsTarget) -> String {
-        target.actionType.map { "type:\($0)" } ?? "\(target.section.group)"
+        .onAppear { land() }
+        .onChange(of: ui.scrollRequest) { land() }
+        .id(target)
     }
 
     /// Scrolls the shown page to where it should open (see SettingsStore's scroll
     /// memory), then records the user's scrolling for the current page. Both the
     /// page being replaced and the new one may call this; the target decides.
-    private func land(_ proxy: ScrollViewProxy) {
+    private func land() {
         let landing = ui.landing ?? ui.landing(for: ui.target)
         ui.landing = landing // nothing is recorded until the page is there
         let request = ui.scrollRequest
         let target = ui.target
-        scroller.page = Self.page(target)
+        scroller.page = target.id
         scroller.onScroll = { [weak ui] y in ui?.remember(y) }
+        if landing == .row(SettingsAnchor.key("Advanced")) { showAdvanced = true }
         // The page may have just been built: wait until its scroll view is in the
-        // window and laid out (at most about a second), then scroll.
+        // window and laid out, and a searched row has reported where it is (at most
+        // about a second), then scroll.
         func attempt(_ tries: Int) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 guard ui.scrollRequest == request, ui.target == target else { return }
@@ -145,16 +122,19 @@ private struct SettingsWindowContent: View {
                 }
                 scroll.layoutSubtreeIfNeeded()
                 switch landing {
+                case .top:
+                    scroller.set(0)
                 case .offset(let y):
                     scroller.set(y)
-                case .sectionTop:
-                    if target.actionType != nil || target.section == target.section.group.sections.first {
-                        scroller.set(0)
+                case .row(let key):
+                    if let y = ui.anchors[target]?[key] {
+                        scroller.set(y - Self.rowMargin)
+                    } else if tries > 0 {
+                        return attempt(tries - 1)
                     } else {
-                        proxy.scrollTo(target.section, anchor: .top)
+                        scroller.set(0) // a result without its own row (the section itself): the page's top
                     }
                 }
-                // proxy.scrollTo lands on the next layout pass: start recording after it.
                 DispatchQueue.main.async {
                     guard ui.scrollRequest == request, ui.target == target else { return }
                     ui.landing = nil
@@ -164,8 +144,35 @@ private struct SettingsWindowContent: View {
         }
         attempt(20)
     }
+}
 
-    @ViewBuilder private func sectionContent(_ section: SettingsSection) -> some View {
+/// What one Settings page shows inside its scroll view: setup problems, then
+/// the section's title and note and only that section's content (Advanced at
+/// the end of its page), or an action type's page.
+struct SettingsPage: View {
+    @EnvironmentObject var engine: AppModel
+    @ObservedObject var ui: SettingsStore
+    let target: SettingsTarget
+    @Binding var editingVault: VaultProfile?
+    @Binding var showAdvanced: Bool
+
+    /// The page's left and right padding inside the window's right column.
+    static let sidePadding: CGFloat = 36
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsStatusBanner()
+            if let typeID = target.actionType {
+                ActionTypeSettingsPage(ui: ui, typeID: typeID, confirmingReset: ui.fixtureConfirmReset)
+            } else {
+                SettingsPageHeader(section: target.section)
+                content(target.section)
+                if target.section == .advancedHome { advanced.padding(.top, 8) }
+            }
+        }
+    }
+
+    @ViewBuilder private func content(_ section: SettingsSection) -> some View {
         switch section {
         case .vaults: VaultsSettings(editingVault: $editingVault)
         case .batching: BatchingSettings()
@@ -181,7 +188,7 @@ private struct SettingsWindowContent: View {
         }
     }
 
-    // MARK: Advanced (end of the AI page)
+    // MARK: Advanced (end of the AI runners page)
 
     private var advanced: some View {
         DisclosureGroup(isExpanded: $showAdvanced) {
@@ -190,16 +197,18 @@ private struct SettingsWindowContent: View {
             Text("Advanced").font(Theme.body(14, .bold))
         }
         .tint(Theme.primary)
+        .settingsAnchor("Advanced")
     }
 }
 
-/// h2 + note for one section on its group page.
-struct SettingsSectionHeader: View {
+
+/// The page header (canvas `sh1`): the section's title and its note.
+struct SettingsPageHeader: View {
     let section: SettingsSection
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(section.title).font(Theme.display(22))
+            Text(section.title).font(Theme.display(26))
             Text(section.note).font(Theme.body(13)).foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -353,6 +362,7 @@ struct BatchingSettings: View {
                 }
             }
             .padding(.top, 6)
+            .settingsAnchor("Wait before picking up a file")
         }
     }
 

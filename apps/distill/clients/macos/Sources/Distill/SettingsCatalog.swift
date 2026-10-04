@@ -24,14 +24,6 @@ enum SettingsGroup: String, CaseIterable {
         }
     }
 
-    var note: String {
-        switch self {
-        case .general: return "Vaults, batching, sources, labels, Ask history and shortcuts."
-        case .ai: return "The AI tools Distill may use, and the model for each job."
-        case .actions: return "Where actions come from, action types, to-do defaults and sign-ins."
-        }
-    }
-
     var sections: [SettingsSection] { SettingsSection.allCases.filter { $0.group == self } }
 }
 
@@ -43,6 +35,11 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case shortcuts, runners, models, actions, todo, connections
 
     var id: String { rawValue }
+
+    /// The page Advanced (model, paths, extra allowed tools) sits at the end of:
+    /// AI runners, since most of it configures how the Claude Code runner and
+    /// the core are started. Its search entry points here too.
+    static let advancedHome = SettingsSection.runners
 
     var group: SettingsGroup {
         switch self {
@@ -160,7 +157,7 @@ enum SettingsIndex {
         e(.shortcuts, "Ask a question shortcut", "Opens the quick-ask window", "keyboard hotkey"),
         e(.shortcuts, "Add a note shortcut", "Opens the quick-note window", "keyboard hotkey"),
         e(.runners, "AI runners", "Claude Code, Codex, OpenRouter, OpenAI, Vercel AI SDK", "api key keychain"),
-        e(.runners, "Advanced", "Specific model, claude CLI, python3, node, product root, extra allowed tools", "path"),
+        e(.advancedHome, "Advanced", "Specific model, claude CLI, python3, node, product root, extra allowed tools", "path"),
         e(.models, "Adding notes", "Model and effort for batches into wiki pages", "ingest"),
         e(.models, "Ask a question", "Model and effort; the system prompt is fixed"),
         e(.models, "Label suggestions", "Model and effort after a note is queued"),

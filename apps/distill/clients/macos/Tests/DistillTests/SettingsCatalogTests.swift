@@ -47,6 +47,21 @@ final class SettingsCatalogTests: XCTestCase {
         XCTAssertEqual(SettingsSection.allCases.map(\.group), [.general, .general, .general, .general, .general, .general, .ai, .ai, .actions, .actions, .actions])
     }
 
+    @MainActor
+    func testSearchResultsLandOnTheirRowOrThePageTop() {
+        let ui = SettingsStore()
+        func entry(_ title: String) -> SettingsEntry { SettingsIndex.fixed.first { $0.title == title }! }
+        ui.show(entry("Vaults"))
+        XCTAssertEqual(ui.landing, .top, "the section itself: its page's top")
+        ui.show(entry("Include notes whose labels aren’t confirmed yet"))
+        XCTAssertEqual(ui.target, SettingsTarget(.labels))
+        XCTAssertEqual(ui.landing, .row(SettingsAnchor.key("Include notes whose labels aren't confirmed yet")), "curly and straight apostrophes are one key")
+        ui.open("connections")
+        XCTAssertEqual(ui.landing, .top)
+        // Advanced lives at the end of its page, and its search entry points there.
+        XCTAssertEqual(entry("Advanced").target, SettingsTarget(.advancedHome))
+    }
+
     func testActionTypeDecodesFromCoreJSON() throws {
         let json = try JSONDecoder.core.decode(JSONValue.self, from: Data(#"""
         {"id":"jira","label":"Jira ticket","pluralLabel":"Jira tickets","enabled":true,"draftWhen":"onRequest","improveAfterEdit":true,

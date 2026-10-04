@@ -17,6 +17,21 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Settings shows one page per section, matching the canvas; the group
+  pages were a deviation.** The SettingsNav board draws each nav item as its
+  own page (To-do defaults and Connections each fill the page alone), but the
+  app rendered three long group pages (General, AI, Actions) and scrolled to
+  the section, so the view showed the end of the previous section and the
+  start of the next, and the remembered position was shared per group. Now
+  each section is a page with its own scroll view: its title and note as the
+  header, then only its content; no group header. Advanced stays at the end
+  of AI runners (most of it configures how the Claude Code runner and the
+  core start; its search entry already pointed there). Supersedes the scroll
+  memory entry below in two points: an unvisited page opens at its top (not
+  at a heading on a shared page), and "Open Actions ›" now counts as a deep
+  link (top of Actions) rather than a nav pick. Search results land on the
+  matched row where there is one; every search entry is checked to have its
+  row. → [vaults-and-settings](vaults-and-settings.md#window-sections-and-search)
 - **Settings fits narrow windows; minimum 820×600 (was 900×600).** The
   Models for tasks row (title 190 pt + three fixed pickers) needed ~650 pt
   of page, so at 900 the content was wider than the window and SwiftUI
