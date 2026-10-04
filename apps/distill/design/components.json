@@ -4685,8 +4685,7 @@
             "nextBatch",
             "problem",
             "waiting"
-          ],
-          "swiftPending": "status waiting (a Google Doc held until Google Drive access exists), designed 2026-10-04"
+          ]
         },
         {
           "name": "statusText",
@@ -4746,7 +4745,7 @@
         "file": "QueueRowViewStates.dc.html",
         "title": "Queue row states",
         "heading": "QueueRowView",
-        "intro": "QueueRowViews.swift → <b>QueueRowView</b>. One row per queue item: a file, a <b>folder</b> (one item, not N files: folder icon, name, “12 files · 3 folders · 18.4 MB”; the chevron expands its tree, read-only) or a <b>Google Doc</b> (a .gdoc is only a pointer, so its content can’t be read here: the doc’s title, “Google Doc · needs Google Drive access”, a <b>Waiting</b> pill, Open in Google Docs, and a short hint; it is not processed). Pill and × as for files; in a batch the row is locked. Props: title, meta, tileName, status, statusText, help, noteTile; designed, not in Swift yet: kind (file | folder | gdoc), expanded, tree (“name · size” items separated by |, two spaces per level, folders end with /), hint.",
+        "intro": "QueueRowViews.swift → <b>QueueRowView</b>. One row per queue item: a file, a <b>folder</b> (one item, not N files: folder icon, name, “12 files · 3 folders · 18.4 MB”; the chevron expands its tree, read-only) or a <b>Google Doc</b> (a .gdoc is only a pointer, so its content can’t be read here: the doc’s title, “Google Doc · needs Google Drive access”, a <b>Waiting</b> pill, Open in Google Docs, and a short hint; it is not processed). Pill and × as for files; in a batch the row is locked. Props: title, meta, tileName, status, statusText, help, noteTile; designed, not in Swift yet: kind (file | folder | gdoc), expanded, tree (“name · size” items separated by |, two spaces per level, folders end with /), hint. Status <b>waiting</b> is new: QueueRowStatus needs a waiting case (Google Docs).",
         "width": 1680,
         "cols": 2,
         "wrap": "<div style=\"width: 780px; padding: 6px; border-radius: 16px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
