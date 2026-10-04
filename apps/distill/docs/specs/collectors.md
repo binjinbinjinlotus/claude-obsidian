@@ -12,11 +12,12 @@ tags:
 
 # Collectors
 
-Build status: **built in the core, the API and the CLI** (2026-10-04;
-`core/src/collectors/`, routes in `core/src/server/http.ts`, `distill
-collectors list|run|history`). The macOS UI is **designed, not built**
-(canvas row "7 · Collectors": boards Collectors and CollectorsScript; queue
-path on Main, MainLoading and MainEmpty). The contract is in
+Build status: **built in the core, the API, the CLI and the macOS app**
+(2026-10-04; `core/src/collectors/`, routes in `core/src/server/http.ts`,
+`distill collectors list|run|history`; the Mac UI from canvas row "7 ·
+Collectors", boards Collectors and CollectorsScript, and the queue path on
+Main, MainLoading and MainEmpty). See "macOS app (built)" for where the app
+differs from the boards. The contract is in
 `core/src/contracts.ts`; see "API and contract (built)" for where it differs
 from the proposal.
 
@@ -471,6 +472,54 @@ change, delete or allow a collector.
   a change in the milliseconds between hash and start is not caught.
 - **Notifications** (first failure after a success) are a client job; not
   built.
+
+## macOS app (built)
+
+Built 2026-10-04 from canvas v63.
+
+- **Code:** `clients/macos/Sources/DistillKit/Collectors.swift` (DTOs,
+  lenient: unknown kinds, results, error codes, outcomes, interpreters and
+  presets stay raw strings; the `CoreClient` methods for every route) and
+  `CollectorText.swift` (all wording: rows, title line, schedules, run lines).
+  The app: `CollectorsStore.swift` (state, events, commands),
+  `CollectorsScreen.swift` (list, detail, status card, settings, runs),
+  `CollectorsSheets.swift` (empty state, Edit form, Add and Already collected
+  sheets) and `CollectorsComponents.swift` (CollectorRow, QueuePath,
+  ScheduleField, RunLogEntry, ScriptConsent, with the schema's names and
+  props). Snapshot states: `SnapshotCollectors.swift`, one per board frame
+  (`collectors-*` ids) plus `-900` variants and `collectors-old-core`.
+- **Events:** `collector.changed` replaces the collector (status included);
+  `run.started` / `run.finished` update the run list; `run.output` appends to
+  the live output (last 64 KB per stream). Selecting a collector refetches it,
+  because a file script edited on disk sends no event.
+- **Old cores:** a core without the routes shows the calm "Update the Distill
+  core" state, and the sidebar shows no count.
+- **Consent:** Allow sends the core's `status.currentSha256`; the app never
+  hashes. When the core can't read the script (no hash), Allow is off and the
+  card shows `scriptProblem`.
+- **Sheets** are drawn in the window over a dimmed backdrop (as on the boards),
+  not as system sheets. Cancel and the close button dismiss them (Esc is wired with `.onExitCommand` and a cancel shortcut, not yet checked in the running app).
+- **Queue path:** under the schedule line on every Queue title. Create folder
+  makes the active vault's queue folder from the app (`mkdir -p` of the same
+  path the core creates when files are added); no core change.
+
+Where the app differs from the boards (also in [Decisions](decisions.md)):
+
+- The sidebar count comes from the data (`needsAttention`). Board E draws no
+  count although its list has a Failed and a Needs your OK row; the app shows
+  2 there.
+- A running Folder run says "Copying…" (or "Moving…"), not "Copying 2 of 5…":
+  the core sends no per-file progress while a Folder run runs.
+- The list row's daily schedule reads "Daily at 7:00 AM" (the board: "Daily at
+  7:00"), so the 12-hour clock isn't ambiguous.
+- Below about 760 pt of content width (a 900 pt window) the list column
+  narrows from 300 to 240 pt, and the title row puts the switch, Run now and ⋯
+  under the name instead of cutting the name. The Edit form puts its labels above the fields below 460 pt, "After collecting" becomes a menu when the two pills don't fit, and the consent card puts the hash under the command.
+- Not built: the "Collected by … at …" line on queue rows (card "In the
+  queue"): `QueueEntry` doesn't say which collector brought a file. It needs a
+  core field. The ⋯ menu is a system menu, so the "⋯ menu" card has no
+  snapshot. macOS notifications for a first failure are not built.
+- Timeout choices in Edit → Advanced: 1, 5, 15, 30 minutes and 1 hour.
 
 ## Open questions
 

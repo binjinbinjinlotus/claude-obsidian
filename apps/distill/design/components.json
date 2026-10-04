@@ -50,8 +50,7 @@
         {
           "name": "collectorsAlert",
           "type": "text",
-          "default": "",
-          "swiftPending": "Collectors sidebar item (designed 2026-10-04): count of collectors that failed or wait for your OK"
+          "default": ""
         },
         {
           "name": "reviewCount",
@@ -3865,7 +3864,7 @@
     {
       "name": "CollectorRow",
       "title": "Collector row",
-      "swift": null,
+      "swift": "clients/macos/Sources/Distill/CollectorsComponents.swift",
       "preview": [
         330,
         56
@@ -4060,7 +4059,7 @@
     {
       "name": "QueuePath",
       "title": "Queue path",
-      "swift": null,
+      "swift": "clients/macos/Sources/Distill/CollectorsComponents.swift",
       "preview": [
         520,
         28
@@ -4182,7 +4181,7 @@
     {
       "name": "ScheduleField",
       "title": "Schedule field",
-      "swift": null,
+      "swift": "clients/macos/Sources/Distill/CollectorsComponents.swift",
       "preview": [
         460,
         70
@@ -4337,7 +4336,7 @@
     {
       "name": "RunLogEntry",
       "title": "Run log entry",
-      "swift": null,
+      "swift": "clients/macos/Sources/Distill/CollectorsComponents.swift",
       "preview": [
         560,
         40
@@ -4550,7 +4549,7 @@
     {
       "name": "ScriptConsent",
       "title": "Script consent",
-      "swift": null,
+      "swift": "clients/macos/Sources/Distill/CollectorsComponents.swift",
       "preview": [
         560,
         170

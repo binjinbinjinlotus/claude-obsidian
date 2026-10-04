@@ -17,6 +17,23 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Collectors macOS UI built (mac-collectors).** From canvas v63; spec
+  [Collectors](collectors.md) → "macOS app (built)". Decisions taken while
+  building:
+  - The sidebar count is computed from `status.needsAttention`, never drawn
+    from the board (board E shows none with a failed and a waiting row).
+  - A running Folder run reads "Copying…": the core has no per-file progress
+    while it runs. Adding progress is a core change for later.
+  - Daily schedules in list rows keep AM/PM ("Daily at 7:00 AM").
+  - In a 900 pt window the list narrows to 240 pt and the title row wraps its
+    controls under the name, so the name isn't cut.
+  - The Add and Already collected sheets are drawn in the window over a
+    dimmed backdrop, as the boards draw them, not as system sheets.
+  - Queue → Create folder creates the queue folder from the app (the same
+    `mkdir -p` the core does when files arrive), so no core route was added.
+  - Not built: the "Collected by …" line on queue rows (needs a `QueueEntry`
+    field in the core) and first-failure notifications.
+
 - **Collectors: the one-way batch gate is accepted for v1 (lead).** A script
   never starts while a job in its vault is running, but a batch that starts
   while a script runs doesn't wait for it. That's safe enough, because a

@@ -3,7 +3,7 @@ import SwiftUI
 import DistillKit
 
 enum Section: Hashable {
-    case queue, review, actions, ask, labels, history
+    case queue, collectors, review, actions, ask, labels, history
 }
 
 /// History's sub-items in the sidebar (Jobs, Ask chats, Actions).
@@ -23,6 +23,7 @@ struct MainView: View {
             Group {
                 switch section {
                 case .queue: QueueView()
+                case .collectors: CollectorsScreen()
                 case .review: ReviewSection(selectedJob: $selectedJob)
                 case .actions: ActionsScreen()
                 case .ask: AskScreen()
@@ -37,6 +38,7 @@ struct MainView: View {
             .background(Theme.window)
         }
         .environmentObject(engine.ask)
+        .overlay { if section == .collectors { CollectorsOverlay(store: engine.collectors) } }
         .overlay(alignment: .bottom) { ErrorBanner() }
         .frame(minWidth: 900, minHeight: 600)
         .foregroundStyle(Theme.ink)
@@ -63,6 +65,8 @@ struct Sidebar: View {
     @Binding var selectedJob: String?
     var historyPart: Binding<HistoryPart> = .constant(.jobs)
     var openSettings: () -> Void
+    /// The peach count on Collectors (collectors that failed or wait for your OK); nil = the store's count.
+    var collectorsAlert: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -75,6 +79,7 @@ struct Sidebar: View {
 
             VStack(spacing: 2) {
                 navItem(.queue, "Queue", "tray", count: QueueRows.count(engine.queued), highlight: false)
+                SidebarCollectors(store: engine.collectors, section: $section, alert: collectorsAlert)
                 navItem(.review, "Review", "checkmark.square", count: engine.pendingApprovals.count, highlight: true)
                 SidebarActions(section: $section)
                 navItem(.ask, "Ask", "questionmark.bubble", count: 0, highlight: false)
@@ -170,6 +175,35 @@ private struct SidebarActionsContent: View {
                 }
             }
         }
+    }
+}
+
+/// Collectors in the sidebar, under Queue: a peach count only when collectors
+/// need the user (the last run failed, or a script waits for consent).
+private struct SidebarCollectors: View {
+    @ObservedObject var store: CollectorsStore
+    @Binding var section: Section
+    var alert: String?
+
+    var body: some View {
+        let active = section == .collectors
+        let count = alert ?? (store.alertCount > 0 ? "\(store.alertCount)" : "")
+        Button { section = .collectors } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "tray.and.arrow.down")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(active ? Theme.primary : Theme.muted)
+                    .frame(width: 18)
+                Text("Collectors").font(Theme.body(14, active ? .semibold : .regular))
+                Spacer()
+                if !count.isEmpty { Pill(text: count, fill: Theme.peachTint, ink: Theme.peachInk) }
+            }
+            .padding(.horizontal, 12).frame(height: 36)
+            .background(RoundedRectangle(cornerRadius: 10).fill(active ? Color.white : .clear)
+                .shadow(color: .black.opacity(active ? 0.07 : 0), radius: 2, y: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -330,15 +364,32 @@ struct QueueView: View {
     /// switch and the button move under the title instead of squeezing it.
     private var header: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 16) {
-                titleBlock.fixedSize(horizontal: true, vertical: false)
-                Spacer(minLength: 0)
-                headerControls
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 16) {
+                    titleBlock.fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 0)
+                    headerControls
+                }
+                queuePath
             }
             VStack(alignment: .leading, spacing: 16) {
-                titleBlock
+                VStack(alignment: .leading, spacing: 6) {
+                    titleBlock
+                    queuePath
+                }
                 HStack(spacing: 12) { headerControls }
             }
+        }
+    }
+
+    /// The active vault's queue folder under the schedule line (QueuePath): `~`, Copy path, Reveal in Finder.
+    @ViewBuilder private var queuePath: some View {
+        if !engine.isStarting, let vault = engine.activeVault {
+            QueuePath(path: vault.queueDirectory, onCreate: {
+                try? FileManager.default.createDirectory(atPath: vault.queueDirectory, withIntermediateDirectories: true)
+                engine.objectWillChange.send()
+            })
+            .padding(.top, -2)
         }
     }
 
