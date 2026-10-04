@@ -137,6 +137,14 @@ struct AtlassianConnectionCard: View {
                 tokenForm.padding(.leading, 46)
             }
         }
+        // The form shows before the connections load (the placeholder has no
+        // site); fill what the core knows once it arrives, never over typing.
+        .onChange(of: info.site) { _, stored in
+            if site.isEmpty, let stored { site = stored }
+        }
+        .onChange(of: info.account) { _, account in
+            if email.isEmpty, let account, account.contains("@") { email = account }
+        }
     }
 
     private var host: String {

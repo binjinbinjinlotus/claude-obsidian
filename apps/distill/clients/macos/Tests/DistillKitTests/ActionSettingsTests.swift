@@ -174,6 +174,20 @@ final class ConnectionRouteTests: XCTestCase {
         XCTAssertEqual(last.path, "/v1/action-types")
     }
 
+    func testRefusedTokenComesBackAsTheCoresInvalidRequest() async {
+        respond(#"{"error":{"code":"invalid_request","message":"acme.atlassian.net didn't accept that email and API token."}}"#, status: 400)
+        do {
+            _ = try await client.connect("atlassian", ConnectRequest(site: "https://acme.atlassian.net", email: "me@acme.test", token: "bad"))
+            XCTFail("a refused token throws")
+        } catch let CoreClientError.api(status, code, message) {
+            XCTAssertEqual(status, 400)
+            XCTAssertEqual(code, "invalid_request")
+            XCTAssertTrue(message.contains("didn't accept"))
+        } catch {
+            XCTFail("unexpected \(error)")
+        }
+    }
+
     func testOldCoreAnswersNotAvailable() async {
         respond(#"{"error":{"code":"not_found","message":"no route for GET /v1/connections"}}"#, status: 404)
         do {

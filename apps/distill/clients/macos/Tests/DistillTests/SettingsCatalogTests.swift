@@ -109,4 +109,20 @@ final class SettingsCatalogTests: XCTestCase {
         XCTAssertTrue(SettingsEdits.typeEnabled(byID["slack"]!, s))
         XCTAssertEqual(SettingsEdits.draftWhen(byID["jira"]!, s), "onFind")
     }
+
+    // MARK: Connect failures (canvas SettingsNav 9b)
+
+    func testRefusedTokenShowsTheCanvasBanner() {
+        let refused = CoreClientError.api(status: 400, code: "invalid_request", message: "acme.atlassian.net didn't accept that email and API token.")
+        XCTAssertEqual(ConnectionProblem.connectFailed(refused), .tokenRefused)
+        XCTAssertEqual(ConnectionProblem.tokenRefused.title, "Atlassian didn’t accept this token")
+    }
+
+    func testOtherConnectFailuresKeepTheCoresWords() {
+        let notCloud = CoreClientError.api(status: 400, code: "invalid_request", message: "example.com isn't an Atlassian Cloud site.")
+        XCTAssertEqual(ConnectionProblem.connectFailed(notCloud), ConnectionProblem(title: "example.com isn't an Atlassian Cloud site.", detail: "Nothing was saved."))
+        let unreachable = CoreClientError.api(status: 409, code: "invalid_state", message: "Couldn't reach acme.atlassian.net. Check the site and your connection.")
+        XCTAssertEqual(ConnectionProblem.connectFailed(unreachable).title, "Couldn't reach acme.atlassian.net. Check the site and your connection.")
+        XCTAssertEqual(ConnectionProblem.connectFailed(unreachable).detail, "Nothing was saved.")
+    }
 }
