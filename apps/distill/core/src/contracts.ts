@@ -54,7 +54,16 @@ export interface Settings {
   runnerOptions?: Record<string, Record<string, string>>;
   /** v3: Actions (to-dos and action types). Absent = DEFAULT_ACTION_PREFERENCES. */
   actionPreferences?: Partial<ActionPreferences>;
+  /**
+   * v5: the queue check. Every this many minutes the core rescans the queue folder in full (folders
+   * walked again, files removed by hand dropped). Absent = DEFAULT_QUEUE_SCAN_MINUTES (5); 0 = Off
+   * (Refresh, the window-active scan and batches still scan). Clients offer 1, 5, 15, 60 and Off.
+   */
+  queueScanMinutes?: number | null;
 }
+
+/** Settings → Batching → "Check the queue folder for changes": every 5 minutes. */
+export const DEFAULT_QUEUE_SCAN_MINUTES = 5;
 
 export interface SourceDefinition {
   id: string; // stored in a note's `source_type`, e.g. "slack"
@@ -188,6 +197,8 @@ export interface Job {
   error?: string | null;
   /** v3: actions found after the batch was applied ("Found 5 actions to confirm"). */
   actionsFound?: JobActionsSummary | null;
+  /** v5: folder items in this batch (vault-relative, e.g. inbox/2026-10-04/Tea tasting trip). Their source files are in `files`. */
+  folders?: string[];
 }
 
 export interface JobActionsSummary {
@@ -323,8 +334,12 @@ export interface QueueEntry {
   settled: boolean;
   /** When the settle wait ends (modified + settleSeconds); absent when already ready. Clients show it as a clock time. */
   readyAt?: string | null;
-  /** note = written by addNote (complete when queued, skips the wait); file = anything else. */
-  kind?: 'note' | 'file';
+  /**
+   * note = written by addNote (complete when queued, skips the wait); folder = a folder in the queue folder
+   * (one item; v5); gdoc = a Google Drive `.gdoc` shortcut (v5); file = anything else.
+   * Clients must treat an unknown kind as `file`.
+   */
+  kind?: 'note' | 'file' | 'folder' | 'gdoc';
   /** Why the core can't use this file (unreadable, too large, ...). */
   problem?: string | null;
   /** True when the file changed after the core first saw it (its ready time moved). Shown as "still changing". */
@@ -333,6 +348,72 @@ export interface QueueEntry {
   members?: string[];
   /** For a note row: its source summary and whether its labels are confirmed, from the manifest. */
   note?: { source?: string | null; labelsConfirmed?: boolean; imageCount?: number } | null;
+  /** v5, folder rows: files inside (hidden files, partial downloads and the folder manifest not counted). `size` is their total; `modified` the newest change inside. */
+  fileCount?: number;
+  /** v5, folder rows: subfolders at any level. */
+  folderCount?: number;
+  /** v5, folder rows: the read-only tree, sorted by path, at most QUEUE_FOLDER_LIMITS.maxTreeEntries entries. */
+  tree?: QueueTreeEntry[];
+  /** v5: true when `tree` was cut at maxTreeEntries. */
+  treeTruncated?: boolean;
+  /** v5, gdoc rows: the document's title (the file name without .gdoc) and link. Never the account email in the file. */
+  gdoc?: GoogleDocLink | null;
+  /**
+   * v5: the item stays in the queue and no batch takes it (Process now included), though nothing is wrong
+   * with it. 'google-drive' = a .gdoc (or a folder holding only .gdoc files): Distill can't read Google Drive yet.
+   */
+  waiting?: 'google-drive' | string | null;
+}
+
+/** One entry of a folder item's tree. */
+export interface QueueTreeEntry {
+  /** Relative to the folder item, "/"-separated, e.g. "notes/day1-uji.md". */
+  path: string;
+  /** Bytes; a dir: the total of its files. */
+  size: number;
+  kind: 'file' | 'dir' | 'gdoc';
+  /** Collected before (Folder collector manifest): listed for context, not given to the AI as a source. Absent = false. */
+  seenBefore?: boolean;
+}
+
+/**
+ * Limits for a folder queue item. Over maxFiles/maxBytes (files the AI would read) → problem 'too big';
+ * a file deeper than maxDepth levels → problem 'too deep'. Either way the folder stays out of batches,
+ * Process now included. The Folder collector applies maxFiles/maxBytes to a subfolder's new files.
+ */
+export const QUEUE_FOLDER_LIMITS = {
+  maxFiles: 200,
+  maxBytes: 500 * 1024 * 1024,
+  /** Levels below the folder: folder/a/b/c.md is at level 3. */
+  maxDepth: 8,
+  maxTreeEntries: 500,
+} as const;
+
+export interface GoogleDocLink {
+  /** The .gdoc file name without its extension. */
+  title: string;
+  /** https on docs.google.com or drive.google.com (from the file's `url`, or built from its `doc_id`). */
+  url: string;
+  docId?: string | null;
+}
+
+/** What a queue scan found, compared with the list the core had before it. */
+export interface QueueScanResult {
+  added: number;
+  removed: number;
+  changed: number;
+  checkedAt: string; // ISO-8601
+  /** manual = Refresh (POST /v1/queue/scan); window = the app window became active; periodic = the queue check. */
+  trigger: 'manual' | 'window' | 'periodic';
+  /** Set when the queue folder can't be read ("Can't read the queue folder"). */
+  problem?: string | null;
+  addedEntries: QueueEntry[];
+  /** As they were last listed. */
+  removedEntries: QueueEntry[];
+  /** Same path, different contents (size, modified time, counts, tree, problem, kind…). */
+  changedEntries: QueueEntry[];
+  /** The whole list after the scan. */
+  entries: QueueEntry[];
 }
 
 export interface NoteImage {
@@ -796,6 +877,12 @@ export interface FolderCollectorSettings {
   source: string;
   /** copy (default) keeps the original; move takes it out of the source folder. */
   afterCollect: 'copy' | 'move';
+  /**
+   * v5: also collect each top-level subfolder as one folder item. New collectors: true. A collector saved
+   * before v5 (field absent) reads as false, so it keeps doing what the user set up.
+   * Dedupe stays per file: a subfolder is collected when any file in it is new or changed.
+   */
+  includeSubfolders?: boolean;
 }
 
 export type ScriptSource = { file: string } | { inline: string };
@@ -898,6 +985,12 @@ export type CollectorErrorCode =
 export interface CollectorRunFile {
   /** Name in the source folder. */
   name: string;
+  /** v5: 'folder' for a subfolder collected as one item ("Tea tasting trip/ (folder · 5 new of 12 files)"). Absent = a file. */
+  kind?: 'file' | 'folder';
+  /** Folder: files inside it. */
+  fileCount?: number;
+  /** Folder: files that were new or changed (copied, or the AI's sources after a move). */
+  newCount?: number;
   /** copied / moved; skipped = already collected; waiting = still changing; error = this file failed (the run went on). */
   outcome: 'copied' | 'moved' | 'skipped' | 'waiting' | 'error';
   reason?: string;
@@ -977,7 +1070,9 @@ export type CoreEvent =
   | { type: 'collector.run.started'; run: CollectorRun }
   /** Throttled script output: the text added since the last event. */
   | { type: 'collector.run.output'; collectorId: string; runId: string; stream: 'stdout' | 'stderr'; text: string }
-  | { type: 'collector.run.finished'; run: CollectorRun };
+  | { type: 'collector.run.finished'; run: CollectorRun }
+  // v5: a queue scan finished (Refresh, window, periodic). A `queue` event precedes it when the list changed.
+  | { type: 'queue.scanned'; result: QueueScanResult };
 
 // ───────────────────────────── The core facade ─────────────────────────────
 
@@ -990,6 +1085,9 @@ export interface StatusResponse {
   runningJobs: number;
   nextBatchAt?: string | null;
   runners: { id: string; displayName: string; enabled: boolean; problems: SetupProblem[] }[];
+  /** v5: the last full queue scan of any kind ("checked at 3:41 AM"), and the next queue check (null when Off). */
+  lastQueueScanAt?: string | null;
+  nextQueueScanAt?: string | null;
 }
 
 /**
@@ -1030,6 +1128,8 @@ export interface DistillCore {
   extractImageText(req: ExtractImageTextRequest, opts?: { signal?: AbortSignal }): Promise<ExtractImageTextResult>;
   /** Move a file in the active queue folder to the Trash (with its note manifest). */
   removeQueueEntry(path: string): Promise<QueueEntry[]>;
+  /** v5: rescan the queue folder now (folders walked again, files removed by hand dropped); returns what changed. */
+  scanQueue(opts?: { trigger?: 'manual' | 'window' }): Promise<QueueScanResult>;
 
   ask(req: AskRequest): Promise<AskResponse>;
 

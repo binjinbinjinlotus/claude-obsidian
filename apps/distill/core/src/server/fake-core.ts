@@ -312,6 +312,14 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       queue.push(...added);
       return added;
     },
+    async scanQueue(opts) {
+      record('scanQueue', opts);
+      // The fake queue doesn't change on disk: a scan finds nothing new.
+      return {
+        added: 0, removed: 0, changed: 0, checkedAt: '2026-10-01T12:00:00Z', trigger: opts?.trigger ?? 'manual',
+        addedEntries: [], removedEntries: [], changedEntries: [], entries: queue,
+      };
+    },
     async processQueue(opts) {
       record('processQueue', opts);
       return opts?.force ? sampleJob({ id: 'job-processed', state: 'running' }) : null;

@@ -213,7 +213,7 @@ describe('Folder collector', () => {
     assert.ok(fs.existsSync(back));
   });
 
-  test('files still changing wait; hidden files, Icon\\r, symlinks and subfolders are left alone', async () => {
+  test('files still changing wait; hidden files, Icon\\r, symlinks and (with Include subfolders off) subfolders are left alone', async () => {
     const env = setup();
     put(env.inbox, 'fresh.md', 'being written', 5); // inside the 600 s settle delay
     put(env.inbox, 'download.pdf.crdownload', 'partial');
@@ -224,7 +224,7 @@ describe('Folder collector', () => {
     put(path.join(env.inbox, 'sub'), 'inner.md', 'x');
     fs.symlinkSync(path.join(env.inbox, 'sub', 'inner.md'), path.join(env.inbox, 'link.md'));
     put(env.inbox, 'ready.md', 'settled');
-    const c = await folder(env);
+    const c = await env.svc.createCollector({ kind: 'folder', folder: { source: env.inbox, includeSubfolders: false } });
     const run = await runAndWait(env.svc, c.id);
     assert.deepEqual(
       run.files!.map((f) => [f.name, f.outcome, f.reason ?? '']).sort(),
@@ -241,6 +241,126 @@ describe('Folder collector', () => {
     fs.utimesSync(path.join(env.inbox, 'fresh.md'), t, t);
     const later = await runAndWait(env.svc, c.id);
     assert.deepEqual(later.filesAdded, ['fresh.md']);
+  });
+
+  test('includeSubfolders: on for new collectors, off for one saved before v5, and validated', async () => {
+    const env = setup();
+    const c = await folder(env);
+    assert.equal(c.folder!.includeSubfolders, true);
+    const off = await env.svc.updateCollector(c.id, { folder: { includeSubfolders: false } });
+    assert.equal(off.folder!.includeSubfolders, false);
+    await rejects(env.svc.updateCollector(c.id, { folder: { includeSubfolders: 'yes' as unknown as boolean } }), 'invalid_request');
+    // A collector written before v5 has no field: it keeps leaving subfolders alone.
+    const file = path.join(env.state, 'collectors.json');
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as { collectors: { folder: Record<string, unknown> }[] };
+    delete raw.collectors[0]!.folder.includeSubfolders;
+    fs.writeFileSync(file, JSON.stringify(raw));
+    const reloaded = env.make();
+    const old = (await reloaded.getCollector(c.id))!;
+    assert.equal(old.folder!.includeSubfolders, undefined);
+    fs.mkdirSync(path.join(env.inbox, 'Trip'));
+    put(path.join(env.inbox, 'Trip'), 'a.md', 'a');
+    const run = await runAndWait(reloaded, c.id);
+    assert.equal(run.result, 'nothing');
+    assert.deepEqual(fs.readdirSync(env.queue), []);
+  });
+
+  test('a subfolder is one folder item: copied when a file in it is new or changed, skipped when all are collected', async () => {
+    const env = setup();
+    const trip = path.join(env.inbox, 'Tea trip');
+    fs.mkdirSync(path.join(trip, 'notes'), { recursive: true });
+    put(trip, 'plan.md', 'Kyoto, then Uji.');
+    put(path.join(trip, 'notes'), 'day1.md', 'Uji: gyokuro tasting.');
+    put(trip, '.DS_Store', 'x');
+    put(trip, 'Shared notes.gdoc', '{"url":"https://docs.google.com/document/d/abcdefghij12345/edit","doc_id":"abcdefghij12345","email":"me@example.com"}');
+    put(env.inbox, 'loose.md', 'a loose file');
+    const c = await folder(env);
+    const run = await runAndWait(env.svc, c.id);
+    assert.equal(run.result, 'success');
+    const line = run.files!.find((f) => f.kind === 'folder')!;
+    assert.deepEqual(
+      { name: line.name, outcome: line.outcome, queueName: line.queueName, fileCount: line.fileCount, newCount: line.newCount },
+      { name: 'Tea trip/', outcome: 'copied', queueName: 'Tea trip', fileCount: 3, newCount: 3 },
+    );
+    assert.deepEqual(run.filesAdded.sort(), ['Tea trip', 'loose.md']);
+    const q = path.join(env.queue, 'Tea trip');
+    assert.equal(fs.readFileSync(path.join(q, 'notes', 'day1.md'), 'utf8'), 'Uji: gyokuro tasting.');
+    assert.ok(!fs.existsSync(path.join(q, '.DS_Store')), 'hidden files are not copied');
+    assert.ok(fs.existsSync(path.join(trip, 'plan.md')), 'copy keeps the originals');
+    const manifest = JSON.parse(fs.readFileSync(path.join(q, '.distill-folder.json'), 'utf8')) as { tree: { path: string; kind: string; seenBefore?: boolean }[] };
+    assert.deepEqual(manifest.tree.map((t) => [t.path, t.kind, t.seenBefore ?? false]), [
+      ['Shared notes.gdoc', 'gdoc', false], ['notes', 'dir', false], ['notes/day1.md', 'file', false], ['plan.md', 'file', false],
+    ]);
+    // Dedupe stays per file: the ledger has each file, with its path inside the folder.
+    const collected = await env.svc.listCollected(c.id);
+    assert.deepEqual(collected.map((f) => f.name).sort(), ['Tea trip/Shared notes.gdoc', 'Tea trip/notes/day1.md', 'Tea trip/plan.md', 'loose.md']);
+    assert.equal((await env.svc.getCollector(c.id))!.status!.collectedCount, 4, 'nested files count as collected');
+
+    // Nothing new: the folder is skipped, counted without a line.
+    const again = await runAndWait(env.svc, c.id);
+    assert.equal(again.result, 'nothing');
+    assert.equal(again.counts.skipped, 2);
+    assert.deepEqual(again.files, []);
+
+    // One file inside changes: the folder is collected again, with only that file, and the
+    // manifest marks the others seen before.
+    put(path.join(trip, 'notes'), 'day1.md', 'Uji: gyokuro and matcha.');
+    const changed = await runAndWait(env.svc, c.id);
+    const l2 = changed.files!.find((f) => f.kind === 'folder')!;
+    assert.deepEqual([l2.outcome, l2.queueName, l2.newCount, l2.fileCount], ['copied', 'Tea trip 2', 1, 3]);
+    const q2 = path.join(env.queue, 'Tea trip 2');
+    assert.deepEqual(fs.readdirSync(q2).sort(), ['.distill-folder.json', 'notes']);
+    assert.equal(fs.readFileSync(path.join(q2, 'notes', 'day1.md'), 'utf8'), 'Uji: gyokuro and matcha.');
+    const m2 = JSON.parse(fs.readFileSync(path.join(q2, '.distill-folder.json'), 'utf8')) as { tree: { path: string; seenBefore?: boolean }[] };
+    assert.deepEqual(m2.tree.filter((t) => t.seenBefore).map((t) => t.path), ['Shared notes.gdoc', 'plan.md']);
+
+    // Forget all covers nested files too.
+    const forgotten = await env.svc.forgetCollected(c.id);
+    assert.equal(forgotten.length, 5);
+
+    // Folder lines survive a core restart (the run history is read back from disk).
+    const reloaded = env.make();
+    const back = (await reloaded.listCollectorRuns(c.id)).find((r) => r.id === changed.id)!;
+    const l3 = back.files!.find((f) => f.name === 'Tea trip/')!;
+    assert.deepEqual([l3.kind, l3.fileCount, l3.newCount, l3.queueName], ['folder', 3, 1, 'Tea trip 2']);
+  });
+
+  test('subfolders: move takes the whole folder; still changing waits; too big and too deep are skipped', async () => {
+    const env = setup();
+    const c = await folder(env, 'move');
+    const a = path.join(env.inbox, 'A');
+    fs.mkdirSync(a);
+    put(a, 'one.md', 'one');
+    put(env.inbox, 'one copy.md', 'one'); // same bytes as A/one.md; subfolders run first, so this is skipped
+    const busy = path.join(env.inbox, 'Busy');
+    fs.mkdirSync(busy);
+    put(busy, 'old.md', 'old');
+    put(busy, 'new.md', 'being written', 5);
+    const deep = path.join(env.inbox, 'Deep', '1', '2', '3', '4', '5', '6', '7', '8');
+    fs.mkdirSync(deep, { recursive: true });
+    put(deep, 'far.md', 'far');
+    const big = path.join(env.inbox, 'Big');
+    fs.mkdirSync(big);
+    for (let i = 0; i < 201; i++) put(big, `f${i}.md`, `file ${i}`);
+    const run = await runAndWait(env.svc, c.id);
+    const byName = new Map(run.files!.filter((f) => f.kind === 'folder').map((f) => [f.name, f]));
+    assert.equal(byName.get('A/')!.outcome, 'moved');
+    assert.ok(!fs.existsSync(a), 'move takes the folder out of the source');
+    assert.ok(fs.existsSync(path.join(env.queue, 'A', 'one.md')));
+    assert.ok(fs.existsSync(path.join(env.queue, 'A', '.distill-folder.json')));
+    assert.deepEqual([byName.get('Busy/')!.outcome, byName.get('Busy/')!.reason], ['waiting', 'still changing']);
+    assert.deepEqual([byName.get('Deep/')!.outcome, byName.get('Deep/')!.reason], ['skipped', 'too deep']);
+    assert.deepEqual([byName.get('Big/')!.outcome, byName.get('Big/')!.reason, byName.get('Big/')!.newCount], ['skipped', 'too big', 201]);
+    assert.ok(fs.existsSync(busy) && fs.existsSync(big));
+    assert.deepEqual(run.files!.find((f) => f.name === 'one copy.md')?.reason, 'already collected', 'dedupe is vault-wide, across folders');
+  });
+
+  test('a top-level .gdoc is collected like a file (it then waits in the queue)', async () => {
+    const env = setup();
+    put(env.inbox, 'Roadmap.gdoc', '{"url":"https://docs.google.com/document/d/abcdefghij12345/edit"}');
+    const c = await folder(env);
+    const run = await runAndWait(env.svc, c.id);
+    assert.deepEqual(run.filesAdded, ['Roadmap.gdoc']);
   });
 
   test('errors: source missing, no permission, queue missing, vault removed', async () => {

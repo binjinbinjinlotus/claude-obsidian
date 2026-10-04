@@ -369,8 +369,14 @@ describe('job and queue extras', () => {
     await assert.rejects(h.engine.removeQueueEntry(outside), { code: 'invalid_request' });
     await assert.rejects(h.engine.removeQueueEntry(path.join(h.queue, '..', 'elsewhere.txt')), { code: 'invalid_request' });
     await assert.rejects(h.engine.removeQueueEntry(path.join(h.queue, 'missing.txt')), { code: 'not_found' });
-    fs.mkdirSync(path.join(h.queue, 'folder'));
-    await assert.rejects(h.engine.removeQueueEntry(path.join(h.queue, 'folder')), { code: 'invalid_request' });
+    // v5: a folder item goes to the Trash whole (it used to be refused).
+    fs.mkdirSync(path.join(h.queue, 'folder', 'sub'), { recursive: true });
+    fs.writeFileSync(path.join(h.queue, 'folder', 'sub', 'x.md'), 'x');
+    fs.mkdirSync(path.join(h.trash, 'folder'));
+    await h.engine.removeQueueEntry(path.join(h.queue, 'folder'));
+    assert.ok(!fs.existsSync(path.join(h.queue, 'folder')));
+    assert.equal(fs.readFileSync(path.join(h.trash, 'folder 2', 'sub', 'x.md'), 'utf8'), 'x');
+    assert.deepEqual(fs.readdirSync(path.join(h.trash, 'folder')), [], 'an existing Trash folder is never replaced');
     fs.symlinkSync(outside, path.join(h.queue, 'link.txt'));
     await assert.rejects(h.engine.removeQueueEntry(path.join(h.queue, 'link.txt')), { code: 'invalid_request' });
     assert.ok(fs.existsSync(outside));

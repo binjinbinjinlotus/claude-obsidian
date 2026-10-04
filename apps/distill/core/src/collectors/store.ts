@@ -95,6 +95,8 @@ export function decodeCollector(v: unknown, now = new Date()): Collector | undef
     const source = str(f.source);
     if (!source) return undefined;
     c.folder = { source, afterCollect: f.afterCollect === 'move' ? 'move' : 'copy' };
+    // v5: absent (a collector saved before subfolders existed) stays absent and reads as off.
+    if (typeof f.includeSubfolders === 'boolean') c.folder.includeSubfolders = f.includeSubfolders;
   } else {
     const s = isObject(v.script) ? v.script : {};
     const source = decodeScriptSource(s.source);
@@ -234,6 +236,12 @@ export function decodeRun(v: unknown, now = new Date()): CollectorRun | undefine
       if (reason) file.reason = reason;
       if (queueName) file.queueName = queueName;
       if (size !== undefined) file.size = size;
+      // v5: folder items.
+      if (f.kind === 'folder' || f.kind === 'file') file.kind = f.kind;
+      const fileCount = num(f.fileCount);
+      const newCount = num(f.newCount);
+      if (fileCount !== undefined) file.fileCount = fileCount;
+      if (newCount !== undefined) file.newCount = newCount;
       return [file];
     });
   }

@@ -640,6 +640,16 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
       },
     },
     {
+      // v5: Refresh (trigger manual, the default) and the window-active scan (trigger window).
+      method: 'POST',
+      pattern: /^\/v1\/queue\/scan$/,
+      handler: async ({ body }) => {
+        const o = asObject(await body());
+        const trigger = optEnum(o, 'trigger', ['manual', 'window'] as const);
+        return core.scanQueue(trigger ? { trigger } : {});
+      },
+    },
+    {
       method: 'POST',
       pattern: /^\/v1\/queue\/process$/,
       handler: async ({ body }) => {

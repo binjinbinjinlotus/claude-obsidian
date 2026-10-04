@@ -46,6 +46,7 @@ const KNOWN_KEYS = [
   'shortcuts',
   'runnerOptions',
   'actionPreferences',
+  'queueScanMinutes',
 ] as const;
 
 /**
@@ -327,6 +328,9 @@ export function decodeSettings(raw: unknown): Settings {
   if (runnerOptions) s.runnerOptions = runnerOptions;
   const actionPrefs = decodeActionPreferences(raw.actionPreferences);
   if (actionPrefs) s.actionPreferences = actionPrefs;
+  // v5: minutes between queue checks; 0 = Off. Absent or mistyped stays absent (= the default, 5).
+  const scan = num(raw.queueScanMinutes);
+  if (scan !== undefined && Number.isFinite(scan)) s.queueScanMinutes = Math.min(Math.max(0, Math.trunc(scan)), 24 * 60);
   return s;
 }
 
@@ -369,6 +373,7 @@ export function encodeSettings(s: Settings, raw: JSONObject = {}): JSONObject {
   }
   // Decoded with its unknown keys kept, so a plain deep copy round-trips.
   if (s.actionPreferences != null) out.actionPreferences = JSON.parse(JSON.stringify(s.actionPreferences)) as JSONObject;
+  if (s.queueScanMinutes != null) out.queueScanMinutes = s.queueScanMinutes;
   return out;
 }
 

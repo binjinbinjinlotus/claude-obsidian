@@ -17,6 +17,43 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Queue folders, Google Docs and the queue scan built in the core, API
+  and CLI (core-queue).** Specs: [Queue and batching](queue-and-batching.md)
+  → "Built in the core", [Collectors](collectors.md) → "Built: subfolders and
+  .gdoc". Built to the design above; decisions taken while building:
+  - **Root cause of the missing folder:** the scanner kept regular files
+    only. A 5-second rescan already existed, so no watcher was added, and
+    top-level files removed by hand already dropped out within 5 s.
+  - **Two scan depths.** The 5-second tick reuses each folder's last walk
+    while its own mtime is unchanged; Refresh, the window-active scan, the
+    queue check and every batch walk folders again. That keeps the tick
+    cheap with big folders, gives the queue check a job, and keeps the wait
+    rule exact at pickup even with the check Off.
+  - **`POST /v1/queue/scan` returns the designed counts plus the entries**
+    (`addedEntries`, `removedEntries`, `changedEntries`, `entries`) and a
+    `trigger`, because the owner asked for what changed, not only how
+    much. Every full scan emits `queue.scanned` (older Mac builds decode
+    unknown events as `.unknown`), so "checked at …" can follow the periodic
+    check.
+  - **Extra folder problems beyond "too big":** `'too deep'` (more than 8
+    levels; the owner asked for a depth limit) and `'empty folder'`. A
+    walk stops after 5000 entries and counts as too big, so a huge folder
+    can't stall the tick. A folder whose only files are `.gdoc` waits like
+    a `.gdoc`.
+  - **Folder files get no per-file AI labels**, and "N sources" counts a
+    folder once.
+  - **`includeSubfolders`: new collectors on (as designed); collectors saved
+    before this build read as off**, so an existing collector doesn't start
+    taking subfolders without the user choosing it.
+  - **`.gdoc` link validation:** https on docs.google.com or
+    drive.google.com only, else built from a valid `doc_id`; anything else
+    is "no link inside". The `email` field is never read out.
+  - **Inbox mode:** when the queue folder is the vault's `inbox/`, existing
+    subfolders there that no batch took become folder items and will be
+    batched.
+  - Drop and paste intake still skip folders (`copyIntoQueue`); only
+    folders moved in by hand or by a collector become items.
+
 - **Queue: folders, Google Docs, Refresh and the queue check (owner
   request; designed, built next).** Specs: [Queue and
   batching](queue-and-batching.md) → "Folders, Google Docs and syncing", and

@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  DEFAULT_QUEUE_SCAN_MINUTES,
   DEFAULT_SOURCE_TAXONOMY,
   runnerSupports,
   type AddNoteRequest,
@@ -19,6 +20,7 @@ import {
   type ModelSelection,
   type Progress,
   type QueueEntry,
+  type QueueScanResult,
   type RunRequest,
   type RunResult,
   type RunnerRegistry,
@@ -82,9 +84,10 @@ import {
 } from '../labels/transaction.js';
 import { countLabels, existingLabels, normalizeLabels, pageTags, reviewLabels, scanPages, userLabels } from '../labels/vault.js';
 import {
-  claimFiles,
+  claimItems,
   copyIntoQueue,
   inboxDir,
+  moveFolderIntoDirNoOverwrite,
   moveIntoDirNoOverwrite,
   noteSetOfMember,
   noteSets,
@@ -92,6 +95,8 @@ import {
   queueIsInbox,
   queueList,
   readyFiles,
+  scanQueueFolder,
+  type FolderWalk,
   type ScanEntry,
 } from './queue.js';
 import { setupProblems } from './validator.js';
@@ -237,6 +242,12 @@ export function createEngine(opts: EngineOptions): Engine {
   /** mtime of each queued path when the core first saw it; a later mtime = "still changing". */
   const firstSeen = new Map<string, number>();
   let lastQueueKey = '';
+  /** Folder walks reused by the 5-second rescan; a full scan (Refresh, window, queue check, batch) walks again. */
+  const folderCache = new Map<string, FolderWalk>();
+  let lastQueueScanAt: Date | undefined;
+  let nextQueueScanAt: Date | undefined;
+  /** Why the last scan couldn't read the queue folder (undefined when it could, or it doesn't exist yet). */
+  let queueReadProblem: string | undefined;
   let nextBatchAt: Date | undefined;
   let timer: NodeJS.Timeout | undefined;
   const controllers = new Map<string, AbortController>();
@@ -452,18 +463,47 @@ export function createEngine(opts: EngineOptions): Engine {
     return queueList(queued, settings.settleSeconds, now(), { firstSeen, sourceLabel });
   }
 
-  function refreshQueue(): void {
+  /**
+   * Top-level names a batch already took when the queue is the inbox (they stay in place): a claimed
+   * file, or a folder item one of whose files was claimed. Left out before any folder walk.
+   */
+  function claimedNames(vault: VaultProfile): Set<string> | undefined {
+    if (!queueIsInbox(vault)) return undefined;
+    const names = new Set<string>();
+    for (const rel of claimedFiles(vault)) if (rel.startsWith('inbox/')) names.add(rel.slice(6).split('/')[0]!);
+    return names;
+  }
+
+  /** The active queue folder as queue items. `fresh` walks every folder again instead of reusing the cache. */
+  function scanActive(vault: VaultProfile, fresh = false): ScanEntry[] {
+    const exclude = claimedNames(vault);
+    try {
+      const out = scanQueueFolder(vault.queueDirectory, { cache: folderCache, fresh, ...(exclude ? { exclude } : {}) });
+      queueReadProblem = undefined;
+      return out;
+    } catch (err) {
+      queueReadProblem = `Can't read the queue folder ${vault.queueDirectory}: ${(err as Error).message}`;
+      return [];
+    }
+  }
+
+  function scanMinutes(): number {
+    const m = settings.queueScanMinutes;
+    return typeof m === 'number' && Number.isFinite(m) ? Math.max(0, Math.trunc(m)) : DEFAULT_QUEUE_SCAN_MINUTES;
+  }
+
+  function scheduleNextScan(from: Date): void {
+    const m = scanMinutes();
+    nextQueueScanAt = m > 0 ? new Date(from.getTime() + m * 60_000) : undefined;
+  }
+
+  function refreshQueue(o: { fresh?: boolean } = {}): void {
     const vault = activeVault(settings);
     if (!vault) {
       queued = [];
+      folderCache.clear();
     } else {
-      const entries = pendingFiles(vault.queueDirectory);
-      if (queueIsInbox(vault)) {
-        const claimed = claimedFiles(vault);
-        queued = entries.filter((e) => !claimed.has('inbox/' + e.name));
-      } else {
-        queued = entries;
-      }
+      queued = scanActive(vault, o.fresh === true);
     }
     // Forget paths that left the queue (or another vault became active); remember new ones.
     const present = new Set(queued.map((e) => e.path));
@@ -477,8 +517,49 @@ export function createEngine(opts: EngineOptions): Engine {
     }
   }
 
+  /** The fields that make an entry "changed" for a scan (not settled/readyAt/changing, which move with the clock). */
+  function scanKey(e: QueueEntry): string {
+    const { settled: _s, readyAt: _r, changing: _c, ...rest } = e;
+    return JSON.stringify(rest);
+  }
+
+  /**
+   * Rescans the queue folder in full: every folder is walked again and files removed by hand drop
+   * out. Compares with the list the core had before; the `queue` event goes out only when the list
+   * changed, `queue.scanned` after every scan.
+   */
+  function scanQueueNow(trigger: QueueScanResult['trigger']): QueueScanResult {
+    const before = new Map(queueEntries().map((e) => [e.path, e]));
+    refreshQueue({ fresh: true });
+    const entries = queueEntries();
+    const after = new Map(entries.map((e) => [e.path, e]));
+    const addedEntries = entries.filter((e) => !before.has(e.path));
+    const removedEntries = [...before.values()].filter((e) => !after.has(e.path));
+    const changedEntries = entries.filter((e) => {
+      const old = before.get(e.path);
+      return old !== undefined && scanKey(old) !== scanKey(e);
+    });
+    const result: QueueScanResult = {
+      added: addedEntries.length,
+      removed: removedEntries.length,
+      changed: changedEntries.length,
+      checkedAt: isoDate(now()),
+      trigger,
+      addedEntries,
+      removedEntries,
+      changedEntries,
+      entries,
+    };
+    if (queueReadProblem) result.problem = queueReadProblem;
+    lastQueueScanAt = now();
+    scheduleNextScan(now());
+    emit({ type: 'queue.scanned', result: clone(result) });
+    return result;
+  }
+
   function tick(): void {
-    refreshQueue();
+    if (nextQueueScanAt && now() >= nextQueueScanAt) scanQueueNow('periodic');
+    else refreshQueue();
     if (!settings.autoProcessEnabled || !nextBatchAt || now() < nextBatchAt) return;
     scheduleNextBatch(now());
     void processQueue().catch((err: unknown) => log('error', (err as Error).message));
@@ -660,11 +741,13 @@ export function createEngine(opts: EngineOptions): Engine {
     if (!vault) return null;
     const settle = o.force ? 0 : settings.settleSeconds;
     // Notes written by addNote skip the wait; files the core can't read stay behind.
-    const ready = readyFiles(pendingFiles(vault.queueDirectory), settle, now());
+    // Folders are walked again here (never from the cache), so the wait follows the newest change inside them.
+    const ready = readyFiles(scanActive(vault, true), settle, now());
     if (ready.length === 0) return null;
     let files: string[];
+    let folders: string[];
     try {
-      files = claimFiles(ready, vault, claimedFiles(vault));
+      ({ files, folders } = claimItems(ready, vault, claimedFiles(vault), now()));
     } catch (err) {
       log('error', `Could not move queue files into the vault inbox: ${(err as Error).message}`);
       refreshQueue();
@@ -675,13 +758,22 @@ export function createEngine(opts: EngineOptions): Engine {
     const kind = queueConsumer();
     const selection = selectionFor(settings, kind.task);
     const job = newJob({ id: makeJobID(now()), kind: kind.id, vaultPath: vault.path, files, model: selection.model, now: now() });
+    if (folders.length > 0) job.folders = folders;
     job.runnerID = selection.runnerID;
     if (selection.effort) job.effort = selection.effort;
-    job.turns.push(newTurn('app', `Batched ${files.length} file(s):\n` + files.map((f) => `- ${f}`).join('\n'), now()));
+    // A folder item is one source: its files are listed once under it, and they get no per-file AI labels.
+    const inFolder = (f: string) => folders.some((d) => f.startsWith(d + '/'));
+    const loose = files.filter((f) => !inFolder(f));
+    const itemCount = loose.length + folders.length;
+    const batched = [
+      ...loose.map((f) => `- ${f}`),
+      ...folders.map((d) => `- ${d}/ (folder: ${plural(files.filter((f) => f.startsWith(d + '/')).length, 'file')})`),
+    ];
+    job.turns.push(newTurn('app', `Batched ${files.length} file(s):\n` + batched.join('\n'), now()));
     insert(job);
-    const draft = draftBatchLabels(vault.path, files, labelingPreferences(settings));
+    const draft = draftBatchLabels(vault.path, loose, labelingPreferences(settings));
     jobSteps.set(job.id, batchSteps(draft.pending.length > 0));
-    const reading = `Reading ${plural(files.length, 'source')} into ${vaultName(vault.path)}`;
+    const reading = `Reading ${plural(itemCount, 'source')} into ${vaultName(vault.path)}`;
     const start = (plan: SourceLabels[]) => {
       if (plan.some((e) => e.labels.length > 0)) {
         try {
@@ -878,7 +970,7 @@ export function createEngine(opts: EngineOptions): Engine {
     } catch {
       throw new CoreError('not_found', `${file} is not in the queue.`);
     }
-    if (!st.isFile()) throw new CoreError('invalid_request', `${file} is not a regular file.`);
+    if (!st.isFile() && !st.isDirectory()) throw new CoreError('invalid_request', `${file} is not a regular file or folder.`);
     const real = (p: string) => {
       try {
         return fs.realpathSync(p);
@@ -892,6 +984,13 @@ export function createEngine(opts: EngineOptions): Engine {
     }
     const taken = (n: string) => queueIsInbox(vault) && claimedFiles(vault).has('inbox/' + n);
     if (taken(name)) throw new CoreError('invalid_state', `A batch already took ${name}.`);
+    if (st.isDirectory()) {
+      // A folder item goes to the Trash whole.
+      fs.mkdirSync(trashDir, { recursive: true });
+      moveFolderIntoDirNoOverwrite(abs, trashDir);
+      refreshQueue();
+      return queueEntries();
+    }
     // Paths as the scanner sees them (the queue folder may be reached through a symlink).
     refreshQueue();
     const scanned = path.join(path.resolve(vault.queueDirectory), name);
@@ -932,6 +1031,7 @@ export function createEngine(opts: EngineOptions): Engine {
     ) {
       scheduleNextBatch(now());
     }
+    if (settings.queueScanMinutes !== before.queueScanMinutes) scheduleNextScan(now());
     emit({ type: 'settings', settings: clone(settings) });
     refreshQueue();
     return clone(settings);
@@ -1411,6 +1511,8 @@ export function createEngine(opts: EngineOptions): Engine {
       pendingApprovals: jobs.filter((j) => j.state === 'awaitingApproval').length,
       runningJobs: jobs.filter((j) => j.state === 'running').length,
       nextBatchAt: nextBatchAt ? isoDate(nextBatchAt) : null,
+      lastQueueScanAt: lastQueueScanAt ? isoDate(lastQueueScanAt) : null,
+      nextQueueScanAt: nextQueueScanAt ? isoDate(nextQueueScanAt) : null,
       runners: runners.all().map((r) => ({
         id: r.id,
         displayName: r.displayName,
@@ -1427,6 +1529,7 @@ export function createEngine(opts: EngineOptions): Engine {
     async start() {
       refreshQueue();
       scheduleNextBatch(now());
+      scheduleNextScan(now());
       if (timer) clearInterval(timer);
       timer = setInterval(tick, tickMs);
     },
@@ -1446,6 +1549,10 @@ export function createEngine(opts: EngineOptions): Engine {
     addQueueFiles,
     processQueue,
     addNote,
+    async scanQueue(o) {
+      const trigger = o?.trigger === 'window' ? 'window' : 'manual';
+      return scanQueueNow(trigger);
+    },
 
     listJobs: () => clone(jobs),
     getJob: (id) => {
