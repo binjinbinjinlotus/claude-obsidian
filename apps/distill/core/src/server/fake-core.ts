@@ -611,10 +611,13 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       record('runCollector', id);
       const c = requireCollector(id);
       if (c.status?.running) throw new CoreError('busy', `${c.name} is already running.`);
-      const run = sampleCollectorRun({ id: `run-${fake.collectorRuns.length + 1}`, collectorId: id, kind: c.kind, trigger: 'now', result: 'running', files: [], filesAdded: [] });
-      delete run.endedAt;
-      fake.collectorRuns.unshift(run);
-      return run;
+      // Stored as finished (a fake run ends at once); returned as it was when it started.
+      const done = sampleCollectorRun({ id: `run-${fake.collectorRuns.length + 1}`, collectorId: id, kind: c.kind, trigger: 'now' });
+      fake.collectorRuns.unshift(done);
+      const started: CollectorRun = { ...done, result: 'running', files: [], filesAdded: [], counts: { copied: 0, moved: 0, skipped: 0, waiting: 0, errors: 0, added: 0 } };
+      delete started.endedAt;
+      delete started.durationMs;
+      return started;
     },
     async stopCollector(id) {
       record('stopCollector', id);

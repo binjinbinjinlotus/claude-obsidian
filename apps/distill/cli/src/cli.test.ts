@@ -431,6 +431,42 @@ describe('distill CLI', () => {
     });
   });
 
+  describe('collectors', () => {
+    it('list: human and --json', async () => {
+      const r = await cli(['collectors', 'list']);
+      assert.equal(r.code, 0, r.stderr);
+      assert.match(r.stdout, /^col-1 {2}Distill Inbox {2}Folder \/tmp\/Distill Inbox \(copy\) {2}\[on · 0 \* \* \* \* · next 2026-10-04T10:00:00Z\]\n {4}vault: \/tmp\/vault\n/);
+      const j = await cli(['collectors', 'list', '--json']);
+      assert.equal(JSON.parse(j.stdout).collectors[0].id, 'col-1');
+    });
+    it('run: waits for the run and prints it; history lists runs', async () => {
+      const r = await cli(['collectors', 'run', 'col-1']);
+      assert.equal(r.code, 0, r.stderr);
+      assert.equal(r.stdout, '2026-10-04 09:00Z  now  done  · copied 1 · skipped 2 already collected\n');
+      assert.deepEqual(lastCall('runCollector')?.args, ['col-1']);
+      const j = await cli(['collectors', 'run', 'col-1', '--json']);
+      assert.equal(JSON.parse(j.stdout).run.result, 'success');
+      const h = await cli(['collectors', 'history', 'col-1', '--limit', '1']);
+      assert.equal(h.code, 0, h.stderr);
+      assert.equal(h.stdout.split('\n').filter(Boolean).length, 1);
+      assert.deepEqual(lastCall('listCollectorRuns')?.args, ['col-1', { limit: 1 }]);
+      const hj = await cli(['collectors', 'history', 'col-1', '--json']);
+      assert.ok(Array.isArray(JSON.parse(hj.stdout).runs));
+    });
+    it('usage errors, unknown ids, and no consent command', async () => {
+      assert.equal((await cli(['collectors'])).code, 2);
+      assert.equal((await cli(['collectors', 'run'])).code, 2);
+      assert.equal((await cli(['collectors', 'history', 'col-1', '--limit', '0'])).code, 2);
+      assert.equal((await cli(['collectors', 'allow', 'col-1'])).code, 2);
+      const missing = await cli(['collectors', 'run', 'col-nope', '--json']);
+      assert.equal(missing.code, 1);
+      assert.equal(JSON.parse(missing.stdout).error.code, 'not_found');
+      const help = await cli(['--help']);
+      assert.ok(help.stdout.includes('distill collectors list'));
+      assert.ok(help.stdout.includes('never allows (consents to) a collector script'));
+    });
+  });
+
   describe('status', () => {
     it('--json includes StatusResponse and the server lock', async () => {
       const r = await cli(['status', '--json']);
