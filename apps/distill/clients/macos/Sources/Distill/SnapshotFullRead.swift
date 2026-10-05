@@ -54,8 +54,8 @@ extension StatesSnapshot {
         job.batchOf = BatchOf(index: 2, total: 3, tokens: 98_000)
         job.approval?.rebuilt = RebuiltPlan(reason: .covered, pages: (0..<4).map(page))
         job.coverage = CoverageSummary(sources: covered(4, lines: [644, 520, 630, 439])
-                                        + [CoverageSource(file: "inbox/Develop FE With AI.md", lines: 789, read: 412, state: "later"),
-                                           CoverageSource(file: "inbox/Tomasz and Jin.md", lines: 647, read: 400, state: "later")],
+                                        + [CoverageSource(file: "inbox/Develop FE With AI.md", lines: 789, read: 412, state: "later", readTo: 412),
+                                           CoverageSource(file: "inbox/Tomasz and Jin.md", lines: 647, read: 400, state: "later", readTo: 400)],
                                        full: 4, of: 4, lines: 2_233, rounds: 3, continued: 2, state: "split",
                                        detail: CoverageDetail(checked: 4, added: 3),
                                        later: ["inbox/Develop FE With AI.md", "inbox/Tomasz and Jin.md"], archived: 4)

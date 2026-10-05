@@ -17,13 +17,16 @@ public struct CoverageSource: Codable, Equatable, Sendable {
     public var images: Int
     /// More rounds of reading this source needed (nil when none).
     public var rounds: Int?
+    /// The last line read with no gap from line 1 (0 = nothing read; nil for full sources).
+    public var readTo: Int?
 
-    public init(file: String, lines: Int, read: Int? = nil, state: String = "full", reason: String? = nil, images: Int = 0, rounds: Int? = nil) {
+    public init(file: String, lines: Int, read: Int? = nil, state: String = "full", reason: String? = nil, images: Int = 0, rounds: Int? = nil,
+                readTo: Int? = nil) {
         self.file = file; self.lines = lines; self.read = read ?? lines; self.state = state; self.reason = reason; self.images = images
-        self.rounds = rounds
+        self.rounds = rounds; self.readTo = readTo
     }
 
-    enum CodingKeys: String, CodingKey { case file, lines, read, state, reason, images, rounds }
+    enum CodingKeys: String, CodingKey { case file, lines, read, state, reason, images, rounds, readTo }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         file = try c.decode(String.self, forKey: .file)
@@ -33,6 +36,7 @@ public struct CoverageSource: Codable, Equatable, Sendable {
         reason = c.lossy(String.self, .reason)
         images = max(0, c.lossyInt(.images) ?? 0)
         rounds = c.lossyInt(.rounds).flatMap { $0 > 0 ? $0 : nil }
+        readTo = c.lossyInt(.readTo).map { max(0, $0) }
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -44,6 +48,7 @@ public struct CoverageSource: Codable, Equatable, Sendable {
         try c.encodeIfPresent(reason, forKey: .reason)
         if images > 0 { try c.encode(images, forKey: .images) }
         try c.encodeIfPresent(rounds, forKey: .rounds)
+        try c.encodeIfPresent(readTo, forKey: .readTo)
     }
 }
 
@@ -135,6 +140,9 @@ public struct CoverageSummary: Codable, Equatable, Sendable {
         let byName = sources.filter { ($0.file as NSString).lastPathComponent == name }
         return byName.count == 1 ? byName[0] : nil
     }
+
+    /// Sources taken out of this change, read next in a fresh session (the split Review's muted rows).
+    public var laterSources: [CoverageSource] { sources.filter { $0.state == "later" } }
 
     /// Embedded images in the sources of this change (not text, not read).
     public var images: Int { sources.filter { $0.state != "later" && $0.state != "stopped" }.reduce(0) { $0 + $1.images } }
@@ -511,7 +519,7 @@ public enum FullReadWords {
         switch s.state {
         case "full": parts.append("read in full")
         case "later":
-            parts.append(s.read > 0 ? "read up to line \(number(s.read)) in this session" : "not read in this session")
+            if let to = s.readTo, to > 0 { parts.append("read up to line \(number(to)) in this session") }
             parts.append("next: a fresh session")
         case "partial": parts.append(s.read > 0 ? "read up to line \(number(s.read))" : "not read yet")
         case "unreadable", "stopped": parts.append("couldn’t be read")

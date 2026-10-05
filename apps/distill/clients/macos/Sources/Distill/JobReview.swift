@@ -85,6 +85,8 @@ struct ReviewGroupsView: View {
                                   else if selectable { unpicked = ReviewPicking.allPicked(sources, unpicked: unpicked) ? Set(active.map(\.page)) : [] }
                                   else { overrides["Sources"] = false }
                               })
+            // v10: sources read next in a fresh session; not in this change.
+            ForEach(job.coverage?.laterSources ?? [], id: \.file) { LaterSourceRow(source: $0) }
             if open {
                 ForEach(sources) { source in sourceRow(source, selectable: selectable, known: known) }
             } else {

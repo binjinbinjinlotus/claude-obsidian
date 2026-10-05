@@ -24,7 +24,7 @@ final class FullReadTests: XCTestCase {
         let job = try decode(Job.self, #"""
         {"id":"job-1","state":"awaitingApproval",
          "coverage":{"sources":[{"file":"inbox/a.md","lines":644,"read":644,"state":"full","images":1},
-                                {"file":"inbox/b.md","lines":647,"read":400,"state":"later","rounds":2},
+                                {"file":"inbox/b.md","lines":647,"read":400,"state":"later","rounds":2,"readTo":400},
                                 {"file":"inbox/c.md","lines":"many","state":"somethingNew"},
                                 {"lines":3}],
                      "full":1,"of":1,"lines":644,"rounds":3,"continued":"one","state":"split",
@@ -43,6 +43,9 @@ final class FullReadTests: XCTestCase {
         XCTAssertEqual(c.continued, 0, "a wrong type reads as 0")
         XCTAssertNil(c.sources[0].rounds)
         XCTAssertEqual(c.sources[1].rounds, 2)
+        XCTAssertEqual(c.sources[1].readTo, 400)
+        XCTAssertNil(c.sources[0].readTo, "absent for a full source")
+        XCTAssertEqual(c.laterSources.map(\.file), ["inbox/b.md"])
         XCTAssertEqual(c.state, "split")
         XCTAssertEqual(c.detail, CoverageDetail(checked: 1, added: 7, left: 2, note: nil), "a blank note is none")
         XCTAssertEqual(c.partialWording, ["wiki/sources/a.md"])
@@ -248,8 +251,12 @@ final class FullReadTests: XCTestCase {
     func testSourceRowMetaAndMatching() {
         XCTAssertEqual(FullReadWords.sourceMeta(CoverageSource(file: "inbox/a.md", lines: 644, images: 1)), "644 lines · read in full · 1 image not read")
         XCTAssertEqual(FullReadWords.sourceMeta(CoverageSource(file: "inbox/a.md", lines: 630)), "630 lines · read in full")
-        XCTAssertEqual(FullReadWords.sourceMeta(CoverageSource(file: "inbox/b.md", lines: 789, read: 412, state: "later")),
+        XCTAssertEqual(FullReadWords.sourceMeta(CoverageSource(file: "inbox/b.md", lines: 789, read: 412, state: "later", readTo: 412)),
                        "789 lines · read up to line 412 in this session · next: a fresh session")
+        XCTAssertEqual(FullReadWords.sourceMeta(CoverageSource(file: "inbox/b.md", lines: 789, read: 300, state: "later", readTo: 0)),
+                       "789 lines · next: a fresh session", "nothing read from line 1 on")
+        XCTAssertEqual(FullReadWords.sourceMeta(CoverageSource(file: "inbox/b.md", lines: 789, read: 300, state: "later")),
+                       "789 lines · next: a fresh session", "an older core without readTo")
         XCTAssertEqual(FullReadWords.sourceMeta(CoverageSource(file: "inbox/c.md", lines: 1_200, read: 400, state: "partial")),
                        "1,200 lines · read up to line 400")
         XCTAssertEqual(FullReadWords.sourceMeta(CoverageSource(file: "inbox/scan.pdf", lines: 1)), "read in full")
@@ -321,6 +328,16 @@ final class FullReadTests: XCTestCase {
         let plain = job(nil)
         XCTAssertFalse(ReviewPicking.offersDiscardPart(plain))
         XCTAssertEqual(ReviewPicking.rejectTitle(plain), "Reject")
+    }
+
+    func testReadToDecodesLeniently() throws {
+        let c = try decode(CoverageSummary.self, #"""
+        {"sources":[{"file":"inbox/a.md","lines":10,"state":"later","readTo":"ten"},{"file":"inbox/b.md","lines":10,"state":"later","readTo":-3},
+                    {"file":"inbox/c.md","lines":10,"state":"later","readTo":7.0}]}
+        """#)
+        XCTAssertEqual(c.sources.map(\.readTo), [nil, 0, 7])
+        let again = try JSONDecoder.core.decode(CoverageSummary.self, from: JSONEncoder.core.encode(c))
+        XCTAssertEqual(again.sources.map(\.readTo), [nil, 0, 7])
     }
 
     func testHeldWords() {

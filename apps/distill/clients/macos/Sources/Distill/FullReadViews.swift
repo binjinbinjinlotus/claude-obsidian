@@ -164,6 +164,25 @@ struct LaterNotice: View {
     }
 }
 
+/// A source read next in a fresh session (canvas review-split): muted, a "…" badge, no pick box or actions.
+struct LaterSourceRow: View {
+    let source: CoverageSource
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text("…").font(Theme.body(12, .semibold)).foregroundStyle(Theme.faint)
+                .frame(width: 22, height: 22).background(Circle().fill(Theme.panel)).padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(FullReadWords.displayName(source.file)).font(Theme.body(14)).lineLimit(1).truncationMode(.tail)
+                Text(FullReadWords.sourceMeta(source)).font(Theme.body(11.5)).lineLimit(1).truncationMode(.tail)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .foregroundStyle(Theme.muted)
+        .padding(.horizontal, 10).padding(.vertical, 8)
+    }
+}
+
 /// The hard stop: "Not added · couldn’t be read", above Sources. No pick box and no way to approve it.
 struct StoppedGroup: View {
     @EnvironmentObject var engine: AppModel
