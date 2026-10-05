@@ -442,6 +442,18 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       record('confirmLabels', items, vaultPath);
       return sampleJob({ id: 'job-label-confirm', kind: 'labelConfirm', files: items.map((i) => i.path) });
     },
+    async labelQueueItem(file, labels) {
+      record('labelQueueItem', file, labels);
+      return fake.queue;
+    },
+    async retryQueueLabels(file) {
+      record('retryQueueLabels', file);
+      return fake.queue;
+    },
+    async editReviewLabels(jobID, edits) {
+      record('editReviewLabels', jobID, edits);
+      return sampleJob({ id: jobID });
+    },
     async listConversations() {
       record('listConversations');
       return fake.conversations.map(summary);

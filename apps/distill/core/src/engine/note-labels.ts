@@ -8,6 +8,10 @@ import type { NoteManifest } from './notes.js';
  * Distill's state instead of the note's files: claude-obsidian keeps `inbox/` outside its
  * transactions and Distill never edits a file already there (decision 2026-10-04). Keyed by the
  * note's requestID; readers merge it over the manifest (`withLabelOverlay`).
+ *
+ * Queue files that are not notes (a collector's or a dropped .md, .txt, ...) use the same store,
+ * keyed `file:<sha256 of the content>` (queue-labels.ts), so their labels follow the content when
+ * a batch moves the file into inbox/ and never touch the file itself (2026-10-05).
  */
 export interface NoteLabelOverlay {
   /** Present (even empty) = the user confirmed these labels. */
@@ -76,6 +80,14 @@ export class NoteLabelStore {
       delete next.suggestError;
     }
     this.save(requestID, next);
+  }
+
+  /** Forget the last suggestion (and its error) so a new one runs; confirmed labels stay. */
+  clearSuggestion(id: string, now: Date): void {
+    const current = this.entries.get(id);
+    if (!current) return;
+    const { suggestedLabels: _s, suggestError: _e, ...rest } = current;
+    this.save(id, { ...rest, updatedAt: isoDate(now) });
   }
 
   private save(requestID: string, value: NoteLabelOverlay): void {

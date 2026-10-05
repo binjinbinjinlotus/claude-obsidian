@@ -356,6 +356,26 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
       }),
       fail: ([requestID]) => ({ type: 'note.labeled', object: { kind: 'note', id: requestID }, summary: `Couldn't label the note` }),
     },
+    labelQueueItem: {
+      ok: ([file, labels]) => ({
+        type: 'queue.labeled',
+        object: { kind: 'queue', id: file, name: path.basename(file) },
+        summary: `Labeled ${q(path.basename(file))} in the queue: ${labels.map((l) => `#${l}`).join(' ') || 'no labels'}`,
+        details: { labels },
+      }),
+      fail: ([file]) => ({ type: 'queue.labeled', object: { kind: 'queue', id: file, name: path.basename(file) }, summary: `Couldn't label ${q(path.basename(file))}` }),
+    },
+    retryQueueLabels: 'read',
+    editReviewLabels: {
+      before: (id) => getJob(id),
+      ok: ([id, edits], _r, job: Job | undefined) => ({
+        type: 'batch.labels_edited',
+        object: jobObject(id, job),
+        summary: `Changed labels on ${plural(edits.length, 'source page')} in ${jobName(job)}`,
+        details: { pages: edits.map((e) => e.page), labels: edits.map((e) => e.labels) },
+      }),
+      fail: ([id], job: Job | undefined) => ({ type: 'batch.labels_edited', object: jobObject(id, job), summary: `Couldn't change labels in ${jobName(job)}` }),
+    },
 
     // ── batches (jobs) ──
     approve: jobVerb('batch.approved', 'Approved', 'approve'),

@@ -6,6 +6,8 @@ import type {
   JobActionsSummary,
   JobState,
   PermissionDenial,
+  ReviewLabels,
+  ReviewSource,
   TransactionPlan,
   TurnRecord,
 } from '../contracts.js';
@@ -110,7 +112,44 @@ function decodeApproval(v: unknown): ApprovalRequest | undefined {
   if (plan) a.plan = plan;
   const planError = str(v.planError);
   if (planError !== undefined) a.planError = planError;
+  if (Array.isArray(v.sources)) a.sources = v.sources.map(decodeReviewSource).filter((x): x is ReviewSource => !!x);
+  const labels = decodeReviewLabels(v.labels);
+  if (labels) a.labels = labels;
   return a;
+}
+
+const REVIEW_LABEL_STATES: ReviewLabels['state'][] = ['suggesting', 'confirming', 'confirmed', 'unconfirmed'];
+
+function decodeReviewLabels(v: unknown): ReviewLabels | undefined {
+  if (!isObject(v)) return undefined;
+  const state = str(v.state) as ReviewLabels['state'] | undefined;
+  if (!state || !REVIEW_LABEL_STATES.includes(state)) return undefined;
+  const out: ReviewLabels = { state };
+  const message = str(v.message);
+  if (message !== undefined) out.message = message;
+  for (const k of ['done', 'total', 'revision'] as const) {
+    const n = num(v[k]);
+    if (n !== undefined) out[k] = n;
+  }
+  return out;
+}
+
+function decodeReviewSource(v: unknown): ReviewSource | undefined {
+  if (!isObject(v)) return undefined;
+  const page = str(v.page);
+  if (page === undefined) return undefined;
+  const by = str(v.by);
+  const out: ReviewSource = {
+    page,
+    title: str(v.title) ?? path.posix.basename(page, '.md'),
+    labels: strArray(v.labels) ?? [],
+    by: by === 'ai' || by === 'user' ? by : 'none',
+  };
+  const source = str(v.source);
+  if (source !== undefined) out.source = source;
+  const state = str(v.state);
+  if (state === 'waiting' || state === 'suggesting' || state === 'failed') out.state = state;
+  return out;
 }
 
 function decodeTurn(v: unknown, fallback: Date): TurnRecord | undefined {
@@ -233,6 +272,22 @@ function encodeApproval(a: ApprovalRequest): JSONObject {
     };
   }
   if (a.planError != null) out.planError = a.planError;
+  if (a.sources) {
+    out.sources = a.sources.map((src) => {
+      const o: JSONObject = { page: src.page, title: src.title, labels: [...src.labels], by: src.by };
+      if (src.source != null) o.source = src.source;
+      if (src.state != null) o.state = src.state;
+      return o;
+    });
+  }
+  if (a.labels != null) {
+    const l: JSONObject = { state: a.labels.state };
+    if (a.labels.message != null) l.message = a.labels.message;
+    if (a.labels.done !== undefined) l.done = a.labels.done;
+    if (a.labels.total !== undefined) l.total = a.labels.total;
+    if (a.labels.revision !== undefined) l.revision = a.labels.revision;
+    out.labels = l;
+  }
   return out;
 }
 

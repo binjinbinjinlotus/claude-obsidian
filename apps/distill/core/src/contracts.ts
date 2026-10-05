@@ -166,6 +166,38 @@ export interface ApprovalRequest {
   planError?: string | null;
   denials: PermissionDenial[];
   skipped: string[];
+  /** v6 (2026-10-05): each source page the bundle creates, with its labels (Review shows and edits them). */
+  sources?: ReviewSource[];
+  /** v6: where the labels shown in Review stand; Approve is refused while `state` is suggesting or confirming. */
+  labels?: ReviewLabels | null;
+}
+
+/** One input's source page in a pending batch (approval-and-review.md, "Labels in Review"). */
+export interface ReviewSource {
+  page: string; // vault-relative page the bundle writes, e.g. wiki/sources/Foo.md
+  title: string;
+  /** The input it was made from (`source_path`), e.g. inbox/foo.md. */
+  source?: string | null;
+  labels: string[];
+  /** ai = suggested by the AI (shown dashed); user = confirmed in the queue, edited in Review, or the file's own tags; none = no labels. */
+  by: 'ai' | 'user' | 'none';
+  /** Only while labels are attached to a batch that reached Review without them. */
+  state?: 'waiting' | 'suggesting' | 'failed' | null;
+}
+
+export interface ReviewLabels {
+  /**
+   * suggesting = labels are being suggested for a batch that reached Review without them (3 at a time);
+   * confirming = the core is writing them into the change and checking it again;
+   * confirmed = the change holds them confirmed, so approving confirms what is shown;
+   * unconfirmed = the change could not be revised (`message` says why): approving applies them unconfirmed.
+   */
+  state: 'suggesting' | 'confirming' | 'confirmed' | 'unconfirmed';
+  message?: string | null;
+  done?: number;
+  total?: number;
+  /** The `bundle-labels-<n>.json` the plan now uses. */
+  revision?: number;
 }
 
 export interface TurnRecord {
@@ -363,6 +395,19 @@ export interface QueueEntry {
    * with it. 'google-drive' = a .gdoc (or a folder holding only .gdoc files): Distill can't read Google Drive yet.
    */
   waiting?: 'google-drive' | string | null;
+  /**
+   * v6 (2026-10-05), text files that are not notes: their labels, suggested in the background at most 3 files at a
+   * time and kept in Distill's state (never in the file). Absent for notes (their manifest has them), folders,
+   * Google Docs, binary files, or when labeling.autoLabelQueueFolder is off.
+   */
+  labels?: QueueLabels | null;
+}
+
+export interface QueueLabels {
+  /** waiting = behind the 3 running; own = the .md's own tags (no AI call). */
+  state: 'waiting' | 'suggesting' | 'suggested' | 'confirmed' | 'own' | 'failed';
+  labels: LabelSuggestion[];
+  error?: string | null;
 }
 
 /** One entry of a folder item's tree. */
@@ -602,6 +647,12 @@ export interface Progress {
   stepIndex?: number;
   done?: number;
   total?: number;
+  /**
+   * v6: the file a per-file progress is about (label suggestions run 3 files at a time: one `labelSuggest` progress
+   * per file, key `label:<file sha256>` in the queue or `label:<jobID>:<file>` in a batch; `group` = the batch's job id).
+   */
+  item?: string;
+  group?: string;
   startedAt: string; // ISO-8601, for the elapsed timer
   runnerID?: string;
   model?: string;
@@ -1439,6 +1490,16 @@ export interface DistillCore {
   suggestLabelsForPages(paths: string[], opts?: { vaultPath?: string; selection?: ModelSelection }): Promise<Job>;
   /** Write confirmed labels (clears the unconfirmed marks). Returns a job awaiting approval. */
   confirmLabels(items: { path: string; labels: string[] }[], vaultPath?: string): Promise<Job>;
+  /** v6: confirm labels for a text file in the queue ([] = no labels). Kept in Distill's state; the batch uses them. */
+  labelQueueItem(path: string, labels: string[]): Promise<QueueEntry[]>;
+  /** v6: ask again for a queue file whose suggestion failed (it joins the 3-at-a-time line). */
+  retryQueueLabels(path: string): Promise<QueueEntry[]>;
+  /**
+   * v6: change the labels of source pages in a batch awaiting approval. The core writes a new label revision of the
+   * bundle and inspects it; only a clean inspect replaces the plan (new approval hash). Otherwise `conflict` and
+   * nothing changes. Refused while another label revision is running.
+   */
+  editReviewLabels(jobID: string, edits: { page: string; labels: string[] }[]): Promise<Job>;
 
   // ── v2: Ask history (owner: core-ask) ──
   listConversations(): Promise<AskConversationSummary[]>;
