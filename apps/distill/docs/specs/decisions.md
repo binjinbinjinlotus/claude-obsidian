@@ -17,6 +17,19 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **The meeting-notes script never replaces a file in the queue.** Code:
+  `apps/scripts/meeting-notes/fetch_meeting_notes.py` (`place_new`); its
+  README. Follows the inbox rule below.
+  - When a Drive file changed, `part.replace(path)` overwrote the earlier
+    download, which may sit in the vault's `inbox/`.
+  - **Decision:** the `.part` temp file is kept, then hard-linked in
+    create-only (an exclusive create where hard links don't work). A taken
+    name becomes `name (2).ext`. A changed file arrives as a new file next
+    to the old one.
+  - The owner's collector runs a saved copy of the script. The new version
+    reaches it only when it is pasted into the collector's script editor and
+    allowed.
+
 - **When the queue is `inbox/`, a note's label state lives in Distill's
   state.** Spec: [Notes composer](notes-composer.md). Follows the inbox rule
   below.
