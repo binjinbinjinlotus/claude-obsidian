@@ -27,6 +27,7 @@ Nothing goes into the vault except approved notes and pages.
 | Ask history | `ask/<chat-id>.json`, one file per chat |
 | Actions (to-dos, drafts, History) | `actions.json` (v3) |
 | Connection details without secrets (Atlassian site, display name) | `connections.json` (v3, mode 0600) |
+| Label state for notes waiting in the vault's `inbox/` (labels confirmed or suggested after the note was written; never written into `inbox/`) | `labels/notes.json` (keyed by requestID, newest 2000) |
 | Collectors (settings, consent hashes, last scheduled tick) | `collectors.json` (v4) |
 | What Folder collectors already collected (per vault; name, size, mtime, sha256, never content) | `collectors/ledger-<vault-id>.jsonl` (v4, append-only) |
 | Collector run history (30 days or the newest 200 runs per collector) | `collectors/runs/<collector-id>.jsonl` (v4) |
@@ -71,7 +72,8 @@ Retention is the user's choice: Ask chats older than `askPreferences.historyDays
   "Your data is intact: settings kept · N jobs · M Ask chats · K actions · C collectors", or a WARNING
   with how to restore.
 - `backup [TAG]` copies `settings.json`, `jobs.json`, `ask/*.json`,
-  `actions.json`, `connections.json`, `collectors.json`, the
+  `actions.json`, `connections.json`, `collectors.json`,
+  `labels/notes.json`, the
   `collectors/` ledgers and `collectors/runs/` (with their set-aside
   copies) and any `*.unreadable-*` files
   (Keychain secrets stay in the Keychain). The newest 10 backups are kept; names sort by time

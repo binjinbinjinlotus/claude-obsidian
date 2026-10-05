@@ -277,6 +277,30 @@ describe('a folder in a batch', () => {
     assert.equal(byName(engine.listQueue(), 'Trip')!.waiting, 'google-drive');
   });
 
+  test('inbox/ is create-only: files and folders already there are never written (decision 2026-10-04)', async () => {
+    const { queue, vault, engine } = setup();
+    const day = batchDay();
+    // The user's own files already in the inbox, with names the batch will want.
+    const ownFile = put(path.join(vault, 'inbox'), 'loose.md', 'mine');
+    const ownFolder = path.join(vault, 'inbox', day, 'Trip');
+    put(ownFolder, 'a.md', 'my a');
+    put(ownFolder, '.distill-folder.json', '{"version":1,"name":"Trip","tree":[]}');
+    const before = (p: string) => [fs.readFileSync(p, 'utf8'), fs.statSync(p).mtimeMs];
+    const snap = [ownFile, path.join(ownFolder, 'a.md'), path.join(ownFolder, '.distill-folder.json')].map(before);
+    put(queue, 'loose.md', 'queued');
+    put(path.join(queue, 'Trip'), 'a.md', 'queued a');
+    put(path.join(queue, 'Trip'), 'Plan.gdoc', '{"doc_id":"abcdefghij12345"}');
+    const job = (await engine.processQueue({ force: true }))!;
+    await engine.whenIdle();
+    assert.deepEqual([ownFile, path.join(ownFolder, 'a.md'), path.join(ownFolder, '.distill-folder.json')].map(before), snap);
+    assert.deepEqual(job.folders, [`inbox/${day}/Trip 2`]);
+    assert.ok(job.files.includes('inbox/loose 2.md'));
+    assert.equal(fs.readFileSync(path.join(vault, 'inbox', 'loose 2.md'), 'utf8'), 'queued');
+    // The pointer was recorded before the move (inside the queue folder), so the moved folder has it.
+    assert.match(fs.readFileSync(path.join(vault, 'inbox', day, 'Trip 2', '.distill-folder.json'), 'utf8'), /"path": "Plan.gdoc"/);
+    assert.ok(fs.existsSync(path.join(queue, 'Trip', 'Plan.gdoc')), 'the pointer stays queued');
+  });
+
   test('when the queue is the inbox, a folder is batched in place and then counts as taken', async () => {
     const vault = path.join(tmp, 'vault');
     const { engine, runner } = setup({ settings: { vaults: [{ path: vault, queueDirectory: path.join(vault, 'inbox') }] } });

@@ -105,7 +105,10 @@ Canvas: SettingsNav, Settings.
 
 - A vault is a folder containing `.claude-obsidian.json`. The app checks this
   before adding one and refuses other folders, with a hint to run
-  `claude-obsidian.py init` or `adopt`.
+  `claude-obsidian.py init` or `adopt`. The core checks it again on every use,
+  not only for batches (decision 2026-10-04). Labels, notes, page search and
+  label review answer `invalid_state` with the same hint when the marker is
+  gone, and Ask refuses the vault.
 - Several vaults can be added and one is active. The sidebar switcher and the
   Settings vault cards change it. Each vault has its own queue folder, edited
   from the card's "…" menu (including "use the vault's inbox/").
@@ -127,7 +130,7 @@ unknown keys.
 | `pythonPath` | `/usr/bin/python3` |
 | `nodePath` | unset: the app looks for node itself (see [App shell](app-shell.md#finding-the-core)) |
 | `productRoot` | the checkout the core runs from |
-| `extraAllowedTools` | empty |
+| `extraAllowedTools` | empty (rules that would get round the approval gate are ignored at use time, never removed: [Approval and review](approval-and-review.md) → Phase 1) |
 | `enabledRunners`, `taskDefaults`, v2 keys | see `contracts.ts`; Settings edits them (Sources, Labels, Ask history, Keyboard shortcuts, AI runners, Models for tasks) |
 | `actionPreferences` (v3) | `DEFAULT_ACTION_PREFERENCES`; Settings → Actions and To-do defaults edit it. See [Actions](actions.md#settings). |
 
@@ -150,6 +153,10 @@ are sent back unchanged. Untouched, `actionPreferences` is never written.
 ## Validation
 
 The core reports setup problems in `GET /v1/status` (`problems`: no vault, not
-a vault, missing `claude`, missing core script, queue inside `.raw/` or
-`.vault-meta/`, runner problems). They block batching and are listed at the
+a vault, missing `claude`, missing core script, a queue folder inside the
+vault other than exactly `<vault>/inbox` (`queueIsVaultInternal`: the vault
+root, `wiki/`, `.raw/`, `.vault-meta/` or a folder under `inbox/`; paths are
+compared after resolving symlinks), runner problems). The same check refuses
+notes and drops into such a queue folder (`invalid_state`) and fails collector
+runs (decision 2026-10-04). They block batching and are listed at the
 top of every Settings page. A core that cannot be reached shows there too, with Retry.

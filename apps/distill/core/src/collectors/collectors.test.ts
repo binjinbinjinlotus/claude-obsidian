@@ -439,6 +439,38 @@ describe('Folder collector', () => {
     env.settings.vaults = [];
     await rejects(env.svc.createCollector({ kind: 'folder' }), 'no_vault');
   });
+
+  test('a source inside a vault, or a queue folder inside the vault, is refused; a saved one fails visibly (decision 2026-10-04)', async () => {
+    const env = setup();
+    for (const sub of ['', 'inbox', 'wiki', '.raw/x']) {
+      const source = path.join(env.vault, sub);
+      fs.mkdirSync(source, { recursive: true });
+      await rejects(env.svc.createCollector({ kind: 'folder', folder: { source } }), 'invalid_request');
+    }
+    const c = await folder(env);
+    await rejects(env.svc.updateCollector(c.id, { folder: { source: path.join(env.vault, 'wiki') } }), 'invalid_request');
+    put(env.inbox, 'a.md', 'A');
+
+    // The source later falls inside a vault the user added: the run fails, with the reason, and copies nothing.
+    env.settings.vaults = [...env.settings.vaults, { path: env.root, queueDirectory: path.join(env.root, 'other-queue') }];
+    let run = await runAndWait(env.svc, c.id);
+    assert.equal(run.result, 'failed');
+    assert.match(run.error?.message ?? '', /inside the vault/);
+    assert.deepEqual(fs.readdirSync(env.queue), []);
+
+    // The vault's queue folder is set to wiki/: nothing is written there.
+    env.settings.vaults = [{ path: env.vault, queueDirectory: path.join(env.vault, 'wiki') }];
+    run = await runAndWait(env.svc, c.id);
+    assert.equal(run.result, 'failed');
+    assert.match(run.error?.message ?? '', /Queue directory .*wiki is inside the vault/);
+    assert.deepEqual(fs.readdirSync(path.join(env.vault, 'wiki')), []);
+
+    // Exactly <vault>/inbox is fine.
+    env.settings.vaults = [{ path: env.vault, queueDirectory: path.join(env.vault, 'inbox') }];
+    run = await runAndWait(env.svc, c.id);
+    assert.equal(run.result, 'success');
+    assert.deepEqual(fs.readdirSync(path.join(env.vault, 'inbox')), ['a.md']);
+  });
 });
 
 /** An inline zsh script that leaves a marker, writes one file to the queue and prints its arguments and env. */

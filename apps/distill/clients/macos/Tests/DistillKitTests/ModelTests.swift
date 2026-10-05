@@ -256,4 +256,15 @@ final class PermissionDenialTests: XCTestCase {
         XCTAssertEqual(PermissionDenial(toolName: "Write", input: ["file_path": .string("/Users/x/b.md")]).suggestedRule, "Edit(//Users/x/b.md)")
         XCTAssertTrue(PermissionDenial(toolName: "Bash", input: ["command": .string("ls")]).bypassesApproval)
     }
+
+    func testBypassesApprovalResolvesDotDotAndKnowsTheJob() {
+        let write = { (p: String) in PermissionDenial(toolName: "Write", input: ["file_path": .string(p)]) }
+        XCTAssertFalse(write("/v/.vault-meta/worker/j/x.md").bypassesApproval)
+        XCTAssertTrue(write("/v/.vault-meta/worker/j/../../../wiki/a.md").bypassesApproval, "`..` no longer passes")
+        XCTAssertTrue(write("/v/wiki/a.md").bypassesApproval)
+        let dir = "/v/.vault-meta/worker/j"
+        XCTAssertFalse(write("/v/.vault-meta/worker/j/drafts/x.md").bypassesApproval(jobDirectory: dir))
+        XCTAssertTrue(write("/v/.vault-meta/worker/other/x.md").bypassesApproval(jobDirectory: dir), "another job's folder")
+        XCTAssertFalse(PermissionDenial(toolName: "Read", input: ["file_path": .string("/etc/hosts")]).bypassesApproval(jobDirectory: dir))
+    }
 }

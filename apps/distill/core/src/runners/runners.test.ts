@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, test } from 'node:test';
 import { defaultSettings } from '../store/settings.js';
 import { ClaudeCodeRunner } from './claude-code.js';
-import { bypassesApproval, suggestedRule, uniqueDenials } from './permissions.js';
+import { bypassesApproval, gateBreakingReason, suggestedRule, uniqueDenials } from './permissions.js';
 import { basePath, isCancelled, runProcess, type RunProcessOptions } from './process.js';
 import { createRunnerRegistry } from './registry.js';
 
@@ -126,6 +126,35 @@ describe('permission denials', () => {
     assert.equal(bypassesApproval({ toolName: 'Write', input: { file_path: '/v/wiki/a.md' } }), true);
     assert.equal(bypassesApproval({ toolName: 'Write', input: { file_path: path.join('/v/.vault-meta/worker/j/x.md') } }), false);
     assert.equal(bypassesApproval({ toolName: 'Read', input: { file_path: '/etc/hosts' } }), false);
+    // `..` no longer slips past the substring test.
+    assert.equal(bypassesApproval({ toolName: 'Write', input: { file_path: '/v/.vault-meta/worker/j/../../../wiki/a.md' } }), true);
+    // With the job known: only this job's folder.
+    const ctx = { coreCommand: 'python3 /p/scripts/claude-obsidian.py', corePath: '/p/scripts/claude-obsidian.py', stateDirectory: '/v/.vault-meta/worker/j' };
+    assert.equal(bypassesApproval({ toolName: 'Write', input: { file_path: '/v/.vault-meta/worker/j/x.md' } }, ctx), false);
+    assert.equal(bypassesApproval({ toolName: 'Write', input: { file_path: '/v/.vault-meta/worker/other/x.md' } }, ctx), true);
+    assert.equal(bypassesApproval({ toolName: 'Bash', input: { command: 'ls' } }, ctx), true);
+  });
+
+  test('gateBreakingReason: one classifier for planningTools, allow() and the warning', () => {
+    const ctx = { coreCommand: "python3 '/p q/scripts/claude-obsidian.py'", corePath: '/p q/scripts/claude-obsidian.py', stateDirectory: '/v/.vault-meta/worker/j' };
+    const breaking = [
+      'Bash', 'Bash()', 'Bash(*)', 'Bash(:*)', 'Bash(*foo)',
+      'Bash(python3:*)', 'Bash(python3 *)', 'Bash(/usr/bin/python3:*)', 'Bash(p*)', "Bash(python3 '/p q/scripts/claude-obsidian.py':*)",
+      "Bash(python3 '/p q/scripts/claude-obsidian.py' transaction  apply b --vault v)", "Bash(x transaction 'apply' y)",
+      'Bash(sh:*)', 'Bash(bash -c x)', 'Bash(zsh:*)', 'Bash(env FOO=1:*)', 'Bash(/usr/bin/env:*)', 'Bash(xargs:*)', 'Bash(eval x)',
+      'Edit', 'Write', 'MultiEdit()', 'NotebookEdit', 'Edit(wiki/**)', 'Edit(/v/.vault-meta/worker/j/**)', 'Edit(~/x)',
+      'Edit(//v/wiki/**)', 'Edit(//v/.vault-meta/worker/j/../../../wiki/**)', 'Edit(//v/.vault-meta/worker/other/**)',
+      'Edit(//v/.vault-meta/worker/j/*/x)', 'Edit(//v/.vault-meta/worker/j/**/x)', 'Write(//v/wiki/a.md)', 'Edit(//v/.vault-meta/worker/jj/**)',
+      'not a rule(',
+    ];
+    for (const r of breaking) assert.ok(gateBreakingReason(r, ctx), r);
+    const fine = [
+      'Read', 'Read(//etc/**)', 'Glob', 'Grep', 'Skill', 'WebFetch(domain:example.com)',
+      'Bash(ls /tmp)', 'Bash(shasum -a 256:*)', "Bash(python3 '/p q/scripts/claude-obsidian.py' transaction inspect:*)",
+      "Bash(python3 '/p q/scripts/claude-obsidian.py' lint:*)",
+      'Edit(//v/.vault-meta/worker/j/**)', 'Edit(//v/.vault-meta/worker/j)', 'Edit(//v/.vault-meta/worker/j/drafts/a.md)', 'Write(//v/.vault-meta/worker/j/*)',
+    ];
+    for (const r of fine) assert.equal(gateBreakingReason(r, ctx), undefined, r);
   });
 
   test('uniqueDenials dedupes by deep equality regardless of key order', () => {

@@ -6,9 +6,11 @@ description: "Queue something the user wants to remember as a note for Distill t
 # Queue a note with Distill
 
 `distill note add` writes a note (and optional images) into Distill's queue.
-Distill ingests the queue in batches and **stops for the user's approval**
-before anything is written to the vault. Approval happens only in the Distill
-app: there is no CLI command to approve, apply, reply to or reject a change,
+The queue folder may be the vault's `inbox/` (the user's intake, which
+claude-obsidian keeps outside its transactions), so the note file itself can
+land there at once. Distill ingests the queue in batches and **stops for the
+user's approval** before anything is written to the vault's knowledge
+(`wiki/`, `.raw/`). Approval happens only in the Distill app: there is no CLI command to approve, apply, reply to or reject a change,
 and you must not look for one or edit the vault directly instead.
 
 ## When to use
@@ -131,7 +133,8 @@ approval: it only sets the labels of a note still in the queue.
 
 Say the note is **queued**, not saved: Distill will propose the vault change
 and the user must approve it in the Distill app. Name the labels you chose.
-Do not claim it is in the vault, and do not offer to approve it for them.
+Do not claim it is in their knowledge base (even when the queue is the
+vault's `inbox/`), and do not offer to approve it for them.
 
 If `distill` is not found, tell the user to install it by following
 `apps/distill/plugin/README.md`.

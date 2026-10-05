@@ -134,6 +134,32 @@ def save_state(path, state):
     tmp.replace(path)  # atomic, so a killed run never leaves half a file
 
 
+def place_new(part, path):
+    """Move `part` to `path`, or `name (2).ext`, `name (3).ext`, ... if taken.
+
+    Create-only: never replaces an existing file. The queue folder can be the
+    vault's inbox/, whose files belong to the user. A changed Drive file
+    arrives as a new file next to the old one.
+    """
+    stem, ext = path.stem, path.suffix
+    for n in range(1, 10_000):
+        target = path if n == 1 else path.with_name(f"{stem} ({n}){ext}")
+        try:
+            os.link(part, target)  # fails if target exists
+        except FileExistsError:
+            continue
+        except OSError:
+            # No hard links on this volume: an exclusive create instead.
+            try:
+                with open(target, "xb") as f:
+                    f.write(part.read_bytes())
+            except FileExistsError:
+                continue
+        part.unlink()
+        return target
+    raise OSError(f"no free name for {path.name}")
+
+
 def download(drive, file_id, out_dir, state, prefix="", recordings=False):
     """Download or export one Drive file. Returns True if a file was written."""
     try:
@@ -166,10 +192,10 @@ def download(drive, file_id, out_dir, state, prefix="", recordings=False):
         done = False
         while not done:
             _, done = downloader.next_chunk()
-        # Write under a hidden name, then rename, so Distill never sees half a file.
+        # Write under a hidden name, then link it in, so Distill never sees half a file.
         part = out_dir / f".{path.name}.part"
         part.write_bytes(buf.getvalue())
-        part.replace(path)
+        path = place_new(part, path)
     except HttpError as e:
         # Common cause: the owner disabled download/copy for viewers
         print(f"  ! cannot download '{meta['name']}': {e.reason}")

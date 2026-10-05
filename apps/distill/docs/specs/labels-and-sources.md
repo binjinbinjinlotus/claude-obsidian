@@ -1,7 +1,7 @@
 ---
 title: Labels and sources
 status: built
-updated: 2026-10-02
+updated: 2026-10-04
 ---
 
 # Labels and sources
@@ -63,6 +63,14 @@ about** (labels). Canvas artboards: "Write a note", "Ask", "Settings", "Notes".
 | `labels` on addNote | Confirmed (`labels_by: user`); no suggestion is made. |
 | `labelNote(requestID, [])` | Confirmed: no labels. No AI fallback, no flags. |
 | Any other file in the queue folder | `labeling.autoLabelQueueFolder` (default on): the batch suggests labels for text files (`.md .txt .html .csv .json` ...) before the first turn, applied unconfirmed with `labels_origin: queue-folder`. A dropped `.md` that already has `tags` keeps them as the user's choice (no AI call). Binary files (PDF, images) and failed suggestions stay unlabeled. |
+
+Where a note's label state lives: in its `.distill.json` manifest (and
+`labelNote` also rewrites the queued note's `tags`), except when the queue
+folder is the vault's `inbox/`. There, files are never edited after they are
+written, so labels confirmed or suggested later go to
+`<state>/labels/notes.json` (by requestID), and the batch and the queue row
+merge that over the manifest (decision 2026-10-04; [Notes
+composer](notes-composer.md)).
 
 While a note's suggestion runs (wait or background) the core emits
 `labelSuggest` progress keyed `note:<requestID>` (runner and model of the

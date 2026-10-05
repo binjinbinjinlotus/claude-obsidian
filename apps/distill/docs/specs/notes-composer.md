@@ -1,7 +1,7 @@
 ---
 title: Write a note
 status: built
-updated: 2026-10-02
+updated: 2026-10-04
 ---
 
 # Write a note
@@ -117,6 +117,18 @@ in the queue; `none` skips. Validation runs before any AI call.
 `labelNote(requestID, labels)` rewrites the manifest and the queued note's
 `tags` (nothing else in the file changes). Once a batch has claimed the note:
 `invalid_state`; unknown request: `not_found`.
+
+**When the queue is the vault's `inbox/`** (decision 2026-10-04), the note's
+files are created there once and never edited again: claude-obsidian keeps
+`inbox/` outside its transactions, and files there are the user's. Label
+state set after the note is written (`labelNote`'s labels, a background
+suggestion or its error) goes to Distill's state instead, in
+`<state>/labels/notes.json` keyed by requestID (`engine/note-labels.ts`).
+Readers merge it over the manifest: the queue row's `labelsConfirmed` and the
+batch's label plan (`draftBatchLabels`). The note's own `tags` keep what was
+written at creation; the labels still reach the wiki through the ingest
+prompt's Labels section and the reviewed transaction, as before. `labels: []`
+in the overlay still means "confirmed: no labels".
 
 The ingest prompt reads the manifest so Claude follows the user's choices
 instead of guessing; its label fields are bookkeeping, and the prompt's own

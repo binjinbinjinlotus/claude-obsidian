@@ -4,6 +4,7 @@ import { yamlScalar } from '../labels/frontmatter.js';
 import { coreScriptPath } from '../store/settings.js';
 import { jobStateDirectory } from '../store/jobs.js';
 import { folderSourceBlock, walkFolder } from './queue.js';
+import { gateBreakingReason } from '../runners/permissions.js';
 
 /** Single-quotes a string only when the shell needs it, so common paths stay readable and rules simple. */
 export function shellQuote(s: string): string {
@@ -65,8 +66,9 @@ export class JobContext {
       `Bash(${this.coreCommand} doctor:*)`,
       `Bash(${this.coreCommand} lint:*)`,
       'Bash(shasum -a 256:*)',
-      ...this.settings.extraAllowedTools,
-      ...this.job.grantedTools,
+      // Extra and granted rules that would get round the approval gate are dropped here, at use
+      // time; saved settings and the job's grants are never rewritten.
+      ...[...this.settings.extraAllowedTools, ...this.job.grantedTools].filter((r) => gateBreakingReason(r, this) === undefined),
     ];
   }
 }
@@ -147,8 +149,10 @@ approval_sha256 ${plan.approval_sha256}. Run exactly this command once:
 ${WorkerProtocol.applyCommand(ctx, plan, bundlePath)}
 
 If it succeeds, finish with status \`done\`, the operation_id, and the exact \
-changed_paths it reported. If it exits 75 or reports stale hashes, re-read \
-the targets, rebuild the bundle at the same path, inspect it, and finish \
+changed_paths it reported. If it exits 75 with \`ERR LOCK_TIMEOUT\`, another \
+process held the vault lock: do not rebuild; inspect the same bundle again and \
+finish with \`needs_approval\`. If it exits 75 otherwise or reports stale hashes, \
+re-read the targets, rebuild the bundle at the same path, inspect it, and finish \
 with \`needs_approval\` again. On any other failure finish with \`failed\`.`;
   },
 
@@ -259,8 +263,13 @@ export const IngestJobKind: JobKind = {
 
   initialPrompt(ctx: JobContext): string {
     const list = ctx.job.files.map((f) => `- ${f}`).join('\n');
+    const skillDir = path.join(ctx.settings.productRoot, 'skills', 'wiki-ingest');
     return `Use the claude-obsidian:wiki-ingest skill to ingest this batch from the \
-selected vault's inbox (vault-relative paths):
+selected vault's inbox. If that skill is not loaded (some runners have no plugin), \
+read ${path.join(skillDir, 'SKILL.md')} with the Read tool and follow it; paths it \
+mentions are relative to ${skillDir} or the product root ${ctx.settings.productRoot}.
+
+The batch (vault-relative paths):
 
 ${list}
 
