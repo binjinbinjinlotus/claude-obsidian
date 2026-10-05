@@ -78,6 +78,8 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras &
     file: paths.collectors ?? path.join(paths.dir, 'collectors.json'),
     dir: path.join(paths.dir, 'collectors'),
     ...(opts.now ? { now: opts.now } : {}),
+    // Distill's trash (activity) copies a deleted script collector's folder; the collector then removes it.
+    trashKeepsScriptFolders: true,
     // Scripts never run while a batch runs or applies in the same vault.
     isVaultBusy: (vaultPath) =>
       engine.listJobs().some((j) => j.state === 'running' && path.resolve(j.vaultPath) === path.resolve(vaultPath)),

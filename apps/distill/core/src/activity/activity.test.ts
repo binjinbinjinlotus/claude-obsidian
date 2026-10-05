@@ -407,7 +407,7 @@ describe('activity through the core and the API', () => {
     state = path.join(root, 'state');
     vault = path.join(root, 'vault');
     queue = path.join(root, 'queue');
-    for (const d of [state, vault, queue, path.join(root, 'Inbox'), path.join(root, 'trash')]) fs.mkdirSync(d, { recursive: true });
+    for (const d of [state, vault, queue, path.join(root, 'Inbox'), path.join(root, 'trash'), path.join(root, 'bin')]) fs.mkdirSync(d, { recursive: true });
     fs.writeFileSync(path.join(state, 'settings.json'), JSON.stringify({ vaults: [{ path: vault, queueDirectory: queue }], activeVaultPath: vault, settleSeconds: 600 }));
     const done = { ...newJob({ id: 'job-20261004-120000-aaaa', kind: 'ingest', vaultPath: vault, files: ['inbox/x.md'], model: 'sonnet', now: new Date() }), state: 'completed', changedPaths: ['wiki/x.md'] };
     fs.writeFileSync(path.join(state, 'jobs.json'), JSON.stringify([done]));
@@ -418,7 +418,7 @@ describe('activity through the core and the API', () => {
       trashDir: path.join(root, 'trash'),
       secrets: new MemorySecretStore(),
       fetch: async () => new Response('{"message":"unauthorized"}', { status: 401, headers: { 'content-type': 'application/json' } }),
-      collectors: { homeDir: root, tmpDir: root },
+      collectors: { homeDir: root, tmpDir: root, loginPath: async () => `${path.join(root, 'bin')}:${process.env.PATH ?? '/usr/bin:/bin'}` },
     });
     core.subscribe((e) => events.push(e));
     server = await startServer({ core, token: TOKEN });
@@ -496,11 +496,70 @@ describe('activity through the core and the API', () => {
     const back = await core.getCollector(id);
     assert.equal(back?.enabled, false);
     assert.equal(back?.script?.allowedSha256, undefined);
-    assert.deepEqual(back?.script?.source, { inline: body });
+    // v6: the script comes back as a real file with the same bytes.
+    const backSource = back?.script?.source as { file: string; managed?: boolean };
+    assert.equal(backSource.managed, true);
+    assert.equal(fs.readFileSync(backSource.file, 'utf8'), body);
     assert.equal(back?.status?.needsConsent, true);
     assert.equal(last('collector.restored')?.source, 'app');
     assert.equal((await request('GET', '/v1/trash')).body.items.length, 0);
     assert.equal((await request('POST', `/v1/trash/${trashId}/restore`)).status, 404);
+  });
+
+  test('v6: one trash for a script collector: its folder goes with the record; delete, restore, allow (packages reinstall), run the same bytes', async () => {
+    // A fake npm on the scripts' PATH (never the network).
+    fs.writeFileSync(path.join(root, 'bin', 'npm'), '#!/bin/zsh\nprint "fake npm $*"\nmkdir -p node_modules/dep\n', { mode: 0o755 });
+    const body = 'print -r -- "token=hunter2-secret" >/dev/null; print -r -- restored > "$2/r.md"\n';
+    const created = await request('POST', '/v1/collectors', { kind: 'script', name: 'Round trip', script: { source: { inline: 'console.log(1)' }, interpreter: 'node', manifest: '{"dependencies":{"dep":"1"}}' } });
+    assert.equal(created.status, 201);
+    const id = created.body.id as string;
+    const dir = created.body.status.script.dir as string;
+    // The script edited in the app (logged without its text), then allowed: packages install at once.
+    const saved = await request('PUT', `/v1/collectors/${id}/script`, { code: body, baseSha256: (await request('GET', `/v1/collectors/${id}/script`)).body.sha256 });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    const sha = (await request('GET', `/v1/collectors/${id}`)).body.status.currentSha256 as string;
+    assert.equal((await request('POST', `/v1/collectors/${id}/consent`, { sha256: sha })).status, 200);
+    for (let i = 0; i < 100 && !last('collector.install'); i += 1) await new Promise((r) => setTimeout(r, 20));
+    assert.equal(last('collector.install')?.outcome, 'ok');
+    assert.ok(fs.existsSync(path.join(dir, 'node_modules', 'dep')));
+    const savedEntry = last('collector.script_saved')!;
+    assert.equal(savedEntry.details?.scriptBytes, Buffer.byteLength(body));
+    assert.equal(String(savedEntry.details?.scriptSha256).length, 12);
+
+    assert.equal((await request('DELETE', `/v1/collectors/${id}`)).status, 200);
+    assert.ok(!fs.existsSync(dir), 'the folder left scripts/');
+    assert.ok(!fs.existsSync(path.join(state, 'collectors', 'trash')), 'no second trash');
+    const items = (await request('GET', '/v1/trash')).body.items as { id: string; details: Record<string, unknown> }[];
+    assert.equal(items.length, 1);
+    assert.equal(items[0]!.details.scriptFolder, true);
+    const kept = path.join(state, 'trash', `${items[0]!.id}.files`);
+    assert.equal(fs.readFileSync(path.join(kept, 'collector.js'), 'utf8'), body);
+    assert.ok(fs.existsSync(path.join(kept, 'package.json')));
+    assert.ok(!fs.existsSync(path.join(kept, 'node_modules')), 'installed packages are not kept');
+
+    const restored = await request('POST', `/v1/trash/${items[0]!.id}/restore`);
+    assert.equal(restored.status, 200, JSON.stringify(restored.body));
+    assert.ok(!fs.existsSync(kept), 'the trash copy is gone after a restore');
+    const back = (await request('GET', `/v1/collectors/${id}`)).body;
+    assert.equal(back.enabled, false);
+    assert.equal(back.status.needsConsent, true);
+    assert.equal(back.script.source.file, path.join(dir, 'collector.js'));
+    assert.equal(fs.readFileSync(back.script.source.file, 'utf8'), body);
+    assert.equal(back.status.currentSha256, sha, 'same bytes, same hash');
+    assert.equal(back.status.script.manifest.state, 'needsInstall');
+    assert.equal((await request('POST', `/v1/collectors/${id}/consent`, { sha256: sha })).status, 200);
+    for (let i = 0; i < 100 && (await core.getCollector(id))?.status?.script?.manifest?.state !== 'ready'; i += 1) await new Promise((r) => setTimeout(r, 20));
+    assert.equal((await core.getCollector(id))?.status?.script?.manifest?.state, 'ready', 'packages reinstalled on Allow');
+
+    // Run it: the restored bytes (a zsh body under node would fail, so switch the language and allow again).
+    await request('PATCH', `/v1/collectors/${id}`, { script: { interpreter: 'zsh' } });
+    const zsha = (await request('GET', `/v1/collectors/${id}`)).body.status.currentSha256 as string;
+    assert.equal((await request('POST', `/v1/collectors/${id}/consent`, { sha256: zsha })).status, 200);
+    assert.equal((await request('POST', `/v1/collectors/${id}/run`)).status, 200);
+    for (let i = 0; i < 200 && !fs.existsSync(path.join(queue, 'r.md')); i += 1) await new Promise((r) => setTimeout(r, 25));
+    assert.equal(fs.readFileSync(path.join(queue, 'r.md'), 'utf8').trim(), 'restored');
+    const text = fs.readFileSync(path.join(state, 'activity', 'activity.jsonl'), 'utf8');
+    assert.ok(!text.includes('hunter2'), 'no script text in the log');
   });
 
   test('a delete is refused when the trash copy cannot be written', async () => {

@@ -87,6 +87,11 @@ export interface CollectorsOptions {
   tmpDir?: string;
   /** v6: package install timeout (default 10 minutes). */
   installTimeoutMs?: number;
+  /**
+   * v6: Distill's trash keeps a deleted collector's script folder (the activity layer copies it before the
+   * delete), so deleting removes the folder. Without it (the service on its own) the folder is left in place.
+   */
+  trashKeepsScriptFolders?: boolean;
 }
 
 export type CollectorsService = Pick<DistillCore, CollectorsOwned> & {
@@ -103,7 +108,7 @@ export type CollectorsService = Pick<DistillCore, CollectorsOwned> & {
    * v6: put a deleted collector back from Distill's trash (activity-log.md). It keeps its id unless
    * that is taken, comes back off, and a script needs consent again.
    */
-  restoreCollector(record: unknown): Promise<Collector>;
+  restoreCollector(record: unknown, files?: string): Promise<Collector>;
 };
 
 interface Active {
@@ -1170,23 +1175,40 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       runs.remove(id);
       installs.remove(id);
       fs.rmSync(folders.testDir(id), { recursive: true, force: true });
-      // Its script folder goes to the trash (kept 30 days), never deleted at once.
-      try {
-        folders.trash(c, now());
-      } catch {
-        // the folder stays where it is
+      // Distill's trash copied the script folder before this call; without one the folder stays.
+      if (opts.trashKeepsScriptFolders) {
+        try {
+          folders.removeFolder(id);
+        } catch {
+          // the folder stays where it is
+        }
       }
       opts.emit({ type: 'collector.changed', collector: clone(c), deleted: true });
     },
-    async restoreCollector(record: unknown) {
+    async restoreCollector(record: unknown, files?: string) {
       const decoded = decodeCollector(record, now());
       if (!decoded) throw new CoreError('invalid_request', "The trash copy isn't a collector this build can read.");
       const c: Collector = { ...decoded, enabled: false, updatedAt: isoDate(now()) };
+      const oldID = c.id;
       if (find(c.id)) c.id = newCollectorID();
       if (c.script) {
-        // A restored script is reviewed again before it can run.
+        // A restored script is reviewed again before it can run; its packages install when it is allowed.
         delete c.script.allowedSha256;
         delete c.script.allowedAt;
+        delete c.script.allowedFiles;
+        const s = c.script;
+        try {
+          if ('inline' in s.source) {
+            // Deleted before scripts were files: it comes back as one.
+            s.source = { file: folders.writeScript(c.id, s.interpreter, Buffer.from(s.source.inline, 'utf8'), { migrated: true }), managed: true };
+          } else if (s.source.managed) {
+            const from = files ?? folders.legacyTrashFolder(oldID);
+            if (from) folders.restoreFolder(c.id, from, now());
+            s.source = { file: folders.managedPath(c.id, s.source.file), managed: true };
+          }
+        } catch (err) {
+          throw new CoreError('invalid_state', `Couldn't put the script back: ${(err as Error).message}`);
+        }
       }
       collectors.push(c);
       store.ticks.set(c.id, isoDate(now()));

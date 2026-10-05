@@ -521,27 +521,47 @@ describe('script files (v6)', () => {
     assert.equal((await env.svc.getCollector(c.id))!.status!.needsConsent, false);
   });
 
-  test('deleting moves the folder to the trash without installed packages; the trash keeps 30 days', async () => {
+  test('delete: the folder is removed only when Distill’s trash keeps it; restore puts a copy back; the old collectors/trash is pruned', async () => {
     const env = setup();
     const c = await env.svc.createCollector({ kind: 'script', script: { source: { inline: 'console.log(1)' }, interpreter: 'node', manifest: '{}' } });
     const dir = path.join(env.state, 'collectors', 'scripts', c.id);
-    fs.mkdirSync(path.join(dir, 'node_modules', 'x'), { recursive: true });
     await env.svc.deleteCollector(c.id);
-    assert.ok(!fs.existsSync(dir));
-    const trash = path.join(env.state, 'collectors', 'trash');
-    const [kept] = fs.readdirSync(trash);
-    assert.ok(kept!.startsWith(`${c.id}-`));
-    assert.equal(fs.readFileSync(path.join(trash, kept!, 'collector.js'), 'utf8'), 'console.log(1)');
-    assert.ok(fs.existsSync(path.join(trash, kept!, 'package.json')));
-    assert.ok(!fs.existsSync(path.join(trash, kept!, 'node_modules')));
-    assert.equal(JSON.parse(fs.readFileSync(path.join(trash, kept!, 'collector.json'), 'utf8')).collector.id, c.id);
+    assert.ok(fs.existsSync(dir), 'on its own the service never destroys a script');
 
+    const kept = env.make({ trashKeepsScriptFolders: true });
+    const d = await kept.createCollector({ kind: 'script', script: { source: { inline: 'console.log(2)' }, interpreter: 'node' } });
+    const ddir = path.join(env.state, 'collectors', 'scripts', d.id);
+    const copy = path.join(env.root, 'trash-copy');
+    fs.cpSync(ddir, copy, { recursive: true });
+    const { status: _s, ...record } = (await kept.getCollector(d.id))!;
+    await kept.deleteCollector(d.id);
+    assert.ok(!fs.existsSync(ddir));
+    const back = await kept.restoreCollector(record, copy);
+    assert.equal(back.id, d.id);
+    assert.equal(fs.readFileSync((back.script!.source as { file: string }).file, 'utf8'), 'console.log(2)');
+    assert.equal(back.status!.needsConsent, true);
+
+    // An earlier v6 build moved folders to collectors/trash: a restore still finds them, and they go after 30 days.
+    const legacy = path.join(env.state, 'collectors', 'trash', `${c.id}-20261004-090000`);
+    fs.mkdirSync(path.dirname(legacy), { recursive: true });
+    fs.renameSync(dir, legacy);
+    const { status: _t, ...cRecord } = c;
+    const restored = await kept.restoreCollector(cRecord);
+    assert.equal(fs.readFileSync((restored.script!.source as { file: string }).file, 'utf8'), 'console.log(1)');
     const folders = new ScriptFolders(path.join(env.state, 'collectors'));
     assert.deepEqual(folders.pruneTrash(new Date()), []);
     const old = new Date(Date.now() - (TRASH_KEEP_DAYS + 1) * 24 * 3600 * 1000);
-    fs.utimesSync(path.join(trash, kept!), old, old);
+    fs.utimesSync(legacy, old, old);
     assert.equal(folders.pruneTrash(new Date()).length, 1);
-    assert.deepEqual(fs.readdirSync(trash), []);
+  });
+
+  test('restoring a record from before script files writes its code to a file', async () => {
+    const env = setup();
+    const t = '2026-10-01T09:00:00Z';
+    const back = await env.svc.restoreCollector({ id: 'col-old', kind: 'script', name: 'Old', vaultPath: env.vault, enabled: true, schedule: { cron: '0 * * * *' }, script: { source: { inline: 'exit 0' }, interpreter: 'zsh', timeoutSeconds: 60, allowedSha256: 'x' }, createdAt: t, updatedAt: t });
+    assert.deepEqual(back.script!.source, { file: path.join(env.state, 'collectors', 'scripts', 'col-old', 'collector.zsh'), managed: true });
+    assert.equal(back.enabled, false);
+    assert.equal(back.script!.allowedSha256, undefined);
   });
 
   test('Test run: like a real run, into a scratch folder; never the queue, lastRun or the sidebar count', async () => {
