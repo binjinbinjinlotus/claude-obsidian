@@ -7,7 +7,8 @@ Downloads meeting notes from two places:
   2. Files in a Google Drive folder (default: "Meet Recordings")
 
 Google Docs are exported as Markdown, Sheets as CSV, Slides as PDF.
-Regular files (PDF, DOCX, ...) are downloaded as-is. Files already downloaded
+Regular files (PDF, DOCX, ...) are downloaded as-is. Meeting recordings
+(video and audio) are skipped unless you pass --include-recordings. Files already downloaded
 are skipped unless they changed since the last run.
 
 Secrets live in the macOS Keychain, not in files:
@@ -61,6 +62,10 @@ STATE_DIR = Path(
     os.environ.get("DISTILL_COLLECTOR_STATE")
     or Path.home() / "Library/Application Support/distill-meeting-notes"
 )
+
+# A Distill Test run writes into a scratch folder, so it must not mark files as
+# downloaded; otherwise the next real run would find nothing new.
+TEST_RUN = os.environ.get("DISTILL_RUN_TRIGGER") == "test"
 
 # Google-native types -> (export mime type, file extension)
 EXPORTS = {
@@ -129,7 +134,7 @@ def save_state(path, state):
     tmp.replace(path)  # atomic, so a killed run never leaves half a file
 
 
-def download(drive, file_id, out_dir, state, prefix=""):
+def download(drive, file_id, out_dir, state, prefix="", recordings=False):
     """Download or export one Drive file. Returns True if a file was written."""
     try:
         meta = drive.files().get(
@@ -143,6 +148,8 @@ def download(drive, file_id, out_dir, state, prefix=""):
         return False  # unchanged since last run
 
     mime = meta["mimeType"]
+    if not recordings and mime.startswith(("video/", "audio/")):
+        return False  # recordings are large and have no text to distill
     if mime in EXPORTS:
         export_mime, ext = EXPORTS[mime]
         request = drive.files().export_media(fileId=file_id, mimeType=export_mime)
@@ -173,7 +180,7 @@ def download(drive, file_id, out_dir, state, prefix=""):
     return True
 
 
-def from_calendar(cal, drive, since, until, match, out_dir, state):
+def from_calendar(cal, drive, since, until, match, out_dir, state, recordings):
     print("Calendar attachments:")
     page = None
     while True:
@@ -192,13 +199,13 @@ def from_calendar(cal, drive, since, until, match, out_dir, state):
                 if match and not re.search(match, att.get("title", ""), re.I):
                     continue
                 if att.get("fileId"):
-                    download(drive, att["fileId"], out_dir, state, prefix=f"{day} ")
+                    download(drive, att["fileId"], out_dir, state, prefix=f"{day} ", recordings=recordings)
         page = resp.get("nextPageToken")
         if not page:
             break
 
 
-def from_drive_folder(drive, folder_name, since, match, out_dir, state):
+def from_drive_folder(drive, folder_name, since, match, out_dir, state, recordings):
     print(f"Drive folder '{folder_name}':")
     escaped = folder_name.replace("\\", "\\\\").replace("'", "\\'")
     folders = drive.files().list(
@@ -223,7 +230,7 @@ def from_drive_folder(drive, folder_name, since, match, out_dir, state):
             for f in resp.get("files", []):
                 if match and not re.search(match, f["name"], re.I):
                     continue
-                download(drive, f["id"], out_dir, state, prefix=f"{f['modifiedTime'][:10]} ")
+                download(drive, f["id"], out_dir, state, prefix=f"{f['modifiedTime'][:10]} ", recordings=recordings)
             page = resp.get("nextPageToken")
             if not page:
                 break
@@ -238,6 +245,7 @@ def main():
     p.add_argument("--folder", default="Meet Recordings", help="Drive folder name to scan")
     p.add_argument("--out", default=None, help="output directory (default: Distill's queue folder)")
     p.add_argument("--match", default=None, help="regex; only files whose name matches")
+    p.add_argument("--include-recordings", action="store_true", help="also download video/audio recordings")
     p.add_argument("--import-client", metavar="CREDENTIALS_JSON", help="store the OAuth client in the Keychain")
     p.add_argument("--login", action="store_true", help="sign in to Google in the browser (one time)")
     args = p.parse_args()
@@ -263,10 +271,13 @@ def main():
     since = until - dt.timedelta(days=args.days)
 
     try:
-        from_calendar(cal, drive, since, until, args.match, out_dir, state)
-        from_drive_folder(drive, args.folder, since, args.match, out_dir, state)
+        from_calendar(cal, drive, since, until, args.match, out_dir, state, args.include_recordings)
+        from_drive_folder(drive, args.folder, since, args.match, out_dir, state, args.include_recordings)
     finally:
-        save_state(state_path, state)
+        if TEST_RUN:
+            print("Test run: not remembering these files, so a real run downloads them again.")
+        else:
+            save_state(state_path, state)
 
 
 if __name__ == "__main__":

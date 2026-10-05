@@ -894,6 +894,8 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       DISTILL_QUEUE_DIR: queueDir,
       DISTILL_COLLECTOR_ID: c.id,
       DISTILL_RUN_ID: run.id,
+      // now | schedule | catchup | test: a Test run lets a script skip saving its own "already fetched" state.
+      DISTILL_RUN_TRIGGER: run.trigger,
     });
     const output = throttledOutput(c.id, run.id);
     try {

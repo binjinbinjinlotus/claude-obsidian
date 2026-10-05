@@ -17,6 +17,15 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Scripts are told the run's trigger: `DISTILL_RUN_TRIGGER`.** Spec:
+  [Collectors](collectors.md) → Script contract, Test run. The owner Test-ran
+  the meeting-notes script. Its 30 notes went to the test folder, as designed,
+  but the script also saved them in its own "already downloaded" file. A real
+  run would then have found nothing new. Scripts now get
+  `DISTILL_RUN_TRIGGER` (`now`, `schedule`, `catchup` or `test`), so a script
+  can skip saving its state on a Test run. `apps/scripts/meeting-notes` does
+  that now, and it also skips video and audio recordings by default (that
+  test run downloaded 1.4 GB of them).
 - **JavaScript and TypeScript collectors run on Distill's own Node, and npm
   installs never change `package.json` (core built).** Spec:
   [Collectors](collectors.md) → "Languages" ("Which Node") and "Packages".

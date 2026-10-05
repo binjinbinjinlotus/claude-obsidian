@@ -235,7 +235,7 @@ job.
 | What | Value |
 | --- | --- |
 | argv | `$1` = vault path, `$2` = queue folder path (absolute, no trailing slash) |
-| env | `DISTILL_VAULT`, `DISTILL_QUEUE_DIR` (same values), `DISTILL_COLLECTOR_ID`, `DISTILL_RUN_ID`; the user's login environment otherwise; no Distill secrets |
+| env | `DISTILL_VAULT`, `DISTILL_QUEUE_DIR` (same values), `DISTILL_COLLECTOR_ID`, `DISTILL_RUN_ID`, `DISTILL_RUN_TRIGGER` (`now`, `schedule`, `catchup` or `test`); the user's login environment otherwise; no Distill secrets |
 | working directory | a fresh temporary folder (`$TMPDIR/distill-run-<id>`), deleted after the run |
 | stdin | closed (`/dev/null`) |
 | user | the logged-in user, with the user's permissions (never elevated) |
@@ -500,7 +500,7 @@ change, delete or allow a collector.
   folder. Only an old inline record that could not be moved to a file (the
   write failed) is still written to a temp file with exactly the hashed
   bytes (`collector.zsh`, `.py`, or `.mjs` for node). The environment is the
-  core's, minus every `DISTILL_*` variable, plus the four documented ones.
+  core's, minus every `DISTILL_*` variable, plus the five documented ones.
   The working folder is `$TMPDIR/distill-run-<run-id>-XXXX`, deleted after
   the run. A missing queue folder fails the run before the script starts
   (`queueMissing`). After a timeout or Stop the leader gets SIGTERM, the
@@ -751,6 +751,9 @@ A Test run executes the script exactly like a real run (same consent,
 interpreter, packages, environment, timeout, Stop and output capture), but
 `$2` and `DISTILL_QUEUE_DIR` are a scratch folder Distill owns,
 `<state>/collectors/test-runs/<id>/`, so nothing feeds the next batch.
+`DISTILL_RUN_TRIGGER=test` tells the script it is a Test run, so a script
+that remembers what it already fetched (its own state file) can skip saving
+it; otherwise a Test run makes the next real run find nothing new.
 
 - `POST /v1/collectors/:id/test` → `{run}` (trigger `test`); scripts only.
   Busy like Run now; it waits for an install; it doesn't wait for a batch.

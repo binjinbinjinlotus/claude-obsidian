@@ -13,6 +13,7 @@ add them to your vault. It looks in two places:
 | Google Sheets | CSV (`.csv`) |
 | Google Slides | PDF (`.pdf`) |
 | Anything else (PDF, DOCX, …) | The file as it is |
+| Meeting recordings (video, audio) | Skipped, unless you pass `--include-recordings` |
 
 It downloads each file once. A file comes down again only if it has changed in
 Google since the last run.
@@ -167,6 +168,7 @@ nothing downloads, because nothing changed.
 | `--days N` | `7` | How far back to look |
 | `--folder NAME` | `Meet Recordings` | Drive folder to scan, by name |
 | `--match REGEX` | none | Only files whose name matches, e.g. `"Notes\|Minutes"` |
+| `--include-recordings` | off | Also download video and audio recordings (often hundreds of MB each) |
 | `--import-client FILE` | | Store the OAuth client in the Keychain |
 | `--login` | | Sign in in the browser |
 
@@ -196,6 +198,17 @@ queue.
 3. Allow it when Distill shows the script for review.
    - Distill remembers your OK for this exact version of the file. If you edit
      the script, it asks again.
+
+**Use your own file, or paste a copy.** Choosing the file keeps the collector
+on this file, so edits here reach it, after you allow the new version.
+Pasting the code into Distill's editor gives the collector its own copy, so
+later edits here don't reach it until you paste them again.
+
+**Test run vs Run now.** Test run writes into a scratch folder that Distill
+owns, so nothing reaches the queue. That's on purpose: it lets you see what
+the script would add. The script doesn't remember files from a test run
+(Distill tells it with `DISTILL_RUN_TRIGGER=test`), so the next **Run now**
+or scheduled run downloads them into the queue.
 
 How Distill runs it:
 

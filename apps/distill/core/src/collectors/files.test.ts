@@ -704,7 +704,7 @@ describe('script files (v6)', () => {
 
   test('Test run: like a real run, into a scratch folder; never the queue, lastRun or the sidebar count', async () => {
     const env = setup();
-    const code = 'print -r -- "$DISTILL_QUEUE_DIR" > "$2/where.txt"; print -r -- one > "$2/a.md"; [[ -f "$2/old.md" ]] && print stale; exit ${FAIL:-0}';
+    const code = 'print -r -- "$DISTILL_QUEUE_DIR" > "$2/where.txt"; print -r -- "$DISTILL_RUN_TRIGGER" > "$2/trigger.txt"; print -r -- one > "$2/a.md"; [[ -f "$2/old.md" ]] && print stale; exit ${FAIL:-0}';
     const c = await env.svc.createCollector({ kind: 'script', script: { source: { inline: code }, interpreter: 'zsh' } });
     await env.svc.testCollector(c.id);
     await env.svc.whenIdle();
@@ -720,7 +720,8 @@ describe('script files (v6)', () => {
     const run = (await env.svc.listCollectorRuns(c.id))[0]!;
     assert.equal(run.result, 'success', JSON.stringify(run));
     assert.equal(run.outputDir, scratch);
-    assert.deepEqual(run.filesAdded, ['a.md', 'where.txt']);
+    assert.deepEqual(run.filesAdded, ['a.md', 'trigger.txt', 'where.txt']);
+    assert.equal(fs.readFileSync(path.join(scratch, 'trigger.txt'), 'utf8').trim(), 'test', 'DISTILL_RUN_TRIGGER tells the script it is a Test run');
     assert.equal(fs.readFileSync(path.join(scratch, 'where.txt'), 'utf8').trim(), scratch, '$2 and DISTILL_QUEUE_DIR are the scratch folder');
     assert.ok(!run.stdoutTail!.includes('stale'), 'the previous test output was cleared first');
     assert.deepEqual(fs.readdirSync(env.queue), [], 'nothing reached the queue');
