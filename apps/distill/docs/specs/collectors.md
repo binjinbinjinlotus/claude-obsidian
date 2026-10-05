@@ -592,18 +592,29 @@ CollectorsScriptFiles (frames T–Z2); Mac UI not built.
 - **Language change** renames the managed file to the new extension
   (TypeScript needs `.ts`); a file already holding that name is kept as
   `<name>.old-<time>`. It clears consent, as before.
-- **Delete:** the folder moves to `<state>/collectors/trash/<id>-<time>/`
-  without `node_modules`/`.venv`, with the collector's record saved as
-  `collector.json` beside the script. Trash folders older than 30 days are
-  removed when the core starts. There is no Restore button yet (the
-  activity log teammate may add a shared trash; see Decisions).
+- **Delete → Distill's trash** (one trash, [Activity log and
+  trash](activity-log.md)): before the delete, the trash copies the folder
+  without `node_modules`/`.venv` to `<state>/trash/<trash-id>.files/` next
+  to the record (`<trash-id>.json`); then the collector removes its folder.
+  The item lists `scriptFolder: true`, counts the folder in `sizeBytes`, and
+  goes after 30 days (or by the count and size caps) with its folder.
+- **Restore** (`POST /v1/trash/:id/restore`) copies the folder back to
+  `collectors/scripts/<id>/` (a new id when the old one is taken) and
+  re-points the record. The collector comes back off with consent cleared;
+  allowing it installs its packages again. A record from before script
+  files (inline code) comes back as a file. A folder an earlier v6 build
+  moved to `<state>/collectors/trash/` is still found on restore; that
+  folder isn't written any more and its leftovers go after 30 days.
+- The collectors service on its own (no activity layer, as in its unit
+  tests) leaves the folder in place on delete: nothing destroys a script
+  without a copy.
 
 ### Languages
 
 | Language | `interpreter` | File | Runs with |
 | --- | --- | --- | --- |
 | zsh | `zsh` | `collector.zsh` | `zsh` |
-| Python | `python3` | `collector.py` | the folder's `.venv/bin/python3` once packages were installed, else `python3` |
+| Python | `python3` | `collector.py` | the folder's `.venv/bin/python3` once packages were installed (a symlink to the same `python3`), else `python3` |
 | JavaScript | `node` | `collector.js` | `node` |
 | TypeScript | `typescript` | `collector.ts` | `node` with its built-in type stripping |
 
@@ -623,14 +634,26 @@ has `tsx` installed (a devDependency the user adds), the core runs
   for Python, in the script's folder; zsh has none. Packages are for scripts
   Distill keeps, not the user's own file (Node resolves packages from the
   script's location, so a folder elsewhere wouldn't be found).
-- **Install** (`POST …/install`, and automatically before a run when the
-  manifest changed since the last successful install or `node_modules` /
-  `.venv` is missing):
+- **When packages install** (the owner: "all package install should be
+  completed when adding the script"):
+  - **On Allow:** allowing a version whose packages aren't installed for
+    its manifest installs them at once (trigger `allow`). That covers adding
+    a script (add → review and allow → installing → ready or failed) and
+    OK after a manifest change. The collector shows `state: installing`,
+    then `ready` or `failed`, before its first scheduled run.
+  - **Install** (`POST …/install`, trigger `manual`), also with `{clean:
+    true}`.
+  - **Safety net before a run** (trigger `beforeRun`): packages went missing
+    (`node_modules` deleted by hand). An install of this exact manifest that
+    already failed isn't retried by every run: the run fails at once
+    (`installFailed`) until Install or a new manifest.
+- **How:**
   - `package.json`: `npm install --no-audit --no-fund`, with the `npm` next to
     the `node` scripts run with (so nvm versions match), else `npm` on PATH.
-  - `requirements.txt`: `python3 -m venv .venv` when there is no venv, then
-    `.venv/bin/python3 -m pip install --disable-pip-version-check -r
-    requirements.txt`.
+  - `requirements.txt`: `python3 -m venv --symlinks .venv` only when there
+    is no working venv, then `.venv/bin/python3 -m pip install
+    --disable-pip-version-check -r requirements.txt`. A manifest change
+    installs into the existing venv; never `--copies`, never `--clear`.
   - cwd is the script's folder; the environment is a run's (login PATH, no
     `DISTILL_*` variables, plus `npm_config_update_notifier=false`).
   - Timeout 10 minutes; Stop (`POST …/install/stop`) ends it the way Stop
@@ -641,14 +664,56 @@ has `tsx` installed (a devDependency the user adds), the core runs
   - `{clean: true}` removes `node_modules` / `.venv` first.
   - The newest install is kept in `<state>/collectors/installs/<id>.json`
     with the manifest hash of the last successful one.
-- **One operation per collector:** Run now and Install refuse (`busy`) while
-  the other runs; a scheduled tick during an install is logged "Skipped ·
-  packages were being installed". Installs don't wait for a batch (they
-  don't touch the queue or the vault).
+- **One operation per collector:** Install refuses (`busy`) while a run
+  goes; Run now, Test run and a scheduled tick during an install queue the
+  run (`waiting: 'install'`), so "Allow and run" works. Installs don't wait
+  for a batch (they don't touch the queue or the vault).
 - A run that installed first carries `installId`; when that install fails
   the run is `failed`, code `installFailed`, and doesn't start the script.
   A failed install with the change still pending raises `needsAttention`.
 - An empty manifest (no packages) needs no install.
+- `status.script.manifest.state`: `none` (no packages), `ready`,
+  `installing`, `failed` (the last install of this manifest failed),
+  `needsInstall`.
+
+### Python venv and the Keychain
+
+The owner accepts one Keychain prompt, not one on every reinstall or
+restart. macOS asks again when the program reading an item changes. A venv
+made with `--symlinks` has `.venv/bin/python3 → python3.13 → the
+framework's python3.13`, the same binary as the login shell's `python3`
+(checked by a test with a real venv), so there may be no prompt at all.
+
+- **Never touch the venv:** core start, the inline migration, a state-dir
+  re-point, an app or core reinstall, Run now and a manifest change (it
+  installs into the same venv). Tested: same inode and mtime after a
+  restart, a re-point and a second install.
+- **Can bring a prompt:** upgrading or reinstalling Python (the binary
+  changes for every program that uses it); a clean reinstall only when
+  Python's own path changed since the venv was made; a new collector or a
+  restored one (its own venv, but the same binary, so usually no prompt).
+- Distill's own secrets go through `/usr/bin/security`, which an app
+  reinstall doesn't change.
+
+### Test run
+
+A Test run executes the script exactly like a real run (same consent,
+interpreter, packages, environment, timeout, Stop and output capture), but
+`$2` and `DISTILL_QUEUE_DIR` are a scratch folder Distill owns,
+`<state>/collectors/test-runs/<id>/`, so nothing feeds the next batch.
+
+- `POST /v1/collectors/:id/test` → `{run}` (trigger `test`); scripts only.
+  Busy like Run now; it waits for an install; it doesn't wait for a batch.
+- The run records `outputDir` and the names it produced in `filesAdded`;
+  the app lists them with Reveal in Finder.
+- **Kept until the next test run** (the folder is emptied when the next one
+  starts), removed when the collector is deleted, and pruned after 7 days at
+  core start.
+- Not a scheduled run: it is in the run history but never sets
+  `status.lastRun`, the sidebar count or the schedule, and the Folder
+  ledger is never involved (scripts aren't deduped). `status.script.lastTestRun`
+  is the newest one.
+- Logged as `collector.test_run`.
 
 ### Consent with packages
 
@@ -675,12 +740,16 @@ has `tsx` installed (a devDependency the user adds), the core runs
 | `POST /v1/collectors/:id/install {clean?}` | `installCollectorPackages(id, {clean})` | `{install}` (running); 409 without consent or while busy |
 | `POST /v1/collectors/:id/install/stop` | `stopCollectorInstall(id)` | `{install}` or `{install: null}` |
 | `GET /v1/collectors/:id/install` | `getCollectorInstall(id)` | `{install}` with `outputTail`, or `{install: null}` |
+| `POST /v1/collectors/:id/test` | `testCollector(id)` | `{run}` (trigger `test`, `outputDir`) |
 
 - `NewCollectorInput.script.manifest` sets the manifest at creation.
 - `Collector.status.script`: `path`, `dir`, `managed`, `manifest`
   (`name`, `path`, `exists`, `hasDependencies`, `packageCount`, `sha256`,
   `installedSha256`, `needsInstall`, `installing`, `lastInstall` without
-  output) and `changes`.
+  output, `state`), `changes` and `lastTestRun`.
+- `CollectorInstall.trigger`: `manual`, `allow`, `beforeRun`.
+  `CollectorRun.waiting` adds `install`; `CollectorTrigger` adds `test`;
+  `CollectorRun.outputDir` (test runs).
 - Events: `collector.install.started {install}`, `collector.install.output
   {collectorId, installId, text}` (throttled by the process, at most 16 KB
   each), `collector.install.finished {install}`.
@@ -790,10 +859,8 @@ Open from v6 (script files and packages), for the owner:
 - Packages only for scripts Distill keeps. Should Python packages also work
   for the user's own file (its `requirements.txt` and `.venv` in Distill's
   folder for it)? Node can't do that cleanly.
-- A Python `.venv` means the script runs as `.venv/bin/python3`. A script
-  that reads the Keychain (the meeting-notes script) may get macOS's
-  Keychain prompt again once; choose Always Allow.
-- A "test run" that writes into a scratch folder instead of the queue, for
-  trying a script without feeding the next batch? Not built.
-- Restore from the trash in the app, or leave it to Finder until the
-  activity log's trash exists?
+- Answered 2026-10-04: one extra Keychain prompt is fine, not one per
+  reinstall or restart (see "Python venv and the Keychain"); packages
+  install when a script is added; Test run built; restore through the one
+  trash (Activity). `--ignore-scripts` stays open: npm install scripts run
+  under the manifest OK.

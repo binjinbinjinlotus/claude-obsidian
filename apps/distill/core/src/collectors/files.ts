@@ -10,8 +10,8 @@
  * manifest exists, to the manifest's bytes too (installing packages runs third-party code). Without a
  * manifest the hash is exactly sha256(script), so collectors allowed before v6 stay allowed.
  *
- * Deleting a collector moves its folder to <state>/collectors/trash/<id>-<time>/ (installed packages are
- * dropped, the collector's record is saved as collector.json next to the script) and keeps it 30 days.
+ * Deleting a collector: Distill's trash (activity/trash.ts) copies the folder without installed packages
+ * next to the record, then the folder is removed; Restore puts it back here.
  *
  * Spec: apps/distill/docs/specs/collectors.md ("Script files").
  */
@@ -32,6 +32,7 @@ export const MANIFEST: Record<CollectorInterpreter, CollectorManifestName | null
 /** Installed packages, per manifest: removed by a clean install and before a folder goes to the trash. */
 export const PACKAGES_DIR: Record<CollectorManifestName, string> = { 'package.json': 'node_modules', 'requirements.txt': '.venv' };
 export const TRASH_KEEP_DAYS = 30;
+export const TEST_KEEP_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FILE_MODE = 0o600;
 
@@ -95,8 +96,36 @@ export class ScriptFolders {
     return path.join(this.dir, 'scripts');
   }
 
+  /** Legacy: <state>/collectors/trash from an earlier v6 build. Nothing new goes here (Distill's trash keeps script folders). */
   get trashDir(): string {
     return path.join(this.dir, 'trash');
+  }
+
+  /** v6: a test run's scratch folder, <state>/collectors/test-runs/<id>; emptied at the start of each test run. */
+  testDir(id: string): string {
+    const root = path.join(this.dir, 'test-runs');
+    const f = path.join(root, safeID(id));
+    if (!isInside(f, root)) throw new Error(`Bad collector id ${id}.`);
+    return f;
+  }
+
+  /** Remove test-run folders not touched for 7 days. */
+  pruneTestRuns(now: Date): void {
+    const root = path.join(this.dir, 'test-runs');
+    let names: string[] = [];
+    try {
+      names = fs.readdirSync(root);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      const p = path.join(root, name);
+      try {
+        if (isInside(p, root) && fs.statSync(p).mtimeMs < now.getTime() - TEST_KEEP_DAYS * DAY_MS) fs.rmSync(p, { recursive: true, force: true });
+      } catch {
+        // gone
+      }
+    }
   }
 
   /** <state>/collectors/scripts/<id>; never outside scripts/ whatever the id holds. */
@@ -193,31 +222,36 @@ export class ScriptFolders {
     fs.rmSync(target, { recursive: true, force: true });
   }
 
-  /**
-   * Move a deleted collector's folder to the trash: installed packages dropped, its record saved as
-   * collector.json. Returns the trash folder, or undefined when it had no folder.
-   */
-  trash(c: Collector, now: Date): string | undefined {
-    const folder = this.folder(c.id);
-    if (!fs.existsSync(folder)) return undefined;
-    for (const name of Object.values(PACKAGES_DIR)) {
-      const p = path.join(folder, name);
-      if (isInside(p, folder)) fs.rmSync(p, { recursive: true, force: true });
-    }
-    const { status: _status, ...record } = c;
-    try {
-      writeFileAtomic(path.join(folder, 'collector.json'), JSON.stringify({ deletedAt: isoDate(now), collector: record }, null, 2) + '\n', FILE_MODE);
-    } catch {
-      // the script itself matters more than the note
-    }
-    fs.mkdirSync(this.trashDir, { recursive: true, mode: 0o700 });
-    let dest = path.join(this.trashDir, `${safeID(c.id)}-${stamp(now)}`);
-    for (let n = 2; fs.existsSync(dest); n += 1) dest = path.join(this.trashDir, `${safeID(c.id)}-${stamp(now)}-${n}`);
-    fs.renameSync(folder, dest);
-    return dest;
+  /** Remove a deleted collector's folder (Distill's trash, activity/trash.ts, keeps the copy). */
+  removeFolder(id: string): void {
+    fs.rmSync(this.folder(id), { recursive: true, force: true });
   }
 
-  /** Remove trash folders older than 30 days (by their modification time: when they were moved there). */
+  /**
+   * Restore: put a trash copy of a script folder back as this collector's folder. A folder already
+   * there is kept as `<folder>.old-<time>`, never overwritten.
+   */
+  restoreFolder(id: string, from: string, now: Date): string {
+    const target = this.folder(id);
+    fs.mkdirSync(this.scriptsDir, { recursive: true, mode: 0o700 });
+    if (fs.existsSync(target)) fs.renameSync(target, `${target}.old-${stamp(now)}`);
+    fs.cpSync(from, target, { recursive: true, verbatimSymlinks: true });
+    return target;
+  }
+
+  /** A folder an earlier v6 build moved to <state>/collectors/trash on delete (the newest for this id), for restores. */
+  legacyTrashFolder(id: string): string | undefined {
+    try {
+      const prefix = `${safeID(id)}-`;
+      const names = fs.readdirSync(this.trashDir).filter((n) => n.startsWith(prefix)).sort();
+      const last = names.at(-1);
+      return last ? path.join(this.trashDir, last) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Legacy (an earlier v6 build's own trash): remove its folders after 30 days. New deletes use Distill's trash. */
   pruneTrash(now: Date): string[] {
     const removed: string[] = [];
     let names: string[] = [];

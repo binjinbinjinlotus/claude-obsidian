@@ -17,6 +17,52 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Collectors v6 follow-up: install on add, Test run, venv and Keychain,
+  one trash (core built; boards updated, unpublished).** Specs:
+  [Collectors](collectors.md) → "Script files and packages (v6)",
+  [Activity log and trash](activity-log.md) → "Recovery". Supersedes, from
+  the v6 entry below: installs only on Install / before a run, and the
+  collectors' own `collectors/trash/`.
+  - **Packages install on Allow** (adding a script, or OK after a manifest
+    change), trigger `allow`; install before a run stays only as a safety
+    net for missing packages. A failed install of a manifest is **not
+    retried by every run** (my call): the run fails at once until Install
+    or a new manifest, so a broken install doesn't run every hour.
+  - **Run now / Test run / a scheduled tick during an install wait for it**
+    (`waiting: 'install'`) instead of `busy` or "Skipped", so "Allow and
+    run" works in one click.
+  - **Venv:** `python3 -m venv --symlinks`, created only when there is no
+    working venv; a manifest change installs into it; nothing on start,
+    migration, re-point or reinstall touches it. Tested with a real venv
+    (its python resolves to the base binary; inode and mtime unchanged).
+  - **Test run:** scratch folder `<state>/collectors/test-runs/<id>/`,
+    **kept until the next test run** (emptied when it starts), deleted with
+    the collector, pruned after 7 days. In the run history with trigger
+    `test`, never `lastRun` or the sidebar count. In the app: a quiet
+    "Test run" link before Run now on script collectors (Run now stays the
+    one button; also second in the script ⋯ menu), and its result card is
+    blue-grey so it never reads as a real run (board CollectorsScriptFiles,
+    frame V2).
+  - **One trash:** Distill's trash copies a script collector's folder
+    (without `node_modules`/`.venv`) as `<trash-id>.files/` before the
+    delete; Restore copies it back and re-points the record; the 30-day,
+    200-item, 50 MB policy covers both. `collectors/trash/` is no longer
+    written; leftovers from the earlier build are found on restore and
+    pruned after 30 days. The collectors service alone never removes a
+    script folder.
+  - **Chats deleted while Keep history is off go to the trash for 24 hours**
+    (owner); actions deleted forever and jobs removed from the list stay
+    out.
+  - **Activity entries:** `collector.script_saved` (parts, sizes, hash
+    prefixes), `collector.install` (from the finished event),
+    `collector.install_stopped`, `collector.test_run`; never script text,
+    manifests or install output.
+  - **Activity log rotation keeps an empty live file** after rotating, which
+    fixed a size test that depended on entry sizes.
+  - `/v1/activity` and `/v1/trash` shapes are unchanged; trash items may
+    carry `details.scriptFolder: true` and `details.reason:
+    'keep-history-off'`, and `expiresAt` can be 24 hours out.
+
 - **Activity log: the owner's answers.** Spec: [Activity log and
   trash](activity-log.md).
   - The Activity design under History (canvas v66) is approved; build the Mac

@@ -351,6 +351,71 @@
     "summary": "Off",
     "statusKind": "off"
    }
+  ],
+  "collectors-files-test": [
+   {
+    "kind": "folder",
+    "title": "Distill Inbox",
+    "summary": "Every hour \u00b7 copied 3 at 9:00 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "script",
+    "title": "Pocket export",
+    "summary": "Test run \u00b7 2 files, not queued",
+    "statusKind": "on"
+   },
+   {
+    "kind": "script",
+    "title": "Slack saved items",
+    "summary": "Every hour \u00b7 added 3 at 9:30 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "script",
+    "title": "Meeting notes",
+    "summary": "Every 15 min \u00b7 added 1 at 10:30 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "folder",
+    "title": "Scans",
+    "summary": "Off",
+    "statusKind": "off"
+   }
+  ],
+  "collectors-files-install-failed": [
+   {
+    "kind": "folder",
+    "title": "Distill Inbox",
+    "summary": "Every hour \u00b7 copied 3 at 9:00 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "script",
+    "title": "Pocket export",
+    "summary": "Daily at 7:00 AM \u00b7 added 4 at 7:00 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "script",
+    "title": "Slack saved items",
+    "summary": "Couldn\u2019t install packages",
+    "statusKind": "error",
+    "status": "Failed"
+   },
+   {
+    "kind": "script",
+    "title": "Meeting notes",
+    "summary": "Every 15 min \u00b7 added 1 at 10:30 AM",
+    "statusKind": "on"
+   },
+   {
+    "kind": "folder",
+    "title": "Scans",
+    "summary": "Off",
+    "statusKind": "off"
+   }
   ]
  },
  "bases": {
@@ -739,7 +804,7 @@
   {
    "id": "collectors-script-installing",
    "base": "collectors",
-   "label": "X \u00b7 Installing before the run: live npm output in the status card, Stop",
+   "label": "X \u00b7 Allow and run while packages install: the install first (live npm output, Stop); the run waits for it",
    "set": {
     "list": {
      "list": "collectors-files-installing",
@@ -804,9 +869,9 @@
   {
    "id": "collectors-card-run-now",
    "label": "Run now, every kind and state",
-   "caption": "Same place in the title row for every collector. Running: Stop. Needs your OK: Allow and run (allows the version shown, then runs it once). Never hidden.",
+   "caption": "Same place in the title row for every collector. Running or installing: Stop. Needs your OK: Allow and run. During an install Run now waits for it. Scripts add a quiet Test run before it. Never hidden.",
    "card": {
-    "height": 470,
+    "height": 560,
     "bg": "#E4E1DB",
     "pad": "18px",
     "align": "stretch"
@@ -818,7 +883,7 @@
   {
    "id": "collectors-card-script-menu",
    "label": "\u22ef menu, script",
-   "caption": "Run now comes first in every \u22ef menu. A script Distill keeps adds its file and packages.",
+   "caption": "Run now comes first in every \u22ef menu; scripts add Test run under it. A script Distill keeps adds its file and packages.",
    "card": {
     "height": 470,
     "bg": "#E4E1DB",
@@ -832,15 +897,102 @@
   {
    "id": "collectors-card-delete",
    "label": "Delete a script collector",
-   "caption": "Nothing is lost at once: the folder can be put back from the trash for 30 days.",
+   "caption": "One trash: the record and the script folder go together, and Restore puts both back (off; its packages install when you allow it).",
    "card": {
-    "height": 220,
+    "height": 230,
     "bg": "#E4E1DB",
     "pad": "22px",
     "align": "stretch"
    },
    "body": {
     "frag": "card-delete"
+   }
+  },
+  {
+   "id": "collectors-script-test-run",
+   "base": "collectors",
+   "label": "V2 \u00b7 Test run: ran like a real run into Distill\u2019s test folder; the files it made, Reveal in Finder; nothing in the queue",
+   "set": {
+    "list": {
+     "list": "collectors-files-test",
+     "row": "CollectorRow",
+     "selected": 1
+    },
+    "detail": {
+     "frag": "script-test-run"
+    }
+   }
+  },
+  {
+   "id": "collectors-script-install-failed",
+   "base": "collectors",
+   "label": "X2 \u00b7 Couldn\u2019t install packages: the output, Install again; Run now waits until the packages install",
+   "set": {
+    "sidebar.collectorsAlert": "1",
+    "list": {
+     "list": "collectors-files-install-failed",
+     "row": "CollectorRow",
+     "selected": 2
+    },
+    "detail": {
+     "frag": "script-install-failed"
+    }
+   }
+  },
+  {
+   "id": "collectors-card-add-1",
+   "label": "1 \u00b7 Add",
+   "caption": "Step 2 of Add: the script and its package.json, kept by Distill in the collector\u2019s folder.",
+   "card": {
+    "bg": "#E4E1DB",
+    "pad": "18px",
+    "align": "stretch",
+    "height": 640
+   },
+   "body": {
+    "frag": "card-add-1"
+   }
+  },
+  {
+   "id": "collectors-card-add-2",
+   "label": "2 \u00b7 Review and allow",
+   "caption": "One OK covers the script and package.json; nothing runs or installs before it.",
+   "card": {
+    "bg": "#E4E1DB",
+    "pad": "18px",
+    "align": "stretch",
+    "height": 640
+   },
+   "body": {
+    "frag": "card-add-2"
+   }
+  },
+  {
+   "id": "collectors-card-add-3",
+   "label": "3 \u00b7 Installing",
+   "caption": "Right after Allow, with live output and Stop; the first run waits.",
+   "card": {
+    "bg": "#E4E1DB",
+    "pad": "18px",
+    "align": "stretch",
+    "height": 640
+   },
+   "body": {
+    "frag": "card-add-3"
+   }
+  },
+  {
+   "id": "collectors-card-add-4",
+   "label": "4 \u00b7 Ready",
+   "caption": "Installed before its first scheduled run; failure looks like X2 above.",
+   "card": {
+    "bg": "#E4E1DB",
+    "pad": "18px",
+    "align": "stretch",
+    "height": 640
+   },
+   "body": {
+    "frag": "card-add-4"
    }
   }
  ],
@@ -943,7 +1095,7 @@
    "file": "CollectorsScriptFiles.dc.html",
    "title": "Collectors \u00b7 script files, packages and Run now",
    "heading": "Collectors \u00b7 script files, packages, Run now",
-   "intro": "A script Distill keeps is now <b>a real file</b>, not code inside collectors.json: each collector gets its own folder (<code>~/Library/Application Support/Distill/collectors/scripts/&lt;id&gt;/</code>) with <code>collector.zsh</code>, <code>.py</code>, <code>.js</code> or <code>.ts</code>, so it can be found, edited in any editor, backed up and versioned. <b>Reveal in Finder</b> and <b>Open in editor</b> sit next to it. Languages: zsh, Python, JavaScript and TypeScript (run on your Node with the types stripped). <b>Packages</b>: package.json (npm, into node_modules/) for JavaScript and TypeScript, requirements.txt (pip, into .venv/) for Python, all inside that folder. Your OK covers the script and its manifest, so a changed package list asks first, like a changed script. <b>Run now</b> is in the same place for every collector and state (Stop while running, Allow and run while it needs your OK), first in every \u22ef menu, and always on the selected list row. A manual run shows its result and last output lines in the status card at once, so trying a script after an edit takes one click. Your own file still works: Distill runs it where it is.",
+   "intro": "A script Distill keeps is now <b>a real file</b>, not code inside collectors.json: each collector gets its own folder (<code>~/Library/Application Support/Distill/collectors/scripts/&lt;id&gt;/</code>) with <code>collector.zsh</code>, <code>.py</code>, <code>.js</code> or <code>.ts</code>, so it can be found, edited in any editor, backed up and versioned. <b>Reveal in Finder</b> and <b>Open in editor</b> sit next to it. Languages: zsh, Python, JavaScript and TypeScript (run on your Node with the types stripped). <b>Packages</b>: package.json (npm, into node_modules/) for JavaScript and TypeScript, requirements.txt (pip, into .venv/) for Python, all inside that folder. Your OK covers the script and its manifest, so a changed package list asks first, like a changed script. <b>Packages install when you allow the script</b> (adding it, or after a manifest change), so a collector is ready before its first run; a run started during an install waits for it. <b>Run now</b> is in the same place for every collector and state (Stop while running, Allow and run while it needs your OK), first in every \u22ef menu, and always on the selected list row. A manual run shows its result and last output lines in the status card at once. <b>Test run</b> (scripts only, a quiet link before Run now) runs it exactly the same way but into Distill\u2019s test folder, so trying an edit never feeds the next batch. Your own file still works: Distill runs it where it is.",
    "width": 2520,
    "sections": [
     {
@@ -956,20 +1108,40 @@
     {
      "row": [
       "collectors-script-manual-run",
-      "collectors-script-manifest-changed"
+      "collectors-script-test-run"
      ],
      "style": "display: flex; gap: 40px; align-items: flex-start"
     },
     {
      "row": [
-      "collectors-script-installing",
+      "collectors-script-manifest-changed",
+      "collectors-script-installing"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "row": [
+      "collectors-script-install-failed",
       "collectors-script-external"
      ],
      "style": "display: flex; gap: 40px; align-items: flex-start"
     },
     {
+     "title": "Adding a script with packages",
+     "sub": "Add \u2192 review and allow \u2192 installing \u2192 ready, before the first scheduled run. A failed install is X2 above."
+    },
+    {
+     "grid": [
+      "collectors-card-add-1",
+      "collectors-card-add-2",
+      "collectors-card-add-3",
+      "collectors-card-add-4"
+     ],
+     "cols": 4
+    },
+    {
      "title": "Narrow window (890 pt)",
-     "sub": "The list narrows to 240 pt; the title row puts the switch, Run now and \u22ef under the name; settings put labels above values; the editor and packages keep full width."
+     "sub": "The list narrows to 240 pt; the title row puts the switch, Test run, Run now and \u22ef under the name; settings put labels above values; the editor and packages keep full width."
     },
     {
      "row": [

@@ -51,7 +51,7 @@ app, the CLI, the agent plugin, curl) is covered the same way.
 | Family | Types | Notes |
 |---|---|---|
 | Ask chats | `chat.created`, `chat.updated` (a follow-up), `chat.pinned`, `chat.unpinned`, `chat.deleted`, `chat.expired`, `chat.restored` | Title, turn count, size and dates only. Questions and answers are never logged. |
-| Collectors | `collector.created`, `.updated`, `.enabled`, `.disabled`, `.consented`, `.consent_revoked`, `.deleted`, `.restored`, `.stopped`, `.forgot`, `.forget_undone`, `.folder_created`, `.run` | Script: interpreter, file path or inline **size and line count**, schedule, vault, and a 12-character consent hash prefix. Never the body. |
+| Collectors | `collector.created`, `.updated`, `.enabled`, `.disabled`, `.consented`, `.consent_revoked`, `.deleted`, `.restored`, `.stopped`, `.forgot`, `.forget_undone`, `.folder_created`, `.run`; v6: `.script_saved`, `.install` (from `collector.install.finished`), `.install_stopped`, `.test_run` | Script: interpreter, file path, **size and line count**, schedule, vault, and a 12-character consent hash prefix. Script saves: which parts changed (script, manifest), sizes and 12-character hash prefixes. Installs: result, trigger, manifest name, command, duration, exit code. Never the script, the manifest or install output (they can hold credentials). |
 | Actions | `action.created`, `.updated` (which fields changed, not what they say), `.confirmed`, `.dismissed`, `.drafted`, `.improved`, `.improve_undone`, `.performed`, `.sent`, `.removed`, `.restored`, `.deleted`, `.expired`, `.found` | Title, type and status. |
 | Batches (jobs) | `batch.started`, `.ready`, `.approved`, `.replied` (length only), `.allowed` (tool rules), `.rejected`, `.cancelled`, `.applied` (changed paths, operation id), `.failed`, `.deleted`; `labels.suggest_started`, `labels.confirm_started` | Ingest results are `batch.applied` and `batch.failed`. |
 | Queue and notes | `queue.added`, `queue.removed` (with the macOS Trash as its recovery), `queue.scanned` (only when files appeared or went outside Distill), `note.added` (title, labels, file count; never the text), `note.labeled` | |
@@ -126,10 +126,18 @@ Deleting an Ask chat or a collector first writes a copy to
   delete then fails, the copy is removed.
 - **What's kept:**
   - chats: the chat file, every turn included
-  - collectors: the whole record, including an inline script. That is what
-    would have saved the Meeting notes script.
-- **Retention:** 30 days, at most 200 items and 50 MB, oldest first. The
-  newest item is always kept. Pruning runs on every write and every listing.
+  - collectors: the whole record. A script Distill keeps (v6, scripts are
+    files) also has its folder copied to `<trash-id>.files/`: the script
+    and its `package.json` / `requirements.txt`, without `node_modules` or
+    `.venv` (they reinstall when the script is allowed again). The item's
+    details say `scriptFolder: true`; the collector removes its own folder
+    only after the copy is written. That is what would have saved the
+    Meeting notes script. ([Collectors](collectors.md) → Script files.)
+- **Retention:** 30 days, at most 200 items and 50 MB (folders included),
+  oldest first. The newest item is always kept. Pruning runs on every write
+  and every listing, and a folder goes with its item. **Chats deleted while
+  Keep history is off stay 24 hours** (`expiresAt` says so; details
+  `reason: keep-history-off`).
 - **Safety:** the directory is mode 0700 and the files 0600. Listing
   (`GET /v1/trash`, `distill trash`) never returns the payload, only the name,
   dates, size and facts (turn count; interpreter, script size and lines).
@@ -140,17 +148,18 @@ Deleting an Ask chat or a collector first writes a copy to
     the hour. The write is a temp file plus a create-only link (atomic).
   - A collector keeps its id unless that id is taken. It comes back **off**,
     with consent cleared, so a restored script is reviewed before it runs
-    again. Its run history is not restored (deleting removes the runs file),
+    again. Its script folder is copied back to
+    `collectors/scripts/<id>/` and the record re-pointed; allowing it
+    installs its packages. Its run history is not restored (deleting removes the runs file),
     and Folder collectors keep their ledger anyway.
   - Restores are logged (`chat.restored`, `collector.restored`).
   - The CLI restores chats only. It never adds collectors, so collectors are
     restored in the app.
 - **Not trashed (defaults):**
-  - **Chats deleted while Keep Ask history is off.** The app deletes each chat
-    when it is closed, so you have chosen not to keep chats. The entry says
-    `reason: keep-history-off` with `recovery.kind: none`. The core can't
-    tell a close from an explicit delete in that mode, so it reads the setting
-    as a proxy.
+  - ~~Chats deleted while Keep Ask history is off~~: superseded 2026-10-04 by
+    the owner. They go to the trash for 24 hours (`keepHours`), the entry
+    keeps `reason: keep-history-off` with `recovery.kind: trash`. The core
+    still reads the setting to tell a close from an explicit delete.
   - **Chats removed by retention** (`chat.expired`, older than
     `historyDays`, not pinned) and actions removed by History retention
     (`action.expired`). Both are logged as `scheduler`.

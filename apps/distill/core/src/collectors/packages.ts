@@ -121,8 +121,10 @@ export function planInstall(name: CollectorManifestName, folder: string, searchP
   if (!isExecutable(venvPython)) {
     const python = findOnPath('python3', searchPath);
     if (!python) return { error: `python3 isn't on your PATH.` };
-    steps.push({ command: python, args: ['-m', 'venv', '.venv'] });
-    display.push('python3 -m venv .venv');
+    // --symlinks (macOS's default, made explicit): .venv/bin/python3 resolves to the same python3 binary, so
+    // the Keychain sees the same program. Never --copies, and never --clear: an existing venv is reused.
+    steps.push({ command: python, args: ['-m', 'venv', '--symlinks', '.venv'] });
+    display.push('python3 -m venv --symlinks .venv');
   }
   const pip = ['-m', 'pip', 'install', '--disable-pip-version-check', '-r', 'requirements.txt'];
   steps.push({ command: venvPython, args: pip });

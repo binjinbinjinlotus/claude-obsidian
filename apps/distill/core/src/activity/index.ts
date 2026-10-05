@@ -22,7 +22,8 @@ export interface ActivityServiceOptions {
   askDir: string;
   now?: () => Date;
   emit: (event: CoreEvent) => void;
-  restoreCollector: (record: unknown) => Promise<Collector>;
+  /** v6: `files` is the trash copy of the script collector's folder, when it has one. */
+  restoreCollector: (record: unknown, files?: string) => Promise<Collector>;
   log?: Partial<Omit<ActivityLogOptions, 'dir' | 'now'>>;
   trash?: Partial<Omit<TrashOptions, 'dir' | 'now'>>;
 }
@@ -72,7 +73,7 @@ export function createActivityService(opts: ActivityServiceOptions): ActivitySer
         opts.emit({ type: 'conversation', conversation: summaryOf(restored) });
         result = { item, objectID: record.conversationID };
       } else {
-        const c = await opts.restoreCollector(payload);
+        const c = await opts.restoreCollector(payload, kept.files);
         result = { item, objectID: c.id, ...(c.kind === 'script' ? { note: 'The script collector is off; review and allow its script to turn it on.' } : {}) };
       }
       trash.remove(id);

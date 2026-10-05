@@ -4859,6 +4859,12 @@
           "swiftPending": "the core reports what changed (script, manifest or both); the card names it"
         },
         {
+          "name": "packages",
+          "type": "text",
+          "default": "",
+          "swiftPending": "a new script with a manifest: the card says allowing also installs its packages"
+        },
+        {
           "name": "allowedText",
           "type": "text",
           "default": ""
@@ -4873,7 +4879,7 @@
         "file": "ScriptConsentStates.dc.html",
         "title": "Script consent states",
         "heading": "ScriptConsent",
-        "intro": "The explicit first-run consent for a custom script. Distill runs nothing you have not allowed: a new script waits here, and a script whose content changes (its sha256) is paused until you allow the new version. The allowance belongs to the exact script, not to the collector. No Swift view yet: add <b>ScriptConsent</b>. The allowance covers the script <b>and its package manifest</b> (package.json or requirements.txt), because installing packages runs their authors’ code; <code>changes</code> names what changed. Props: state (ask | changed | allowed), interpreter, source, hash, changes, allowedText, width.",
+        "intro": "The explicit first-run consent for a custom script. Distill runs nothing you have not allowed: a new script waits here, and a script whose content changes (its sha256) is paused until you allow the new version. The allowance belongs to the exact script, not to the collector. No Swift view yet: add <b>ScriptConsent</b>. The allowance covers the script <b>and its package manifest</b> (package.json or requirements.txt), because installing packages runs their authors’ code; <code>changes</code> names what changed. <code>packages</code> (a new script’s manifest) says allowing also installs them, right away. Props: state (ask | changed | allowed), interpreter, source, hash, changes, packages, allowedText, width.",
         "width": 1280,
         "cols": 2,
         "wrap": "<div style=\"width: 580px; padding: 10px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
@@ -4940,6 +4946,20 @@
             "170px"
           ],
           "caption": "Editing inline code changes its hash, so a saved edit asks again."
+        },
+        {
+          "name": "New script with packages",
+          "props": {
+            "state": "ask",
+            "interpreter": "node",
+            "source": "collector.js",
+            "packages": "package.json · 3 packages"
+          },
+          "size": [
+            "550px",
+            "210px"
+          ],
+          "caption": "One OK for the script and its package.json; allowing installs them at once."
         }
       ]
     },
@@ -5074,11 +5094,11 @@
         {
           "name": "state",
           "type": "enum",
-          "default": "installed",
+          "default": "ready",
           "options": [
             "none",
-            "installed",
-            "pending",
+            "ready",
+            "needsInstall",
             "installing",
             "failed",
             "needsOK"
@@ -5114,17 +5134,17 @@
         "file": "PackagesPanelStates.dc.html",
         "title": "Packages panel states",
         "heading": "PackagesPanel",
-        "intro": "Packages for a script Distill keeps: the manifest next to the script (<b>package.json</b> for JavaScript and TypeScript, installed with npm into node_modules/; <b>requirements.txt</b> for Python, installed with pip into .venv/), one status line, and <b>Install</b>. It shows in the Edit form only; at a glance it is one Settings line, and install progress or a failed install shows in the status card, like a run. Installs run when you press Install, and on their own before the next run when the manifest changed since the last install. Output is kept like a run’s (last 64 KB, stopped after 10 minutes). A changed manifest needs your OK first. ⋯ holds Clean reinstall (drops node_modules/ or .venv/ and installs again) and Open in editor. No Swift view yet: add <b>PackagesPanel</b>. Props: manifest, state (none | installed | pending | installing | failed | needsOK), lines (manifest lines, | separated; a leading + marks an added line), output, summary, expanded, width.",
+        "intro": "Packages for a script Distill keeps: the manifest next to the script (<b>package.json</b> for JavaScript and TypeScript, installed with npm into node_modules/; <b>requirements.txt</b> for Python, installed with pip into .venv/), one status line, and <b>Install</b>. It shows in the Edit form only; at a glance it is one Settings line, and install progress or a failed install shows in the status card, like a run. Packages install when you allow the script (adding it, or allowing a changed manifest), so the collector is ready before its first run; Install runs it again; a run installs first only when packages went missing. A run started during an install waits for it. Output is kept like a run’s (last 64 KB, stopped after 10 minutes). A changed manifest needs your OK first. ⋯ holds Clean reinstall (drops node_modules/ or .venv/ and installs again) and Open in editor. No Swift view yet: add <b>PackagesPanel</b>. Props: manifest, state (none | ready | needsInstall | installing | failed, as the core reports; needsOK while the change waits for your OK), lines (manifest lines, | separated; a leading + marks an added line), output, summary, expanded, width.",
         "width": 1280,
         "cols": 2,
         "wrap": "<div style=\"width: 580px; padding: 14px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
       },
       "states": [
         {
-          "name": "Installed",
+          "name": "Ready",
           "props": {
             "manifest": "requirements.txt",
-            "state": "installed"
+            "state": "ready"
           },
           "size": [
             "550px",
@@ -5133,16 +5153,16 @@
           "caption": "Quiet when it’s done: one green line."
         },
         {
-          "name": "Changed, not installed yet",
+          "name": "Not installed yet",
           "props": {
             "manifest": "package.json",
-            "state": "pending"
+            "state": "needsInstall"
           },
           "size": [
             "550px",
             "230px"
           ],
-          "caption": "You allowed it; it installs before the next run, or now with Install."
+          "caption": "Allowed, but not installed (Install was stopped, or node_modules was deleted). Install now, or it installs before the next run."
         },
         {
           "name": "Changed, waits for your OK",
@@ -5178,7 +5198,7 @@
             "550px",
             "300px"
           ],
-          "caption": "The run doesn’t start with half-installed packages; fix the manifest and Install again."
+          "caption": "Runs wait: nothing starts with half-installed packages, and a failed install isn’t retried every hour. Fix the manifest and Install again."
         },
         {
           "name": "No packages yet",

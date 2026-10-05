@@ -152,6 +152,9 @@ export class ActivityLog {
       if (fs.statSync(this.file).size < this.maxFileBytes) return;
       const name = `activity-${stamp(this.now())}-${process.pid}-${randomBytes(3).toString('hex')}.jsonl`;
       fs.renameSync(this.file, path.join(this.dir, name));
+      // The live file always exists after a rotation (empty until the next entry), so a rotation on the
+      // last write of a burst doesn't leave only rotated files (this made the size test depend on entry sizes).
+      fs.appendFileSync(this.file, '', { mode: 0o600 });
       this.prune();
     } catch {
       /* the next write tries again */

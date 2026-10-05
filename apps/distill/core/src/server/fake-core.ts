@@ -750,6 +750,11 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       requireCollector(id);
       return null;
     },
+    async testCollector(id) {
+      record('testCollector', id);
+      const c = requireCollector(id);
+      return sampleCollectorRun({ id: 'run-test', collectorId: id, kind: c.kind, trigger: 'test', result: 'running', outputDir: '/state/collectors/test-runs/x' });
+    },
     extractImageText: async (req: { imagePath: string; vaultPath?: string }) => {
       record('extractImageText', req);
       return { text: '', model: 'Haiku' };

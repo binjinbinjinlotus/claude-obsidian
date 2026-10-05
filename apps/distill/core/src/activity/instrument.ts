@@ -51,6 +51,10 @@ interface TrashRequest {
   name: string;
   details: TrashItem['details'];
   payload: unknown;
+  /** v6: a folder to keep with it (a script collector's files). */
+  folder?: string;
+  /** A shorter stay than the trash's days. */
+  keepHours?: number;
 }
 
 interface Spec<K extends Method> {
@@ -78,6 +82,9 @@ export interface InstrumentDeps {
   /** <state>/ask: chat files, read before a delete so the chat can go to the trash. */
   askDir: string;
 }
+
+/** Chats deleted while Keep Ask history is off stay in the trash this long (the owner, 2026-10-04). */
+export const HISTORY_OFF_KEEP_HOURS = 24;
 
 // ───────────── naming helpers ─────────────
 
@@ -109,8 +116,21 @@ function scriptFacts(c: Collector | undefined): Record<string, unknown> {
   const s = c.script;
   if (!s) return { kind: c.kind };
   const facts: Record<string, unknown> = { kind: 'script', interpreter: s.interpreter, schedule: c.schedule.cron, vault: c.vaultPath };
-  if ('file' in s.source) facts.scriptFile = s.source.file;
-  else {
+  if ('file' in s.source) {
+    facts.scriptFile = s.source.file;
+    if (s.source.managed) {
+      // A script Distill keeps: its size and line count, read here and never logged as text.
+      try {
+        const text = fs.readFileSync(s.source.file, 'utf8');
+        facts.scriptBytes = Buffer.byteLength(text);
+        facts.scriptLines = text.split('\n').length;
+      } catch {
+        // missing: the path says enough
+      }
+      const m = c.status?.script?.manifest;
+      if (m?.exists) facts.manifest = m.name;
+    }
+  } else {
     // Never the body: it can hold credentials. Its size and line count say what was there.
     facts.scriptBytes = Buffer.byteLength(s.source.inline);
     facts.scriptLines = s.source.inline.split('\n').length;
@@ -157,6 +177,7 @@ export function settingsChanges(before: Settings | undefined, after: Settings): 
 // ───────────── the classification ─────────────
 
 function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
+  const factsBefore = new WeakMap<Collector, Record<string, unknown>>();
   const getJob = (id: string) => core.getJob(id);
   const getAction = (id: string) => core.getAction(id).catch(() => undefined);
   const getCollector = (id: string) => core.getCollector(id).catch(() => undefined);
@@ -205,11 +226,15 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
     listCollectorRuns: 'read',
     listCollected: 'read',
     checkSchedule: 'read',
+    getCollectorScript: 'read',
+    getCollectorInstall: 'read',
 
     // ── logged from events ──
     processQueue: 'event', // batch.started (also scheduled batches)
     scanQueue: 'event', // queue.scanned (also the window scan and the periodic check)
     runCollector: 'event', // collector.run when it finishes (also scheduled runs)
+    testCollector: 'event', // collector.test_run when it finishes
+    installCollectorPackages: 'event', // collector.install when it finishes (also installs on Allow and before a run)
     findJobActions: 'event', // action.found when the job's actionsFound settles
 
     // ── nothing kept changes ──
@@ -383,15 +408,16 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
         return { record, bytes: Buffer.byteLength(raw), historyOff: keepHistory === false };
       },
       trash: ([id], before: { record: { title?: string; history?: unknown[]; turns?: number }; historyOff: boolean } | undefined) => {
-        // With Keep history off the app deletes each chat when it's closed: that's the user's
-        // choice not to keep chats, so those aren't kept in the trash (the entry says so).
-        if (!before || before.historyOff) return null;
+        // With Keep history off the app deletes each chat when it's closed. The owner (2026-10-04):
+        // those go to the trash too, but only for 24 hours.
+        if (!before) return null;
         return {
           kind: 'chat',
           objectID: id,
           name: before.record.title || 'Earlier conversation',
-          details: { turnCount: before.record.history?.length ?? before.record.turns ?? 0 },
+          details: { turnCount: before.record.history?.length ?? before.record.turns ?? 0, ...(before.historyOff ? { reason: 'keep-history-off' } : {}) },
           payload: before.record,
+          ...(before.historyOff ? { keepHours: HISTORY_OFF_KEEP_HOURS } : {}),
         };
       },
       ok: ([id], _r, before: { record: { title?: string; history?: unknown[]; turns?: number; createdAt?: string; updatedAt?: string }; bytes: number; historyOff: boolean } | undefined, trashed) => {
@@ -409,7 +435,7 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
           },
           recovery: trashed
             ? { kind: 'trash', trashId: trashed.id, expiresAt: trashed.expiresAt }
-            : { kind: 'none', reason: before?.historyOff ? 'Keep Ask history is off, so closed chats are not kept.' : 'No copy was kept.' },
+            : { kind: 'none', reason: 'No copy was kept.' },
         };
       },
       fail: ([id], before: { record: { title?: string } } | undefined) => ({ type: 'chat.deleted', object: { kind: 'chat', id, name: before?.record.title }, summary: `Couldn't delete the chat ${q(before?.record.title)}`.trim() }),
@@ -518,20 +544,27 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
       }),
     },
     deleteCollector: {
-      before: (id) => getCollector(id),
+      // The facts are read before the delete: a managed script's file is gone afterwards.
+      before: async (id) => {
+        const c = await getCollector(id);
+        if (c) factsBefore.set(c, scriptFacts(c));
+        return c;
+      },
       trash: ([id], c: Collector | undefined) => {
         if (!c) return null;
         const { status: _s, ...record } = c;
-        const facts = scriptFacts(c);
+        const facts = factsBefore.get(c) ?? scriptFacts(c);
         const details: TrashItem['details'] = {};
         for (const [k, v] of Object.entries(facts)) if (typeof v === 'string' || typeof v === 'number') details[k] = v;
-        return { kind: 'collector', objectID: id, name: c.name, details, payload: record };
+        // v6: a script Distill keeps goes with its folder (script and manifest, not installed packages).
+        const folder = c.status?.script?.managed ? (c.status.script.dir ?? undefined) : undefined;
+        return { kind: 'collector', objectID: id, name: c.name, details, payload: record, ...(folder ? { folder } : {}) };
       },
       ok: ([id], _r, c: Collector | undefined, trashed) => ({
         type: 'collector.deleted',
         object: collectorObject(id, c),
         summary: `Deleted the ${c?.kind ?? ''} collector ${q(c?.name)}`.replace('  ', ' '),
-        details: { ...scriptFacts(c), lastRunAt: c?.status?.lastRun?.startedAt ?? null, collected: c?.status?.collectedCount ?? null },
+        details: { ...(c ? (factsBefore.get(c) ?? scriptFacts(c)) : {}), lastRunAt: c?.status?.lastRun?.startedAt ?? null, collected: c?.status?.collectedCount ?? null },
         recovery: trashed ? { kind: 'trash', trashId: trashed.id, expiresAt: trashed.expiresAt } : { kind: 'none', reason: 'No copy was kept.' },
       }),
       fail: ([id], c: Collector | undefined) => ({ type: 'collector.deleted', object: collectorObject(id, c), summary: `Couldn't delete ${q(c?.name) || 'the collector'}` }),
@@ -540,6 +573,34 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
       before: (id) => getCollector(id),
       ok: ([id], run, c: Collector | undefined) => (run ? { type: 'collector.stopped', object: collectorObject(id, c), summary: `Stopped ${q(c?.name)}`.trim() } : null),
       fail: ([id], c: Collector | undefined) => ({ type: 'collector.stopped', object: collectorObject(id, c), summary: `Couldn't stop ${q(c?.name) || 'the collector'}` }),
+    },
+    writeCollectorScript: {
+      before: (id) => getCollector(id),
+      ok: ([id, update], files, c: Collector | undefined) => {
+        const parts: string[] = [];
+        const details: Record<string, unknown> = { file: files.path };
+        // What changed, sizes and a hash prefix; never the text (scripts and manifests can hold credentials).
+        if (update.code !== undefined) {
+          parts.push('script');
+          details.scriptBytes = Buffer.byteLength(update.code);
+          details.scriptLines = update.code.split('\n').length;
+          details.scriptSha256 = files.sha256?.slice(0, 12) ?? null;
+        }
+        if (update.manifest !== undefined) {
+          const name = files.manifest?.name ?? 'manifest';
+          parts.push(update.manifest === null ? `removed ${name}` : name);
+          details.manifest = name;
+          details.manifestBytes = update.manifest === null ? null : Buffer.byteLength(update.manifest);
+          details.manifestSha256 = files.manifest?.sha256?.slice(0, 12) ?? null;
+        }
+        return { type: 'collector.script_saved', object: collectorObject(id, c), summary: `Saved ${parts.join(' and ')} of ${q(c?.name)} (needs your OK before it runs)`, details };
+      },
+      fail: ([id], c: Collector | undefined) => ({ type: 'collector.script_saved', object: collectorObject(id, c), summary: `Couldn't save the script of ${q(c?.name) || 'the collector'}` }),
+    },
+    stopCollectorInstall: {
+      before: (id) => getCollector(id),
+      ok: ([id], install, c: Collector | undefined) => (install ? { type: 'collector.install_stopped', object: collectorObject(id, c), summary: `Stopped installing packages for ${q(c?.name)}`.trim(), details: { installId: install.id } } : null),
+      fail: ([id], c: Collector | undefined) => ({ type: 'collector.install_stopped', object: collectorObject(id, c), summary: `Couldn't stop the install for ${q(c?.name) || 'the collector'}` }),
     },
     allowCollector: {
       ok: ([, sha256], c) => ({ type: 'collector.consented', object: collectorObject(c.id, c), summary: `Allowed the script of ${q(c.name)} and turned it on`, details: { sha256: sha256.slice(0, 12) } }),
@@ -708,8 +769,43 @@ export function createEventLogger(deps: EventLoggerDeps, seedJobs: Job[]): (even
           }
           return;
         }
+        case 'collector.install.finished': {
+          const i = event.install;
+          const name = deps.collectorName(i.collectorId) ?? i.collectorId;
+          const failed = i.result === 'failed' || i.result === 'timedout';
+          const verb = i.result === 'success' ? 'Installed' : i.result === 'stopped' ? 'Stopped installing' : "Couldn't install";
+          write(
+            {
+              type: 'collector.install',
+              object: { kind: 'collector', id: i.collectorId, name },
+              summary: `${verb} packages for ${q(name)} (${i.manifestName})`,
+              // Never the output: an install can print tokens.
+              details: { installId: i.id, result: i.result, trigger: i.trigger, manifest: i.manifestName, manifestSha256: i.manifestSha256.slice(0, 12), command: i.command, durationMs: i.durationMs ?? null, ...(i.exitCode !== undefined ? { exitCode: i.exitCode } : {}), ...(i.clean ? { clean: true } : {}) },
+            },
+            i.trigger === 'beforeRun' ? 'scheduler' : currentSource(),
+            failed ? 'failed' : 'ok',
+            failed ? (i.error?.message ?? i.result) : undefined,
+          );
+          return;
+        }
         case 'collector.run.finished': {
           const run = event.run;
+          if (run.trigger === 'test') {
+            const name = deps.collectorName(run.collectorId) ?? run.collectorId;
+            const failed = RUN_FAILED.has(run.result);
+            write(
+              {
+                type: 'collector.test_run',
+                object: { kind: 'collector', id: run.collectorId, name },
+                summary: failed ? `Test run of ${q(name)} failed${run.error?.message ? `: ${run.error.message}` : ''}` : `Test run of ${q(name)}: ${plural(run.filesAdded.length, 'file')} in its test folder, nothing in the queue`,
+                details: { runId: run.id, result: run.result, durationMs: run.durationMs ?? null, filesAdded: run.filesAdded, outputDir: run.outputDir ?? null, ...(run.exitCode !== undefined ? { exitCode: run.exitCode } : {}) },
+              },
+              currentSource(),
+              failed ? 'failed' : 'ok',
+              failed ? (run.error?.message ?? run.result) : undefined,
+            );
+            return;
+          }
           const scheduled = run.trigger !== 'now';
           if (scheduled && (run.result === 'nothing' || run.result === 'skipped')) return; // in the run history; nothing changed
           const name = deps.collectorName(run.collectorId) ?? run.collectorId;

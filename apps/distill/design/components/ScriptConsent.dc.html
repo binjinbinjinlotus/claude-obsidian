@@ -31,9 +31,10 @@ const what = p.changes || '', manifestOnly = /^(package\.json|requirements\.txt)
 return { w: px(p.width, '100%'), isAllowed: st === 'allowed', isCard: st !== 'allowed',
   allowedText: p.allowedText || 'You allowed this exact script on Oct 2 at 9:14 AM. Distill asks again if it changes.',
   heading: changed ? (what ? (/^the /.test(what) ? 'T' + what.slice(1) : what) : 'The script') + ' changed since you allowed it' : 'Allow Distill to run this script?',
-  body: changed ? (manifestOnly ? 'Its packages changed, and installing them runs code from their authors. Distill paused this collector; check the change, then allow this version. Nothing installs or runs until then.'
+  body: changed ? (manifestOnly ? 'Its packages changed, and installing them runs code from their authors. Distill paused this collector; check the change, then allow this version: it installs them at once. Nothing installs or runs until then.'
       : 'Distill paused this collector. Check the change, then allow this version. Until then it does not run, on schedule or with Run now.')
-    : 'Distill will run this code on your Mac as you. It can read and change anything you can and use the network. It runs only on this schedule or with Run now, never while your notes are processed.',
+    : 'Distill will run this code on your Mac as you. It can read and change anything you can and use the network. It runs only on this schedule or with Run now, never while your notes are processed.'
+      + (p.packages ? ' Allowing also installs its packages (' + p.packages + ') right away; installing runs code from their authors.' : ''),
   command: interp + ' ' + src, hash: p.hash || (changed ? 'sha256 81bc…0e4f (was 3f9a…c217)' : 'sha256 3f9a…c217'),
   allowTitle: changed ? 'Allow this version' : 'Allow and turn on',
   secondTitle: changed ? (what ? 'Show changes' : 'Show script') : 'Not now' };
