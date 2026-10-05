@@ -32,6 +32,15 @@ final class AppModel: ObservableObject {
     /// Buttons waiting on the core ("process", "approve:<job id>") and when they were pressed;
     /// cleared by the job event or an error.
     @Published var pendingActions: [String: Date] = [:]
+    /// Session continuity (AppModel+Session.swift): a batch call the core refused because the
+    /// batch's AI session is gone, by job id; SessionReplaceConfirm shows it in Review.
+    @Published var sessionPrompts: [String: SessionPrompt] = [:]
+    /// Open in Terminal hit a gone session: the popover's prompt (one at a time).
+    @Published var terminalSessionPrompt: SessionPrompt?
+    /// Job markers (`Job.sessionUnavailable`) the user cancelled, so they don't come back.
+    @Published var dismissedSessionMarkers: Set<String> = []
+    /// A reply put back in Review's box after Cancel (job id, text).
+    @Published var returnedReply: ReturnedReply?
     /// QueueRefresh: "Checking…", then a result for 4 s after Refresh (AppModel+Queue.swift).
     @Published var refreshState: QueueRefreshState = .idle
     /// The last full queue scan this app saw (Refresh, window, periodic); see `queueCheckedAt`.
@@ -313,13 +322,13 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func approve(_ id: String) { jobAction { try await $0.approve(id) } }
+    func approve(_ id: String) { sessionAware(id, action: "approve") { try await $0.approve(id) } }
     func reply(_ id: String, text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        jobAction { try await $0.reply(id, text: trimmed) }
+        sessionAware(id, action: "reply", text: trimmed) { try await $0.reply(id, text: trimmed) }
     }
-    func allow(_ id: String, rules: [String]) { jobAction { try await $0.allow(id, rules: rules) } }
+    func allow(_ id: String, rules: [String]) { sessionAware(id, action: "allow", rules: rules) { try await $0.allow(id, rules: rules) } }
     func reject(_ id: String) { jobAction { try await $0.reject(id) } }
     func cancel(_ id: String) { jobAction { try await $0.cancel(id) } }
 

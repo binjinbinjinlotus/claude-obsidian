@@ -907,9 +907,22 @@ struct JobDetailView: View {
                     }
                     .padding(.horizontal, Self.sidePadding)
                 }
+                // Session continuity: the batch's AI session is gone; ask before a new one is used.
+                let sessionPrompt = engine.sessionPrompt(for: job)
+                if let p = sessionPrompt {
+                    SessionReplaceConfirm(p.info, runner: SessionReplaceText.runnerName(job.runnerID), place: "batch",
+                                          carries: p.info.reason == "neverStarted" ? "The new session starts with this batch’s sources and labels, then reads them as usual." : "",
+                                          onContinue: { engine.continueInNewSession(job) }, onCancel: { engine.cancelSessionPrompt(job) })
+                        .padding(.horizontal, Self.sidePadding).padding(.bottom, 14)
+                }
                 footer(job)
+                    .disabled(sessionPrompt != nil)
+                    .opacity(sessionPrompt != nil ? 0.45 : 1)
             }
             .onChange(of: jobID) { reply = ""; allowed = [] }
+            .onChange(of: engine.returnedReply) {
+                if let r = engine.returnedReply, r.jobID == job.id, reply.isEmpty { reply = r.text }
+            }
         }
     }
 
@@ -1044,6 +1057,16 @@ struct JobDetailView: View {
                 IconButton(systemImage: "terminal", size: 16, iconSize: 13, weight: .regular,
                            help: "Open this session in Terminal") { engine.openInTerminal(job) }
                     .disabled(job.state == .running)
+                    .popover(isPresented: Binding(get: { engine.terminalSessionPrompt?.jobID == job.id },
+                                                  set: { if !$0 { engine.terminalSessionPrompt = nil } }),
+                             arrowEdge: .bottom) {
+                        if let p = engine.terminalSessionPrompt {
+                            SessionReplaceConfirm(p.info, runner: SessionReplaceText.runnerName(job.runnerID), place: "terminal", width: 404,
+                                                  onContinue: { engine.continueTerminalInNewSession(job) },
+                                                  onCancel: { engine.terminalSessionPrompt = nil })
+                                .padding(8)
+                        }
+                    }
             }
             ChatScrolling {
                 VStack(alignment: .leading, spacing: 10) {

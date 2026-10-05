@@ -178,7 +178,8 @@ struct QuickAskCard: View {
                 }
                 .padding(.vertical, 2)
             default:
-                AskHaltRow(pending: pending) { ask.retry(thread) }
+                AskHaltRow(pending: pending, continueNew: { ask.continueInNewSession(thread) },
+                           cancel: { ask.cancelSessionReplace(thread) }) { ask.retry(thread) }
             }
         } else if let entry = thread.entries.last {
             let r = entry.response

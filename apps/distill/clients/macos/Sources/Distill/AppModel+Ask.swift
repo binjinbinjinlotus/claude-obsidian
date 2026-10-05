@@ -90,6 +90,9 @@ extension AppModel {
                 upsert(job)
                 if let job, job.state != .awaitingApproval { pendingActions[key] = nil }
                 else if job == nil { pendingActions[key] = nil }
+            } catch let e as CoreClientError where e.sessionUnavailable != nil {
+                pendingActions[key] = nil
+                showSessionPrompt(e.sessionUnavailable!, jobID: id, action: "approve")
             } catch {
                 pendingActions[key] = nil
                 report(error)
@@ -146,18 +149,33 @@ extension AppModel {
         }
     }
 
-    /// Reopens a job's runner session in Terminal: the core's resume argv
-    /// (`GET /v1/jobs/:id/resume`), or the local Claude Code command on an older core.
+    /// Reopens a job's runner session in Terminal: the core's resume argv (`GET /v1/jobs/:id/resume`).
+    /// A session the core reports gone shows SessionReplaceConfirm (never a blind `--resume`); the
+    /// local Claude Code command is only for an older core that has no resume route.
     func openInTerminal(_ job: Job) {
         Task {
             do {
-                if let client, let resume = try? await client.jobResume(job.id), !resume.argv.isEmpty {
-                    NSWorkspace.shared.open(try Self.writeTerminalScript(name: job.id, argv: resume.argv, cwd: resume.cwd ?? job.vaultPath))
-                } else {
-                    NSWorkspace.shared.open(try terminalScript(for: job))
+                guard let client else {
+                    lastError = "The Distill core is not connected."
+                    return
                 }
+                let resume: ResumeCommand
+                do {
+                    resume = try await client.jobResume(job.id)
+                } catch let e as CoreClientError where e.sessionUnavailable != nil {
+                    terminalSessionPrompt = SessionPrompt(jobID: job.id, info: e.sessionUnavailable!, action: "resume")
+                    return
+                } catch let e as CoreClientError where e.isNotAvailable {
+                    NSWorkspace.shared.open(try terminalScript(for: job)) // an older core: no session check there
+                    return
+                }
+                guard !resume.argv.isEmpty else {
+                    lastError = "This batch has no AI session to open in Terminal."
+                    return
+                }
+                NSWorkspace.shared.open(try Self.writeTerminalScript(name: job.id, argv: resume.argv, cwd: resume.cwd ?? job.vaultPath))
             } catch {
-                lastError = "\(error)"
+                report(error)
             }
         }
     }

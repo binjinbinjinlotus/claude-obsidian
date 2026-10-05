@@ -340,7 +340,7 @@ public struct TurnRecord: Codable, Equatable, Sendable, Identifiable {
 public struct Job: Codable, Identifiable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, kind, vaultPath, files, sessionID, runnerID, model, effort, state, createdAt, updatedAt
-        case approval, turns, grantedTools, operationID, changedPaths, error, actionsFound, folders
+        case approval, turns, grantedTools, operationID, changedPaths, error, actionsFound, folders, sessionUnavailable
     }
 
     public var id: String
@@ -364,6 +364,9 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
     public var actionsFound: JobActionsSummary?
     /// v5: folder items in this batch (vault-relative, "inbox/2026-10-04/Tea tasting trip"); their files are in `files`. nil on older jobs.
     public var folders: [String]?
+    /// v6: the batch's AI session was found gone when a turn tried to resume it (session continuity).
+    /// The app shows SessionReplaceConfirm from it; the next turn clears it. nil on older cores.
+    public var sessionUnavailable: SessionUnavailable?
 
     public var totalCostUSD: Double { turns.reduce(0) { $0 + $1.costUSD } }
     public var selection: ModelSelection { ModelSelection(runnerID: runnerID ?? "claude-code", model: model, effort: effort) }
@@ -413,6 +416,7 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
         error = c.lossy(String.self, .error)
         actionsFound = c.lossy(JobActionsSummary.self, .actionsFound)
         folders = c.lossy([Lossy<String>].self, .folders).map { $0.compactMap(\.value) }
+        sessionUnavailable = c.lossy(SessionUnavailable.self, .sessionUnavailable)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -436,6 +440,7 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
         try c.encodeIfPresent(error, forKey: .error)
         try c.encodeIfPresent(actionsFound, forKey: .actionsFound)
         try c.encodeIfPresent(folders, forKey: .folders)
+        try c.encodeIfPresent(sessionUnavailable, forKey: .sessionUnavailable)
     }
 }
 
@@ -918,6 +923,8 @@ public struct AskRequest: Codable, Hashable, Sendable {
     public var vaultPath: String?
     public var labelMatch: LabelMatch?
     public var includeUnconfirmed: Bool?
+    /// Continue in a new session seeded with the conversation so far (after session_unavailable).
+    public var newSession: Bool?
 
     public init(question: String, conversationID: String? = nil, selection: ModelSelection? = nil, labels: [String]? = nil,
                 sources: [String]? = nil, vaultPath: String? = nil, labelMatch: LabelMatch? = nil, includeUnconfirmed: Bool? = nil) {
@@ -941,6 +948,7 @@ public struct AskRequest: Codable, Hashable, Sendable {
         vaultPath = c.lossy(String.self, .vaultPath)
         labelMatch = c.lossy(LabelMatch.self, .labelMatch)
         includeUnconfirmed = c.lossy(Bool.self, .includeUnconfirmed)
+        newSession = c.lossy(Bool.self, .newSession)
     }
 }
 
