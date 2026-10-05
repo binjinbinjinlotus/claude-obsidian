@@ -10,7 +10,7 @@ import { createRunnerRegistry } from '../runners/registry.js';
 import type { ProcessOutput, RunProcessOptions } from '../runners/process.js';
 import { MemorySecretStore } from '../runners/secrets.js';
 import { startServer, type RunningServer } from '../server/http.js';
-import { newJob } from '../store/jobs.js';
+import { JobStore, newJob } from '../store/jobs.js';
 import { statePaths } from '../store/paths.js';
 import { createStepLog, MAX_STEPS } from './index.js';
 import { noteWords, redact, toolWords, unwrapShell, type WordsContext } from './words.js';
@@ -212,6 +212,11 @@ describe('job steps (live log)', () => {
     const done = await h.core.finishReview!(job.id);
     assert.ok(done.reviewDoneAt);
     await h.core.stop();
+    // Both survive a restart (jobs.json read again), and an older build's unknown keys are not the source.
+    const reloaded = new JobStore(statePaths(h.state).jobs).load().find((j) => j.id === job.id)!;
+    assert.equal(reloaded.approvedChange?.operationID, 'op-1');
+    assert.equal(reloaded.approvedChange?.updated, 1);
+    assert.equal(reloaded.reviewDoneAt, done.reviewDoneAt);
   });
 
   test('a job that ran before steps were kept says so; the HTTP route serves the log', async () => {

@@ -126,7 +126,8 @@ public struct ApplyTimeline: Equatable, Sendable {
     /// Review keeps an approved batch until Done: while it is added, once it is, and when adding it failed.
     /// It never counts as needing the user (badges count awaitingApproval only) and never blocks a batch.
     public static func showsInReview(_ job: Job) -> Bool {
-        guard job.approvedChange != nil, job.reviewDoneAt == nil, approvalIsLatest(job) else { return false }
+        // Batches only (decision 2026-10-05): a label confirmation leaves Review once applied, as before.
+        guard job.kind == "ingest", job.approvedChange != nil, job.reviewDoneAt == nil, approvalIsLatest(job) else { return false }
         switch job.state {
         case .running: return job.pendingPart == nil
         case .completed, .failed, .cancelled: return true

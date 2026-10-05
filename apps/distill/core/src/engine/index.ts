@@ -313,7 +313,7 @@ export function createEngine(opts: EngineOptions): Engine {
   const now = opts.now ?? (() => new Date());
   const launch = opts.launch ?? runProcess;
   const trashDir = opts.trashDir ?? path.join(os.homedir(), '.Trash');
-  const trashMover: TrashMover = opts.trashMover ?? (opts.trashDir ? renameTrash(opts.trashDir) : finderTrash(trashDir));
+  const trashMover: TrashMover = opts.trashMover ?? (opts.trashDir ? renameTrash(opts.trashDir) : finderTrash(trashDir, runProcess, (m) => log('warn', m)));
   const version = readVersion();
 
   const settingsStore = new SettingsStore(paths.settings);

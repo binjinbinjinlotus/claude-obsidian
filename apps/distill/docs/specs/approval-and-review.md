@@ -163,7 +163,8 @@ my knowledgebase". Canvas: ReviewProgress, ApplyProgress. Code: core
 `core/src/steps/index.ts`; Mac `DistillKit/ApplyTimeline.swift`,
 `Distill/ApplyProgress.swift`.
 
-- **Review keeps an approved batch** until the user presses **Done**
+- **Review keeps an approved batch** (kind `ingest`; label jobs leave as
+  before) until the user presses **Done**
   (`finishReview`, `POST /v1/jobs/:id/done` → `job.reviewDoneAt`). It is in
   History → Jobs as before. Review lists the batches waiting for the user
   first (oldest first), then the approved ones; their tabs say "adding…",

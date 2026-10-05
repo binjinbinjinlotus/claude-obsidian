@@ -355,7 +355,12 @@ const FINDER_SCRIPT = [
  * Ask Finder to move the items to the Trash, so Put Back works. Falls back to a rename into ~/.Trash
  * when Finder can't be asked (automation not allowed, no Finder): the copy then says to drag a file back.
  */
-export function finderTrash(fallbackDir: string, launch: (o: RunProcessOptions) => Promise<ProcessOutput> = runProcess): TrashMover {
+export function finderTrash(
+  fallbackDir: string,
+  launch: (o: RunProcessOptions) => Promise<ProcessOutput> = runProcess,
+  /** Told when Finder couldn't be used, so a permanent fallback shows in the log. */
+  warn: (message: string) => void = () => undefined,
+): TrashMover {
   const fallback = renameTrash(fallbackDir);
   return async (abs) => {
     if (abs.length === 0) return { method: 'finder', failed: [] };
@@ -374,7 +379,10 @@ export function finderTrash(fallbackDir: string, launch: (o: RunProcessOptions) 
     } finally {
       clearTimeout(timer);
     }
-    if (!out || out.status !== 0) return fallback(abs.filter((a) => fs.existsSync(a)));
+    if (!out || out.status !== 0) {
+      warn(`Clean up inbox: Finder couldn't move the files (${out ? out.stderr.toString('utf8').trim().slice(0, 160) || `exit ${out.status}` : 'osascript did not run'}); moved them into the Trash folder instead (Put Back won't work for them).`);
+      return fallback(abs.filter((a) => fs.existsSync(a)));
+    }
     const failed: { path: string; error: string }[] = [];
     for (const line of out.stdout.toString('utf8').split('\n')) {
       const [p, e] = line.split('\t');
@@ -382,6 +390,7 @@ export function finderTrash(fallbackDir: string, launch: (o: RunProcessOptions) 
     }
     // Finder refused some (permissions): try those by rename, so the result is the same either way.
     if (failed.length > 0) {
+      warn(`Clean up inbox: Finder refused ${failed.length} of ${abs.length} item(s) (${failed[0]!.error.slice(0, 120)}); moved them into the Trash folder instead.`);
       const again = await fallback(failed.map((f) => f.path).filter((a) => fs.existsSync(a)));
       return { method: failed.length === abs.length ? 'rename' : 'finder', failed: again.failed };
     }

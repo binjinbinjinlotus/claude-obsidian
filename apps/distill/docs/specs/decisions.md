@@ -19,7 +19,7 @@ supersede it with a new entry.
 
 Review after Approve and Clean up inbox. The owner: "add a manual cleanup
 button" and "I can see the progress after I approved". Canvas: ReviewProgress,
-InboxCleanup, ApplyProgress (v74). Specs: [Clean up inbox](inbox-cleanup.md),
+InboxCleanup, ApplyProgress. Specs: [Clean up inbox](inbox-cleanup.md),
 [Approval and review](approval-and-review.md) → After you approve, [Live
 log](live-log.md).
 
@@ -48,7 +48,9 @@ log](live-log.md).
   log (new steps `start`, `apply`, `added`; `JobStep.hint`), and the counts
   from `job.approvedChange`, recorded at Approve from the plan and the vault
   before the apply. It never counts as needing the user and never blocks a
-  batch.
+  batch. Only batches (`ingest`) stay until Done; a label confirmation from
+  the Labels screen leaves Review once it is applied, as before, so it never
+  needs an extra click.
 
 - **Backups include collector scripts and batch step logs.** Since script
   files (2026-10-04), a kept script's code lives only in
