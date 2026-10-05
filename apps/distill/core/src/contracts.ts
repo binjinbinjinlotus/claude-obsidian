@@ -1287,7 +1287,7 @@ export interface TrashItem {
   source: ActivitySource;
   /** Size of the kept copy in bytes. */
   sizeBytes: number;
-  /** chat: turnCount; collector: kind, interpreter, scriptFile, scriptManaged (written in Distill), scriptBytes, scriptLines, vault. Never the script. */
+  /** chat: turnCount; collector: kind, interpreter, scriptFile, scriptBytes, scriptLines, vault. Never the script. */
   details: Record<string, string | number | boolean | null>;
 }
 

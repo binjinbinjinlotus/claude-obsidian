@@ -206,6 +206,13 @@ final class ActivityTests: XCTestCase {
         // Your own file: its path.
         let own: [String: JSONValue] = ["kind": .string("script"), "interpreter": .string("zsh"), "scriptFile": .string("/Users/mei/bin/collect.sh")]
         XCTAssertEqual(scriptRow(own).0, "zsh · ~/bin/collect.sh")
+        // collector.script_saved (a Save in the script editor): written in Distill, the file and hash prefix not listed.
+        let saved: [String: JSONValue] = ["file": .string("/Users/mei/Library/Application Support/Distill/collectors/scripts/col-1/collector.py"),
+                                          "interpreter": .string("python3"), "scriptManaged": .bool(true),
+                                          "scriptBytes": .number(980), "scriptLines": .number(24), "scriptSha256": .string("9f86d081884c")]
+        let (savedValue, savedLabels) = scriptRow(saved)
+        XCTAssertEqual(savedValue, "python3 · 24 lines · \(ActivityText.size(980)), written in Distill")
+        XCTAssertEqual(savedLabels, ["Script", "Type"])
     }
 
     func testReadableSettingsChangesWin() {

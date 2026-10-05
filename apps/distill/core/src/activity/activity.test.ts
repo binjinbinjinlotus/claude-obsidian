@@ -718,6 +718,8 @@ describe('activity through the core and the API', () => {
     const savedEntry = last('collector.script_saved')!;
     assert.equal(savedEntry.details?.scriptBytes, Buffer.byteLength(body));
     assert.equal(String(savedEntry.details?.scriptSha256).length, 12);
+    assert.equal(savedEntry.details?.scriptManaged, true);
+    assert.equal(savedEntry.details?.interpreter, 'node');
 
     assert.equal((await request('DELETE', `/v1/collectors/${id}`)).status, 200);
     assert.ok(!fs.existsSync(dir), 'the folder left scripts/');

@@ -364,6 +364,8 @@ public struct ActivityText: Sendable {
                     else if e.details["scriptManaged"] == .bool(true) { parts.append("written in Distill") }
                 }
                 add("Script", parts.joined(separator: " · "), keys: ["interpreter", "scriptFile", "scriptManaged", "scriptLines", "scriptBytes"])
+                // collector.script_saved: the saved file's path is kept for Show in Finder; the hash prefix is for support.
+                if e.details["scriptManaged"] == .bool(true) { used.formUnion(["file", "scriptSha256"]) }
             }
             add("Folder", e.string("folder").map(collectorText.tilde), keys: ["folder"])
             add("After", e.string("afterCollect").map { $0 == "move" ? "Moves files into the queue" : $0 == "copy" ? "Copies files into the queue" : $0 },

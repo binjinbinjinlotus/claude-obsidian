@@ -584,7 +584,7 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
         const { status: _s, ...record } = c;
         const facts = factsBefore.get(c) ?? scriptFacts(c);
         const details: TrashItem['details'] = {};
-        for (const [k, v] of Object.entries(facts)) if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') details[k] = v;
+        for (const [k, v] of Object.entries(facts)) if (typeof v === 'string' || typeof v === 'number') details[k] = v;
         // v6: a script Distill keeps goes with its folder (script and manifest, not installed packages).
         const folder = c.status?.script?.managed ? (c.status.script.dir ?? undefined) : undefined;
         return { kind: 'collector', objectID: id, name: c.name, details, payload: record, ...(folder ? { folder } : {}) };
@@ -611,6 +611,9 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
         // What changed, sizes and a hash prefix; never the text (scripts and manifests can hold credentials).
         if (update.code !== undefined) {
           parts.push('script');
+          // Only Distill's own script files are saved here: written in Distill.
+          if (c?.script?.interpreter) details.interpreter = c.script.interpreter;
+          details.scriptManaged = true;
           details.scriptBytes = Buffer.byteLength(update.code);
           details.scriptLines = lineCount(update.code);
           details.scriptSha256 = files.sha256?.slice(0, 12) ?? null;
