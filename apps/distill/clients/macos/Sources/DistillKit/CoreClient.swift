@@ -118,6 +118,22 @@ public final class CoreClient: Sendable {
         try await send("POST", "/v1/queue/scan", body: ["trigger": trigger.rawValue])
     }
 
+    /// v6 `POST /v1/queue/labels` `{path, labels}`: confirm a queue text file's labels ([] = no labels).
+    public func labelQueueItem(path: String, labels: [String]) async throws -> [QueueEntry] {
+        try await send("POST", "/v1/queue/labels", body: JSONValue.object(["path": .string(path), "labels": .array(labels.map(JSONValue.string))]),
+                       as: Wrapped<[QueueEntry]>.self, key: "entries").value
+    }
+
+    /// v6 `POST /v1/queue/labels/retry` `{path}`: ask again for a file whose suggestion failed.
+    public func retryQueueLabels(path: String) async throws -> [QueueEntry] {
+        try await send("POST", "/v1/queue/labels/retry", body: ["path": path], as: Wrapped<[QueueEntry]>.self, key: "entries").value
+    }
+
+    /// v6 `POST /v1/queue/labels/skip` `{path}`: let a file whose labels failed go in the next batch without labels.
+    public func skipQueueLabels(path: String) async throws -> [QueueEntry] {
+        try await send("POST", "/v1/queue/labels/skip", body: ["path": path], as: Wrapped<[QueueEntry]>.self, key: "entries").value
+    }
+
     // MARK: Notes
 
     public func addNote(_ request: AddNoteRequest) async throws -> AddNoteResult {
@@ -151,6 +167,26 @@ public final class CoreClient: Sendable {
     public func job(_ id: String) async throws -> Job { try await get("/v1/jobs/\(Self.segment(id))") }
 
     @discardableResult public func approve(_ id: String) async throws -> Job? { try await jobAction(id, "approve") }
+    /// v6: approve with options (`labels` confirm | later, `pages` = the picked source pages). Empty options send `{}`.
+    /// 409 with a message when the core refuses (labels still being suggested or saved).
+    @discardableResult public func approve(_ id: String, options: ApproveOptions) async throws -> Job? {
+        try await jobAction(id, "approve", body: options.body)
+    }
+
+    /// v6 `POST /v1/jobs/:id/labels` `{edits:[{page, labels}]}`: change source-page labels in a batch awaiting
+    /// approval. 409 with a message when the vault core refused the edit (nothing changed).
+    public func editReviewLabels(_ id: String, edits: [(page: String, labels: [String])]) async throws -> Job {
+        let body = JSONValue.object(["edits": .array(edits.map {
+            .object(["page": .string($0.page), "labels": .array($0.labels.map(JSONValue.string))])
+        })])
+        return try await send("POST", "/v1/jobs/\(Self.segment(id))/labels", body: body, as: Wrapped<Job>.self, key: "job").value
+    }
+
+    /// v6 `POST /v1/jobs/:id/sources` `{page, removed}`: take a source out of a pending batch, or put it back.
+    public func removeReviewSource(_ id: String, page: String, removed: Bool) async throws -> Job {
+        try await send("POST", "/v1/jobs/\(Self.segment(id))/sources", body: JSONValue.object(["page": .string(page), "removed": .bool(removed)]),
+                       as: Wrapped<Job>.self, key: "job").value
+    }
     @discardableResult public func reply(_ id: String, text: String) async throws -> Job? {
         try await jobAction(id, "reply", body: ["text": .string(text)])
     }

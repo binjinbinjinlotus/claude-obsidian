@@ -38,6 +38,9 @@ final class AppModel: ObservableObject {
     @Published var lastScanSeen: Date?
     /// Rows that just appeared through a scan flash once.
     @Published var flashingPaths: Set<String> = []
+    /// The dark toast at the bottom of the main window after Process now (AppModel+Labels.swift).
+    @Published var queueToast: QueueToast?
+    var queueToastTask: Task<Void, Never>?
     var refreshResetTask: Task<Void, Never>?
     var flashTask: Task<Void, Never>?
     var lastWindowScan: Date?

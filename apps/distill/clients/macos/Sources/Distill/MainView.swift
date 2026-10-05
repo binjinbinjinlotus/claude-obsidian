@@ -40,6 +40,12 @@ struct MainView: View {
         .environmentObject(engine.ask)
         .overlay { if section == .collectors { CollectorsOverlay(store: engine.collectors) } }
         .overlay(alignment: .bottom) { ErrorBanner() }
+        .overlay(alignment: .bottom) {
+            if let toast = engine.queueToast, engine.lastError == nil {
+                QueueToastView(toast: toast) { engine.queueToast = nil }
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: engine.queueToast)
         .frame(minWidth: 900, minHeight: 600)
         .foregroundStyle(Theme.ink)
         .ignoresSafeArea()
@@ -475,23 +481,32 @@ struct QueueView: View {
     }
 
     @ViewBuilder private var scheduleLine: some View {
+        if let held = QueueLabelText.held(engine.heldForLabelsCount) {
+            scheduleBase + Text(" · \(held)")
+        } else {
+            scheduleBase
+        }
+    }
+
+    private var scheduleBase: Text {
         if engine.runningBatch != nil {
-            Text("New drops wait for the next batch")
+            return Text("New drops wait for the next batch")
         } else if let holder = engine.jobs.first(where: { $0.vaultPath == engine.activeVault?.path && $0.state.holdsVault }) {
-            Text(holder.state == .running
+            return Text(holder.state == .running
                  ? "Next batch starts after Claude finishes \(holder.displayTitle)"
                  : "Next batch waits until you review \(holder.displayTitle)")
         } else if let blocker = engine.batchBlocker {
-            Text(blocker)
+            return Text(blocker)
         } else if !engine.settings.autoProcessEnabled {
-            Text("Automatic batching is off")
+            return Text("Automatic batching is off")
         } else if let next = engine.nextBatchAt {
             // A clock time: it changes only when the schedule does.
             let when = QueueRows.at(next) // "at 5:30 AM", or "Oct 3 at 5:30 AM" on another day
             let lead = when.hasPrefix("at ") ? "at " : ""
             let every = BatchInterval(totalMinutes: engine.settings.batchIntervalMinutes).phrase
-            Text("Next batch \(lead)\(Text(String(when.dropFirst(lead.count))).fontWeight(.semibold).foregroundColor(Theme.ink)) · every \(every)")
+            return Text("Next batch \(lead)\(Text(String(when.dropFirst(lead.count))).fontWeight(.semibold).foregroundColor(Theme.ink)) · every \(every)")
         }
+        return Text("")
     }
 
     private var dropPanel: some View {
@@ -531,13 +546,20 @@ struct QueueView: View {
             ForEach(rows) { entry in
                 let running = engine.runningBatch != nil
                 let status = QueueRows.status(entry, batchRunning: running)
+                let labelState = LabelLineState(queue: entry.labels) ?? .none
                 QueueRowView(title: QueueRows.title(entry), meta: QueueRows.meta(entry, batchRunning: running), tileName: entry.name, status: status,
-                             help: QueueRows.pillHelp(status, settleSeconds: engine.settings.settleSeconds),
+                             help: status == .labeling && labelState == .failed ? (entry.labels?.error ?? QueueLabelText.heldHelp)
+                                : QueueRows.pillHelp(status, settleSeconds: engine.settings.settleSeconds),
                              noteTile: entry.kind == .note && entry.name.hasSuffix(".md"),
                              kind: entry.kind, expanded: expandedPaths.contains(entry.path),
                              tree: QueueTree.lines(entry.tree ?? [], truncated: entry.treeTruncated),
                              hint: QueueRows.hint(entry, batchRunning: running),
                              flash: engine.flashingPaths.contains(entry.path),
+                             labels: entry.labels?.labels ?? [], labelState: labelState,
+                             labelNote: QueueLabelText.note(entry.labels), allowSkip: entry.labels?.allowsSkip ?? false,
+                             onLabels: { engine.labelQueueItem(entry.path, labels: $0) },
+                             onRetryLabels: { engine.retryQueueLabels(entry.path) },
+                             onSkipLabels: { engine.skipQueueLabels(entry.path) },
                              onRemove: { if entry.kind == .folder { confirmRemoval = entry } else { engine.removeFromQueue(entry) } },
                              onReveal: { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) },
                              onOpenLink: QueueRows.googleDocURL(entry).map { url in { NSWorkspace.shared.open(url) } })
@@ -589,7 +611,8 @@ struct ReviewSection: View {
     @Binding var selectedJob: String?
 
     var body: some View {
-        let pending = engine.pendingApprovals
+        // Oldest first: the oldest batch was built against the oldest vault and should go in first.
+        let pending = engine.reviewJobs
         if pending.isEmpty {
             EmptyState(title: "Nothing to review", message: "When Claude finishes a batch, it will wait here for your OK.")
         } else {
@@ -670,7 +693,7 @@ struct HistorySection: View {
             .background(Theme.window)
             Divider().overlay(Theme.border)
             if part == .jobs, let id = selectedJob, jobs.contains(where: { $0.id == id }) {
-                JobDetailView(jobID: id)
+                JobDetailView(jobID: id, collapsesConversation: false)
             } else if part == .chats {
                 EmptyState(title: "Ask chats", message: engine.settings.resolvedAskPreferences.resolvedKeepHistory
                            ? "Chats are kept \(engine.settings.resolvedAskPreferences.resolvedHistoryDays) days after their last message. Pinned chats stay."
@@ -769,12 +792,16 @@ struct JobTabs: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(jobs) { job in
+                ForEach(ReviewBatches.ordered(jobs)) { job in
+                    let on = job.id == selected
                     Button { pick(job.id) } label: {
-                        Text(job.displayTitle).font(Theme.body(12, .semibold)).lineLimit(1)
-                            .padding(.horizontal, 12).frame(height: 28)
-                            .background(Capsule().fill(job.id == selected ? Theme.primaryTint : Theme.panel))
-                            .foregroundStyle(job.id == selected ? Theme.primary : Theme.ink)
+                        HStack(spacing: 6) {
+                            Text(job.displayTitle).font(Theme.body(12, .semibold)).lineLimit(1)
+                            Text(ReviewBatches.tabSubtitle(job)).font(Theme.body(11)).opacity(0.7).lineLimit(1)
+                        }
+                        .padding(.horizontal, 12).frame(height: 28)
+                        .background(Capsule().fill(on ? Theme.ink : Theme.panel))
+                        .foregroundStyle(on ? Color.white : Theme.ink)
                     }
                     .buttonStyle(.plain)
                 }
@@ -875,60 +902,135 @@ struct JobDetailView: View {
     @State private var allowed: Set<String>
     /// Snapshots: source folders that start open.
     var openFolders: Set<String> = []
+    /// Snapshots: a source row drawn hovered.
+    var hoverPage: String? = nil
+    /// Sources not picked (all are picked at first), for this job.
+    @State private var unpicked: Set<String>
+    /// The source whose labels are being edited, and the chips so far.
+    @State private var editingPage: String?
+    @State private var editDraft: [String]
+    /// The core refused a label edit (409): its message; nothing changed.
+    @State private var labelError: String?
+    @State private var groupOverrides: [String: Bool]
+    @State private var menuOpen: Bool
+    @State private var showConversation = false
+    /// History keeps the conversation beside the details (its job list takes the width); Review moves it
+    /// behind a button below `narrowWidth`.
+    var collapsesConversation = true
+    @State private var summaryOpen = false
 
-    /// `reply` / `allowed` start non-empty only in snapshots.
-    init(jobID: String, reply: String = "", allowed: Set<String> = [], openFolders: Set<String> = []) {
+    /// `reply` / `allowed` / the review state start non-empty only in snapshots.
+    init(jobID: String, reply: String = "", allowed: Set<String> = [], openFolders: Set<String> = [],
+         unpicked: Set<String> = [], editing: (page: String, labels: [String])? = nil, labelError: String? = nil,
+         openGroups: [String: Bool] = [:], menuOpen: Bool = false, hoverPage: String? = nil, collapsesConversation: Bool = true) {
         self.jobID = jobID
+        self.collapsesConversation = collapsesConversation
         self.openFolders = openFolders
+        self.hoverPage = hoverPage
         _reply = State(initialValue: reply)
         _allowed = State(initialValue: allowed)
+        _unpicked = State(initialValue: unpicked)
+        _editingPage = State(initialValue: editing?.page)
+        _editDraft = State(initialValue: editing?.labels ?? [])
+        _labelError = State(initialValue: labelError)
+        _groupOverrides = State(initialValue: openGroups)
+        _menuOpen = State(initialValue: menuOpen)
     }
 
     var body: some View {
         if let job = engine.job(jobID) {
             VStack(spacing: 0) {
                 GeometryReader { geo in
-                    // The details keep at least ~360 pt; the conversation takes
-                    // what is left, between 220 and 300 pt.
-                    let inner = geo.size.width - 2 * Self.sidePadding - Self.gap
+                    // The details keep at least ~360 pt; the conversation takes what is left, between 220
+                    // and 300 pt. Below ~780 pt (a window under ~1000 pt) it moves behind a button.
+                    let narrow = collapsesConversation && geo.size.width < Self.narrowWidth
+                    let pad = narrow ? Self.narrowPadding : Self.sidePadding
+                    let inner = geo.size.width - 2 * pad - Self.gap
                     let talk = min(300, max(220, inner - 360))
                     HStack(alignment: .top, spacing: Self.gap) {
                         Scrolling {
-                            VStack(alignment: .leading, spacing: 22) {
-                                heading(job)
+                            VStack(alignment: .leading, spacing: 18) {
+                                heading(job, narrow: narrow)
                                 content(job)
                             }
-                            .padding(.top, 34).padding(.bottom, 24)
+                            .padding(.top, 30).padding(.bottom, 24)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        conversation(job)
-                            .frame(width: talk)
-                            .padding(.top, 34).padding(.bottom, 20)
+                        if !narrow {
+                            conversation(job)
+                                .frame(width: talk)
+                                .padding(.top, 30).padding(.bottom, 20)
+                        }
                     }
-                    .padding(.horizontal, Self.sidePadding)
+                    .padding(.horizontal, pad)
                 }
                 footer(job)
             }
-            .onChange(of: jobID) { reply = ""; allowed = [] }
+            .onChange(of: jobID) {
+                reply = ""; allowed = []; unpicked = []; editingPage = nil; editDraft = []; labelError = nil
+                groupOverrides = [:]; menuOpen = false; summaryOpen = false
+            }
         }
     }
 
     private static let sidePadding: CGFloat = 32
+    private static let narrowPadding: CGFloat = 28
     private static let gap: CGFloat = 24
+    static let narrowWidth: CGFloat = 780
 
-    private func heading(_ job: Job) -> some View {
+    private func summary(_ job: Job) -> ReviewSummary {
+        let completed = job.state == .completed
+        let paths = completed ? job.changedPaths : (job.approval?.plan?.changedPaths ?? [])
+        let vault = URL(fileURLWithPath: job.vaultPath)
+        return ReviewSummary.make(changedPaths: paths, sources: job.approval?.sources,
+                                  exists: completed ? nil : { FileManager.default.fileExists(atPath: vault.appendingPathComponent($0).path) })
+    }
+
+    private func pill(_ job: Job) -> StateStyle {
         let style = StateStyle.of(job.state)
+        if job.state == .completed, let parts = job.parts, parts.count > 1 {
+            return StateStyle(label: "Applied in \(parts.count) parts", fill: style.fill, ink: style.ink, dot: style.dot)
+        }
+        return style
+    }
+
+    private func heading(_ job: Job, narrow: Bool) -> some View {
+        let style = pill(job)
+        let parts = summary(job).parts
         return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 Pill(text: style.label, fill: style.fill, ink: style.ink)
+                Text(job.historyTime).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: 0)
+                if narrow {
+                    SoftButton(title: "Conversation · \(job.turns.count)", size: .small) { showConversation.toggle() }
+                        .fixedSize()
+                        .popover(isPresented: $showConversation, arrowEdge: .bottom) {
+                            conversation(job).frame(width: 320, height: 480).padding(18)
+                        }
+                }
             }
             Text(job.displayTitle).font(Theme.display(28)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-            Text(job.historyTime).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
             if engine.isApplying(job.id) {
                 ApplyingLine(vault: URL(fileURLWithPath: job.vaultPath).lastPathComponent, start: engine.applyingSince(job.id) ?? Date())
             }
-            if let summary = job.approval?.summary ?? job.turns.last(where: { $0.author == .worker })?.text {
-                Markdown(summary).font(Theme.body(15)).foregroundStyle(Color(hex: 0x48463F))
+            if !parts.isEmpty {
+                parts.enumerated().reduce(Text("")) { t, item in
+                    t + Text(item.offset == 0 ? "" : " · ") + Text("\(item.element.0)").fontWeight(.bold) + Text(" \(item.element.1)")
+                }
+                .font(Theme.body(15)).foregroundStyle(Theme.ink).lineLimit(2).padding(.top, 2)
+            }
+            if let text = job.approval?.summary ?? job.turns.last(where: { $0.author == .worker })?.text {
+                if summaryOpen || parts.isEmpty {
+                    Markdown(text).font(Theme.body(parts.isEmpty ? 15 : 13)).foregroundStyle(parts.isEmpty ? Color(hex: 0x48463F) : Theme.muted)
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(text.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "\n", with: " "))
+                            .font(Theme.body(13)).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.tail)
+                        Button("Claude’s full summary") { summaryOpen = true }
+                            .buttonStyle(.plain).font(Theme.body(13, .semibold)).foregroundStyle(Theme.primary).fixedSize()
+                    }
+                }
             }
             if let error = job.error {
                 Text(error).font(Theme.body(13)).foregroundStyle(Theme.peachInk).textSelection(.enabled)
@@ -938,7 +1040,7 @@ struct JobDetailView: View {
 
     @ViewBuilder
     private func content(_ job: Job) -> some View {
-        let changes = changeList(job)
+        let summary = summary(job)
         // What needs the user (plan error, questions, blocked tools with
         // "Allow & continue") comes first, so it is visible without scrolling
         // even at the 900 × 600 minimum window.
@@ -951,12 +1053,33 @@ struct JobDetailView: View {
                         text: approval.questions.map { "• \($0)" }.joined(separator: "\n"))
             }
             if !approval.denials.isEmpty { blocked(job, approval) }
+            if let reason = approval.sessionUnavailable {
+                ReviewNotice(tone: .peach, title: "This batch’s AI session isn’t available anymore", text: reason, systemImage: "exclamationmark.circle")
+            }
+            if let rebuilt = approval.rebuilt { rebuiltNotice(rebuilt) }
+            if let labelError {
+                ReviewNotice(tone: .peach, title: "Couldn’t save your label edit",
+                             text: labelError + " Your edit was not kept; the labels are as before.", systemImage: "exclamationmark.circle")
+            }
+            if let labels = approval.labels, labels.state == .unconfirmed, let message = labels.message {
+                ReviewNotice(tone: .calm, title: "Labels go in unconfirmed", text: message, systemImage: "info.circle")
+            }
         }
         if job.state == .running {
-            BatchBanner(job: job, showsCancel: false)
+            if let part = job.pendingPart {
+                let n = part.expected.count
+                ReviewNotice(tone: .blue, title: "Rebuilding the change for your \(n == 1 ? "source" : "\(n) sources")…",
+                             text: "In this batch’s own \(runnerName(job)) session (the one that read these notes). Your source pages and their labels stay exactly as you saw them; the index, log, hot cache, overview and ledgers are written again for just these.",
+                             busy: true)
+            } else {
+                BatchBanner(job: job, showsCancel: false)
+            }
+        }
+        if job.state == .completed, let parts = job.parts, !parts.isEmpty {
+            JobPartsList(parts: parts, removed: (job.approval?.sources ?? []).filter(\.removed))
         }
         if job.state == .awaitingApproval, job.kind == "ingest" || job.kind == "batch" {
-            let n = job.sources.count // a folder counts once
+            let n = job.approval?.sources.map { ReviewPicking.active($0).count } ?? job.sources.count // a folder counts once
             HStack(spacing: 8) {
                 Image(systemName: "checklist").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.primary)
                 Text("After you apply, Distill looks for actions in \(n == 1 ? "this note" : "these \(n) notes") with Sonnet and asks you to confirm them.")
@@ -964,41 +1087,33 @@ struct JobDetailView: View {
             }
         }
         if let summary = job.actionsFound { JobActionsLine(job: job, summary: summary) }
-        if !changes.isEmpty {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 165), spacing: 10)], alignment: .leading, spacing: 10) {
-                StatTile(n: changes.filter(\.isNew).count, label: plural(changes.filter(\.isNew).count, "new page", "new pages"), fill: Theme.limeTint, ink: Theme.limeInk)
-                StatTile(n: changes.filter { !$0.isNew }.count, label: plural(changes.filter { !$0.isNew }.count, "file updated", "files updated"), fill: Theme.primaryTint, ink: Theme.primary)
-                if let attention = attentionCount(job), attention > 0 {
-                    StatTile(n: attention, label: plural(attention, "needs a look", "need a look"), fill: Theme.peachTint, ink: Theme.peachInk)
-                }
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("Changes").font(Theme.body(14, .bold))
-                    Text(job.state == .completed ? "applied" : "verified by the vault core").font(Theme.body(12)).foregroundStyle(Theme.muted)
-                }
-                .padding(.bottom, 4)
-                ForEach(changes, id: \.path) { change in
-                    Button { open(job: job, path: change.path) } label: {
-                        HStack(spacing: 12) {
-                            Text(change.isNew ? "+" : "•").font(Theme.body(14, .bold))
-                                .foregroundStyle(change.isNew ? Theme.limeInk : Theme.primary)
-                                .frame(width: 24, height: 24)
-                                .background(Circle().fill(change.isNew ? Theme.limeTint : Theme.primaryTint))
-                            Text(change.name).font(Theme.body(14)).lineLimit(1)
-                            Spacer()
-                            Text(change.directory).font(Theme.body(12)).foregroundStyle(Theme.faint)
-                        }
-                        .padding(.vertical, 6).padding(.horizontal, 4)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        if !job.files.isEmpty || !(job.folders ?? []).isEmpty {
+        ReviewGroupsView(job: job, summary: summary, unpicked: $unpicked, editingPage: $editingPage, editDraft: $editDraft,
+                         labelError: $labelError, overrides: $groupOverrides, hoverPage: hoverPage,
+                         open: { open(job: job, path: $0) })
+        if job.approval?.sources == nil || !(job.folders ?? []).isEmpty, !job.files.isEmpty || !(job.folders ?? []).isEmpty {
             // A folder shows once (QueueItems cards 2 and 3): its files and their pages on Review, its tree in History.
             JobSourcesView(job: job, mode: job.state == .awaitingApproval ? .review : .history, openFolders: openFolders)
+        }
+    }
+
+    @ViewBuilder private func rebuiltNotice(_ rebuilt: RebuiltPlan) -> some View {
+        let n = rebuilt.pages.count
+        let pages = n == 1 ? "source page is" : "\(n) source pages are"
+        if rebuilt.reason == .stale {
+            ReviewNotice(tone: .blue, title: "Rebuilt for your vault as it is now",
+                         text: "Another batch changed your vault after this one was prepared, so this batch’s change was rebuilt in its own session and checked again.",
+                         systemImage: "info.circle")
+        } else {
+            ReviewNotice(tone: .green, title: "Rebuilt and checked by the vault core",
+                         text: "Distill compared it with what you approved: the \(pages) the same, byte for byte, and nothing else from this batch is in it.")
+        }
+    }
+
+    private func runnerName(_ job: Job) -> String {
+        switch job.runnerID ?? "claude-code" {
+        case "claude-code": return "Claude"
+        case "codex": return "Codex"
+        default: return "AI"
         }
     }
 
@@ -1074,28 +1189,44 @@ struct JobDetailView: View {
             switch job.state {
             case .awaitingApproval:
                 let applying = engine.isApplying(job.id)
+                let approval = job.approval
+                let blocker = ReviewPicking.blocker(approval, unpicked: unpicked)
                 SoftButton(title: "Reject", tint: Theme.peachInk, fill: .clear) { engine.reject(job.id) }
                     .disabled(applying).opacity(applying ? 0.35 : 1)
                 Spacer()
+                if !applying { footerStatus(approval, blocker: blocker) }
                 SoftButton(title: "Send reply") { send(job) }
                     .disabled(applying || reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .opacity(applying ? 0.35 : 1)
                 if applying {
-                    ApplyingButton(count: changeList(job).count)
-                } else if job.approval?.canApplyPlan == true {
-                    PrimaryButton(title: "Approve & apply", systemImage: "checkmark") { engine.approveTracked(job.id) }
-                        .keyboardShortcut(.return, modifiers: .command)
+                    let s = summary(job)
+                    ApplyingButton(count: s.sourcePages.count + s.newPages.count + s.updated.count)
+                } else if approval?.canApplyPlan == true {
+                    approveButton(job, approval: approval, enabled: blocker == nil && editingPage == nil)
                 }
             case .running:
-                Text("Claude is working on it…").font(Theme.body(13)).foregroundStyle(Theme.muted)
-                Spacer()
-                SoftButton(title: "Cancel") { engine.cancel(job.id) }
+                if let part = job.pendingPart {
+                    Spacer()
+                    HStack(spacing: 6) {
+                        Spinner(color: Theme.muted, size: 11)
+                        Text("Rebuilding with \(ModelChoice.shortName(job.model))…").font(Theme.body(12)).foregroundStyle(Theme.muted)
+                    }
+                    PrimaryButton(title: part.expected.count == 1 ? "Approve 1 source" : "Approve \(part.expected.count) sources",
+                                  systemImage: "checkmark", enabled: false) {}
+                } else {
+                    Text("Claude is working on it…").font(Theme.body(13)).foregroundStyle(Theme.muted)
+                    Spacer()
+                    SoftButton(title: "Cancel") { engine.cancel(job.id) }
+                }
             case .failed, .cancelled:
                 Spacer()
                 SoftButton(title: "Send reply") { send(job) }
                     .disabled(reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             case .completed, .rejected:
-                if let op = job.operationID {
+                if let parts = job.parts, parts.count > 1 {
+                    Text("\(parts.count) operations · \(parts.map(\.operationID).joined(separator: ", "))")
+                        .font(Theme.body(12)).foregroundStyle(Theme.faint).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                } else if let op = job.operationID {
                     Text("Operation \(op)").font(Theme.body(12)).foregroundStyle(Theme.faint).textSelection(.enabled)
                 }
                 Spacer()
@@ -1105,27 +1236,36 @@ struct JobDetailView: View {
         .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
     }
 
+    /// "Approving also confirms the labels shown", or why Approve waits (labels being saved or suggested).
+    @ViewBuilder private func footerStatus(_ approval: ApprovalRequest?, blocker: String?) -> some View {
+        if let labels = approval?.labels, labels.state == .confirming {
+            HStack(spacing: 6) {
+                Spinner(color: Theme.muted, size: 11)
+                Text("Saving your labels into the change and checking it again…").font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
+            }
+        } else if let blocker, !blocker.isEmpty {
+            Text(blocker).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
+        } else if let sources = approval?.sources, sources.contains(where: { !$0.labels.isEmpty && !$0.removed }),
+                  approval?.labels?.state != .unconfirmed {
+            Text("Approving also confirms the labels shown").font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
+        }
+    }
+
+    private func approveButton(_ job: Job, approval: ApprovalRequest?, enabled: Bool) -> some View {
+        let title = ReviewPicking.approveTitle(approval, unpicked: unpicked)
+        let approve = { engine.approveTracked(job.id, options: ReviewPicking.options(approval?.sources, unpicked: unpicked)) }
+        var options: [(String, String, () -> Void)] = []
+        if ReviewPicking.offersLater(approval, unpicked: unpicked) {
+            options = [
+                (ReviewPicking.menuApproveTitle(approval, unpicked: unpicked), "Adds them to your vault and confirms the labels shown.", approve),
+                ("Approve, review labels later", "Adds them with their labels unconfirmed. They wait in Labels → To review.",
+                 { engine.approveTracked(job.id, options: ReviewPicking.options(approval?.sources, unpicked: unpicked, later: true)) }),
+            ]
+        }
+        return ApproveSplitButton(title: title, enabled: enabled, options: options, menuOpen: $menuOpen, action: approve)
+    }
+
     // MARK: helpers
-
-    private struct Change { let path: String; let isNew: Bool
-        var name: String { ((path as NSString).lastPathComponent as NSString).deletingPathExtension }
-        var directory: String { (path as NSString).deletingLastPathComponent }
-    }
-
-    private func changeList(_ job: Job) -> [Change] {
-        let paths = job.state == .completed ? job.changedPaths : (job.approval?.plan?.changedPaths ?? [])
-        let vault = URL(fileURLWithPath: job.vaultPath)
-        return paths
-            .filter { !$0.hasPrefix(".vault-meta/") && !$0.hasPrefix(".raw/") }
-            .map { Change(path: $0, isNew: job.state != .completed && !FileManager.default.fileExists(atPath: vault.appendingPathComponent($0).path)) }
-    }
-
-    private func attentionCount(_ job: Job) -> Int? {
-        guard let a = job.approval, job.state == .awaitingApproval else { return nil }
-        return a.questions.count + a.denials.count + (a.planError == nil ? 0 : 1)
-    }
-
-    private func plural(_ n: Int, _ one: String, _ many: String) -> String { n == 1 ? one : many }
 
     private func canReply(_ job: Job) -> Bool {
         [.awaitingApproval, .failed, .cancelled].contains(job.state)

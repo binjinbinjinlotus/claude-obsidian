@@ -13,6 +13,8 @@ public enum QueueRowStatus: Equatable, Sendable {
     case problem(String)
     /// v5: held out of every batch though nothing is wrong (a Google Doc waiting for Google Drive access).
     case waiting(String)
+    /// v6, the label gate: a text file whose labels are not in yet waits for the next batch (amber "Next batch").
+    case labeling
 
     public enum Tone: Sendable { case gray, green, blue, peach, amber }
 
@@ -22,7 +24,7 @@ public enum QueueRowStatus: Equatable, Sendable {
         case .ready: return .green
         case .inBatch: return .blue
         case .problem: return .peach
-        case .waiting: return .amber
+        case .waiting, .labeling: return .amber
         }
     }
 
@@ -72,6 +74,7 @@ public enum QueueRows {
     public static func status(_ entry: QueueEntry, batchRunning: Bool) -> QueueRowStatus {
         if let problem = entry.problem { return .problem(problem) }
         if let waiting = entry.waiting { return .waiting(waiting) }
+        if entry.heldForLabels { return .labeling }
         if batchRunning { return .nextBatch }
         if entry.kind == .note || entry.settled { return .ready }
         if let at = entry.readyAt { return .readyAt(at) }
@@ -84,7 +87,7 @@ public enum QueueRows {
         case .readyAt(let date): return "Ready " + at(date, now: now, locale: locale, timeZone: timeZone)
         case .ready: return "Ready"
         case .inBatch: return "In batch"
-        case .nextBatch: return "Next batch"
+        case .nextBatch, .labeling: return "Next batch"
         case .problem(let reason):
             switch reason {
             case "too big": return "Too big"
@@ -112,6 +115,7 @@ public enum QueueRows {
         case .waiting: return "Distill can’t open Google Docs yet, so this waits here and isn’t processed."
         case .inBatch: return "A batch is reading it now."
         case .nextBatch: return "Added while a batch runs: it waits for the next one."
+        case .labeling: return QueueLabelText.heldHelp
         case .ready: return nil
         }
     }
@@ -187,9 +191,14 @@ public enum QueueRows {
         "Next batch \(at(next, now: now, locale: locale, timeZone: timeZone)) · every \(BatchInterval(totalMinutes: intervalMinutes).phrase)"
     }
 
-    /// "10 min", "30 s", "1 min 30 s".
+    /// "10 min", "30 s", "1 min 30 s", "2 hours", "1 hour 30 min".
     static func waitPhrase(_ seconds: Int) -> String {
-        let m = max(0, seconds) / 60, s = max(0, seconds) % 60
+        let total = max(0, seconds)
+        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
+        if h > 0 {
+            let hours = h == 1 ? "1 hour" : "\(h) hours"
+            return m > 0 ? "\(hours) \(m) min" : hours
+        }
         switch (m, s) {
         case (0, _): return "\(s) s"
         case (_, 0): return "\(m) min"

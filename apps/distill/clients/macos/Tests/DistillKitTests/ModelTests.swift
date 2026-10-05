@@ -238,14 +238,19 @@ final class BatchIntervalTests: XCTestCase {
 final class SettleWaitTests: XCTestCase {
     func testSplitsClampsAndRecombines() {
         var w = SettleWait(totalSeconds: 600)
-        XCTAssertEqual([w.minutes, w.seconds], [10, 0])
-        w.seconds = 75
-        XCTAssertEqual(w.seconds, 59)
-        XCTAssertEqual(w.totalSeconds, 659)
-        w.minutes = -3
-        XCTAssertEqual(w.totalSeconds, 59)
-        XCTAssertEqual(SettleWait(totalSeconds: 7200).totalSeconds, 3599, "longer waits clamp to 59:59 in the editor")
+        XCTAssertEqual([w.hours, w.minutes], [0, 10])
+        w.minutes = 75
+        XCTAssertEqual(w.minutes, 59)
+        XCTAssertEqual(w.totalSeconds, 59 * 60)
+        w.hours = -3
+        XCTAssertEqual(w.hours, 0)
+        w.hours = 30
+        XCTAssertEqual(w.hours, 24)
+        XCTAssertEqual(w.totalSeconds, 86_400, "24 hours is the most; the minutes don't add past it")
+        XCTAssertEqual(SettleWait(totalSeconds: 200_000).totalSeconds, 86_400, "longer waits clamp to 24 hours")
         XCTAssertEqual(SettleWait(totalSeconds: 0).totalSeconds, 0)
+        XCTAssertEqual(SettleWait(totalSeconds: 5400).hours, 1)
+        XCTAssertEqual(SettleWait(totalSeconds: 5400).minutes, 30)
     }
 }
 

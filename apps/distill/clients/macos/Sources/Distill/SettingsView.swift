@@ -363,6 +363,16 @@ struct BatchingSettings: View {
             }
             .padding(.top, 6)
             .settingsAnchor("Wait before picking up a file")
+            HStack(spacing: 8) {
+                ForEach(SettleWait.presets, id: \.1) { preset in
+                    chip(preset.0, selected: SettleWait.clamp(engine.settings.settleSeconds) == preset.1) {
+                        engine.settings.settleSeconds = preset.1
+                    }
+                }
+            }
+            Text("Text files also wait for their labels: a batch takes a file once its labels are suggested, confirmed or come from its own tags. PDFs and images don’t wait, and neither does anything when “Suggest labels for queue files” is off.")
+                .font(Theme.body(11)).foregroundStyle(Theme.faint).lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
             // The queue check (v5): the core rescans the queue folder this often; Off leaves Refresh and the window check.
             SettingsRow(title: "Check the queue folder for changes",
                         note: "Finds files and folders added outside Distill (Finder, sync apps). Refresh on the Queue checks at once.", bold: true) {
@@ -383,7 +393,7 @@ struct BatchingSettings: View {
     private var settleText: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Wait before picking up a file").font(Theme.body(13, .semibold))
-            Text("A file must stay unchanged this long before a batch takes it, so half-written notes wait. Process now ignores it.")
+            Text("A file must stay unchanged this long before a batch takes it. 0 = no wait. Up to 24 hours. Process now ignores it.")
                 .font(Theme.body(11)).foregroundStyle(Theme.muted).lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -391,9 +401,9 @@ struct BatchingSettings: View {
 
     private var settleCounters: some View {
         HStack(spacing: 12) {
-            IntervalCounter(label: "minutes", value: settlePart(\.minutes), range: SettleWait.range, compact: true)
+            IntervalCounter(label: "hours", value: settlePart(\.hours), range: SettleWait.hoursRange, compact: true)
                 .frame(width: 170)
-            IntervalCounter(label: "seconds", value: settlePart(\.seconds), range: SettleWait.range, compact: true)
+            IntervalCounter(label: "minutes", value: settlePart(\.minutes), range: SettleWait.minutesRange, compact: true)
                 .frame(width: 170)
         }
     }
