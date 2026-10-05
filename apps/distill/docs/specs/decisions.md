@@ -17,6 +17,18 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Activity log: the owner's answers.** Spec: [Activity log and
+  trash](activity-log.md).
+  - The Activity design under History (canvas v66) is approved; build the Mac
+    screen.
+  - The limits stay: a 30-day trash, and a log of 180 days (about 22 MB at
+    most).
+  - Chats deleted while Keep history is off **do** go to the trash, kept for
+    24 hours.
+  - Actions deleted forever, and jobs removed from the list, do **not** go to
+    the trash. They stay logged with the reason.
+  - Scheduled runs that found nothing stay out of the log; there is no "Show
+    routine runs" switch.
 - **No Connecting state: connected, or Set up connection (canvas v59,
   mac-connections).** Specs: [Actions](actions.md) → Settings · Connections,
   Connections, Toolbar. The owner: "let not display the connecting at all. It
