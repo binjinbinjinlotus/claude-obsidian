@@ -4664,6 +4664,11 @@
           "default": false
         },
         {
+          "name": "runtime",
+          "type": "text",
+          "default": ""
+        },
+        {
           "name": "width",
           "type": "text",
           "default": ""
@@ -4673,7 +4678,7 @@
         "file": "RunLogEntryStates.dc.html",
         "title": "Run log entry states",
         "heading": "RunLogEntry",
-        "intro": "One run of a collector in its run history: result, start time, what it did, duration (and exit code for scripts). Click to expand: Folder runs list each file (Copied, or Moved when the collector is set to move; Skipped · already collected; Waiting · still changing); script runs show their output, stderr in peach, with Copy output and <b>Open log</b> (the whole saved output in the log view). No Swift view yet: add <b>RunLogEntry</b>. Props: result (success | nothing | failed | timedout | skipped | running), time, summary, meta, outputKind (files | stdout | stderr), lines (“What — name” items separated by |), expanded, width.",
+        "intro": "One run of a collector in its run history: result, start time, what it did, duration (and exit code for scripts). Click to expand: Folder runs list each file (Copied, or Moved when the collector is set to move; Skipped · already collected; Waiting · still changing); script runs show their output, stderr in peach, with what ran it (<b>runtime</b>: “python3 (.venv) · ~/…/bin/python3”), Copy output and <b>Open log</b> (the whole saved output in the log view). No Swift view yet: add <b>RunLogEntry</b>. Props: result (success | nothing | failed | timedout | skipped | running), time, summary, meta, outputKind (files | stdout | stderr), lines (“What — name” items separated by |), expanded, runtime, width.",
         "width": 1280,
         "cols": 2,
         "wrap": "<div style=\"width: 580px; padding: 10px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
@@ -4750,7 +4755,8 @@
             "meta": "exit 0 · 2.4 s",
             "outputKind": "stdout",
             "lines": "$ python3 ~/Scripts/pocket-export.py|Fetched 4 new articles since Oct 3|Wrote 4 files to /Users/mei/Documents/Distill Queue/Research",
-            "expanded": true
+            "expanded": true,
+            "runtime": "python3 (.venv) · ~/…/col-3f2a/.venv/bin/python3"
           },
           "size": [
             "560px",
@@ -4766,7 +4772,8 @@
             "meta": "exit 1 · 0.8 s",
             "outputKind": "stderr",
             "lines": "$ node ~/Scripts/slack-saved.mjs|Error: SLACK_TOKEN is not set|    at main (slack-saved.mjs:12:11)",
-            "expanded": true
+            "expanded": true,
+            "runtime": "Node 22.22.1 · ~/…/v22.22.1/bin/node"
           },
           "size": [
             "560px",
@@ -4783,7 +4790,8 @@
             "meta": "timeout · 5:00",
             "outputKind": "stdout",
             "lines": "$ zsh ~/Scripts/kindle.sh|Syncing highlights… 2 of 40",
-            "expanded": true
+            "expanded": true,
+            "runtime": "zsh · /bin/zsh"
           },
           "size": [
             "560px",
@@ -4822,7 +4830,7 @@
     {
       "name": "LogLine",
       "title": "Log line",
-      "swift": null,
+      "swift": "clients/macos/Sources/Distill/LiveLog.swift",
       "preview": [
         560,
         32
@@ -4917,7 +4925,7 @@
         "file": "LogLineStates.dc.html",
         "title": "Log line states",
         "heading": "LogLine",
-        "intro": "One line of the live log (batch steps, collector output, package installs, Test runs). Steps are plain words with a quiet status mark: a lime check when done, a spinner while running, a faint ring while waiting, peach for failed or for “waiting for you”. The time shows only when the minute changes. A <b>group</b> folds repeated steps (“Read 22 sources”, “Suggesting labels · 14 of 22” with a thin bar) and opens to one line per file (<b>level</b> 1). A <b>note</b> is the AI’s own short status message, in italics, at most 280 characters. <b>Details</b> adds the raw line under each step: tool and target only (path, line range, the first line of a command), never file contents, tool results or a draft’s text. <b>output</b> lines are script output on the dark terminal surface: stderr in peach with a peach gutter, the command and Distill’s own lines in grey. No Swift view yet: add <b>LogLine</b> (LiveLog.swift). Props: kind (step | group | note | phase | output), state (done | running | waiting | review | failed), text, time, count, progress (“done/total”), detail, showDetail, stream (stdout | stderr | cmd | system), level (0 | 1), expanded, width.",
+        "intro": "One line of the live log (batch steps, collector output, package installs, Test runs). Steps are plain words with a quiet status mark: a lime check when done, a spinner while running, a faint ring while waiting, peach for failed or for “waiting for you”. The time shows only when the minute changes. A <b>group</b> folds repeated steps (“Read 22 sources”, “Suggesting labels · 14 of 22” with a thin bar) and opens to one line per file (<b>level</b> 1). A <b>note</b> is the AI’s own short status message, in italics, at most 280 characters. <b>Details</b> adds the raw line under each step: tool and target only (path, line range, the first line of a command), never file contents, tool results or a draft’s text. <b>output</b> lines are script output on the dark terminal surface: stderr in peach with a peach gutter, the command and Distill’s own lines in grey. Swift: <b>LogLine</b> in LiveLog.swift. Props: kind (step | group | note | phase | output), state (done | running | waiting | review | failed), text, time, count, progress (“done/total”), detail, showDetail, stream (stdout | stderr | cmd | system), level (0 | 1), expanded, width.",
         "width": 1280,
         "cols": 2,
         "wrap": "<div style=\"width: 580px; padding: 8px 10px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
