@@ -40,8 +40,9 @@ It is used in three places:
   Codex, which turns directory Edit rules into sandbox writable roots, gets
   the filtered list.
 - `allow()` refuses the whole call with `invalid_request` before changing
-  anything. The message names each refused rule and why, and the app shows
-  it in the error banner.
+  anything. The message starts with each refused rule and why ("Distill
+  can't allow <rule> (<why>). It would change the vault without your
+  review…"), so the rules fit the app's three-line error banner.
 - The approval screen's warning (`bypassesApproval`) uses the job's own
   folder.
 
@@ -113,7 +114,8 @@ Otherwise nothing is recorded:
 `nothing_to_do` never records changed paths. A committed transaction leaves
 no record under `.vault-meta/transactions`, so the plan is the trusted
 source. "Finding actions" (`onJobApplied`) runs only after a verified
-apply.
+apply, and the `apply` progress finishes as "Applied" only then (otherwise
+"Not applied").
 
 ## Core applies (label jobs, runners without tool permissions)
 

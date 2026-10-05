@@ -125,7 +125,9 @@ Canvas: "Queue rows: every state" and Main. Code: `QueueView` in
 3. One job is created for all of them (the queue-consuming `JobKind`, today
    Ingest).
 4. Labels (TS core; see [Labels and sources](labels-and-sources.md)): the core
-   decides each input's labels from its manifest and the `labeling` settings.
+   decides each input's labels from its manifest (merged with the label state
+   kept in Distill's state when the queue is `inbox/`) and the `labeling`
+   settings.
    When an input needs an AI suggestion (a queue-folder text file, or a CLI
    note with nothing confirmed), a pre-step runs the `labelSuggest` runner
    before the first turn. Its cost is recorded as an app turn; a failed

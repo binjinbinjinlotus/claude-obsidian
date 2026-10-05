@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { QUEUE_FOLDER_LIMITS, type GoogleDocLink, type QueueEntry, type QueueTreeEntry, type VaultProfile } from '../contracts.js';
 import { isoDate } from '../store/json.js';
+import { realish } from '../store/realpath.js';
 
 // ───────────── Batch interval ─────────────
 
@@ -722,8 +723,9 @@ export function inboxDir(vault: VaultProfile): string {
   return path.join(path.resolve(vault.path), 'inbox');
 }
 
+/** Compared after resolving symlinks, so it agrees with the placement check (validator.ts). */
 export function queueIsInbox(vault: VaultProfile): boolean {
-  return path.resolve(vault.queueDirectory) === inboxDir(vault);
+  return realish(vault.queueDirectory) === path.join(realish(vault.path), 'inbox');
 }
 
 /** `name.ext`, then `name 2.ext`, `name 3.ext`, ... */

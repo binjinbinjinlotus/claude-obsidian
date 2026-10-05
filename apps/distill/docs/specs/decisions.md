@@ -17,6 +17,20 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Follow-ups to the audit fixes, from a review pass.** Specs: [Approval and
+  review](approval-and-review.md), [Labels and
+  sources](labels-and-sources.md), [Queue and
+  batching](queue-and-batching.md).
+  - An unverified agent apply finished its `apply` progress as "Applied",
+    which contradicted the job's own turn. It now says "Not applied" unless
+    an operation was recorded.
+  - `queueIsInbox` compared `path.resolve` strings while the placement check
+    resolves symlinks. A vault saved through a symlink, with the queue saved
+    as the real `…/inbox`, passed placement but switched off every inbox-mode
+    protection. Both now compare resolved paths.
+  - The `allow()` refusal names the rules first, so they fit the app's
+    three-line error banner.
+
 - **Exit 75 from `transaction apply` is worded by its error code.** Spec:
   [Approval and review](approval-and-review.md) → Core applies. Audit item
   B5.

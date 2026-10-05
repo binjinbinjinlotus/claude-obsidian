@@ -12,7 +12,7 @@ import { ClaudeCodeRunner, claudeArguments, parseClaudeJSON, type ClaudeInvocati
 import { bypassesApproval, suggestedRule } from './runners/permissions.js';
 import { defaultRegistry } from './runners/registry.js';
 import { IngestJobKind, JobContext, parseWorkerStatus, shellQuote, WorkerProtocol } from './engine/job-kinds.js';
-import { BatchInterval, claimFiles, pendingFiles, settledFiles } from './engine/queue.js';
+import { BatchInterval, claimFiles, pendingFiles, queueIsInbox, settledFiles } from './engine/queue.js';
 import { queuePlacementProblem, setupProblems } from './engine/validator.js';
 import { decodeJob, jobRunnerID, newJob } from './store/jobs.js';
 import { decodeSettings, defaultSettings, encodeSettings, selectionFor } from './store/settings.js';
@@ -158,6 +158,16 @@ describe('QueueTests', () => {
     const claimed = claimFiles(pendingFiles(inbox), vault, new Set(['inbox/a.md']));
     assert.deepEqual(claimed, ['inbox/b.md']);
     assert.ok(fs.existsSync(path.join(inbox, 'a.md')));
+  });
+
+  test('queueIsInbox agrees with the placement check when the vault is reached through a symlink', () => {
+    const real = path.join(tmp, 'real-vault');
+    fs.mkdirSync(path.join(real, 'inbox'), { recursive: true });
+    const link = path.join(tmp, 'vault-link');
+    fs.symlinkSync(real, link);
+    assert.equal(queueIsInbox({ path: link, queueDirectory: path.join(real, 'inbox') }), true);
+    assert.equal(queueIsInbox({ path: real, queueDirectory: path.join(link, 'inbox') }), true);
+    assert.equal(queueIsInbox({ path: real, queueDirectory: path.join(tmp, 'queue') }), false);
   });
 
   test('testValidatorRejectsQueueInsideRaw', () => {

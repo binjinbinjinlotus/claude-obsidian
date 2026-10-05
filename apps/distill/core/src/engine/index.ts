@@ -332,7 +332,8 @@ export function createEngine(opts: EngineOptions): Engine {
     if (!current) return;
     const patch: Partial<Progress> = {};
     if (job.state === 'awaitingApproval') patch.message = 'Ready for review';
-    else if (job.state === 'completed') patch.message = current.kind === 'apply' ? 'Applied' : 'Done';
+    // "Applied" only when an operation was recorded (an unverified agent apply records none).
+    else if (job.state === 'completed') patch.message = current.kind === 'apply' ? (job.operationID ? 'Applied' : 'Not applied') : 'Done';
     else if (job.state === 'cancelled') patch.message = 'Cancelled';
     else if (job.state === 'failed') patch.message = 'Failed';
     else if (job.state === 'rejected') patch.message = 'Rejected';
@@ -939,11 +940,10 @@ export function createEngine(opts: EngineOptions): Engine {
       return why ? [`${r} (${why})`] : [];
     });
     if (refused.length > 0) {
+      // Rules first: the app's error banner shows three lines.
       throw new CoreError(
         'invalid_request',
-        `Distill can't allow ${refused.length === 1 ? 'this rule' : 'these rules'}: they would change the vault without your review.\n` +
-          refused.map((r) => `- ${r}`).join('\n') +
-          '\nReply with guidance instead.',
+        `Distill can't allow ${refused.join('; ')}. ${refused.length === 1 ? 'It' : 'They'} would change the vault without your review; reply with guidance instead.`,
       );
     }
     mutate(id, (j) => {

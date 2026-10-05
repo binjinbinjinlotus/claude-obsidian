@@ -294,6 +294,8 @@ describe('engine state machine', () => {
     assert.deepEqual(job.changedPaths, []);
     assert.match(job.turns.at(-1)!.text, /^Nothing recorded as applied: the turn did not report the approved operation op-1 \(it reported op-made-up\)/);
     assert.equal(applied.length, 0);
+    const last = h.events.filter((e) => e.type === 'progress').at(-1);
+    assert.ok(last?.type === 'progress' && last.progress.finished && last.progress.message === 'Not applied', JSON.stringify(last));
   });
 
   test('done outside an approved apply turn records nothing, even with an operation id', async () => {
@@ -321,6 +323,8 @@ describe('engine state machine', () => {
     await h.engine.approve(created.id);
     await h.engine.whenIdle();
     assert.deepEqual(applied.map((j) => [j.operationID, j.changedPaths]), [['op-1', ['wiki/a.md']]]);
+    const last = h.events.filter((e) => e.type === 'progress').at(-1);
+    assert.ok(last?.type === 'progress' && last.progress.finished && last.progress.message === 'Applied', JSON.stringify(last));
   });
 
   test('nothing_to_do never records changed paths', async () => {
