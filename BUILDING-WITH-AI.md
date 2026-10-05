@@ -90,6 +90,16 @@ isn't.
 
 ### 2026-10-05
 
+- **A batch looked frozen for four minutes.** One of the owner's batches
+  started at 03:33:13Z and Claude's first step came at 03:37:08Z. The app
+  showed nothing in between, while labels were suggested one file at a time.
+  The owner asked whether any log showed a batch's progress or a collector's
+  output.
+  - *Change:* the live log (a batch's steps in plain words, a collector's
+    output in order, live and kept), and labels suggested 3 at a time.
+  - *Also:* another teammate was editing the engine at the same time, so
+    the live log reached into it through one narrow sink and derived every
+    other step from existing events, instead of rewriting the engine.
 - **Labels were invisible until after approval.** The batch suggested labels
   inside its own run and wrote them to pages as unconfirmed. Review never showed
   them, and only collector-free notes got chips in the queue. The owner found it
@@ -136,6 +146,20 @@ isn't.
     session IDs and paths. Cut those links before exercising the copy.
 
 ### 2026-10-04
+- **An edit outside Distill left no trace in the activity log.** The owner
+  saved a kept collector script at 22:41 and found no activity entry. The
+  evidence showed that no request had reached the core: the file kept its
+  birth time, and IDLE's recent-files list named it. Open in editor had
+  opened the `.py` in IDLE, the Mac's default app for it.
+  - *Change:* the core remembers the hashes of the script files it last
+    wrote or saw, and logs a change made elsewhere once, before the consent
+    that covers it.
+- **The script editor crashed the app** (22:41:41, from the macOS crash
+  report). Text replaced from outside with shorter text left the old
+  selection past the end, and the code handed AppKit an empty selection
+  list, which it rejects.
+  - *Change:* the selection is clamped to the new text and never empty; a
+    unit test covers it.
 - **An audit handoff worked well as a spec, but it listed symptoms, not every
   reader.** A compliance audit found where Distill broke claude-obsidian's
   rules: it edited files in `inbox/`, the core didn't enforce the approval

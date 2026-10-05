@@ -3,7 +3,7 @@ type: meta
 title: Distill Spec Index
 status: developing
 created: 2026-10-01
-updated: 2026-10-02
+updated: 2026-10-05
 tags:
   - meta
   - index
@@ -29,18 +29,18 @@ https://claude.ai/artifact/VSqHFPZjcqY2bMqFEnPqpG
 
 - [AI runners](ai-runners.md): Claude Code, Codex, OpenAI, OpenRouter and Vercel AI SDK; per-task runner/model/effort; Keychain secrets.
 - [Claude runner](claude-runner.md): how `claude -p` is invoked, isolation flags, sessions, resume, structured output.
-- [Approval and review](approval-and-review.md): two-phase runs, the approval gate, core-applied transactions, recovery.
-- [Queue and batching](queue-and-batching.md): queue folder, 10-minute settle wait, schedule, inbox moves, progress steps; folder items, .gdoc items that wait, the queue scan (Refresh and the periodic check; core, API, CLI and Mac app built).
-- [Job kinds](job-kinds.md): ingest and labels; the extension point for new kinds of work.
-- [Vaults and settings](vaults-and-settings.md): vault profiles, stored settings, validation.
+- [Approval and review](approval-and-review.md): two-phase runs, the approval gate (enforced in the core), core-applied transactions, verified applies, recovery; labels in Review, pick and remove sources, Approve, review labels later, approving part of a batch (parts, Discard this part / Reject batch), several batches waiting oldest first.
+- [Queue and batching](queue-and-batching.md): queue folder (`inbox/` create-only), settle wait (10 minutes by default, 0–24 h), schedule, the label gate, inbox moves, progress steps; folder items, .gdoc items that wait, the queue scan (Refresh and the periodic check; core, API, CLI and Mac app built).
+- [Job kinds](job-kinds.md): ingest and labels; the extension point for new kinds of work (`core/src/engine/job-kinds.ts`).
+- [Vaults and settings](vaults-and-settings.md): vault profiles (the vault marker checked on every use), stored settings, validation; the Settings window (one page per section, search).
 
 ## Features
 
 - [Ask](ask.md): answers from the vault with citations; label/source filters (Any/All, unconfirmed), history, Stop.
 - [Write a note](notes-composer.md): text notes with images inside the text (hover → Extract content), source, and the label step.
-- [Actions](actions.md): to-dos and action types (Slack, Jira, Confluence, …) found in processed notes and Ask answers; confirm, draft, improve, handlers, History, connections. Core, API, CLI and macOS UI built (selection bar for selected answer text not yet).
+- [Actions](actions.md): to-dos and action types (Slack, Jira, Confluence, …) found in processed notes and Ask answers; confirm, draft, improve, handlers, History, connections (connected or Set up connection, no Connecting state; Atlassian API token). Core, API, CLI and macOS UI built (selection bar for selected answer text not yet).
 - [Markdown editing](markdown-editing.md): Markdown in note, question and reply inputs; style bar, selection bubble, links and the `[[` note picker, shortcuts, paste.
-- [Labels and sources](labels-and-sources.md): taxonomy, AI suggestions, confirmation through Review, the Labels screen.
+- [Labels and sources](labels-and-sources.md): taxonomy, AI suggestions (queue files labeled before the batch, 3 at a time), confirmation through Review, the Labels screen.
 - [Collectors](collectors.md): built-in (Folder) and custom-script collectors that fill the queue on a schedule; ledger and dedupe, cron schedule, script contract, consent, script files and packages. Core, API, CLI and macOS UI built, script files and packages included (Mac UI from canvas v67).
 - [Activity log and trash](activity-log.md): what changed, when and from where (app, CLI, agent, scheduler) for chats, collectors, actions, batches, the queue, connections and settings; deletes of chats and collectors go to a 30-day trash with Restore. Core, API, CLI and Mac UI (History → Activity) built.
 - [Session continuity](session-continuity.md): when an AI session Distill would resume is gone, it asks before using a new one (batches, Ask, Terminal, CLI). Core, API, CLI and Mac UI built.

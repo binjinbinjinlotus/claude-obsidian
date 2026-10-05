@@ -1,7 +1,7 @@
 ---
 title: Ask
 status: built
-updated: 2026-10-04
+updated: 2026-10-05
 ---
 
 # Ask
@@ -18,7 +18,11 @@ built; the client UI follows the canvas.
   quick window (see [Quick actions](quick-actions.md)).
 - Each question runs one runner turn with the `claude-obsidian:wiki-query`
   skill and read-only tools only. Follow-ups (`conversationID`) resume the same
-  runner session; **New chat** starts a new one.
+  runner session; **New chat** starts a new one. When that session is gone,
+  nothing is asked: the core answers `session_unavailable` and the app (or
+  the CLI with `--new-session`) continues only after the user's OK, in a new
+  session seeded with the conversation so far ([Session
+  continuity](session-continuity.md), 2026-10-05).
 - **New chat ids.** A client may send its own `conversationID` for a new chat
   (`[A-Za-z0-9][A-Za-z0-9_-]{0,127}`, e.g. a UUID): an unknown, well-formed id
   starts a new conversation under that id. Clients that want a Stop button pick

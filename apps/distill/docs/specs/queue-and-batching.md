@@ -7,8 +7,10 @@ updated: 2026-10-05
 # Queue and batching
 
 Sources collect in a per-vault queue folder and are processed together on a
-schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
-`clients/macos/Sources/WorkerCore/BatchInterval.swift`, `WorkerEngine.tick/processQueue`.
+schedule, not one by one. Code: `core/src/engine/queue.ts`,
+`core/src/engine/queue-labels.ts`, the engine's `tick` and `processQueue`
+(`core/src/engine/index.ts`); the interval editor is
+`clients/macos/Sources/DistillKit/BatchInterval.swift`.
 
 ## Queue folder
 
@@ -27,10 +29,10 @@ schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
   **Built in the core 2026-10-04:** top-level folders are folder items and
   `.gdoc` files are Google Doc items; see "Folders, Google Docs and syncing"
   below.
-- Settle delay (`settleSeconds`, default 600 s = 10 minutes in the TS core;
-  configurable in Settings → Batch; an explicit value is always honored): a
-  file must be unmodified that long
-  before it is batched.
+- Settle delay (`settleSeconds`, default 600 s = 10 minutes; Settings →
+  Batching → "Wait before picking up a file", 0 to 24 hours, 0 = no wait;
+  the core clamps it to 0..86400 s; an explicit value is always honored): a
+  file must be unmodified that long before it is batched.
 - **Notes skip the wait.** Every file of a note written by `addNote` (the
   `.md`, its `<stem>.distill.json` manifest and the images the manifest lists)
   is ready at once, so the next batch takes the whole set together
@@ -97,6 +99,9 @@ Canvas: "Queue rows: every state" and Main. Code: `QueueView` in
   Process now skips it), **Ready** (green; notes are Ready immediately), **In
   batch** (blue; the row is locked, no ×), **Next batch** (gray; added while
   a batch runs), **Couldn’t read** (peach; the core's reason in the tooltip).
+  A text file held back by the label gate (`heldForLabels`) also shows
+  **Next batch**, with the tooltip "Its labels are not in yet, so a batch
+  that started left it here. It goes in the next batch." (2026-10-05).
 - A note shows as one row (its title); × removes the whole note (the core
   trashes its members; the client drops them from its list too).
   `QueueRows.visible` hides any path in another row's `members` and, for an
@@ -175,9 +180,10 @@ message, 1 Jira ticket`. The job records the result in `actionsFound`
 (`finding` → `done` | `failed` | `skipped`), which Review and History → Jobs
 show. It runs once per job and never blocks the next batch.
 
-`Moved to inbox` is done once the job exists. The runner gives no signal
-inside a turn, so reading and drafting are not told apart while the turn
-runs. Reply and Allow turns start a new run of the same key at `Drafting page
+`Moved to inbox` is done once the job exists. The progress steps don't
+move inside a turn, so reading and drafting are not told apart there; the
+AI's own steps inside the turn are in the batch's [live log](live-log.md)
+(`job.step` events, 2026-10-05). Reply and Allow turns start a new run of the same key at `Drafting page
 changes`. Failed and cancelled batches finish with `Failed` (and `error`) or
 `Cancelled`.
 

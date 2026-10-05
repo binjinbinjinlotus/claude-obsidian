@@ -7,8 +7,8 @@ updated: 2026-10-01
 # AI runners
 
 Distill talks to AI through pluggable **runners**. Code: TS core
-`core/src/runners/` (all runners); the Swift app
-`clients/macos/Sources/WorkerCore/Runners/` has Claude Code only.
+`core/src/runners/` (all runners). The Swift app has no runners since it
+became a client of the core.
 
 Status:
 
@@ -238,9 +238,8 @@ Keys are stored in the macOS login Keychain, never in `settings.json`: service
 
 ## Adding a runner (checklist)
 
-1. New file in `core/src/runners/` (TS core) or
-   `clients/macos/Sources/WorkerCore/Runners/` (Swift app), conforming to `AgentRunner`.
+1. New file in `core/src/runners/`, conforming to `AgentRunner`.
 2. Declare honest capabilities; list models and effort levels.
 3. Report setup problems (binary path, API key) from `problems(_:)`.
-4. Append to `defaultRunners()` (`Runners.all` in Swift), add any settings it needs (with defaults in the
+4. Append to `defaultRunners()` (`core/src/runners/registry.ts`), add any settings it needs (with defaults in the
    tolerant decoder), and unit-test the request mapping.
