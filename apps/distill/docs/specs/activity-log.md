@@ -135,10 +135,13 @@ Deleting an Ask chat or a collector first writes a copy to
   dates, size and facts (turn count; interpreter, script size and lines).
 - **Restore** (`POST /v1/trash/:id/restore`):
   - A chat goes back under its id. If that id is taken, the restore is refused
-    (409).
+    (409). Its `updatedAt` becomes the restore time, so Ask history retention
+    counts its days again; otherwise an old chat would be swept again within
+    the hour. The write is a temp file plus a create-only link (atomic).
   - A collector keeps its id unless that id is taken. It comes back **off**,
     with consent cleared, so a restored script is reviewed before it runs
-    again.
+    again. Its run history is not restored (deleting removes the runs file),
+    and Folder collectors keep their ledger anyway.
   - Restores are logged (`chat.restored`, `collector.restored`).
   - The CLI restores chats only. It never adds collectors, so collectors are
     restored in the app.

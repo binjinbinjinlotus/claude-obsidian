@@ -390,7 +390,7 @@
     },
     "layout": "list",
     "toolbar.searchWidth": 160,
-    "toolbar.chips": "Collectors|From: Mac app|Last 7 days",
+    "toolbar.chips": "Collectors|From: Mac app|When: 7 days",
     "toolbar.visibleChips": 1,
     "list": {
      "list": "all",
@@ -426,7 +426,7 @@
    "label": "A queue file removed",
    "caption": "Queue files go to the macOS Trash; the entry says where.",
    "card": {
-    "height": 360,
+    "height": 400,
     "bg": "#E4E1DB",
     "pad": "22px",
     "align": "center"
@@ -440,7 +440,7 @@
    "label": "Settings changed",
    "caption": "Each change as old → new; secrets only as “changed”.",
    "card": {
-    "height": 360,
+    "height": 400,
     "bg": "#E4E1DB",
     "pad": "22px",
     "align": "center"
@@ -454,7 +454,7 @@
    "label": "Removed by Ask history",
    "caption": "Retention is Distill acting on your setting: logged as Automatic, not kept in the trash.",
    "card": {
-    "height": 360,
+    "height": 400,
     "bg": "#E4E1DB",
     "pad": "22px",
     "align": "center"
@@ -468,7 +468,7 @@
    "label": "A batch applied",
    "caption": "Ingest results: the pages it changed and the vault operation.",
    "card": {
-    "height": 360,
+    "height": 400,
     "bg": "#E4E1DB",
     "pad": "22px",
     "align": "center"

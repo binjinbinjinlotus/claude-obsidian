@@ -580,6 +580,32 @@ describe('activity through the core and the API', () => {
     assert.ok(!text.includes('thisisasecret'));
   });
 
+  test('a restored chat starts its retention days again (no expiry right after Restore)', async () => {
+    const askDir = path.join(state, 'ask');
+    fs.mkdirSync(askDir, { recursive: true });
+    const old = '2020-01-01T00:00:00.000Z';
+    fs.writeFileSync(
+      path.join(askDir, 'chat-r.json'),
+      JSON.stringify({ conversationID: 'chat-r', sessionID: null, selection: { runnerID: 'claude-code', model: 'sonnet' }, vaultPath: vault, createdAt: old, updatedAt: old, turns: 1, costUSD: 0, title: 'Old but wanted', history: [] }),
+    );
+    await core.deleteConversation('chat-r');
+    const trashId = (last('chat.deleted')!.recovery as { trashId: string }).trashId;
+    await core.restoreFromTrash(trashId);
+    const fresh = createCore({ paths: statePaths(state), trashDir: path.join(root, 'trash'), secrets: new MemorySecretStore() });
+    await new Promise((r) => setTimeout(r, 100)); // the sweep on creation
+    await fresh.stop();
+    assert.equal((await core.getConversation('chat-r'))?.title, 'Old but wanted');
+    assert.ok(!readLog(state).some((e) => e.type === 'chat.expired' && e.object.id === 'chat-r'));
+  });
+
+  test('a brand-new state dir lists empty activity and trash', async () => {
+    const page = await request('GET', '/v1/activity');
+    assert.equal(page.status, 200);
+    assert.deepEqual(page.body, { entries: [], nextCursor: null });
+    const trash = await request('GET', '/v1/trash');
+    assert.deepEqual(trash.body, { items: [] });
+  });
+
   test('settings, secrets, queue, notes, actions, batches and connections are logged; unknown callers are "api"', async () => {
     // settings: changed keys with values
     assert.equal((await request('PUT', '/v1/settings', { batchIntervalMinutes: 15 })).status, 200);

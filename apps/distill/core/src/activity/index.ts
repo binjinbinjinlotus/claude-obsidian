@@ -55,13 +55,21 @@ export function createActivityService(opts: ActivityServiceOptions): ActivitySer
         }
         const file = path.join(opts.askDir, `${record.conversationID}.json`);
         fs.mkdirSync(opts.askDir, { recursive: true });
+        // Retention counts from updatedAt: a restored chat starts its days again, so the next
+        // sweep doesn't remove it within the hour (decision 2026-10-04).
+        const restored: ConversationRecord = { ...record, updatedAt: (opts.now ? opts.now() : new Date()).toISOString() };
+        const temp = `${file}.${process.pid}.restore.tmp`;
+        fs.writeFileSync(temp, JSON.stringify(restored, null, 2) + '\n', { mode: 0o600 });
         try {
-          fs.writeFileSync(file, JSON.stringify(record, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
+          // link() fails if the chat exists: an atomic create-only rename.
+          fs.linkSync(temp, file);
         } catch (err) {
           if ((err as NodeJS.ErrnoException).code === 'EEXIST') throw new CoreError('conflict', `A chat with id ${record.conversationID} already exists.`);
           throw err;
+        } finally {
+          fs.rmSync(temp, { force: true });
         }
-        opts.emit({ type: 'conversation', conversation: summaryOf(record) });
+        opts.emit({ type: 'conversation', conversation: summaryOf(restored) });
         result = { item, objectID: record.conversationID };
       } else {
         const c = await opts.restoreCollector(payload);

@@ -72,6 +72,9 @@ supersede it with a new entry.
     - `distill activity` and `distill trash`.
     - Contract additions are additive: the activity types, a `conflict` error
       code, and an `activity` CoreEvent.
+  - **A restored chat starts its retention days again** (`updatedAt` = the
+    restore time). Without this, a chat older than `historyDays` would be
+    removed again by the next hourly sweep, right after Restore.
   - **Mac UI placement: History → Activity**, a fourth History sub-item.
     History already answers "what happened" and is where a missing chat would
     be looked for. Settings is configuration. A new window would be a new kind
