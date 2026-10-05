@@ -197,6 +197,9 @@ struct PaneWidth: ViewModifier {
         _stored = AppStorage(wrappedValue: 0, spec.key)
     }
 
+    /// Width of the grab area, inside the column's edge.
+    static let hitWidth: CGFloat = 14
+
     private var room: CGFloat? { container ?? (measured > 0 ? measured : nil) }
     private var shown: CGFloat { live ?? PaneLayout.width(saved: stored, automatic: automatic, spec: spec, container: room) }
 
@@ -216,14 +219,15 @@ struct PaneWidth: ViewModifier {
     }
 
     private var handle: some View {
-        // 9 pt, centred on the boundary: `gap` outside the column's edge.
-        let shift = spec.gap + 4.5
+        // The grab area lies inside the column, on its inner edge. A handle pushed out over the next
+        // column was drawn under that column (a later sibling) and never got the mouse.
         return PaneHandle(state: state, line: false)
+            .frame(width: Self.hitWidth, alignment: spec.edge == .trailing ? .trailing : .leading)
+            .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
-            .offset(x: spec.edge == .trailing ? shift : -shift)
             .onHover { inside in hovering = inside; updateCursor() }
             .onTapGesture(count: 2) { reset() }
-            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+            .highPriorityGesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
                 .onChanged { v in
                     let s = start ?? shown
                     if start == nil { start = s }
