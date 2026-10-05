@@ -12,6 +12,7 @@ import {
   type AddNoteResult,
   type ApprovalRequest,
   type ApproveOptions,
+  type RejectOptions,
   type JobPart,
   type PendingPart,
   type CoreEvent,
@@ -926,7 +927,8 @@ export function createEngine(opts: EngineOptions): Engine {
       if (!current || current.state !== 'awaitingApproval' || current.approval?.bundlePath !== base) return;
       if ('plan' in outcome && outcome.plan.valid) {
         const plan = outcome.plan;
-        const twin = overrides ? await reviseTwin(current, overrides) : undefined;
+        // The user's edits go into the unconfirmed version too (the AI's own startup suggestions don't: prepareReviewLabels wrote them there unconfirmed).
+        const twin = overrides && !auto ? await reviseTwin(current, overrides) : undefined;
         mutate(id, (j) => {
           if (!j.approval) return;
           j.approval.bundlePath = rev.bundlePath;
@@ -1012,12 +1014,6 @@ export function createEngine(opts: EngineOptions): Engine {
         ? pages.filter((p) => p.by === 'none' && p.source && isTextInput(p.source) && suggestInputFor(path.join(vault.path, p.source)))
         : [];
     const source = (page: string) => sources.find((x) => x.page === page);
-    if (missing.length === 0 && !job.approval.unconfirmed && job.approval.plan) {
-      const twin = { bundlePath: bundle, plan: clone(job.approval.plan) };
-      mutate(id, (j) => {
-        if (j.approval && j.approval.bundlePath === bundle) j.approval.unconfirmed = twin;
-      });
-    }
     if (missing.length > 0) {
       revising.add(id);
       let done = 0;
@@ -1069,6 +1065,7 @@ export function createEngine(opts: EngineOptions): Engine {
     } else if (!job.approval.sources) {
       setReviewLabels(id, job.approval.labels ?? { state: 'confirming' }, sources);
     }
+    await refreshUnconfirmed(id, job.approval.unconfirmed?.bundlePath ?? bundle, overrides);
     await reviseReviewLabels(id, overrides.size > 0 ? overrides : undefined, true);
     if (overrides.size === 0) return;
     const added = findJob(id)?.approval?.labels?.state === 'confirmed';
@@ -1080,6 +1077,32 @@ export function createEngine(opts: EngineOptions): Engine {
         return added ? { ...s, by: 'ai' } : { ...s, labels: [], by: 'none', state: null };
       });
     });
+  }
+
+  /**
+   * "Approve, review labels later" for a batch already in Review when this build starts: its unconfirmed version is
+   * the bundle it was built with (or, when labels were suggested now, that bundle with them written as the AI's,
+   * left to review), inspected again now so its approval hash is fresh. Approve stays refused meanwhile.
+   */
+  async function refreshUnconfirmed(id: string, base: string, suggested: Map<string, string[]>): Promise<void> {
+    const job = findJob(id);
+    const b = readBundle(base);
+    if (!job || !b) return;
+    revising.add(id);
+    try {
+      const rev = suggested.size > 0 ? writeRevision(b, sourcePages(b), suggested, 'suggest') : undefined;
+      const target = rev?.bundlePath ?? base;
+      const outcome = await inspect(target, vaultProfileFor(job));
+      const ok = 'plan' in outcome && outcome.plan.valid;
+      mutate(id, (j) => {
+        if (!j.approval || j.state !== 'awaitingApproval') return;
+        if (ok) j.approval.unconfirmed = { bundlePath: target, plan: outcome.plan };
+        else delete j.approval.unconfirmed;
+      });
+      if (!ok) log('warn', `Review labels: ${id} has no version with unconfirmed labels (${inspectReason('error' in outcome ? outcome.error : 'the plan was not valid')}).`);
+    } finally {
+      revising.delete(id);
+    }
   }
 
   async function editReviewLabels(jobID: string, edits: { page: string; labels: string[] }[]): Promise<Job> {
@@ -1184,9 +1207,11 @@ export function createEngine(opts: EngineOptions): Engine {
       removed: clone(removed),
       shown: clone(keep),
     };
+    if (reason === 'partial') part.before = clone(approval);
+    part.bundlePath = path.join(dir, `bundle-part-${n}.json`);
     const prompt = partPrompt({
       reason,
-      bundlePath: path.join(dir, `bundle-part-${n}.json`),
+      bundlePath: part.bundlePath,
       keep: keepFiles,
       leaveOut: rest.map((s) => ({ page: s.page, source: s.source ?? null })),
       removed: removed.map((s) => ({ page: s.page, source: s.source ?? null })),
@@ -1196,6 +1221,7 @@ export function createEngine(opts: EngineOptions): Engine {
         ? `Approve ${plural(keep.length, 'source')} of ${active.length}${labels === 'later' ? ', labels left to review' : ''}: rebuilding the change for ${keep.length === 1 ? 'it' : 'them'} in this batch's session.` +
           (removed.length > 0 ? ` Removed: ${removed.map((s) => s.title).join(', ')}.` : '')
         : "The vault changed after review, so this batch's change is rebuilt in its own session for the vault as it is now.";
+    part.prompt = prompt;
     mutate(id, (j) => {
       j.pendingPart = part;
       j.turns.push(newTurn(reason === 'partial' ? 'user' : 'app', said, now()));
@@ -1231,14 +1257,16 @@ export function createEngine(opts: EngineOptions): Engine {
       shown: clone(rest),
     };
     const dir = jobStateDirectory(job);
+    next.bundlePath = path.join(dir, `bundle-part-${nextPartBundle(dir)}.json`);
     const prompt = partPrompt({
       reason: 'remaining',
-      bundlePath: path.join(dir, `bundle-part-${nextPartBundle(dir)}.json`),
+      bundlePath: next.bundlePath,
       keep,
       leaveOut: [],
       removed: (part.removed ?? []).map((s) => ({ page: s.page, source: s.source ?? null })),
       appliedOperation: operationID,
     });
+    next.prompt = prompt;
     mutate(id, (j) => {
       j.pendingPart = next;
       j.turns.push(newTurn('app', `${plural(keep.length, 'source')} of this batch still ${keep.length === 1 ? 'waits' : 'wait'} for your OK; rebuilding ${keep.length === 1 ? 'its' : 'their'} change in this batch's session.`, now()));
@@ -1476,6 +1504,11 @@ export function createEngine(opts: EngineOptions): Engine {
     const job = requireJob(id);
     if (job.state !== 'awaitingApproval') throw new CoreError('invalid_state', `Job ${id} is not awaiting approval.`);
     const approval = job.approval;
+    if (approval?.partDiscarded && job.pendingPart) {
+      if (approval.sessionUnavailable) throw new CoreError('invalid_state', `This batch's AI session isn't available anymore (${approval.sessionUnavailable}).`);
+      retryPart(id, job.pendingPart);
+      return;
+    }
     if (!approval?.plan || !approval.plan.valid || !approval.bundlePath) throw new CoreError('invalid_state', `Job ${id} has no valid plan to approve.`);
     const labelState = approval.labels?.state;
     if (labelState === 'suggesting') {
@@ -1584,13 +1617,71 @@ export function createEngine(opts: EngineOptions): Engine {
     runTurn(id, WorkerProtocol.grantedPrompt(clean));
   }
 
-  async function reject(id: string): Promise<void> {
+  async function reject(id: string, opts: RejectOptions = {}): Promise<void> {
     const job = requireJob(id);
     if (job.state !== 'awaitingApproval') throw new CoreError('invalid_state', `Job ${id} is not awaiting approval.`);
+    if (opts.scope !== undefined && opts.scope !== 'part' && opts.scope !== 'batch') throw new CoreError('invalid_request', 'scope must be "part" or "batch".');
+    const part = job.pendingPart;
+    if (opts.scope !== 'batch' && part && job.approval?.rebuilt && !job.approval.partDiscarded) {
+      discardPart(id, part);
+      return;
+    }
+    if (opts.scope === 'part') throw new CoreError('invalid_state', 'This batch has no rebuilt part to discard; reject the batch instead.');
     mutate(id, (j) => {
       j.state = 'rejected';
       j.turns.push(newTurn('user', 'Rejected. Inbox files are kept; nothing was applied.', now()));
     });
+  }
+
+  /**
+   * Rejecting a rebuilt part discards only that change: nothing is applied and its sources stay in this batch.
+   * Part of a batch the user picked: the Review as it was before the pick comes back (every source pending again,
+   * with its labels as shown). What is left after a part applied, or a change rebuilt after the vault changed: the
+   * sources stay in Review without a plan, and Approve asks the batch's session to rebuild their change again.
+   */
+  function discardPart(id: string, part: PendingPart): void {
+    const n = Object.keys(part.expected).length;
+    const what = `the rebuilt change for ${plural(n, 'source')}`;
+    mutate(id, (j) => {
+      if (part.reason === 'partial' && part.before) {
+        j.approval = clone(part.before);
+        delete j.pendingPart;
+        const total = (j.approval.sources ?? []).filter((s) => !s.removed).length;
+        j.turns.push(newTurn('user', `Discarded ${what}; nothing was applied. ${total === 1 ? 'The source is' : `All ${total} sources are`} back in this batch's Review.`, now()));
+        return;
+      }
+      const later = part.labels === 'later';
+      j.approval = {
+        summary: j.approval?.summary ?? '',
+        questions: [],
+        denials: [],
+        skipped: [],
+        sources: clone(part.shown ?? []),
+        labels: later ? { state: 'unconfirmed', message: 'Labels stay unconfirmed: you chose to review them later in Labels.' } : { state: 'confirmed' },
+        partDiscarded: true,
+      };
+      j.turns.push(
+        newTurn('user', `Discarded ${what}; nothing was applied. ${n === 1 ? 'It stays' : 'They stay'} in this batch: Approve rebuilds ${n === 1 ? 'its' : 'their'} change again, or reject the batch.`, now()),
+      );
+    });
+  }
+
+  /** Approve after a discarded rebuild: the same request goes to the batch's session again, to a new bundle path. */
+  function retryPart(id: string, part: PendingPart): void {
+    const job = findJob(id);
+    if (!job || !part.prompt) throw new CoreError('invalid_state', "Distill can't rebuild this part: its request was not kept. Reply to Claude, or reject the batch.");
+    const dir = jobStateDirectory(job);
+    const fresh = path.join(dir, `bundle-part-${nextPartBundle(dir)}.json`);
+    const prompt = part.bundlePath ? part.prompt.split(part.bundlePath).join(fresh) : part.prompt;
+    const n = Object.keys(part.expected).length;
+    mutate(id, (j) => {
+      if (j.pendingPart) Object.assign(j.pendingPart, { prompt, bundlePath: fresh });
+      if (j.approval) delete j.approval.partDiscarded;
+      j.turns.push(newTurn('user', `Approve ${plural(n, 'source')}: rebuilding ${n === 1 ? 'its' : 'their'} change again in this batch's session.`, now()));
+    });
+    const current = findJob(id);
+    if (current) startTurnProgress(current, 'Drafting page changes', `Rebuilding the change for ${plural(n, 'source')}`);
+    runTurn(id, prompt);
   }
 
   /** Stops a running turn; the job becomes `cancelled` (reply resumes it). No-op otherwise. */

@@ -182,6 +182,12 @@ export interface ApprovalRequest {
    * session_unavailable); the reason in plain words. The shared SessionReplaceConfirm decides what happens next.
    */
   sessionUnavailable?: string | null;
+  /**
+   * v6: the user discarded the rebuilt change for these sources (what is left after a part applied, or the change
+   * rebuilt after the vault changed); nothing was applied and the sources stay in this batch. There is no plan:
+   * Approve asks the batch's session to rebuild their change again; "Reject batch" ends the batch.
+   */
+  partDiscarded?: boolean | null;
 }
 
 /** One input's source page in a pending batch (approval-and-review.md, "Labels in Review"). */
@@ -277,6 +283,16 @@ export interface PendingPart {
   shown?: ReviewSource[];
   /** Sources the user removed (kept for History). */
   removed?: ReviewSource[];
+  /** partial: the batch's Review as it was before the user approved part of it; rejecting the rebuilt part restores it. */
+  before?: ApprovalRequest;
+  /** The request sent to the session for this part; Approve after a discarded rebuild sends it again (to a new bundle path). */
+  prompt?: string;
+  bundlePath?: string;
+}
+
+/** v6: Reject options. A rebuilt part: `part` (default) discards only that rebuilt change; `batch` rejects the whole batch. */
+export interface RejectOptions {
+  scope?: 'part' | 'batch';
 }
 
 /** v6: Approve options (approval-and-review.md). */
@@ -1580,7 +1596,8 @@ export interface DistillCore {
   approve(id: string, opts?: ApproveOptions): Promise<void>;
   reply(id: string, text: string): Promise<void>;
   allow(id: string, rules: string[]): Promise<void>;
-  reject(id: string): Promise<void>;
+  /** A rebuilt part of a batch: discards only that part unless `scope: 'batch'` (approval-and-review.md). */
+  reject(id: string, opts?: RejectOptions): Promise<void>;
   cancel(id: string): Promise<void>;
   /** Finished jobs only (completed/failed/rejected/cancelled); else invalid_state. */
   deleteJob(id: string): Promise<void>;

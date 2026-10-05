@@ -27,6 +27,18 @@ final class ReviewLabelsDecodingTests: XCTestCase {
         XCTAssertEqual(again, e)
     }
 
+    func testDiscardedPart() throws {
+        let a = try decode(ApprovalRequest.self, #"{"summary":"","partDiscarded":true,"sources":[{"page":"wiki/sources/B.md","title":"B","labels":[],"by":"none"}]}"#)
+        XCTAssertEqual(a.partDiscarded, true)
+        XCTAssertTrue(a.isPart)
+        XCTAssertFalse(a.canApplyPlan)
+        let again = try JSONDecoder.core.decode(ApprovalRequest.self, from: JSONEncoder.core.encode(a))
+        XCTAssertEqual(again, a)
+        let plain = try decode(ApprovalRequest.self, #"{"summary":"","partDiscarded":false}"#)
+        XCTAssertNil(plain.partDiscarded)
+        XCTAssertFalse(plain.isPart)
+    }
+
     func testOldQueueEntryAndUnknownLabelState() throws {
         let old = try decode(QueueEntry.self, #"{"path":"/q/a.md","modified":"2026-10-05T01:00:00Z","size":5,"settled":true}"#)
         XCTAssertNil(old.labels)

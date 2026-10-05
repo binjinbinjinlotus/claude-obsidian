@@ -396,8 +396,9 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
     async allow(id, rules) {
       record('allow', id, rules);
     },
-    async reject(id) {
-      record('reject', id);
+    async reject(id, opts) {
+      if (opts) record('reject', id, opts);
+      else record('reject', id);
     },
     async cancel(id) {
       record('cancel', id);

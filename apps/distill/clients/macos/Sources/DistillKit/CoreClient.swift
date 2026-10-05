@@ -193,7 +193,10 @@ public final class CoreClient: Sendable {
     @discardableResult public func allow(_ id: String, rules: [String]) async throws -> Job? {
         try await jobAction(id, "allow", body: ["rules": .array(rules.map(JSONValue.string))])
     }
-    @discardableResult public func reject(_ id: String) async throws -> Job? { try await jobAction(id, "reject") }
+    /// A rebuilt part: `batch: false` (default) discards only that part; `batch: true` rejects the whole batch.
+    @discardableResult public func reject(_ id: String, batch: Bool = false) async throws -> Job? {
+        try await jobAction(id, "reject", body: batch ? ["scope": .string("batch")] : [:])
+    }
     @discardableResult public func cancel(_ id: String) async throws -> Job? { try await jobAction(id, "cancel") }
 
     /// `DELETE /v1/jobs/:id`: removes a finished job from the list (History → Clear).

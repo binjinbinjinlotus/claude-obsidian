@@ -144,6 +144,13 @@ engine's "labels in Review" section.
     message saying why and that approving applies the labels as suggestions.
 - `approval.unconfirmed` is the twin with labels left unconfirmed (at first
   the batch's own bundle). **Approve, review labels later** applies it.
+  - For a batch already in Review when the core starts, the twin is the
+    batch's own bundle **inspected again** at startup, so its approval hash is
+    fresh. When labels were suggested at startup (a batch from before labels),
+    it is a `suggest` revision of that bundle: those labels written as the
+    AI's (`labels_by: ai`, `labels_reviewed: false`). Approve is refused while
+    this runs. A twin the core refuses is dropped; Review then offers only
+    Approve.
 - **Edit in Review** (`editReviewLabels`, `POST /v1/jobs/:id/labels`): a new
   revision with the edited pages' labels (confirmed), and a new twin carrying
   the same edit. A refused inspect is a `conflict`; nothing changes.
@@ -179,8 +186,21 @@ Canvas: ReviewChoose. `approve(id, { labels?, pages? })`, `POST
   more**: the regenerated pages are text the user has not seen.
 - After it applies, `Job.parts` gains `{operationID, pages, labels, at}` and
   the sources left are rebuilt in the same session (`rebuilt.reason
-  remaining`) for a later approval. Rejecting a rebuilt change rejects the
-  rest of the batch too.
+  remaining`) for a later approval.
+- **Rejecting a rebuilt part discards only that part** (`reject(id)`, the
+  default; `POST /v1/jobs/:id/reject`). Nothing is applied and its sources
+  stay in the batch:
+  - picked sources (`partial`): the Review from before the pick comes back
+    (`pendingPart.before`), with every source pending, its labels as shown and
+    the same plan;
+  - what is left after a part applied (`remaining`) or a change rebuilt after
+    the vault changed (`stale`): the sources stay in Review without a plan
+    (`approval.partDiscarded`). Approve sends the same request to the batch's
+    session again, to a new `bundle-part-<n>.json`, and the result is checked
+    as before.
+  - Only **Reject batch** (`reject(id, { scope: 'batch' })`, body `{"scope":
+    "batch"}`) rejects the whole batch. Parts already applied stay applied.
+    The app shows "Discard this part" and "Reject batch" on a rebuilt part.
 - Exit 75 on a core apply of a batch with sources (not `LOCK_TIMEOUT` or
   `OPERATION_ID_REUSED`) is rebuilt the same way (`stale`).
 - Only the approved plan's operation is recorded as applied, as before.

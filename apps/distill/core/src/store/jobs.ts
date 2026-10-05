@@ -131,6 +131,7 @@ function decodeApproval(v: unknown): ApprovalRequest | undefined {
   }
   const gone = str(v.sessionUnavailable);
   if (gone !== undefined) a.sessionUnavailable = gone;
+  if (v.partDiscarded === true) a.partDiscarded = true;
   return a;
 }
 
@@ -163,6 +164,12 @@ function decodePendingPart(v: unknown): PendingPart | undefined {
   if (removed) out.removed = removed;
   const shown = sourceList(v.shown);
   if (shown) out.shown = shown;
+  const before = decodeApproval(v.before);
+  if (before) out.before = before;
+  const prompt = str(v.prompt);
+  if (prompt !== undefined) out.prompt = prompt;
+  const bundlePath = str(v.bundlePath);
+  if (bundlePath !== undefined) out.bundlePath = bundlePath;
   return out;
 }
 

@@ -326,7 +326,7 @@ final class AppModel: ObservableObject {
         jobAction { try await $0.reply(id, text: trimmed) }
     }
     func allow(_ id: String, rules: [String]) { jobAction { try await $0.allow(id, rules: rules) } }
-    func reject(_ id: String) { jobAction { try await $0.reject(id) } }
+    func reject(_ id: String, batch: Bool = false) { jobAction { try await $0.reject(id, batch: batch) } }
     func cancel(_ id: String) { jobAction { try await $0.cancel(id) } }
 
     private func jobAction(_ call: @escaping (CoreClient) async throws -> Job?) {

@@ -60,6 +60,18 @@ review](approval-and-review.md), [Queue and batching](queue-and-batching.md),
 - **Approve, review labels later.** A second approve action applies the
   unconfirmed twin: the bundle as the batch wrote it, with the user's own edits
   kept confirmed. The pages then wait in Labels → To review.
+  - Also for a batch already in Review when the core starts, which is the
+    owner's 22-file job. Its twin is the original bundle, inspected again at
+    startup so the approval hash is fresh. Labels suggested at startup go into
+    the twin as the AI's, unconfirmed. (The first build left these jobs
+    without "later"; the owner asked for it precisely for this job.)
+- **Rejecting a rebuilt part discards only that part.** The owner: "For the
+  files that I haven't approved or removed, it should stay in the review tab."
+  Nothing is applied. Picked sources go back to the batch's Review as it was
+  before the pick. What is left after a part applied stays in Review without
+  a plan, and Approve rebuilds it again in the same session. Only an explicit
+  "Reject batch" ends the batch. Supersedes the first build, where rejecting a
+  rebuilt part rejected the rest of the batch.
 - **Approving part of a batch needs a rebuilt change and a second approval.**
   The index, log, hot cache, overview and ledgers cover the whole batch, so a
   subset can't be cut out of a bundle.

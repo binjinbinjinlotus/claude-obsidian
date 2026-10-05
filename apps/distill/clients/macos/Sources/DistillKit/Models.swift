@@ -283,13 +283,17 @@ public struct ApprovalRequest: Codable, Equatable, Sendable {
     public var rebuilt: RebuiltPlan?
     /// v6: the batch's AI session could not be resumed; the reason in plain words.
     public var sessionUnavailable: String?
+    /// v6: the user discarded the rebuilt change for these sources; nothing was applied. Approve rebuilds it again.
+    public var partDiscarded: Bool?
 
     public var canApplyPlan: Bool { plan?.valid == true && bundlePath != nil }
+    /// v6: a rebuilt part of a batch (Reject discards only it) or a discarded one (Approve rebuilds it).
+    public var isPart: Bool { rebuilt != nil || partDiscarded == true }
 
     public init(summary: String, questions: [String] = [], bundlePath: String? = nil, plan: TransactionPlan? = nil,
                 planError: String? = nil, denials: [PermissionDenial] = [], skipped: [String] = [],
                 sources: [ReviewSource]? = nil, labels: ReviewLabels? = nil, unconfirmed: UnconfirmedPlan? = nil,
-                rebuilt: RebuiltPlan? = nil, sessionUnavailable: String? = nil) {
+                rebuilt: RebuiltPlan? = nil, sessionUnavailable: String? = nil, partDiscarded: Bool? = nil) {
         self.summary = summary
         self.questions = questions
         self.bundlePath = bundlePath
@@ -302,6 +306,7 @@ public struct ApprovalRequest: Codable, Equatable, Sendable {
         self.unconfirmed = unconfirmed
         self.rebuilt = rebuilt
         self.sessionUnavailable = sessionUnavailable
+        self.partDiscarded = partDiscarded
     }
 
     public init(from decoder: Decoder) throws {
@@ -318,6 +323,7 @@ public struct ApprovalRequest: Codable, Equatable, Sendable {
         unconfirmed = c.lossy(UnconfirmedPlan.self, .unconfirmed).flatMap { $0.bundlePath.isEmpty ? nil : $0 }
         rebuilt = c.lossy(RebuiltPlan.self, .rebuilt)
         sessionUnavailable = c.lossy(String.self, .sessionUnavailable).flatMap { $0.isEmpty ? nil : $0 }
+        partDiscarded = c.lossy(Bool.self, .partDiscarded).flatMap { $0 ? true : nil }
     }
 }
 

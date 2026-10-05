@@ -129,8 +129,18 @@ function pageNeedsRevision(p: SourcePage, overrides?: Map<string, string[]>, mod
   return mode === 'confirm' && (p.unconfirmed || p.origin !== undefined);
 }
 
-/** confirm = every source page's labels confirmed (Approve); keep = only the user's edits confirmed, the rest as the batch wrote them (Approve, review labels later). */
-export type RevisionMode = 'confirm' | 'keep';
+/**
+ * confirm = every source page's labels confirmed (Approve); keep = only the user's edits confirmed, the rest as the
+ * batch wrote them (Approve, review labels later); suggest = the overrides written as the AI's suggestions
+ * (`labels_by: ai`, `labels_reviewed: false`), the rest untouched (the unconfirmed version of a batch whose labels
+ * were suggested after it was built).
+ */
+export type RevisionMode = 'confirm' | 'keep' | 'suggest';
+
+/** The text a source page gets as an AI suggestion left to review (Labels → To review). */
+export function suggestedText(p: SourcePage, labels: string[]): string {
+  return setLabelProperties(p.text, { tags: labels, labels_by: 'ai', labels_reviewed: false });
+}
 
 /** The text a source page gets in a revision: the given (or current) tags, confirmed by the user. */
 export function confirmedText(p: SourcePage, labels: string[] | undefined): string {
@@ -170,7 +180,8 @@ export function writeRevision(
   const writes = b.writes.map((w, i) => {
     const p = byWrite.get(w);
     if (!p || !pageNeedsRevision(p, overrides, mode)) return w;
-    const next = confirmedText(p, overrides?.get(p.page));
+    const given = overrides?.get(p.page);
+    const next = mode === 'suggest' && given ? suggestedText(p, given) : confirmedText(p, given);
     if (next === p.text) return w;
     changed.push(p.page);
     const out: BundleWrite = { ...w };

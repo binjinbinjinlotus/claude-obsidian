@@ -409,7 +409,15 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
       ok: ([id, rules], _r, job: Job | undefined) => ({ type: 'batch.allowed', object: jobObject(id, job), summary: `Allowed ${plural(rules.length, 'tool rule')} for ${jobName(job)}`, details: { rules } }),
       fail: ([id], job: Job | undefined) => ({ type: 'batch.allowed', object: jobObject(id, job), summary: `Couldn't allow tools for ${jobName(job)}` }),
     },
-    reject: jobVerb('batch.rejected', 'Rejected', 'reject'),
+    reject: {
+      before: (id) => getJob(id),
+      // A rebuilt part discarded alone leaves the batch in Review: not a rejection of the batch.
+      ok: ([id], _r, job: Job | undefined) =>
+        getJob(id)?.state === 'awaitingApproval'
+          ? { type: 'batch.part_discarded', object: jobObject(id, job), summary: `Discarded a rebuilt part of ${jobName(job)}` }
+          : { type: 'batch.rejected', object: jobObject(id, job), summary: `Rejected ${jobName(job)}` },
+      fail: ([id], job: Job | undefined) => ({ type: 'batch.rejected', object: jobObject(id, job), summary: `Couldn't reject ${jobName(job)}` }),
+    },
     cancel: jobVerb('batch.cancelled', 'Cancelled', 'cancel'),
     deleteJob: {
       before: (id) => (getJob(id) ? structuredClone(getJob(id)) : undefined),

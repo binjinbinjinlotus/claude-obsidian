@@ -979,9 +979,11 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
             await core.allow(id, rules);
             break;
           }
-          case 'reject':
-            await core.reject(id);
+          case 'reject': {
+            const scope = optEnum(o, 'scope', ['part', 'batch'] as const);
+            await (scope ? core.reject(id, { scope }) : core.reject(id));
             break;
+          }
           case 'cancel':
             await core.cancel(id);
             break;

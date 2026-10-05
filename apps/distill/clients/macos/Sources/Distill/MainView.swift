@@ -1086,6 +1086,11 @@ struct JobDetailView: View {
                 ReviewNotice(tone: .peach, title: "This batch’s AI session isn’t available anymore", text: reason, systemImage: "exclamationmark.circle")
             }
             if let rebuilt = approval.rebuilt { rebuiltNotice(rebuilt) }
+            if approval.partDiscarded == true {
+                ReviewNotice(tone: .calm, title: "You discarded the rebuilt change",
+                             text: "Nothing was applied. These sources stay in this batch: Rebuild asks this batch’s session for their change again, or Reject batch ends it.",
+                             systemImage: "arrow.uturn.backward")
+            }
             if let labelError {
                 ReviewNotice(tone: .peach, title: "Couldn’t save your label edit",
                              text: labelError + " Your edit was not kept; the labels are as before.", systemImage: "exclamationmark.circle")
@@ -1220,8 +1225,16 @@ struct JobDetailView: View {
                 let applying = engine.isApplying(job.id)
                 let approval = job.approval
                 let blocker = ReviewPicking.blocker(approval, unpicked: unpicked)
-                SoftButton(title: "Reject", tint: Theme.peachInk, fill: .clear) { engine.reject(job.id) }
-                    .disabled(applying).opacity(applying ? 0.35 : 1)
+                if approval?.rebuilt != nil {
+                    // Discards only this rebuilt change: its sources stay in this batch (decision 2026-10-05).
+                    SoftButton(title: "Discard this part", tint: Theme.peachInk, fill: .clear) { engine.reject(job.id) }
+                        .disabled(applying).opacity(applying ? 0.35 : 1)
+                        .help("Nothing is applied; these sources go back to this batch's Review.")
+                }
+                SoftButton(title: approval?.isPart == true ? "Reject batch" : "Reject", tint: Theme.peachInk, fill: .clear) {
+                    engine.reject(job.id, batch: true)
+                }
+                .disabled(applying).opacity(applying ? 0.35 : 1)
                 Spacer()
                 if !applying { footerStatus(approval, blocker: blocker) }
                 SoftButton(title: "Send reply") { send(job) }
@@ -1232,6 +1245,10 @@ struct JobDetailView: View {
                     ApplyingButton(count: s.sourcePages.count + s.newPages.count + s.updated.count)
                 } else if approval?.canApplyPlan == true {
                     approveButton(job, approval: approval, enabled: blocker == nil && editingPage == nil)
+                } else if approval?.partDiscarded == true {
+                    let n = approval?.sources?.count ?? 0
+                    PrimaryButton(title: n == 1 ? "Rebuild 1 source" : "Rebuild \(n) sources", systemImage: "arrow.clockwise",
+                                  enabled: approval?.sessionUnavailable == nil) { engine.approve(job.id) }
                 }
             case .running:
                 if let part = job.pendingPart {

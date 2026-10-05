@@ -265,11 +265,16 @@ describe('labels in Review: the confirm revision (real core)', () => {
     const e = start(s, sessionRunner(s));
     await e.start();
     await e.whenIdle();
+    const twin = e.getJob(s.jobID)!.approval!.unconfirmed!;
+    assert.equal(twin.bundlePath, s.bundle, 'the bundle the batch was built with');
+    assert.match(twin.plan.approval_sha256, /^[0-9a-f]{64}$/, 'inspected again at start');
     await e.approve(s.jobID, { labels: 'later' });
     await e.whenIdle();
     assert.equal(e.getJob(s.jobID)!.state, 'completed');
     assert.ok(pageText(s, 'b').includes('labels_reviewed: false'));
     assert.equal(e.getJob(s.jobID)!.parts![0]!.labels, 'later');
+    const review = await e.labelReview(s.vault);
+    assert.deepEqual(review.toReview.map((x) => x.title).sort(), ['Source A', 'Source B', 'Source C'], 'Labels → To review');
   });
 
   test('the vault changed since the bundle was built: labels stay unconfirmed and the original bundle and plan are kept', async () => {
@@ -339,6 +344,15 @@ describe('labels in Review: the confirm revision (real core)', () => {
     assert.equal(job.approval!.labels!.state, 'confirmed', job.approval!.labels!.message ?? '');
     assert.equal(runner.requests.filter(isLabelRun).length, 3);
     assert.deepEqual(job.approval!.sources!.map((x) => [x.labels, x.by]), [[['kettle', 'tea'], 'ai'], [['kettle', 'tea'], 'ai'], [['kettle', 'tea'], 'ai']]);
+    // Approve, review labels later works here too: its version has the AI's labels left to review, freshly inspected.
+    const twin = readBundle(job.approval!.unconfirmed!.bundlePath)!;
+    assert.notEqual(job.approval!.unconfirmed!.bundlePath, s.bundle);
+    for (const p of sourcePages(twin)) assert.ok(p.text.includes('labels_by: ai') && p.text.includes('labels_reviewed: false') && p.text.includes('  - kettle'));
+    await e.approve(s.jobID, { labels: 'later' });
+    await e.whenIdle();
+    assert.equal(e.getJob(s.jobID)!.state, 'completed', e.getJob(s.jobID)!.error ?? '');
+    assert.ok(pageText(s, 'a').includes('labels_reviewed: false'));
+    assert.equal((await e.labelReview(s.vault)).toReview.length, 3);
   });
 });
 
@@ -383,6 +397,55 @@ describe('parts of a batch (pick, remove, rebuild in the same session)', () => {
     assert.ok(fs.existsSync(path.join(s.vault, 'inbox/c.md')), 'its inbox file stays');
     assert.equal(job.pendingPart, undefined);
     assert.ok(runner.requests.filter((r) => !isLabelRun(r)).every((r) => 'resume' in r.session && r.session.resume === session));
+  });
+
+  test('rejecting a rebuilt part discards only it: the sources go back to Review; Reject batch ends the batch', async () => {
+    const s = seed();
+    const runner = sessionRunner(s);
+    const e = start(s, runner);
+    await e.start();
+    await e.whenIdle();
+    const before = e.getJob(s.jobID)!.approval!;
+    const sources = before.sources!;
+    await e.approve(s.jobID, { pages: [sources[0]!.page] });
+    await e.whenIdle();
+    assert.equal(e.getJob(s.jobID)!.approval!.rebuilt!.reason, 'partial');
+    // Reject the rebuilt part: nothing applied, every source back in this batch's Review, the plan as before.
+    await e.reject(s.jobID);
+    let job = e.getJob(s.jobID)!;
+    assert.equal(job.state, 'awaitingApproval');
+    assert.equal(job.pendingPart, undefined);
+    assert.equal(job.approval!.rebuilt, undefined);
+    assert.deepEqual(job.approval!.sources!.map((x) => x.page), sources.map((x) => x.page));
+    assert.equal(job.approval!.plan!.approval_sha256, before.plan!.approval_sha256);
+    assert.match(job.turns.at(-1)!.text, /^Discarded the rebuilt change for 1 source; nothing was applied\. All 3 sources are back/);
+    assert.ok(!fs.existsSync(path.join(s.vault, 'wiki/sources/Source A.md')), 'nothing applied');
+    // Pick again, approve the part; then discard the rebuilt change for what is left: it stays, Approve rebuilds it.
+    await e.approve(s.jobID, { pages: [sources[0]!.page] });
+    await e.whenIdle();
+    await e.approve(s.jobID);
+    await e.whenIdle();
+    job = e.getJob(s.jobID)!;
+    assert.equal(job.approval!.rebuilt!.reason, 'remaining', job.error ?? job.approval?.planError ?? '');
+    await e.reject(s.jobID, { scope: 'part' });
+    job = e.getJob(s.jobID)!;
+    assert.equal(job.state, 'awaitingApproval');
+    assert.equal(job.approval!.partDiscarded, true);
+    assert.equal(job.approval!.plan, undefined);
+    assert.deepEqual(job.approval!.sources!.map((x) => x.page), [sources[1]!.page, sources[2]!.page]);
+    assert.ok(!fs.existsSync(path.join(s.vault, 'wiki/sources/Source B.md')));
+    await assert.rejects(e.reject(s.jobID, { scope: 'part' }), /no rebuilt part/);
+    const asked = runner.requests.length;
+    await e.approve(s.jobID);
+    await e.whenIdle();
+    job = e.getJob(s.jobID)!;
+    assert.equal(runner.requests.length, asked + 1, 'the same request, once more, in the same session');
+    assert.equal(job.approval!.rebuilt!.reason, 'remaining', job.approval?.planError ?? '');
+    // Only an explicit Reject batch rejects everything.
+    await e.reject(s.jobID, { scope: 'batch' });
+    job = e.getJob(s.jobID)!;
+    assert.equal(job.state, 'rejected');
+    assert.equal(job.parts!.length, 1, 'the part already applied stays applied');
   });
 
   test('a rebuilt change that differs from what was approved is not offered', async () => {
