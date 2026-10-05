@@ -31,6 +31,9 @@ import {
   type Progress,
   type QueueEntry,
   type QueueScanResult,
+  type RereadGroup,
+  type RereadRequest,
+  type RereadResult,
   type ReviewLabels,
   type ReviewSource,
   type SessionAction,
@@ -82,8 +85,22 @@ import {
   queueConsumer,
   WorkerProtocol,
   type ParsedStatus,
+  type RereadFacts,
   type SourceLabels,
 } from './job-kinds.js';
+import {
+  DEFAULT_REREAD_PER_BATCH,
+  existingSourcePages,
+  groupItems,
+  inboxFileProblem,
+  jobSourceItems,
+  makeRereadID,
+  MAX_REREAD_PER_BATCH,
+  RereadStore,
+  sourceSize,
+  type RereadItem,
+  type RereadPlan,
+} from './reread.js';
 import { CoreError } from './errors.js';
 import { searchVaultPages } from './pages.js';
 import { finderTrash, previewCleanup, renameTrash, runCleanup, type TrashMover } from './inbox-cleanup.js';
@@ -366,6 +383,8 @@ export function createEngine(opts: EngineOptions): Engine {
   });
   /** Jobs whose Review labels are being suggested or written into a revision (Approve is refused meanwhile). */
   const revising = new Set<string>();
+  /** v9: re-reads whose groups have not all started (reread.ts); kept in <state>/reread.json. */
+  const rereads = new RereadStore(path.join(paths.dir, 'reread.json'));
 
   // ───────────── events & persistence ─────────────
 
@@ -489,11 +508,11 @@ export function createEngine(opts: EngineOptions): Engine {
     return job;
   }
 
-  /** Why the next batch cannot start right now, if anything. */
-  function batchBlocker(): string | undefined {
+  /** Why the next batch cannot start right now, if anything (on `vault`, default the active one). */
+  function batchBlocker(on?: VaultProfile): string | undefined {
     const p = problems()[0];
     if (p) return p.message;
-    const vault = activeVault(settings);
+    const vault = on ?? activeVault(settings);
     if (!vault) return 'No vault selected.';
     // Batches waiting in Review don't block the next batch (decision 2026-10-05); a running one does.
     const holder = jobs.find((j) => j.vaultPath === vault.path && j.state === 'running');
@@ -529,6 +548,9 @@ export function createEngine(opts: EngineOptions): Engine {
     persistJobs();
     emit({ type: 'job', job: clone(job) });
     if (job.state !== 'running') finishJobProgress(job);
+    if (job.reread && job.state === 'cancelled') dropReread(job.reread.id, `${job.id} was cancelled`);
+    // A batch that stops running frees its vault: the next re-read group may start (after this change settles).
+    if (job.state !== 'running' && rereads.pending()) track(Promise.resolve().then(() => pumpRereads()));
     if (!wasCompleted && job.state === 'completed' && job.kind === queueConsumer().id && job.changedPaths.length > 0 && opts.onJobApplied) {
       const hook = opts.onJobApplied;
       const applied = clone(job);
@@ -677,6 +699,7 @@ export function createEngine(opts: EngineOptions): Engine {
   function tick(): void {
     if (nextQueueScanAt && now() >= nextQueueScanAt) scanQueueNow('periodic');
     else refreshQueue();
+    if (rereads.pending()) pumpRereads();
     if (!settings.autoProcessEnabled || !nextBatchAt || now() < nextBatchAt) return;
     scheduleNextBatch(now());
     void processQueue().catch((err: unknown) => log('error', (err as Error).message));
@@ -1396,6 +1419,188 @@ export function createEngine(opts: EngineOptions): Engine {
     return clone(requireJob(jobID));
   }
 
+  // ───────────── re-read sources (v9) ─────────────
+
+  function saveRereads(): void {
+    try {
+      rereads.save();
+    } catch (err) {
+      log('error', `Could not save re-reads: ${(err as Error).message}`);
+    }
+  }
+
+  /** Groups of a re-read that have not started are dropped (one of its batches was cancelled). */
+  function dropReread(id: string, why: string): void {
+    const plan = rereads.plans.find((p) => p.id === id);
+    if (!plan) return;
+    const left = plan.groups.filter((g) => !g.jobId).length;
+    if (left === 0) return;
+    plan.groups = plan.groups.filter((g) => g.jobId);
+    saveRereads();
+    log('info', `Re-read ${id}: ${plural(left, 'group')} not started were dropped (${why}).`);
+  }
+
+  /** What the first prompt says about each input: sizes as text and the existing source page(s). */
+  function rereadFacts(vaultPath: string, files: string[]): { facts: RereadFacts; labels: SourceLabels[] } {
+    const existing = existingSourcePages(vaultPath, files);
+    const facts: RereadFacts = {
+      sources: files.map((file) => {
+        const size = sourceSize(path.join(vaultPath, file));
+        return { file, ...(size ?? {}), pages: existing.get(file)?.pages ?? [] };
+      }),
+    };
+    // The labels already on each existing source page are written back unchanged.
+    const labels = files.flatMap((f) => {
+      const l = existing.get(f)?.labels;
+      return l ? [l] : [];
+    });
+    return { facts, labels };
+  }
+
+  /**
+   * Start the next waiting re-read group on every vault that is free (same rule as a batch: no
+   * job running there; batches waiting in Review don't block). Synchronous from the check to the
+   * job's first turn, so the timer's batch can't start in between.
+   */
+  function pumpRereads(): void {
+    let changed = false;
+    for (const plan of [...rereads.plans]) {
+      const group = plan.groups.find((g) => !g.jobId);
+      if (!group) continue;
+      const vault = settings.vaults.find((v) => v.path === plan.vaultPath);
+      if (!vault) continue;
+      if (batchBlocker(vault)) continue;
+      startRereadGroup(plan, group, vault);
+      changed = true;
+    }
+    if (changed) saveRereads();
+  }
+
+  function startRereadGroup(plan: RereadPlan, group: RereadGroup, vault: VaultProfile): Job {
+    const kind = queueConsumer();
+    const selection = selectionFor(settings, kind.task);
+    const index = plan.groups.indexOf(group) + 1;
+    const job = newJob({ id: makeJobID(now()), kind: kind.id, vaultPath: vault.path, files: [...group.files], model: selection.model, now: now() });
+    if (group.folders?.length) job.folders = [...group.folders];
+    job.runnerID = selection.runnerID;
+    if (selection.effort) job.effort = selection.effort;
+    job.reread = {
+      id: plan.id,
+      group: index,
+      groups: plan.groups.length,
+      ...(plan.fromJob ? { fromJob: plan.fromJob } : {}),
+      ...(plan.instruction ? { instruction: plan.instruction } : {}),
+    };
+    group.jobId = job.id;
+    const missing = group.files.map((f) => ({ f, why: inboxFileProblem(vault.path, f) })).filter((x) => x.why);
+    job.turns.push(
+      newTurn(
+        'app',
+        `Re-reading ${plural(group.files.length, 'file')} already in inbox/ (group ${index} of ${plan.groups.length} of ${plan.id}${plan.fromJob ? `, sources of ${plan.fromJob}` : ''}; read in place, nothing moved):\n` +
+          group.files.map((f) => `- ${f}`).join('\n'),
+        now(),
+      ),
+    );
+    insert(job);
+    if (missing.length > 0) {
+      fail(job.id, `Can't re-read: ${missing.map((m) => `${m.f} is ${m.why}`).join('; ')}.`);
+      return clone(findJob(job.id) ?? job);
+    }
+    const { facts, labels } = rereadFacts(vault.path, job.files);
+    try {
+      writeFileAtomic(path.join(jobStateDirectory(job), 'labels.json'), encodeJSON(labels));
+    } catch {
+      /* a debugging aid, and what a new session reuses */
+    }
+    jobSteps.set(job.id, batchSteps(false));
+    const current = findJob(job.id)!;
+    const items = job.files.filter((f) => !job.folders?.some((d) => f.startsWith(d + '/'))).length + (job.folders?.length ?? 0);
+    startTurnProgress(current, 'Read sources', `Re-reading ${plural(items, 'source')} in ${vaultName(vault.path)}`);
+    runTurn(job.id, kind.initialPrompt(new JobContext(clone(current), vault, settings, labels, facts)), { first: true });
+    return clone(findJob(job.id) ?? job);
+  }
+
+  async function rereadSources(req: RereadRequest): Promise<RereadResult> {
+    if (!req || typeof req !== 'object' || Array.isArray(req)) throw new CoreError('invalid_request', 'Expected a re-read request.');
+    const perBatch = req.perBatch ?? DEFAULT_REREAD_PER_BATCH;
+    if (!Number.isInteger(perBatch) || perBatch < 1 || perBatch > MAX_REREAD_PER_BATCH) {
+      throw new CoreError('invalid_request', `perBatch must be a whole number from 1 to ${MAX_REREAD_PER_BATCH}.`);
+    }
+    if (req.instruction !== undefined && typeof req.instruction !== 'string') throw new CoreError('invalid_request', 'instruction must be text.');
+    const hasFiles = Array.isArray(req.files) && req.files.length > 0;
+    if (hasFiles === (req.jobId !== undefined)) throw new CoreError('invalid_request', 'Give either files (inbox paths) or jobId.');
+    let items: RereadItem[];
+    let skipped: { path: string; reason: string }[] = [];
+    let vault: VaultProfile;
+    let fromJob: string | undefined;
+    if (req.jobId !== undefined) {
+      const source = requireJob(req.jobId);
+      if (source.kind !== queueConsumer().id) throw new CoreError('invalid_request', `${req.jobId} is not a batch of sources.`);
+      if (source.state === 'running' || source.state === 'awaitingApproval') {
+        throw new CoreError('invalid_state', `${req.jobId} is still ${source.state === 'running' ? 'running' : 'waiting in Review'}; re-read its sources after it is finished.`);
+      }
+      vault = req.vaultPath ? resolveVault(req.vaultPath) : vaultProfileFor(source);
+      if (path.resolve(vault.path) !== path.resolve(source.vaultPath)) throw new CoreError('invalid_request', `${req.jobId} belongs to another vault.`);
+      ({ items, skipped } = jobSourceItems(source));
+      fromJob = source.id;
+    } else {
+      vault = resolveVault(req.vaultPath);
+      const files = req.files!;
+      if (files.some((f) => typeof f !== 'string')) throw new CoreError('invalid_request', 'files must be inbox paths.');
+      const seen = new Set<string>();
+      items = [];
+      for (const f of files) {
+        const rel = f.normalize('NFC');
+        if (seen.has(rel)) continue;
+        seen.add(rel);
+        if (rel.endsWith(NOTE_MANIFEST_SUFFIX)) {
+          skipped.push({ path: rel, reason: 'a Distill note manifest (instructions, not a source)' });
+          continue;
+        }
+        items.push({ files: [rel] });
+      }
+    }
+    if (!isVault(vault.path)) throw new CoreError('invalid_state', problem.notAVault(vault.path).message);
+    // Every file must still be in inbox/: a missing one is an error, never a silent partial re-read.
+    const unreadable = items.flatMap((i) => i.files).flatMap((f) => {
+      const why = inboxFileProblem(vault.path, f);
+      return why ? [`${f}: ${why}`] : [];
+    });
+    if (unreadable.length > 0) {
+      throw new CoreError('invalid_request', `Can't re-read ${plural(unreadable.length, 'file')}:\n${unreadable.map((p) => `- ${p}`).join('\n')}`);
+    }
+    if (items.length === 0) throw new CoreError('invalid_request', 'No sources to re-read.');
+    const plan: RereadPlan = {
+      id: makeRereadID(now()),
+      vaultPath: vault.path,
+      createdAt: isoDate(now()),
+      perBatch,
+      groups: groupItems(items, perBatch),
+      ...(fromJob ? { fromJob } : {}),
+      ...(req.instruction?.trim() ? { instruction: req.instruction.trim() } : {}),
+    };
+    rereads.plans.push(plan);
+    saveRereads();
+    log('info', `Re-read ${plan.id}: ${plural(items.length, 'source')} in ${plan.groups.length} batch(es) of up to ${perBatch}.`);
+    const before = new Set(jobs.map((j) => j.id));
+    pumpRereads();
+    const started = plan.groups
+      .flatMap((g) => (g.jobId && !before.has(g.jobId) ? [findJob(g.jobId)] : []))
+      .filter((j): j is Job => !!j);
+    const result: RereadResult = {
+      id: plan.id,
+      vaultPath: plan.vaultPath,
+      perBatch,
+      groups: clone(plan.groups),
+      started: started.map((j) => clone(j)),
+      waiting: plan.groups.filter((g) => !g.jobId).length,
+    };
+    if (fromJob) result.fromJob = fromJob;
+    if (skipped.length > 0) result.skipped = skipped;
+    return result;
+  }
+
+
   // ───────────── public API ─────────────
 
   async function processQueue(o: { force?: boolean } = {}): Promise<Job | null> {
@@ -2080,7 +2285,8 @@ export function createEngine(opts: EngineOptions): Engine {
     } else {
       pending = WorkerProtocol.replyPrompt(o.text ?? '');
     }
-    const seedCtx = new JobContext({ ...before, sessionID: fresh.sessionID, grantedTools: fresh.grantedTools }, vault, settings, labelPlan);
+    const seedFacts = fresh.reread ? rereadFacts(vault.path, fresh.files).facts : undefined;
+    const seedCtx = new JobContext({ ...before, sessionID: fresh.sessionID, grantedTools: fresh.grantedTools }, vault, settings, labelPlan, seedFacts);
     emit({ type: 'session.replaced', place: 'batch', objectID: id, ...(known ? { reason: known.reason } : {}) });
     runTurn(id, newSessionPrompt(kind, seedCtx, pending), extra);
   }
@@ -2718,6 +2924,8 @@ export function createEngine(opts: EngineOptions): Engine {
       if (timer) clearInterval(timer);
       // Batches and queue checks the timer starts are logged as the scheduler's (activity-log.md).
       timer = setInterval(asScheduler(tick), tickMs);
+      // v9: re-read groups that waited when the core stopped go on (one at a time per vault).
+      if (rereads.pending()) asScheduler(pumpRereads)();
     },
     async stop() {
       if (timer) clearInterval(timer);
@@ -2768,6 +2976,7 @@ export function createEngine(opts: EngineOptions): Engine {
     finishReview,
     previewInboxCleanup,
     cleanUpInbox,
+    rereadSources,
     jobResumeCommand,
     resumeBatchSession,
     removeQueueEntry,

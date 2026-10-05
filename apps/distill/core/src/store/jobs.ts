@@ -5,6 +5,7 @@ import type {
   ApprovedChange,
   Job,
   JobPart,
+  JobReread,
   PendingPart,
   JobActionsSummary,
   JobState,
@@ -274,7 +275,24 @@ export function decodeJob(v: unknown, now = new Date()): Job | undefined {
   if (ac) job.approvedChange = ac;
   const done = str(v.reviewDoneAt);
   if (done !== undefined && !Number.isNaN(Date.parse(done))) job.reviewDoneAt = done;
+  // v9: re-read marker (lenient: a wrong shape is dropped).
+  const reread = decodeReread(v.reread);
+  if (reread) job.reread = reread;
   return job;
+}
+
+function decodeReread(v: unknown): JobReread | undefined {
+  if (!isObject(v)) return undefined;
+  const id = str(v.id);
+  const group = v.group;
+  const groups = v.groups;
+  if (id === undefined || typeof group !== 'number' || typeof groups !== 'number') return undefined;
+  const out: JobReread = { id, group, groups };
+  const from = str(v.fromJob);
+  if (from !== undefined) out.fromJob = from;
+  const instruction = str(v.instruction);
+  if (instruction !== undefined) out.instruction = instruction;
+  return out;
 }
 
 function decodeApprovedChange(v: unknown): ApprovedChange | undefined {
@@ -405,7 +423,7 @@ function encodeApproval(a: ApprovalRequest): JSONObject {
 const JOB_KEYS = [
   'id', 'kind', 'vaultPath', 'files', 'sessionID', 'runnerID', 'model', 'effort', 'state',
   'createdAt', 'updatedAt', 'approval', 'turns', 'grantedTools', 'operationID', 'changedPaths', 'error', 'actionsFound', 'folders', 'sessionUnavailable',
-  'parts', 'pendingPart', 'approvedChange', 'reviewDoneAt',
+  'parts', 'pendingPart', 'approvedChange', 'reviewDoneAt', 'reread',
 ];
 
 /** Every non-optional key is always written; nil optionals are omitted (never `null`). */
@@ -454,6 +472,13 @@ export function encodeJob(job: Job, raw: JSONObject = {}): JSONObject {
   }
   if (job.approvedChange != null) out.approvedChange = JSON.parse(JSON.stringify(job.approvedChange)) as JSONObject;
   if (job.reviewDoneAt != null) out.reviewDoneAt = job.reviewDoneAt;
+  if (job.reread != null) {
+    const r = job.reread;
+    const m: JSONObject = { id: r.id, group: r.group, groups: r.groups };
+    if (r.fromJob != null) m.fromJob = r.fromJob;
+    if (r.instruction != null) m.instruction = r.instruction;
+    out.reread = m;
+  }
   return out;
 }
 

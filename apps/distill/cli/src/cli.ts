@@ -21,6 +21,7 @@ import type {
   NoteImage,
   Progress,
   QueueScanResult,
+  RereadResult,
   Settings,
   StatusResponse,
 } from '@distill/core/contracts';
@@ -95,6 +96,8 @@ Usage:
   distill history rm <conversation-id> [--json]
   distill status [--json]
   distill queue scan [--json]
+  distill batch reread <inbox/file>... | --job JOB_ID [--per-batch N] [--instruction "..."]
+              [--vault PATH] [--json]
   distill actions list [--type T] [--history] [--json]
   distill actions add "<title>" [--type todo] [--body "..."] [--why "..."] [--due YYYY-MM-DD]
               [--vault PATH] [--json]
@@ -149,6 +152,16 @@ Commands:
   queue scan    Check the active queue folder for changes now (the app's Refresh): new
                 files and folders appear, files removed by hand drop out, folders are
                 read again. Prints what changed. \`queue sync\` is the same command.
+  batch reread  Read sources that were already ingested again, completely (every line,
+                including full transcripts), and update their existing pages. Give
+                vault-relative inbox paths, or --job JOB_ID for a finished batch's
+                sources (its files minus note manifests; a folder stays one source).
+                Files are read where they are in inbox/; nothing is moved or copied.
+                They go in batches of --per-batch sources (default 3, at most 10), each
+                with a fresh AI session, one at a time: the next starts when the one
+                before is ready for review. Each batch waits in Review for the user like
+                any other; this command approves nothing. --instruction adds words to
+                every batch's prompt. Prints the batches and the first one started.
   actions list  List open actions (to-dos, Slack messages, Jira tickets, Confluence pages),
                 including found ones waiting for the user to confirm ("to confirm").
                 --type narrows to one type; --history adds done, sent and removed items.
@@ -221,6 +234,9 @@ or $DISTILL_STATE_DIR.
   queue scan
             {"added", "removed", "changed" (counts), "checkedAt", "trigger": "manual",
              "problem"?, "addedEntries", "removedEntries", "changedEntries", "entries"}
+  batch reread
+            {"id", "vaultPath", "perBatch", "fromJob"?, "groups": [{"files","folders"?,"jobId"?}],
+             "started": [job], "waiting", "skipped"?: [{"path","reason"}]}
   actions list
             {"actions": [{"id","type","status","title","body","fields","why","source",
              "createdAt","updatedAt","events", ...}]}
@@ -334,6 +350,8 @@ async function dispatch(argv: string[], io: CliIO): Promise<number> {
       return status(rest, io, api);
     case 'queue':
       return queue(rest, io, api);
+    case 'batch':
+      return batch(rest, io, api);
     case 'actions':
       return actions(rest, io, api);
     case 'collectors':
@@ -826,6 +844,54 @@ async function queue(args: string[], io: CliIO, api: ApiFactory): Promise<number
   const res = await client.request<QueueScanResult>('POST', '/v1/queue/scan', { trigger: 'manual' });
   out.result(res, () => describeScan(res) + '\n');
   return res.problem ? 1 : 0;
+}
+
+/** "Re-read 22 sources in 8 batches of up to 3 (reread-…)" plus one line per batch. */
+export function describeReread(r: RereadResult): string {
+  const sources = r.groups.reduce((n, g) => n + g.files.filter((f) => !g.folders?.some((d) => f.startsWith(d + '/'))).length + (g.folders?.length ?? 0), 0);
+  const lines = [
+    `Re-reading ${plural(sources, 'source')}${r.fromJob ? ` from ${r.fromJob}` : ''} in ${r.groups.length} ${r.groups.length === 1 ? 'batch' : 'batches'} of up to ${r.perBatch} (${r.id}).`,
+  ];
+  r.groups.forEach((g, i) => {
+    const state = g.jobId ? `started as ${g.jobId}` : 'waits';
+    lines.push(`  ${i + 1}. ${state}: ${g.files.map((f) => path.posix.basename(f)).join(', ')}`);
+  });
+  if (r.waiting > 0) lines.push(`${r.waiting} ${r.waiting === 1 ? 'batch' : 'batches'} wait${r.waiting === 1 ? 's' : ''}: each starts when the one before is ready for review.`);
+  for (const s of r.skipped ?? []) lines.push(`Skipped ${s.path}: ${s.reason}.`);
+  lines.push('Each batch waits in Review in the Distill app; nothing is applied until you approve it.');
+  return lines.join('\n');
+}
+
+async function batch(args: string[], io: CliIO, api: ApiFactory): Promise<number> {
+  const [sub, ...rest] = args;
+  if (sub !== 'reread') throw usageError('usage: distill batch reread <inbox/file>... | --job JOB_ID [--per-batch N]');
+  const { values, positionals } = parse(rest, {
+    job: { type: 'string' },
+    'per-batch': { type: 'string' },
+    instruction: { type: 'string' },
+    vault: { type: 'string' },
+  });
+  const jobId = str(values.job);
+  if ((jobId !== undefined) === positionals.length > 0) throw usageError('give inbox files or --job JOB_ID (not both)');
+  const rawPer = str(values['per-batch']);
+  let perBatch: number | undefined;
+  if (rawPer !== undefined) {
+    perBatch = Number(rawPer);
+    if (!/^\d+$/.test(rawPer) || perBatch < 1 || perBatch > 10) throw usageError('--per-batch must be a whole number from 1 to 10');
+  }
+  const out = new Output(io, values.json === true);
+  const vault = str(values.vault);
+  const instruction = str(values.instruction);
+  const files = positionals.map((f) => f.replace(/^\.\//, ''));
+  const client = await api(out);
+  const res = await client.request<RereadResult>('POST', '/v1/batches/reread', {
+    ...(jobId ? { jobId } : { files }),
+    ...(perBatch !== undefined ? { perBatch } : {}),
+    ...(vault ? { vault: path.resolve(io.cwd, vault) } : {}),
+    ...(instruction ? { instruction } : {}),
+  });
+  out.result(res, () => describeReread(res) + '\n');
+  return 0;
 }
 
 async function collectors(args: string[], io: CliIO, api: ApiFactory): Promise<number> {

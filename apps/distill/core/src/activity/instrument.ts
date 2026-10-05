@@ -256,6 +256,7 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
 
     // ── logged from events ──
     processQueue: 'event', // batch.started (also scheduled batches)
+    rereadSources: 'event', // batch.started with details.reread, once per group as it starts
     scanQueue: 'event', // queue.scanned (also the window scan and the periodic check)
     runCollector: 'event', // collector.run when it finishes (also scheduled runs)
     testCollector: 'event', // collector.test_run when it finishes
@@ -870,7 +871,9 @@ export function createEventLogger(deps: EventLoggerDeps, seedJobs: Job[]): (even
           const source = currentSource();
           const object = jobObject(job.id, job);
           if (!seen && method !== 'suggestLabelsForPages' && method !== 'confirmLabels') {
-            write({ type: 'batch.started', object, summary: `Started ${jobName(job)}`, details: { files: job.files, ...(job.folders?.length ? { folders: job.folders } : {}), runner: job.runnerID ?? 'claude-code', model: job.model } }, source);
+            const reread = job.reread ? { reread: true, rereadID: job.reread.id, rereadGroup: job.reread.group, rereadGroups: job.reread.groups, ...(job.reread.fromJob ? { fromJob: job.reread.fromJob } : {}) } : {};
+            const summary = job.reread ? `Started ${jobName(job)} (re-read ${job.reread.group} of ${job.reread.groups})` : `Started ${jobName(job)}`;
+            write({ type: 'batch.started', object, summary, details: { files: job.files, ...(job.folders?.length ? { folders: job.folders } : {}), runner: job.runnerID ?? 'claude-code', model: job.model, ...reread } }, source);
           }
           if (seen && seen.state !== job.state) {
             if (job.state === 'awaitingApproval') write({ type: 'batch.ready', object, summary: `${jobName(job)} is ready for review`, details: { changedPaths: job.approval?.plan?.changed_paths ?? [] } }, source);

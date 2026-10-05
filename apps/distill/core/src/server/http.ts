@@ -991,6 +991,36 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
       },
     },
     {
+      // v9: re-read sources already in inbox/, completely, in groups (queue-and-batching.md, "Re-read sources").
+      method: 'POST',
+      pattern: /^\/v1\/batches\/reread$/,
+      status: 201,
+      untyped: { status: 400, code: 'invalid_request' },
+      handler: async ({ body }) => {
+        if (typeof core.rereadSources !== 'function') throw new HttpError(501, 'not_implemented', 'rereadSources: not implemented by this core');
+        const o = asObject(await body(), false);
+        const files = optStringArray(o, 'files');
+        const jobId = o.jobId;
+        if (jobId !== undefined && (typeof jobId !== 'string' || jobId === '')) throw bad('"jobId" must be a job id');
+        if ((files?.length ?? 0) > 0 === (jobId !== undefined)) throw bad('give either "files" (inbox paths) or "jobId"');
+        const vault = o.vault ?? o.vaultPath;
+        if (vault !== undefined && typeof vault !== 'string') throw bad('"vault" must be a vault path');
+        const perBatch = o.perBatch;
+        if (perBatch !== undefined && (typeof perBatch !== 'number' || !Number.isInteger(perBatch))) throw bad('"perBatch" must be a whole number');
+        const instruction = o.instruction;
+        if (instruction !== undefined && typeof instruction !== 'string') throw bad('"instruction" must be a string');
+        if (typeof jobId === 'string') requireJob(jobId);
+        const res = await core.rereadSources({
+          ...(files?.length ? { files } : {}),
+          ...(typeof jobId === 'string' ? { jobId } : {}),
+          ...(vault ? { vaultPath: vault } : {}),
+          ...(perBatch !== undefined ? { perBatch } : {}),
+          ...(instruction !== undefined ? { instruction } : {}),
+        });
+        return { ...res, started: res.started.map(apiJob) };
+      },
+    },
+    {
       // v7: the job's live log as kept (spec live-log.md).
       method: 'GET',
       pattern: /^\/v1\/jobs\/([^/]+)\/steps$/,
