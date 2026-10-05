@@ -1,7 +1,7 @@
 ---
 title: Vaults and settings
 status: built
-updated: 2026-10-04
+updated: 2026-10-05
 ---
 
 # Vaults and settings
@@ -123,7 +123,7 @@ unknown keys.
 | Key | Default |
 | --- | --- |
 | `batchIntervalMinutes` | 10 |
-| `settleSeconds` | 600 (10 minutes): a file is batched only once unchanged this long. Settings → "Wait before picking up a file" edits it as minutes + seconds (0–59 each). Process now ignores it. |
+| `settleSeconds` | 600 (10 minutes): a file is batched only once unchanged this long. Settings → "Wait before picking up a file" edits it as hours (0–24) + minutes (0–59), with presets No wait, 1 min, 10 min, 1 hour, 4 hours, 24 hours (2026-10-05; was minutes + seconds). 0 = no wait; the core clamps it to 0..86400. Process now ignores it. Text files also wait for their labels (the label gate, [Queue and batching](queue-and-batching.md)). |
 | `autoProcessEnabled` | true |
 | `model` | `sonnet` (Haiku/Sonnet/Opus cards, pinned IDs, or custom) |
 | `claudePath` | `~/.local/bin/claude` |

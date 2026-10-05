@@ -88,6 +88,27 @@ isn't.
 
 ## Friction log (newest first)
 
+### 2026-10-05
+
+- **Labels were invisible until after approval.** The batch suggested labels
+  inside its own run and wrote them to pages as unconfirmed. Review never showed
+  them, and only collector-free notes got chips in the queue. The owner found it
+  by looking at a real 22-file batch: "I will never see the label suggestion."
+  - *Lesson:* trace a feature's data through every screen the user passes, not
+    only the one that produces it. A value that exists only inside a bundle is
+    invisible to the user.
+  - *Change:* labels are suggested in the queue (3 at a time), shown and edited
+    in Review, and approving confirms what was shown. The approval hash is
+    recomputed through a label revision, never by editing an approved bundle.
+- **Scope grew three times during one task.** Pick and remove per source, the
+  label gate, approve without labels, then the session-gone rule.
+  - *Lesson:* commit at each scope change and keep the seams explicit
+    (`resumeBatchSession`), so a teammate can own the cross-cutting part.
+- **A rehearsal on a copy beat reasoning about the real job.** Copying the
+  pending job, its worker folder and the six bookkeeping files into a
+  throwaway vault showed exactly what the reinstall will do (labels confirmed
+  in revision 1, no AI call), without touching the owner's data.
+
 ### 2026-10-04
 - **An audit handoff worked well as a spec, but it listed symptoms, not every
   reader.** A compliance audit found where Distill broke claude-obsidian's

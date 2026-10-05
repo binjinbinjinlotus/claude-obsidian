@@ -1,7 +1,7 @@
 ---
 title: Labels and sources
 status: built
-updated: 2026-10-04
+updated: 2026-10-05
 ---
 
 # Labels and sources
@@ -37,7 +37,9 @@ about** (labels). Canvas artboards: "Write a note", "Ask", "Settings", "Notes".
   `dashboard.md`, `wiki/meta/**`, `type: meta`) are not notes and are skipped.
 - The suggestions appear on the queued item in the Queue screen as dashed chips
   (green = existing, peach = new) with accept ✓ / dismiss ×, plus "Accept all".
-  The user can also type any label. In the Mac app this is the label step
+  The user can also type any label. Since 2026-10-05 every queue text file
+  has these chips on its row (Queue files, below); for a note written in the
+  app they come in the label step
   after Add to queue (composer and quick note), not the Queue rows.
 - Settings → Labels (Mac app, built): counts, the app-local "suggest after a
   note is queued" switch (`suggest: none` when off; no core key), Ask defaults
@@ -62,7 +64,7 @@ about** (labels). Canvas artboards: "Write a note", "Ask", "Settings", "Notes".
 | CLI (origin `cli`, suggest `wait`) | `addNote` returns `requestID` + `suggestedLabels` (+ `costUSD`). The caller may `labelNote` until the batch picks the note up (then `invalid_state`). Nothing confirmed and `labeling.cliFallbackToAI` (default on) → the AI labels apply unconfirmed, `labels_origin: cli`. |
 | `labels` on addNote | Confirmed (`labels_by: user`); no suggestion is made. |
 | `labelNote(requestID, [])` | Confirmed: no labels. No AI fallback, no flags. |
-| Any other file in the queue folder | `labeling.autoLabelQueueFolder` (default on): the batch suggests labels for text files (`.md .txt .html .csv .json` ...) before the first turn, applied unconfirmed with `labels_origin: queue-folder`. A dropped `.md` that already has `tags` keeps them as the user's choice (no AI call). Binary files (PDF, images) and failed suggestions stay unlabeled. |
+| Any other file in the queue folder | `labeling.autoLabelQueueFolder` (default on): labels are suggested **in the queue** as soon as a text file (`.md .txt .html .csv .json` ...) is Ready, 3 at a time (Queue files, below). The batch uses them, unconfirmed with `labels_origin: queue-folder`, or confirmed when the user confirmed them on the row. A dropped `.md` that already has `tags` keeps them as the user's choice (no AI call). Binary files (PDF, images) stay unlabeled. |
 
 Where a note's label state lives: in its `.distill.json` manifest (and
 `labelNote` also rewrites the queued note's `tags`), except when the queue
@@ -80,6 +82,36 @@ suggestion failed).
 The batch passes each input's labels to the ingest turn (see
 [Queue and batching](queue-and-batching.md)); the agent writes them on the
 source page built from that input.
+
+### Queue files (built 2026-10-05)
+
+Canvas: MainLabels, MainLabelGate, QueueLabelGate, LabelLine. Code:
+`core/src/engine/queue-labels.ts`.
+
+- Every text file that is Ready in the queue and is not a Distill note gets
+  labels suggested in the background by a worker pool of **at most 3**, until
+  every file is labeled. A new file joins the line; a restart re-queues the
+  files without a result.
+- State lives in Distill's `labels/notes.json` overlay, keyed `file:<sha256
+  of the content>` (never in the file; the same store as notes in `inbox/`).
+  The key follows the content when the batch moves the file into `inbox/`.
+- `QueueEntry.labels`: `waiting` (behind the 3 running), `suggesting`,
+  `suggested`, `confirmed`, `own` (the `.md`'s own tags), `failed` (with
+  `attempts`), `skipped`. The row shows a LabelLine.
+- Row actions: × on a chip and Accept all confirm (`labelQueueItem`, `POST
+  /v1/queue/labels {path, labels}`); Retry (`retryQueueLabels`); Send without
+  labels (`skipQueueLabels`).
+- Failed suggestions retry by themselves up to 3 times (once per batch run),
+  then wait for the user. Until then the file is held for the next batch (the
+  label gate, [Queue and batching](queue-and-batching.md)).
+- Per-file `labelSuggest` progress: key `label:<sha256>`, `item` = file name.
+
+### In Review (built 2026-10-05)
+
+A pending batch shows each source page with its labels; approving confirms
+them, and Approve, review labels later leaves them unconfirmed for Labels → To
+review. Details: [Approval and review](approval-and-review.md) → Labels in
+Review.
 
 ### Labels screen (core API)
 

@@ -1,7 +1,7 @@
 ---
 title: Queue and batching
 status: built
-updated: 2026-10-04
+updated: 2026-10-05
 ---
 
 # Queue and batching
@@ -114,10 +114,21 @@ Canvas: "Queue rows: every state" and Main. Code: `QueueView` in
 - A 5-second tick refreshes the queue; when `nextBatchAt` passes and automatic
   batching is on, a batch runs and the next one is scheduled.
 - **Process now** (⌘R) runs a batch immediately and ignores the settle delay.
+  It still applies the label gate: text files whose labels are not in stay
+  (their labels start at once), and the app says so ("3 notes are still being
+  labeled; they'll go in the next batch", or "Nothing to batch yet").
 
 ## Batch
 
-1. Blocked when setup is invalid or another job holds the vault.
+1. Blocked when setup is invalid or another batch on the vault is running.
+   Batches waiting in Review don't block it (2026-10-05).
+   **The label gate** (2026-10-05): a text file is taken only once its labels
+   are in (suggested, confirmed, or its own tags; see [Labels and
+   sources](labels-and-sources.md) → Queue files). One still being labeled,
+   or whose suggestion failed, stays for the next batch (`heldForLabels`).
+   Failed suggestions with tries left (fewer than 3 failures) are asked again
+   at each batch run. PDFs and images, and every file when
+   `labeling.autoLabelQueueFolder` is off, go as before.
 2. Settled files are moved into `<vault>/inbox/` (name collisions become
    `name 2.ext`). The move is create-only (hard link then unlink, or an
    exclusive copy): it can never replace a file already in `inbox/`. When the queue is the inbox, files stay and only unclaimed
@@ -128,9 +139,13 @@ Canvas: "Queue rows: every state" and Main. Code: `QueueView` in
    decides each input's labels from its manifest (merged with the label state
    kept in Distill's state when the queue is `inbox/`) and the `labeling`
    settings.
-   When an input needs an AI suggestion (a queue-folder text file, or a CLI
-   note with nothing confirmed), a pre-step runs the `labelSuggest` runner
-   before the first turn. Its cost is recorded as an app turn; a failed
+   Queue files bring the labels they got in the queue (confirmed, suggested,
+   or sent without labels), so they need no call here.
+   When an input still needs an AI suggestion (a CLI note with nothing
+   confirmed, or a queue file whose queue suggestion did not finish), a
+   pre-step runs the `labelSuggest` runner before the first turn, at most 3
+   at a time, each with its own `labelSuggest` progress (`item` = file name,
+   `group` = job id). Its cost is recorded as an app turn; a failed
    suggestion leaves that input unlabeled; Cancel during the pre-step cancels
    the job. The plan is saved as `labels.json` in the job directory.
 5. The first turn starts. Its prompt has a **Labels** section that lists, per
