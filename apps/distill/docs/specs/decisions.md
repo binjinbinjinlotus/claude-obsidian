@@ -17,6 +17,32 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **A kept script saved in another editor is logged; a spec error never drops
+  an entry.** Spec: [Activity log](activity-log.md) → Edits outside Distill.
+  The owner's "Meeting Note" save at 22:41:07 had no activity entry.
+  - **No request reached the core.** The file kept its 22:29:40 birth time,
+    and its folder kept its 22:29 mtime. Every core write is a temp file plus
+    a rename, which changes both; a temp state dir confirmed this.
+    `~/.idlerc/recent-files.lst` and `breakpoints.lst` were written at 22:41
+    and list this file. IDLE is the Mac's default app for `.py`, and **Open
+    in editor** opened it there.
+  - **Not the wrapper, not the core 79304 build.** That core started with the
+    app at 22:39:03. Its first entry (seq `0001`) is the 22:41:55 consent, so
+    it never tried to log a save. The app's own Save (`PUT …/script`) logs
+    exactly one `collector.script_saved` against a real core: core test, and
+    `CollectorSaveLiveTests` through the app's store.
+  - **Decision:** the core keeps `script.knownFiles` (the script and manifest
+    hashes it last wrote or saw). It compares them at ticks, reads, and before
+    consent, runs, saves and installs. A difference logs one
+    `collector.script_changed_outside`, source `scheduler`, with sizes and
+    12-character hashes. That entry lands before the consent that covers the
+    change.
+    - Not a file watcher: the tick bounds the delay to 15 s, and a watcher is
+      one more thing to keep alive.
+    - Not the user's own files: editing them in another editor is expected.
+  - **Also:** `instrumentCore` used to swallow a throwing `ok` with no entry.
+    It now writes a plain entry with `describeError` and warns in
+    `server.log`. A throwing `fail` can no longer replace the core's error.
 - **Script editor crash fixed: the selection is clamped, never dropped.** The
   app quit at 22:41:41 (crash report `Distill-2026-10-04-224141.ips`). The
   exception came from `NSTextView setSelectedRanges` in

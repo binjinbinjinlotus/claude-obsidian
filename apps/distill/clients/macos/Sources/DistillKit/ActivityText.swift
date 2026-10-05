@@ -356,16 +356,23 @@ public struct ActivityText: Sendable {
                 if let i = e.string("interpreter") { parts.append(i) }
                 // Written in Distill (inline, or a file Distill keeps: `scriptManaged`) shows lines and size;
                 // the path stays in the entry for Show in Finder. Your own file shows its path.
+                let outside = e.details["changedOutside"] == .bool(true)
                 if let file = e.string("scriptFile"), e.details["scriptManaged"] != .bool(true) {
                     parts.append(collectorText.tilde(file))
                 } else {
                     if let lines = e.int("scriptLines") { parts.append(lines == 1 ? "1 line" : "\(lines) lines") }
-                    if let bytes = e.int("scriptBytes") { parts.append(Self.size(bytes) + ", written in Distill") }
+                    // collector.script_changed_outside: saved by another editor, not written in Distill.
+                    let by = outside ? ", changed outside Distill" : ", written in Distill"
+                    if let bytes = e.int("scriptBytes") { parts.append(Self.size(bytes) + by) }
                     else if e.details["scriptManaged"] == .bool(true) { parts.append("written in Distill") }
+                    else if outside, e.strings("changes").contains("script") { parts.append("removed outside Distill") }
                 }
                 add("Script", parts.joined(separator: " · "), keys: ["interpreter", "scriptFile", "scriptManaged", "scriptLines", "scriptBytes"])
                 // collector.script_saved: the saved file's path is kept for Show in Finder; the hash prefix is for support.
-                if e.details["scriptManaged"] == .bool(true) { used.formUnion(["file", "scriptSha256"]) }
+                if e.details["scriptManaged"] == .bool(true) || outside { used.formUnion(["file", "scriptSha256"]) }
+                if outside {
+                    add("Saved", whenText("modifiedAt"), keys: ["modifiedAt", "changedOutside", "changes"])
+                }
             }
             add("Folder", e.string("folder").map(collectorText.tilde), keys: ["folder"])
             add("After", e.string("afterCollect").map { $0 == "move" ? "Moves files into the queue" : $0 == "copy" ? "Copies files into the queue" : $0 },

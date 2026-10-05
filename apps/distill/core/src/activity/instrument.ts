@@ -676,6 +676,16 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** The spec's failure entry, or a plain one when the spec itself throws (an entry is never dropped). */
+function describeFailure(name: string, s: Spec<Method>, args: never, before: unknown): Omit<Described, 'details' | 'recovery'> {
+  try {
+    return s.fail(args, before);
+  } catch (err) {
+    console.warn(`distill activity: couldn't describe a failed ${name}: ${errorMessage(err)}`);
+    return { type: `core.${name}`, object: { kind: 'core', name }, summary: `Couldn't ${name}` };
+  }
+}
+
 /** Wrap every logged method of the core. Returns a new object; reads are passed through. */
 export function instrumentCore<T extends Core>(core: T, deps: InstrumentDeps): T {
   const specs = buildSpecs(core, deps) as Record<string, Classification<Method>>;
@@ -705,7 +715,7 @@ export function instrumentCore<T extends Core>(core: T, deps: InstrumentDeps): T
           } catch (err) {
             // No copy, no delete: a delete that can't be undone is refused.
             const message = `Couldn't keep a copy in Distill's trash, so nothing was deleted: ${errorMessage(err)}`;
-            write(s.fail(a, before), 'failed', message);
+            write(describeFailure(name, s, a, before), 'failed', message);
             throw Object.assign(new Error(message), { code: 'invalid_state' });
           }
         }
@@ -714,15 +724,20 @@ export function instrumentCore<T extends Core>(core: T, deps: InstrumentDeps): T
           result = await original.apply(core, args);
         } catch (err) {
           if (trashed) deps.trash.remove(trashed.id);
-          write(s.fail(a, before), 'failed', errorMessage(err));
+          // The core's error is what the caller gets, even when describing the failure fails.
+          write(describeFailure(name, s, a, before), 'failed', errorMessage(err));
           throw err;
         }
+        let described: Described | Described[] | null;
         try {
-          const described = s.ok(a, result as never, before, trashed);
-          for (const d of Array.isArray(described) ? described : described ? [described] : []) write(d, 'ok');
-        } catch {
-          /* describing never fails the change */
+          described = s.ok(a, result as never, before, trashed);
+        } catch (err) {
+          // Describing never fails the change, and never drops its entry: a plain one says it happened.
+          console.warn(`distill activity: couldn't describe ${name}: ${errorMessage(err)}`);
+          const f = describeFailure(name, s, a, before);
+          described = { type: f.type, object: f.object, summary: `${name}: done (the entry couldn't be described)`, details: { describeError: errorMessage(err) } };
         }
+        for (const d of Array.isArray(described) ? described : described ? [described] : []) write(d, 'ok');
         return result;
       });
   }
@@ -817,6 +832,40 @@ export function createEventLogger(deps: EventLoggerDeps, seedJobs: Job[]): (even
             i.trigger === 'beforeRun' ? 'scheduler' : currentSource(),
             failed ? 'failed' : 'ok',
             failed ? (i.error?.message ?? i.result) : undefined,
+          );
+          return;
+        }
+        case 'collector.script.changed_outside': {
+          // A kept script or manifest saved by another program (an editor opened with "Open in editor"):
+          // no request reached the core, so the entry is Distill noticing it, with sizes and hash
+          // prefixes and never the text. Its consent hash changed too, so it won't run until allowed.
+          const ch = event.change;
+          const parts = ch.changes.map((p) => (p === 'manifest' ? (ch.manifest?.name ?? 'manifest') : 'script'));
+          const gone = (ch.changes.includes('script') && !ch.script) || (ch.changes.includes('manifest') && ch.manifest === null);
+          const details: Record<string, unknown> = { changedOutside: true, changes: ch.changes, interpreter: ch.interpreter };
+          if (ch.script) {
+            details.file = ch.script.path;
+            details.modifiedAt = ch.script.modifiedAt;
+            if (ch.changes.includes('script')) {
+              details.scriptBytes = ch.script.bytes;
+              details.scriptLines = ch.script.lines;
+              details.scriptSha256 = ch.script.sha256.slice(0, 12);
+            }
+          }
+          if (ch.changes.includes('manifest')) {
+            details.manifest = ch.manifest?.name ?? null;
+            details.manifestBytes = ch.manifest?.bytes ?? null;
+            details.manifestSha256 = ch.manifest?.sha256.slice(0, 12) ?? null;
+            if (ch.manifest) details.modifiedAt = ch.manifest.modifiedAt;
+          }
+          write(
+            {
+              type: 'collector.script_changed_outside',
+              object: { kind: 'collector', id: ch.collectorId, name: ch.name },
+              summary: `${gone ? 'Removed' : 'Changed'} ${parts.join(' and ')} of ${q(ch.name)} outside Distill (needs your OK before it runs)`,
+              details,
+            },
+            'scheduler',
           );
           return;
         }

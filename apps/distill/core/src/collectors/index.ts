@@ -15,6 +15,7 @@ import {
   type CollectorPatch,
   type CollectorInstall,
   type CollectorInterpreter,
+  type CollectorOutsideChange,
   type CollectorRun,
   type CollectorSchedule,
   type CollectorScriptFiles,
@@ -224,6 +225,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
           backedUp = true;
           const file = folders.writeScript(c.id, s.interpreter, Buffer.from(s.source.inline, 'utf8'), { migrated: true });
           s.source = { file, managed: true };
+          markKnown(c);
           changedAny = true;
         } catch {
           // stays inline
@@ -233,6 +235,11 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
         const file = folders.managedPath(c.id, s.source.file);
         if (file !== s.source.file) {
           s.source = { file, managed: true };
+          changedAny = true;
+        }
+        // Collectors saved before knownFiles: what is on disk now is the starting point (no entry).
+        if (s.knownFiles === undefined) {
+          markKnown(c);
           changedAny = true;
         }
       }
@@ -331,6 +338,77 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     }
     const m = manifestOf(c);
     return { script: scriptSha, manifest: m?.bytes ? sha256Text(m.bytes) : null };
+  }
+
+  /**
+   * After the core writes a kept script's files (create, save, a source or language change, restore,
+   * migration): their hashes become the known ones, so only edits made elsewhere are noticed.
+   */
+  function markKnown(c: Collector): void {
+    if (c.kind !== 'script' || !c.script) return;
+    if (!isManaged(c.script)) {
+      delete c.script.knownFiles;
+      return;
+    }
+    c.script.knownFiles = filesNow(c);
+  }
+
+  function modifiedAt(file: string): string {
+    try {
+      return fs.statSync(file).mtime.toISOString();
+    } catch {
+      return isoDate(now());
+    }
+  }
+
+  /**
+   * A kept script or manifest edited outside Distill (an editor opened from "Open in editor" writes the
+   * file itself; no request reaches the core). Compared with knownFiles at reads, ticks and before
+   * consent, runs and saves; logged once per difference (activity-log.md). Returns whether c changed.
+   */
+  function noticeOutside(c: Collector): boolean {
+    const s = c.script;
+    if (c.kind !== 'script' || !s || !isManaged(s) || !('file' in s.source)) return false;
+    // An install runs npm/pip in the folder; the core puts package.json's bytes back afterwards.
+    if (installing.has(c.id)) return false;
+    const files = filesNow(c);
+    const known = s.knownFiles;
+    if (!known) {
+      s.knownFiles = files;
+      return true;
+    }
+    const changes: CollectorOutsideChange['changes'] = [];
+    if (files.script !== known.script) changes.push('script');
+    if (files.manifest !== known.manifest) changes.push('manifest');
+    if (changes.length === 0) return false;
+    s.knownFiles = files;
+    const file = s.source.file;
+    let script: CollectorOutsideChange['script'] = null;
+    try {
+      const bytes = fs.readFileSync(file);
+      const text = bytes.toString('utf8');
+      const lines = text === '' ? 0 : text.split('\n').length - (text.endsWith('\n') ? 1 : 0);
+      script = { path: file, bytes: bytes.length, lines, sha256: sha256Text(bytes), modifiedAt: modifiedAt(file) };
+    } catch {
+      script = null;
+    }
+    const change: CollectorOutsideChange = { collectorId: c.id, name: c.name, interpreter: s.interpreter, changes, script };
+    if (changes.includes('manifest')) {
+      const m = manifestOf(c);
+      change.manifest = m?.bytes ? { name: m.name, bytes: m.bytes.length, sha256: sha256Text(m.bytes), modifiedAt: modifiedAt(m.path) } : null;
+    }
+    opts.emit({ type: 'collector.script.changed_outside', change });
+    return true;
+  }
+
+  function noticeOutsideOne(c: Collector | undefined): void {
+    if (c && noticeOutside(c)) persist();
+  }
+
+  function noticeOutsideAll(): void {
+    let touched = false;
+    for (const c of collectors) if (noticeOutside(c)) touched = true;
+    if (touched) persist();
   }
 
   /** {inline} → the managed file (written now); {file} → the user's own file, unless it is this collector's managed file. */
@@ -1010,6 +1088,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
   // ───────────── scheduler ─────────────
 
   function tick(): void {
+    noticeOutsideAll();
     const t = now();
     let touched = false;
     for (const c of collectors) {
@@ -1097,10 +1176,12 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     },
 
     async listCollectors() {
+      noticeOutsideAll();
       return collectors.map(view);
     },
     async getCollector(id) {
       const c = find(id);
+      noticeOutsideOne(c);
       return c ? view(c) : undefined;
     },
     async createCollector(input: NewCollectorInput) {
@@ -1133,6 +1214,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
           if (!isManaged(c.script)) throw new CoreError('invalid_request', 'Packages are for scripts Distill keeps (inline code), not your own file.');
           folders.writeManifest(c.id, c.script.interpreter, manifest);
         }
+        markKnown(c);
       }
       collectors.push(c);
       store.ticks.set(c.id, t);
@@ -1142,62 +1224,78 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     },
     async updateCollector(id, patch: CollectorPatch) {
       const c = require(id);
+      noticeOutsideOne(c);
       const next = clone(c);
-      if (patch.name !== undefined) {
-        if (!patch.name.trim()) throw new CoreError('invalid_request', 'The name is empty.');
-        next.name = patch.name.trim();
-      }
-      if (patch.vaultPath !== undefined) next.vaultPath = validVault(patch.vaultPath);
-      if (patch.schedule !== undefined) next.schedule = validSchedule(patch.schedule);
-      if (next.kind === 'folder') {
-        if (patch.script !== undefined) throw new CoreError('invalid_request', 'A Folder collector has no script.');
-        if (patch.folder !== undefined || patch.vaultPath !== undefined) next.folder = validFolder(patch.folder, c.folder, next.vaultPath);
-      } else {
-        if (patch.folder !== undefined) throw new CoreError('invalid_request', 'A script collector has no folder.');
-      }
-      if (next.kind === 'script' && patch.script !== undefined) {
-        const s = next.script!;
-        if (patch.script.interpreter !== undefined && !INTERPRETERS.includes(patch.script.interpreter)) throw new CoreError('invalid_request', INTERPRETER_ERROR);
-        if (patch.script.timeoutSeconds !== undefined) s.timeoutSeconds = validTimeout(patch.script.timeoutSeconds);
-        const interpreter = patch.script.interpreter ?? s.interpreter;
-        if (patch.script.source !== undefined) s.source = applySource(c, patch.script.source, interpreter);
-        if (patch.script.interpreter !== undefined) {
-          // The same code under another interpreter is another program: consent again.
-          if (patch.script.interpreter !== s.interpreter) {
-            s.allowedSha256 = null;
-            s.allowedAt = null;
-            s.allowedFiles = null;
-            // A managed file takes the new language's extension (TypeScript needs .ts).
-            if (isManaged(s) && 'file' in s.source) {
-              try {
-                s.source = { file: folders.renameForLanguage(s.source.file, patch.script.interpreter, now()), managed: true };
-              } catch (err) {
-                throw new CoreError('invalid_state', `Couldn't rename the script file: ${(err as Error).message}`);
+      // A refused patch can still have written the kept file (same name): that write is the core's.
+      let wrote = false;
+      try {
+        if (patch.name !== undefined) {
+          if (!patch.name.trim()) throw new CoreError('invalid_request', 'The name is empty.');
+          next.name = patch.name.trim();
+        }
+        if (patch.vaultPath !== undefined) next.vaultPath = validVault(patch.vaultPath);
+        if (patch.schedule !== undefined) next.schedule = validSchedule(patch.schedule);
+        if (next.kind === 'folder') {
+          if (patch.script !== undefined) throw new CoreError('invalid_request', 'A Folder collector has no script.');
+          if (patch.folder !== undefined || patch.vaultPath !== undefined) next.folder = validFolder(patch.folder, c.folder, next.vaultPath);
+        } else {
+          if (patch.folder !== undefined) throw new CoreError('invalid_request', 'A script collector has no folder.');
+        }
+        if (next.kind === 'script' && patch.script !== undefined) {
+          const s = next.script!;
+          if (patch.script.interpreter !== undefined && !INTERPRETERS.includes(patch.script.interpreter)) throw new CoreError('invalid_request', INTERPRETER_ERROR);
+          if (patch.script.timeoutSeconds !== undefined) s.timeoutSeconds = validTimeout(patch.script.timeoutSeconds);
+          const interpreter = patch.script.interpreter ?? s.interpreter;
+          if (patch.script.source !== undefined) {
+            s.source = applySource(c, patch.script.source, interpreter);
+            wrote = true;
+          }
+          if (patch.script.interpreter !== undefined) {
+            // The same code under another interpreter is another program: consent again.
+            if (patch.script.interpreter !== s.interpreter) {
+              s.allowedSha256 = null;
+              s.allowedAt = null;
+              s.allowedFiles = null;
+              // A managed file takes the new language's extension (TypeScript needs .ts).
+              if (isManaged(s) && 'file' in s.source) {
+                try {
+                  s.source = { file: folders.renameForLanguage(s.source.file, patch.script.interpreter, now()), managed: true };
+                  wrote = true;
+                } catch (err) {
+                  throw new CoreError('invalid_state', `Couldn't rename the script file: ${(err as Error).message}`);
+                }
               }
             }
+            s.interpreter = patch.script.interpreter;
           }
-          s.interpreter = patch.script.interpreter;
         }
-      }
-      if (patch.enabled !== undefined) next.enabled = patch.enabled;
-      if (next.kind === 'script' && next.enabled && next.script) {
-        const h = currentHash(next);
-        if (!('sha256' in h) || next.script.allowedSha256 !== h.sha256) {
-          if (patch.enabled === true) throw new CoreError('invalid_state', 'Allow this script before turning it on.');
+        if (patch.enabled !== undefined) next.enabled = patch.enabled;
+        if (next.kind === 'script' && next.enabled && next.script) {
+          const h = currentHash(next);
+          if (!('sha256' in h) || next.script.allowedSha256 !== h.sha256) {
+            if (patch.enabled === true) throw new CoreError('invalid_state', 'Allow this script before turning it on.');
+          }
         }
+        if (next.kind === 'folder' && next.folder && patch.folder?.source !== undefined) ensureDir(next.folder.source);
+        const turnedOn = !c.enabled && next.enabled;
+        const scheduleChanged = patch.schedule !== undefined && patch.schedule.cron.trim() !== c.schedule.cron;
+        next.updatedAt = isoDate(now());
+        markKnown(next);
+        Object.assign(c, next);
+        if (!next.folder) delete c.folder;
+        if (!next.script) delete c.script;
+        // Turning on, or a new schedule, counts from now: no catch-up for the time before.
+        if (turnedOn || scheduleChanged) store.ticks.set(c.id, isoDate(now()));
+        persist();
+        changed(c);
+        return view(c);
+      } catch (err) {
+        if (wrote) {
+          markKnown(c);
+          persist();
+        }
+        throw err;
       }
-      if (next.kind === 'folder' && next.folder && patch.folder?.source !== undefined) ensureDir(next.folder.source);
-      const turnedOn = !c.enabled && next.enabled;
-      const scheduleChanged = patch.schedule !== undefined && patch.schedule.cron.trim() !== c.schedule.cron;
-      next.updatedAt = isoDate(now());
-      Object.assign(c, next);
-      if (!next.folder) delete c.folder;
-      if (!next.script) delete c.script;
-      // Turning on, or a new schedule, counts from now: no catch-up for the time before.
-      if (turnedOn || scheduleChanged) store.ticks.set(c.id, isoDate(now()));
-      persist();
-      changed(c);
-      return view(c);
     },
     async deleteCollector(id) {
       const c = require(id);
@@ -1244,6 +1342,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
           throw new CoreError('invalid_state', `Couldn't put the script back: ${(err as Error).message}`);
         }
       }
+      markKnown(c);
       collectors.push(c);
       store.ticks.set(c.id, isoDate(now()));
       persist();
@@ -1252,12 +1351,14 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     },
     async runCollector(id) {
       const c = require(id);
+      noticeOutsideOne(c);
       // While packages install, the run waits for them (queued, waiting 'install'): "Allow and run" works.
       if (busyWith(id) === 'run') throw new CoreError('busy', `${c.name} is already running.`);
       return enqueue(c, 'now');
     },
     async testCollector(id) {
       const c = require(id);
+      noticeOutsideOne(c);
       if (c.kind !== 'script' || !c.script) throw new CoreError('invalid_request', 'Test run is for script collectors.');
       if (busyWith(id) === 'run') throw new CoreError('busy', `${c.name} is already running.`);
       return enqueue(c, 'test');
@@ -1285,6 +1386,8 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     },
     async allowCollector(id, sha256) {
       const c = require(id);
+      // An edit made elsewhere is logged before the consent that covers it.
+      noticeOutsideOne(c);
       if (c.kind !== 'script' || !c.script) throw new CoreError('invalid_request', 'Only script collectors need consent.');
       const h = currentHash(c);
       if (!('sha256' in h)) throw new CoreError('invalid_state', h.problem);
@@ -1383,10 +1486,13 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       return checkSchedule(cron, now());
     },
     async getCollectorScript(id) {
-      return scriptFiles(require(id));
+      const c = require(id);
+      noticeOutsideOne(c);
+      return scriptFiles(c);
     },
     async writeCollectorScript(id, update: CollectorScriptUpdate) {
       const c = require(id);
+      noticeOutsideOne(c);
       if (c.kind !== 'script' || !c.script) throw new CoreError('invalid_request', 'Only script collectors have a script.');
       const s = c.script;
       if (!isManaged(s) || !('file' in s.source)) {
@@ -1409,8 +1515,12 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
         if (update.code !== undefined) folders.writeScript(c.id, s.interpreter, Buffer.from(update.code, 'utf8'), { name: path.basename(s.source.file) });
         if (update.manifest !== undefined) folders.writeManifest(c.id, s.interpreter, update.manifest);
       } catch (err) {
+        // The script may be written and the manifest not: what is on disk is still the core's.
+        markKnown(c);
+        persist();
         throw new CoreError('invalid_state', `Couldn't save: ${(err as Error).message}`);
       }
+      markKnown(c);
       c.updatedAt = isoDate(now());
       persist();
       changed(c);
@@ -1418,6 +1528,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     },
     async installCollectorPackages(id, o) {
       const c = require(id);
+      noticeOutsideOne(c);
       if (c.kind !== 'script' || !c.script) throw new CoreError('invalid_request', 'Only script collectors have packages.');
       if (!isManaged(c.script)) throw new CoreError('invalid_request', 'Packages are for scripts Distill keeps, not your own file.');
       const m = manifestOf(c);

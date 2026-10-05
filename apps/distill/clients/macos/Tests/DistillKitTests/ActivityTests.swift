@@ -213,6 +213,14 @@ final class ActivityTests: XCTestCase {
         let (savedValue, savedLabels) = scriptRow(saved)
         XCTAssertEqual(savedValue, "python3 · 24 lines · \(ActivityText.size(980)), written in Distill")
         XCTAssertEqual(savedLabels, ["Script", "Type"])
+        // collector.script_changed_outside (saved in another editor, 2026-10-04): not "written in Distill".
+        let outside: [String: JSONValue] = ["file": .string("/Users/mei/Library/Application Support/Distill/collectors/scripts/col-1/collector.py"),
+                                            "interpreter": .string("python3"), "changedOutside": .bool(true), "changes": .array([.string("script")]),
+                                            "scriptBytes": .number(11604), "scriptLines": .number(290), "scriptSha256": .string("bb99f0b3822a"),
+                                            "modifiedAt": .string("2026-10-05T02:41:07.000Z")]
+        let (outsideValue, outsideLabels) = scriptRow(outside)
+        XCTAssertEqual(outsideValue, "python3 · 290 lines · \(ActivityText.size(11604)), changed outside Distill")
+        XCTAssertEqual(outsideLabels, ["Script", "Saved", "Type"])
     }
 
     func testReadableSettingsChangesWin() {

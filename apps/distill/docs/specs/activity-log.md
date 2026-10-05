@@ -51,12 +51,63 @@ app, the CLI, the agent plugin, curl) is covered the same way.
 | Family | Types | Notes |
 |---|---|---|
 | Ask chats | `chat.created`, `chat.updated` (a follow-up), `chat.pinned`, `chat.unpinned`, `chat.deleted`, `chat.expired`, `chat.restored` | Title, turn count, size and dates only. Questions and answers are never logged. |
-| Collectors | `collector.created`, `.updated`, `.enabled`, `.disabled`, `.consented`, `.consent_revoked`, `.deleted`, `.restored`, `.stopped`, `.forgot`, `.forget_undone`, `.folder_created`, `.run`; v6: `.script_saved`, `.install` (from `collector.install.finished`), `.install_stopped`, `.test_run` | Script: interpreter, file path (`scriptFile`), `scriptManaged: true` for a script written in Distill (shown as "N lines · size, written in Distill"; the path stays for Show in Finder), **size and line count** (a final newline is not a line), schedule, vault, and a 12-character consent hash prefix. Script saves: which parts changed (script, manifest), sizes and 12-character hash prefixes, plus the interpreter and `scriptManaged: true` when the script was saved. Installs: result, trigger, manifest name, command, duration, exit code. Never the script, the manifest or install output (they can hold credentials). |
+| Collectors | `collector.created`, `.updated`, `.enabled`, `.disabled`, `.consented`, `.consent_revoked`, `.deleted`, `.restored`, `.stopped`, `.forgot`, `.forget_undone`, `.folder_created`, `.run`; v6: `.script_saved`, `.script_changed_outside` (see "Edits outside Distill"), `.install` (from `collector.install.finished`), `.install_stopped`, `.test_run` | Script: interpreter, file path (`scriptFile`), `scriptManaged: true` for a script written in Distill (shown as "N lines · size, written in Distill"; the path stays for Show in Finder), **size and line count** (a final newline is not a line), schedule, vault, and a 12-character consent hash prefix. Script saves: which parts changed (script, manifest), sizes and 12-character hash prefixes, plus the interpreter and `scriptManaged: true` when the script was saved. Installs: result, trigger, manifest name, command, duration, exit code. Never the script, the manifest or install output (they can hold credentials). |
 | Actions | `action.created`, `.updated` (which fields changed, not what they say), `.confirmed`, `.dismissed`, `.drafted`, `.improved`, `.improve_undone`, `.performed`, `.sent`, `.removed`, `.restored`, `.deleted`, `.expired`, `.found` | Title, type and status. |
 | Batches (jobs) | `batch.started`, `.ready`, `.approved`, `.replied` (length only), `.allowed` (tool rules), `.rejected`, `.cancelled`, `.applied` (changed paths, operation id), `.failed`, `.deleted`; `labels.suggest_started`, `labels.confirm_started` | Ingest results are `batch.applied` and `batch.failed`. |
 | Queue and notes | `queue.added`, `queue.removed` (with the macOS Trash as its recovery), `queue.scanned` (only when files appeared or went outside Distill), `note.added` (title, labels, file count; never the text), `note.labeled` | |
 | Connections | `connection.connected`, `connection.disconnected` | Site and status. Never the token or the email. |
 | Settings and keys | `settings.changed` (summary in Settings' words: "Changed settings: Ask history (Keep history off)"; `changes` keeps the raw `key: old → new` for short values and `key: changed` for lists and secret-looking keys; `readableChanges` has one "Label: Old → New" line per setting; no entry when nothing changed), `runner.secret_saved`, `runner.secret_cleared` | For keys, only which runner and which key name. The value is never read. Names: see "Settings in Settings' words". |
+
+### Edits outside Distill (2026-10-04)
+
+The wrapper only sees requests. A kept script ("kept by Distill",
+`script.source.managed`) can also be saved by another program: **Open in
+editor** opens it in the Mac's default app for its type (IDLE for `.py` on
+the owner's Mac), and that app writes the file itself. On 2026-10-04 the
+owner's "Meeting Note" save was made that way. IDLE writes in place, so the
+file kept its 22:29 birth time and its folder's 22:29 mtime, while every core
+write is a temp file plus a rename. No request reached the core, so nothing
+was logged.
+
+- **What the core keeps:** `script.knownFiles` in `collectors.json`, the
+  sha256 of the script and of its manifest as the core last wrote or saw them.
+  Every core write path updates it: create, `PUT …/script`, a source or
+  language change in `PATCH`, restore, and migration. A refused `PATCH` that
+  already wrote the file updates it too.
+- **When it compares:** at the scheduler tick (every 15 s, including at
+  start), on `GET /v1/collectors` and `GET /v1/collectors/:id`, on
+  `GET …/script`, and before consent, Run now, Test run, a save, a `PATCH` and
+  an install. A difference logs one `collector.script_changed_outside` and
+  moves `knownFiles` on. The entry lands before the consent that covers the
+  change. An edit made while the core was down is logged by the next core: its
+  first listing runs after the event logger subscribes (`createCore`).
+- **The entry:** source `scheduler` (Distill noticed it; the request that
+  happened to look is not the author), "Changed script of “X” outside Distill
+  (needs your OK before it runs)". Details: `changedOutside: true`,
+  `changes` (`script`, `manifest`), `interpreter`, `file`, `modifiedAt` (the
+  file's mtime), and for each changed part its size, line count (script) and
+  12-character hash prefix. A part that is gone reads "Removed …" with null
+  sizes. Never the text.
+- **Not an outside edit:** anything the core wrote, and package installs (the
+  check is skipped while npm or pip runs; the core puts `package.json`'s bytes
+  back afterwards).
+- **Known gaps:**
+  - Two saves in another editor between checks are one entry.
+  - Your own files ("Your own file", not kept by Distill) aren't tracked.
+    Editing them is expected. A changed hash still blocks runs until you
+    allow it again.
+  - Collectors saved before `knownFiles` start from what is on disk when the
+    new core first loads them, with no entry.
+
+### A spec that throws never drops an entry (2026-10-04)
+
+`instrumentCore` describes each change with its spec. If `ok` throws, a plain
+entry is still written: the spec's failure type and object, "<method>: done
+(the entry couldn't be described)", and `describeError` in details. A
+`console.warn` also goes to `server.log`. If `fail` throws, the entry is
+`core.<method>` and the caller still gets the core's own error. If
+`ActivityLog.record` can't write the line, it warns in `server.log`. It
+still never throws into the change.
 
 ### Settings in Settings' words
 
@@ -306,7 +357,9 @@ the Sidebar's new History sub-item. **Built 2026-10-04** (canvas v66 approved):
 - The detail's facts come from the keys the core writes (`instrument.ts`);
   unknown keys show as they are. Settings rows prefer `readableChanges`
   (label kept as it is) over parsing `changes`. A script with
-  `scriptManaged` shows lines and size, "written in Distill" (2026-10-04). Kept N days/hours is `expiresAt − deletedAt`
+  `scriptManaged` shows lines and size, "written in Distill" (2026-10-04). One
+  with `changedOutside` shows lines and size, "changed outside Distill", plus
+  a Saved time from `modifiedAt`. Kept N days/hours is `expiresAt − deletedAt`
   (24 hours for chats closed with Keep history off).
 - Links: Open collector / Open run log (Collectors, All runs), Open in History
   (History → Jobs, that job), Open chat, Ask history settings, Show in Finder
