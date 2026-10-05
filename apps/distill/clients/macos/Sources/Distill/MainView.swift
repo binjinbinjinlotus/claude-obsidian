@@ -6,8 +6,8 @@ enum Section: Hashable {
     case queue, collectors, review, actions, ask, labels, history
 }
 
-/// History's sub-items in the sidebar (Jobs, Ask chats, Actions).
-enum HistoryPart: Hashable { case jobs, chats, actions }
+/// History’s sub-items in the sidebar (Jobs, Ask chats, Actions, Activity).
+enum HistoryPart: Hashable { case jobs, chats, actions, activity }
 
 struct MainView: View {
     @EnvironmentObject var engine: AppModel
@@ -50,6 +50,19 @@ struct MainView: View {
         .onReceive(engine.ask.$showAskRequest.dropFirst()) { _ in section = .ask }
         .onReceive(engine.actions.$showRequest.dropFirst()) { _ in section = .actions }
         .onReceive(engine.actions.$historyRequest.dropFirst()) { _ in section = .history; historyPart = .actions }
+        .onReceive(engine.activity.$navigate.compactMap { $0 }) { nav in
+            // A link in an Activity detail: Open collector / Open run log, Open in History.
+            engine.activity.navigate = nil
+            switch nav {
+            case .collector(let id, let runs):
+                section = .collectors
+                engine.collectors.select(id)
+                if runs { engine.collectors.page = .allRuns }
+            case .job(let id):
+                historyPart = .jobs
+                selectedJob = id
+            }
+        }
         .onChange(of: section) { old, _ in
             // Keep history off: leaving the Ask screen deletes its finished chat.
             if old == .ask { engine.ask.leave(engine.ask.main) }
@@ -86,7 +99,7 @@ struct Sidebar: View {
                 navItem(.labels, "Labels", "tag", count: engine.labelsToReviewCount, highlight: false)
                 navItem(.history, "History", "clock", count: 0, highlight: false, open: section == .history)
                 if section == .history {
-                    ForEach([(HistoryPart.jobs, "Jobs"), (.chats, "Ask chats"), (.actions, "Actions")], id: \.0) { part, title in
+                    ForEach([(HistoryPart.jobs, "Jobs"), (.chats, "Ask chats"), (.actions, "Actions"), (.activity, "Activity")], id: \.0) { part, title in
                         SidebarSubItem(title: title, count: 0, selected: historyPart.wrappedValue == part) { historyPart.wrappedValue = part }
                     }
                 }
@@ -610,6 +623,8 @@ struct HistorySection: View {
     var body: some View {
         if part == .actions {
             ActionsHistoryView()
+        } else if part == .activity {
+            ActivityScreen()
         } else {
             jobsAndChats
         }
@@ -644,7 +659,7 @@ struct HistorySection: View {
                             if jobs.isEmpty && !engine.isStarting {
                                 Text("No jobs yet.").font(Theme.body(13)).foregroundStyle(Theme.faint).padding(.top, 8)
                             }
-                        case .chats, .actions:
+                        case .chats, .actions, .activity:
                             AskChatList(ask: engine.ask, openAsk: openAsk)
                         }
                     }

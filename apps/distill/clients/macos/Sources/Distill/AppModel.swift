@@ -181,6 +181,7 @@ final class AppModel: ObservableObject {
         refreshLiveExtras()
         actions.load()
         collectors.load()
+        activity.reconnected()
     }
 
     private func apply(_ event: CoreEvent) {
@@ -221,6 +222,8 @@ final class AppModel: ObservableObject {
             collectors.runFinished(run)
         case .queueScanned(let result):
             applyScan(result)
+        case .activity(let entry):
+            activity.received(entry)
         case .unknown:
             break
         }

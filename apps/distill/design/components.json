@@ -4098,6 +4098,7 @@
     {
       "name": "ActivityRow",
       "title": "Activity row",
+      "swift": "clients/macos/Sources/Distill/ActivityRow.swift",
       "preview": [
         440,
         40
@@ -4181,7 +4182,7 @@
         "file": "ActivityRowStates.dc.html",
         "title": "Activity row states",
         "heading": "ActivityRow",
-        "intro": "One line per entry in History → Activity: a quiet tile for the kind of thing (chat, collector, action, batch, queue, note, connection, settings, key), the summary the core wrote, then “time · source” in faint text. Calm by default: tiles are neutral, and only a failure gets colour (peach tile and a Failed pill). A delete whose copy is in Distill’s trash carries a small “In trash” tag; after Restore it reads “Restored”. Source names: Mac app, CLI, Agent (the CLI run by Claude Code or Codex), Automatic (Distill on its own: schedules, retention), Other app (an HTTP caller that didn’t say who it is). No Swift view yet: add <b>ActivityRow</b>. Props: family, summary, time, source, outcome (ok | failed), tag (“” | In trash | Restored), selected, hover, width.",
+        "intro": "One line per entry in History → Activity: a quiet tile for the kind of thing (chat, collector, action, batch, queue, note, connection, settings, key), the summary the core wrote, then “time · source” in faint text. Calm by default: tiles are neutral, and only a failure gets colour (peach tile and a Failed pill). A delete whose copy is in Distill’s trash carries a small “In trash” tag; after Restore it reads “Restored”. Source names: Mac app, CLI, Agent (the CLI run by Claude Code or Codex), Automatic (Distill on its own: schedules, retention), Other app (an HTTP caller that didn’t say who it is). Props: family, summary, time, source, outcome (ok | failed), tag (“” | In trash | Restored), selected, hover, width.",
         "width": 1480,
         "cols": 3
       },
