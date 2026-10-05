@@ -217,11 +217,18 @@ describe('step log limits', () => {
     const sent: JobStep[] = [];
     const log = createStepLog({ dir, emit: (e) => e.type === 'job.step' && sent.push(e.step), getJob: () => job });
     log.onEvent({ type: 'job', job });
+    log.runnerStep('job-1', { kind: 'tool', id: 'early', tool: 'Read', input: { file_path: 'inbox/a.md' } });
     for (let i = 0; i < MAX_STEPS + 50; i++) log.runnerStep('job-1', { kind: 'tool', tool: 'Glob', input: { pattern: `*${i}` } });
     const page = log.list('job-1');
     assert.equal(page.steps.length, MAX_STEPS);
     assert.equal(page.truncated, true);
     assert.equal(page.steps.at(-1)!.verb, 'truncated');
+    // A kept step can still finish after the cap; a new one is not kept.
+    log.runnerStep('job-1', { kind: 'toolDone', id: 'early' });
+    log.runnerStep('job-1', { kind: 'tool', id: 'late', tool: 'Read', input: { file_path: 'inbox/b.md' } });
+    const after = log.list('job-1');
+    assert.equal(after.steps.length, MAX_STEPS);
+    assert.ok(after.steps.every((s) => s.state !== 'running'), 'no spinner left behind the cap');
   });
 
   test('prune removes logs of jobs no longer listed', () => {
@@ -229,6 +236,8 @@ describe('step log limits', () => {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'job-a.jsonl'), '');
     fs.writeFileSync(path.join(dir, 'job-b.jsonl'), '');
+    createStepLog({ dir, emit: () => undefined, getJob: () => undefined }).prune([]);
+    assert.equal(fs.readdirSync(dir).length, 2, 'an empty job list never wipes the logs');
     createStepLog({ dir, emit: () => undefined, getJob: () => undefined }).prune(['job-a']);
     assert.deepEqual(fs.readdirSync(dir), ['job-a.jsonl']);
   });

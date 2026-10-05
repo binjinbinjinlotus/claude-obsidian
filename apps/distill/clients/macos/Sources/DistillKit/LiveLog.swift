@@ -135,6 +135,19 @@ public enum LiveLog {
         }
     }
 
+    /// A job that is no longer running leaves no spinner: a step still marked running
+    /// (cut off by the step cap, a core restart or a failure) shows as done, or as
+    /// failed when the job failed or was cancelled.
+    public static func settled(_ steps: [JobStep], jobRunning: Bool, jobFailed: Bool = false) -> [JobStep] {
+        guard !jobRunning else { return steps }
+        return steps.map { s in
+            guard s.state == "running" else { return s }
+            var t = s
+            t.state = jobFailed ? "failed" : "done"
+            return t
+        }
+    }
+
     /// Keep the newest version of each step, in the order they first came.
     public static func merge(_ steps: [JobStep], _ step: JobStep) -> [JobStep] {
         var out = steps

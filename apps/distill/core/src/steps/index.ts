@@ -126,8 +126,9 @@ export function createStepLog(opts: StepLogOptions): StepLog {
   /** Add or change a step; sends `job.step` and appends it to the job's file. */
   function put(jobId: string, step: JobStep): void {
     const l = logFor(jobId);
-    if (l.truncated) return;
     const isNew = !l.steps.has(step.id);
+    // Past the cap, new steps are dropped; a kept step can still finish (running → done).
+    if (l.truncated && (isNew || l.bytes >= MAX_BYTES * 2)) return;
     if (isNew && (l.steps.size >= MAX_STEPS - 1 || l.bytes >= MAX_BYTES)) {
       l.truncated = true;
       const marker: JobStep = {
@@ -315,7 +316,6 @@ export function createStepLog(opts: StepLogOptions): StepLog {
   function onProgress(p: Progress): void {
     if (!tracked(p.key)) return;
     const l = logFor(p.key);
-    if (l.truncated) return;
     const at = (p.steps && p.stepIndex !== undefined ? p.steps[p.stepIndex] : undefined) ?? '';
     const labels = l.steps.get('labels');
     if (p.kind === 'batch' && at === 'Suggesting labels' && !p.finished) {
@@ -415,7 +415,10 @@ export function createStepLog(opts: StepLogOptions): StepLog {
       return { jobId, steps, kept: r.kept && steps.length > 0, ...(r.steps.has(TRUNCATED_ID) ? { truncated: true } : {}) };
     },
     prune(keep) {
-      const ids = new Set([...keep].map((id) => path.basename(fileFor(id))));
+      const list = [...keep];
+      // An empty list may be a jobs.json set aside as unreadable: never wipe every log then.
+      if (list.length === 0) return;
+      const ids = new Set(list.map((id) => path.basename(fileFor(id))));
       let names: string[] = [];
       try {
         names = fs.readdirSync(opts.dir);

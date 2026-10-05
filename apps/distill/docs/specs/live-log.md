@@ -123,6 +123,14 @@ model API, because those runners have no tools and so give no steps.
   in Terminal still resumes the session.
 - **Batches from before this shipped**: the view says "Steps weren't kept
   for this batch" and points to the conversation.
+- **An older core** (no steps route): the view says "Update the Distill
+  core", as Actions and Collectors do.
+- **Past the cap** a step already kept can still finish, so its mark
+  stops. Once a job is no longer running, any step still marked running
+  (cut off by a restart or a failure) shows as done, or failed when the
+  job failed or was cancelled.
+- **Pruning at start** is skipped when the job list is empty, so a
+  `jobs.json` set aside as unreadable never wipes every log.
 - **Collector runs**: `run.outputLog` holds both streams in order, the last
   64 KB, with one stream's output within one second merged into a single
   chunk. Runs saved before it show Output, then stderr, from the separate

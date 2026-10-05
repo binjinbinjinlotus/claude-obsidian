@@ -376,6 +376,8 @@ final class JobStepsStore: ObservableObject {
     @Published var steps: [String: [JobStep]] = [:]
     /// False for a job that ran before steps were kept (from the core's answer).
     @Published var kept: [String: Bool] = [:]
+    /// Jobs whose core doesn't serve steps (an older core: 501 or no route).
+    @Published var unavailable: Set<String> = []
     @Published var loaded: Set<String> = []
     weak var engine: AppModel?
     fileprivate static var stores: [ObjectIdentifier: JobStepsStore] = [:]
@@ -398,11 +400,20 @@ final class JobStepsStore: ObservableObject {
         guard force || !loaded.contains(jobId), let client = engine?.client else { return }
         loaded.insert(jobId)
         Task { [weak self] in
-            guard let page = try? await client.jobSteps(jobId) else {
-                self?.loaded.remove(jobId)
+            let page: JobStepsPage
+            do {
+                page = try await client.jobSteps(jobId)
+            } catch {
+                guard let self else { return }
+                if let e = error as? CoreClientError, e.isNotAvailable {
+                    self.unavailable.insert(jobId)
+                } else {
+                    self.loaded.remove(jobId)
+                }
                 return
             }
             guard let self else { return }
+            self.unavailable.remove(jobId)
             // Steps that came live while the request was out win (they are newer).
             var merged = page.steps
             for s in self.steps[jobId] ?? [] where !merged.contains(where: { $0.id == s.id && $0 == s }) { merged = LiveLog.merge(merged, s) }
@@ -439,11 +450,15 @@ struct JobStepsView: View {
     @State private var primed = false
 
     var body: some View {
-        let steps = store.steps[job.id] ?? []
+        let steps = LiveLog.settled(store.steps[job.id] ?? [], jobRunning: job.state == .running,
+                                    jobFailed: job.state == .failed || job.state == .cancelled)
         let runner = runnerName
         let rows = LiveLog.rows(steps, runner: runner == "Claude Code" ? "Claude" : runner, expanded: expanded, details: details)
-        let empty: (title: String, message: String)? = steps.isEmpty && store.kept[job.id] == false && job.state != .running
-            ? ("Steps weren’t kept for this batch", "It ran before Distill kept steps. The conversation has what Claude said; Open in Terminal shows the whole session.")
+        let empty: (title: String, message: String)? = !steps.isEmpty ? nil
+            : store.unavailable.contains(job.id)
+                ? ("Update the Distill core", "This core doesn’t keep a batch’s steps yet. Update Distill (distill.sh update) and they show up here. Nothing else is affected.")
+            : store.kept[job.id] == false && job.state != .running
+                ? ("Steps weren’t kept for this batch", "It ran before Distill kept steps. The conversation has what Claude said; Open in Terminal shows the whole session.")
             : nil
         LiveLogView(back: back, title: title ?? job.displayTitle, rows: rows, details: $details, foot: foot, empty: empty, startFollowing: startFollowing,
                     copyText: { LiveLog.copyText(steps, title: copyTitle) }, onBack: onBack,
