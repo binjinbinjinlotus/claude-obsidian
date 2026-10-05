@@ -285,6 +285,35 @@ describe('Trash', () => {
     assert.deepEqual(trash.list(), []); // age
     assert.equal(trash.get('../../etc/passwd'), undefined); // ids are checked: no path traversal
   });
+
+  test('a shorter stay (keepHours): a history-off chat leaves after 24 hours, others stay 30 days', () => {
+    let now = new Date('2026-10-04T12:00:00Z');
+    const trash = new Trash({ dir: path.join(dir, 'trash'), now: () => now });
+    const short = trash.put({ kind: 'chat', objectID: 'off', name: 'off', source: 'app', details: {}, payload: {}, keepHours: 24 });
+    trash.put({ kind: 'chat', objectID: 'kept', name: 'kept', source: 'app', details: {}, payload: {} });
+    assert.equal(short.expiresAt, '2026-10-05T12:00:00.000Z');
+    now = new Date('2026-10-05T11:59:00Z');
+    assert.equal(trash.list().length, 2);
+    now = new Date('2026-10-05T12:00:01Z');
+    assert.deepEqual(trash.list().map((i) => i.name), ['kept']);
+  });
+
+  test('a folder goes with its item: copied without node_modules/.venv, removed with it', () => {
+    const trash = new Trash({ dir: path.join(dir, 'trash') });
+    const src = path.join(dir, 'scripts', 'col-1');
+    fs.mkdirSync(path.join(src, 'node_modules', 'x'), { recursive: true });
+    fs.mkdirSync(path.join(src, '.venv'), { recursive: true });
+    fs.mkdirSync(path.join(src, 'lib', 'node_modules'), { recursive: true });
+    fs.writeFileSync(path.join(src, 'collector.py'), 'print(1)');
+    const item = trash.put({ kind: 'collector', objectID: 'col-1', name: 'S', source: 'app', details: {}, payload: {}, folder: src });
+    const got = trash.get(item.id)!;
+    assert.ok(got.files);
+    assert.deepEqual(fs.readdirSync(got.files!).sort(), ['collector.py', 'lib']);
+    assert.ok(fs.existsSync(path.join(got.files!, 'lib', 'node_modules')), 'only the top-level package folders are skipped');
+    assert.equal(item.details.scriptFolder, true);
+    trash.remove(item.id);
+    assert.ok(!fs.existsSync(got.files!));
+  });
 });
 
 // ───────────── the wrapper over a fake core (no Keychain) ─────────────
@@ -614,13 +643,18 @@ describe('activity through the core and the API', () => {
     assert.equal((await request('POST', `/v1/trash/${id2}/restore`)).status, 409);
     assert.equal(last('chat.restored')?.outcome, 'failed');
 
-    // Keep history off: logged with the reason, not kept.
+    // Keep history off: logged with the reason and kept in the trash for 24 hours (the owner, 2026-10-04).
     await core.updateSettings({ askPreferences: { keepHistory: false } });
     chat('chat-b', 'Closed chat', now);
+    const beforeDelete = Date.now();
     await request('DELETE', '/v1/conversations/chat-b');
     const off = last('chat.deleted')!;
     assert.equal(off.details?.reason, 'keep-history-off');
-    assert.equal(off.recovery?.kind, 'none');
+    assert.equal(off.recovery?.kind, 'trash');
+    const offExpiry = Date.parse(off.recovery?.kind === 'trash' ? off.recovery.expiresAt : '');
+    assert.ok(Math.abs(offExpiry - beforeDelete - 24 * 3_600_000) < 60_000, 'kept 24 hours, not 30 days');
+    const offItem = ((await request('GET', '/v1/trash')).body.items as { objectID: string; details: Record<string, unknown> }[]).find((i) => i.objectID === 'chat-b');
+    assert.equal(offItem?.details.reason, 'keep-history-off');
     assert.equal(last('settings.changed')?.details?.changes?.toString(), 'askPreferences.keepHistory: — → false');
 
     // Retention: an old unpinned chat removed by the sweep is "expired", from the scheduler.

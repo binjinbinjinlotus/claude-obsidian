@@ -53,6 +53,8 @@ interface TrashRequest {
   payload: unknown;
   /** v6: a folder to keep with it (a script collector's files). */
   folder?: string;
+  /** A shorter stay than the trash's days. */
+  keepHours?: number;
 }
 
 interface Spec<K extends Method> {
@@ -80,6 +82,9 @@ export interface InstrumentDeps {
   /** <state>/ask: chat files, read before a delete so the chat can go to the trash. */
   askDir: string;
 }
+
+/** Chats deleted while Keep Ask history is off stay in the trash this long (the owner, 2026-10-04). */
+export const HISTORY_OFF_KEEP_HOURS = 24;
 
 // ───────────── naming helpers ─────────────
 
@@ -403,15 +408,16 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
         return { record, bytes: Buffer.byteLength(raw), historyOff: keepHistory === false };
       },
       trash: ([id], before: { record: { title?: string; history?: unknown[]; turns?: number }; historyOff: boolean } | undefined) => {
-        // With Keep history off the app deletes each chat when it's closed: that's the user's
-        // choice not to keep chats, so those aren't kept in the trash (the entry says so).
-        if (!before || before.historyOff) return null;
+        // With Keep history off the app deletes each chat when it's closed. The owner (2026-10-04):
+        // those go to the trash too, but only for 24 hours.
+        if (!before) return null;
         return {
           kind: 'chat',
           objectID: id,
           name: before.record.title || 'Earlier conversation',
-          details: { turnCount: before.record.history?.length ?? before.record.turns ?? 0 },
+          details: { turnCount: before.record.history?.length ?? before.record.turns ?? 0, ...(before.historyOff ? { reason: 'keep-history-off' } : {}) },
           payload: before.record,
+          ...(before.historyOff ? { keepHours: HISTORY_OFF_KEEP_HOURS } : {}),
         };
       },
       ok: ([id], _r, before: { record: { title?: string; history?: unknown[]; turns?: number; createdAt?: string; updatedAt?: string }; bytes: number; historyOff: boolean } | undefined, trashed) => {
@@ -429,7 +435,7 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
           },
           recovery: trashed
             ? { kind: 'trash', trashId: trashed.id, expiresAt: trashed.expiresAt }
-            : { kind: 'none', reason: before?.historyOff ? 'Keep Ask history is off, so closed chats are not kept.' : 'No copy was kept.' },
+            : { kind: 'none', reason: 'No copy was kept.' },
         };
       },
       fail: ([id], before: { record: { title?: string } } | undefined) => ({ type: 'chat.deleted', object: { kind: 'chat', id, name: before?.record.title }, summary: `Couldn't delete the chat ${q(before?.record.title)}`.trim() }),

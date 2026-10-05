@@ -81,7 +81,7 @@ export class Trash {
    * Keep a copy (and a copy of `folder`, without installed packages). Throws when it can't be written:
    * the caller then refuses the delete, and nothing half-written stays behind.
    */
-  put(input: { kind: TrashItemKind; objectID: string; name: string; source: ActivitySource; details: TrashItem['details']; payload: unknown; folder?: string }): TrashItem {
+  put(input: { kind: TrashItemKind; objectID: string; name: string; source: ActivitySource; details: TrashItem['details']; payload: unknown; folder?: string; keepHours?: number }): TrashItem {
     const at = this.now();
     const id = `trash-${String(at.getTime()).padStart(13, '0')}-${randomBytes(4).toString('hex')}`;
     const body = JSON.stringify(input.payload);
@@ -112,7 +112,8 @@ export class Trash {
       objectID: input.objectID,
       name: input.name,
       deletedAt: at.toISOString(),
-      expiresAt: new Date(at.getTime() + this.keepDays * 86_400_000).toISOString(),
+      // keepHours: a shorter stay (chats deleted while Keep history is off: 24 hours).
+      expiresAt: new Date(at.getTime() + (input.keepHours !== undefined ? Math.min(input.keepHours * 3_600_000, this.keepDays * 86_400_000) : this.keepDays * 86_400_000)).toISOString(),
       source: input.source,
       sizeBytes: Buffer.byteLength(body) + filesBytes,
       details: { ...input.details, ...(fs.existsSync(filesDir) ? { scriptFolder: true } : {}) },
@@ -189,7 +190,9 @@ export class Trash {
         return;
       }
       const deletedMs = Number(id.slice(6, 19));
-      const expired = nowMs - deletedMs > this.keepDays * 86_400_000;
+      // Its own expiry when it has a shorter one; never longer than the trash's days.
+      const own = Date.parse(this.read(id)?.item.expiresAt ?? '');
+      const expired = nowMs - deletedMs > this.keepDays * 86_400_000 || (Number.isFinite(own) && nowMs >= own);
       total += size;
       if (expired || (index > 0 && (index >= this.keepItems || total > this.maxBytes))) {
         fs.rmSync(file, { force: true });
