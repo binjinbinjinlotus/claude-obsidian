@@ -476,6 +476,8 @@ public final class CoreClient: Sendable {
         request.httpMethod = method
         request.setValue("Bearer \(endpoint.token)", forHTTPHeaderField: "Authorization")
         request.setValue(accept, forHTTPHeaderField: "Accept")
+        // Says who asked, for the activity log's "from where" (core: activity/context.ts).
+        request.setValue(Self.clientName, forHTTPHeaderField: Self.clientHeader)
         if let body {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -521,6 +523,10 @@ public final class CoreClient: Sendable {
         let text = String(decoding: data.prefix(300), as: UTF8.self)
         return .api(status: status, code: "http_\(status)", message: text.isEmpty ? "HTTP \(status)" : "HTTP \(status): \(text)")
     }
+
+    /// `X-Distill-Client: app` on every request; the core logs it as the source ("Mac app").
+    public static let clientHeader = "X-Distill-Client"
+    public static let clientName = "app"
 
     static func segment(_ s: String) -> String {
         s.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-._~"))) ?? s

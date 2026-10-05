@@ -17,6 +17,35 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Activity built in the Mac app (canvas v66, mac activity).** Spec:
+  [Activity log and trash](activity-log.md) → macOS app.
+  - The Mac app sends `X-Distill-Client: app` on every request (open question
+    2), so the log no longer depends on the User-Agent guess.
+  - Filter families: Queue includes notes (a note is added to the queue),
+    Batches includes label runs (they are jobs), and Settings includes runner
+    keys and connections (configuration). Automatic is the `scheduler`
+    source; Today starts at local midnight.
+  - "In trash", "Restored" and "no longer in the trash" come from
+    `GET /v1/trash` plus the `*.restored` entries (their `trashId`), never from
+    memory, so Restore isn't offered after a relaunch for a copy that is gone.
+    A 404 on Restore says the copy expired; a 409 shows the core's message.
+  - "Kept N days" is `expiresAt − deletedAt`, so the owner's 24-hour trash for
+    chats closed with Keep history off reads "Kept 24 hours" with no app
+    change.
+  - "Show everything for X" adds a removable "For: X" chip; it is offered for
+    chats, collectors, actions, batches and connections (queue ids are file
+    paths), and not for an expired chat.
+  - The narrow layout starts under 760 pt of content: the app's minimum window
+    (900 pt) is narrow, 1200 pt is wide. The canvas's 890 pt frame is a
+    snapshot size; the app can't be narrower than 900.
+  - Deviations from the board: the detail shows only facts the core logs. The
+    collector "Last run" says the total collected ("2 files collected"), not
+    what that run added. The failed run's card leaves out "The next run at …
+    tries again", because the entry has no schedule. The "(its weekday
+    schedule)" and "(you approved it)" asides aren't shown.
+  - Live events join the list when no filter excludes them; with a search the
+    page is asked for again (debounced), because the core also matches
+    details.
 - **Activity log: the owner's answers.** Spec: [Activity log and
   trash](activity-log.md).
   - The Activity design under History (canvas v66) is approved; build the Mac

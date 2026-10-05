@@ -1136,11 +1136,13 @@ public enum CoreEvent: Equatable, Sendable {
     case collectorRunFinished(CollectorRun)
     /// v5: a full queue scan finished (Refresh, the window-active scan or the queue check).
     case queueScanned(QueueScanResult)
+    /// v6: a line was added to the activity log.
+    case activity(ActivityEntry)
     case unknown(type: String)
 
     private enum Keys: String, CodingKey {
         case type, entries, job, settings, level, message, requestID, notePath, labels, error, conversation, deleted, progress, action, connection
-        case collector, run, collectorId, runId, stream, text, result
+        case collector, run, collectorId, runId, stream, text, result, entry
     }
 
     /// Decodes the JSON of one `data:` line.
@@ -1178,6 +1180,8 @@ public enum CoreEvent: Equatable, Sendable {
                 event = .collectorRunOutput(collectorId: c.lossy(String.self, .collectorId) ?? "", runId: c.lossy(String.self, .runId) ?? "",
                                             stream: c.lossy(String.self, .stream) ?? "stdout", text: c.lossy(String.self, .text) ?? "")
             case "queue.scanned": event = .queueScanned(try c.decode(QueueScanResult.self, forKey: .result))
+            // An entry this build can't read is a line it doesn't show, not a broken stream.
+            case "activity": event = (try? c.decode(ActivityEntry.self, forKey: .entry)).map(CoreEvent.activity) ?? .unknown(type: type)
             default: event = .unknown(type: type)
             }
         }

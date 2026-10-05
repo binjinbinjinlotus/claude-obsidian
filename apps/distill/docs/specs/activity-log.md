@@ -14,8 +14,8 @@ tags:
 
 Build status: **built in the core, the API and the CLI** (2026-10-04;
 `core/src/activity/`, routes in `core/src/server/http.ts`, `distill activity`
-and `distill trash`). **Mac UI: designed on the canvas, not built** (row "8 ·
-Activity"; see "macOS app (designed)").
+and `distill trash`). **Mac UI: built** (2026-10-04, History → Activity,
+canvas row "8 · Activity"; see "macOS app").
 
 ## Why
 
@@ -104,7 +104,7 @@ One JSON object per line (`ActivityEntry` in `contracts.ts`):
 
 | Source | Means | How it is known |
 |---|---|---|
-| `app` | the Mac app | `X-Distill-Client: app`. Until the app sends it, its URLSession User-Agent (`Distill/<build> CFNetwork/… Darwin/…`) |
+| `app` | the Mac app | `X-Distill-Client: app`, sent on every request by `CoreClient.makeRequest` (2026-10-04). Older Mac builds are still recognised by their URLSession User-Agent (`Distill/<build> CFNetwork/… Darwin/…`) |
 | `cli` | the `distill` CLI typed by a person | `X-Distill-Client: cli` (the CLI sends it) |
 | `agent` | the CLI run by an AI agent: the plugin skills in Claude Code or Codex | the CLI sends `agent` when `CLAUDECODE=1` or a `CODEX_SANDBOX*` variable is set; `DISTILL_CLIENT=cli|agent` overrides |
 | `scheduler` | Distill on its own | the engine and collector timers enter a scheduler context; scheduled runs (`trigger` schedule/catch-up); retention |
@@ -227,11 +227,37 @@ Contract additions (additive, in `contracts.ts`):
 - `distill trash [list]` and `distill trash restore ID` (chats only), with
   `--json`.
 
-## macOS app (designed)
+## macOS app
 
 Canvas row "8 · Activity", boards **Activity** and **ActivityRowStates**, and
-the Sidebar's new History sub-item. Not built: Mac code waits for the owner's
-review of the canvas.
+the Sidebar's new History sub-item. **Built 2026-10-04** (canvas v66 approved):
+
+- Code: `Sources/Distill/ActivityScreen.swift` (screen, detail, Filter
+  popover, empty states), `ActivityRow.swift` (the canvas component, mapped in
+  `design/components.json`), `ActivityStore.swift` (loading, paging, live
+  events, Restore, links); DistillKit `Activity.swift` (DTOs and routes) and
+  `ActivityText.swift` (filter, words, detail facts). Snapshot states
+  `activity*` in `SnapshotActivity.swift` match the board's frames.
+- Data: page 1 of `GET /v1/activity` for the current filter (50 at a time;
+  older pages load when the list's end comes into view), plus `GET /v1/trash`
+  and the `chat.restored` / `collector.restored` entries. "In trash",
+  "Restored" and a gone copy are worked out from those, so a relaunch shows the
+  same state and Restore is never offered for a copy that is gone.
+- Live: each `activity` event joins the list when no filter excludes it; with a
+  search the page is asked for again (the core matches details too).
+- Filter mapping: Queue = `queue`, `note`; Batches = `batch`, `labels`;
+  Settings = `settings`, `runner`, `connection`; Automatic = `scheduler`;
+  Today = since local midnight. "Show everything for X" adds a removable
+  "For: X" chip (object id).
+- The detail's facts come from the keys the core writes (`instrument.ts`);
+  unknown keys show as they are. Kept N days/hours is `expiresAt − deletedAt`
+  (24 hours for chats closed with Keep history off).
+- Links: Open collector / Open run log (Collectors, All runs), Open in History
+  (History → Jobs, that job), Open chat, Ask history settings, Show in Finder
+  (the file in `~/.Trash`, else the Trash folder). Links to a thing that is
+  gone are disabled.
+- Narrow: under 760 pt of content (a 900 pt window) the detail column goes and
+  a chosen entry is pushed in place with "‹ Activity" (Esc goes back).
 
 - **Where it lives: History → Activity**, a fourth sub-item after Jobs, Ask
   chats and Actions. History is where the app already answers "what
@@ -272,8 +298,8 @@ review of the canvas.
 
 1. Should chats deleted while Keep history is off also go to the trash (for
    example for 24 hours), as a guard against surprises?
-2. Should the Mac app send `X-Distill-Client: app` explicitly? It is one line
-   in `CoreClient.makeRequest`, and safer than matching the User-Agent.
+2. ~~Should the Mac app send `X-Distill-Client: app` explicitly?~~ Done
+   2026-10-04: `CoreClient.makeRequest` sends it on every request.
 3. Is a 30-day trash, 180 days and about 22 MB of log right?
 4. Should the trash also keep actions deleted forever, and jobs deleted from
    the list?
