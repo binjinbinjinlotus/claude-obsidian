@@ -37,15 +37,18 @@ import type { ActionsOwned, ReviewReadyInfo } from '../engine/index.js';
 import { makeReadingCopy } from '../coverage/copy.js';
 import { ledgerRecords } from '../coverage/archive.js';
 import { mapPool } from '../engine/queue-labels.js';
+import { readBundle, sourcePages, wikiWrites } from '../engine/review-labels.js';
 import { jobStateDirectory } from '../store/jobs.js';
 import { buildWindowPrompt, loadFound, saveFound, type FoundFile, type FoundSource } from './batch.js';
 import {
   bestHeading,
+  clip,
   closestLines,
   coveredLines,
   excerptOf,
   headingsOf,
   locateQuote,
+  matchPage,
   normalizeForMatch,
   numbered,
   originalOfPage,
@@ -773,7 +776,8 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
   /** Which runner looks through a batch's sources: the finding model, on the batch's own runner when it is another provider. */
   function passSelection(job: Job): ModelSelection {
     const sel = selectionFor('actionFind', prefs().findSelection);
-    const own = job.runnerID ?? null;
+    // Absent on old jobs means Claude Code (contracts: Job.runnerID).
+    const own = job.runnerID ?? 'claude-code';
     if (!own || own === sel.runnerID) return sel;
     const runner = opts.runners.get(own);
     if (!runner) return sel;
@@ -959,7 +963,8 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         part: i + 1,
         parts: pr.windows.length,
         text: numbered(pr.lines, w.from, w.to),
-        page: pr.src.pageOnly ? null : (pr.src.page ?? null),
+        // The source's page, at most 12,000 characters (it repeats in every window).
+        page: pr.src.pageOnly || !pr.src.page ? null : { ...pr.src.page, text: clip(pr.src.page.text, MAX_DOC_CHARS) },
         written: writtenList,
       });
       let lastError = '';
@@ -1160,33 +1165,38 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       const lines = readLines(vault, rel);
       if (lines) written.set(rel, lines.join('\n'));
     }
-    const pageFor = (file: string): PassSource['page'] => {
-      for (const [p, text] of written) {
-        if (SKIP_PAGES.some((re) => re.test(p))) continue;
+    let records: ReturnType<typeof ledgerRecords>;
+    try {
+      records = ledgerRecords(vault);
+    } catch {
+      records = [];
+    }
+    const pages = [...written]
+      .filter(([p]) => !SKIP_PAGES.some((re) => re.test(p)))
+      .map(([p, text]) => {
         const sp = /^source_path:\s*["']?(.+?)["']?\s*$/m.exec(text.split('\n').slice(0, 40).join('\n'))?.[1];
-        if (sp && (sp === file || path.basename(sp) === path.basename(file))) return { path: p, title: titleOfPage(text, p), text };
-      }
-      return null;
+        return { page: p, ...(sp ? { source: sp } : {}), text };
+      });
+    const pageFor = (file: string): PassSource['page'] => {
+      const m = matchPage(file, pages, vault, records);
+      return m ? { path: m.page, title: titleOfPage(m.text, m.page), text: m.text } : null;
     };
-    let records: ReturnType<typeof ledgerRecords> | undefined;
     const sources: PassSource[] = [];
     for (const file of job.files) {
       if (file.endsWith('.distill.json')) continue;
       if (!/\.(md|txt|markdown|text|vtt|srt|csv|html?)$/i.test(file)) continue;
       const page = pageFor(file);
       // Part of a batch: a source whose page didn't apply (removed, or left for later) isn't looked through here.
-      if (!page && (job.parts?.length ?? 0) > 0) continue;
+      if (!page && (job.parts?.length ?? 0) > 0) {
+        log('info', `Finding actions in ${job.id}: ${file} has no applied page in this batch; not looked through.`);
+        continue;
+      }
       const abs = path.resolve(vault, file);
       if (abs.startsWith(vault + path.sep) && fs.existsSync(abs)) {
         sources.push({ file, page });
         continue;
       }
       // Gone from the inbox: its archived copy, through the ledger.
-      try {
-        records ??= ledgerRecords(vault);
-      } catch {
-        records = [];
-      }
       const rec = records.find((r) => r.locator === file && r.sha256);
       const at = rec?.sha256 ? resolveOriginal(vault, { path: file, sha256: rec.sha256 }) : undefined;
       if (at) sources.push({ file, readFrom: at, page });
@@ -1205,15 +1215,39 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
   /** The last change each job showed in Review (Try again in Review reuses it). */
   const reviewInfo = new Map<string, ReviewReadyInfo>();
 
+  /** The change a batch in Review shows, read from its bundle (Try again after a restart). */
+  function reviewInfoFromBundle(job: Job): ReviewReadyInfo | undefined {
+    const bundlePath = job.approval?.bundlePath;
+    const b = bundlePath ? readBundle(bundlePath) : undefined;
+    if (!b) return undefined;
+    return {
+      pages: sourcePages(b).map((p) => ({ page: p.page, ...(p.source ? { source: p.source } : {}), title: p.title, text: p.text })),
+      written: wikiWrites(b),
+    };
+  }
+
   function reviewSourcesOf(job: Job, info: ReviewReadyInfo): PassSource[] {
-    const files = job.files.filter((f) => !f.endsWith('.distill.json'));
+    // Not part of this change: a hard stop (Review shows it), or sources a fresh session reads next (their own part).
+    const out = new Set<string>([...(job.stopped ?? []).map((s) => s.file), ...(job.pendingPart?.unread ?? [])]);
+    const files = job.files.filter((f) => !f.endsWith('.distill.json') && !out.has(f));
+    let records: ReturnType<typeof ledgerRecords>;
+    try {
+      records = ledgerRecords(job.vaultPath);
+    } catch {
+      records = [];
+    }
     const sources: PassSource[] = [];
+    const claimed = new Set<string>();
     for (const file of files) {
-      const page = info.pages.find((p) => p.source === file || (p.source && path.basename(p.source) === path.basename(file)));
-      // Sources with no page in this change (not added, or a stop) aren't part of what is reviewed.
-      if (!page && info.pages.length > 0) continue;
+      // A re-read or repair reads `.raw/captured/<sha>.md`, while its page keeps the inbox path: matched by content.
+      const page = matchPage(file, info.pages, job.vaultPath, records);
+      if (page) claimed.add(page.page);
       sources.push({ file, page: page ? { path: page.page, title: page.title, text: page.text } : null });
     }
+    // One source and one page left over: they belong together.
+    const loose = sources.filter((s) => !s.page);
+    const free = info.pages.filter((p) => !claimed.has(p.page));
+    if (loose.length === 1 && free.length === 1) loose[0]!.page = { path: free[0]!.page, title: free[0]!.title, text: free[0]!.text };
     return sources;
   }
 
@@ -1240,8 +1274,17 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     const existing = loadFound(job);
     // Try again while the batch is in Review: the sources that failed, from the change it shows.
     if (o.retry && job.state !== 'completed') {
-      const info = reviewInfo.get(job.id);
+      // After a restart the change is read again from the bundle Review shows.
+      const info = reviewInfo.get(job.id) ?? reviewInfoFromBundle(job);
       if (info) await findForReview(job, info, { retry: true });
+      else {
+        const f = loadFound(job);
+        setSummary(job.id, {
+          ...(f ? summaryOf(job, f) : { found: 0, pending: 0, added: 0, byType: {}, stage: 'review' as const }),
+          status: 'failed',
+          error: 'Distill couldn’t read this batch’s change to look through it again.',
+        });
+      }
       return;
     }
     if (existing && !o.retry) {

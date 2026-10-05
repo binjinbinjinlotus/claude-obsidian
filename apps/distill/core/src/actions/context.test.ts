@@ -413,6 +413,82 @@ describe('finding in the batch, before Review', () => {
     assert.equal(h2.summaries.get('job-3')!.duplicates, 1, 'the old item’s quote is on the same lines of the same content');
   });
 
+  test('a repair in Review reads .raw/captured/<sha>.md while its page keeps the inbox path: matched by content, added on apply, no repeats', async () => {
+    const h = harness();
+    const content = MEETING.join('\n') + '\n';
+    const s = sha(content);
+    const archived = `.raw/captured/${s}.md`;
+    fs.writeFileSync(path.join(h.vault, archived), content);
+    // The first ingest's ledger record (the inbox file is gone: cleared after it was archived).
+    fs.writeFileSync(path.join(h.vault, 'wiki', 'meta', 'ledgers', 'source-ledger.json'), JSON.stringify({
+      sources: { 'src-1': { origin: { kind: 'file', locator: archived }, content_sha256: s, pages: ['wiki/sources/meeting.md'] } },
+    }));
+    h.runner.find = () => ({ structured: FOUND });
+    const page = { page: 'wiki/sources/meeting.md', source: 'inbox/meeting.md', text: PAGE };
+    const j = batch(h, 'job-rep', [archived]);
+    await h.service.findForReview(j, reviewInfo([page]));
+    await h.service.whenIdle();
+    const shown = await h.service.jobActions('job-rep');
+    assert.equal(shown.proposals.length, 2, 'the source is looked through, not dropped');
+    assert.ok(shown.proposals.every((p) => p.page === 'wiki/sources/meeting.md'));
+    assert.equal(shown.summary!.lines, MEETING.length);
+    const part = { operationID: 'op-r', pages: ['wiki/sources/meeting.md'], labels: 'confirm' as const, at: 'x' };
+    h.jobs.set('job-rep', { ...j, state: 'completed', operationID: 'op-r', changedPaths: ['wiki/sources/meeting.md'], parts: [part] });
+    await h.service.findInJob(h.jobs.get('job-rep')!);
+    const items = await h.service.listActions();
+    assert.equal(items.length, 2);
+    assert.equal((items[0]!.source as Extract<ActionItem['source'], { kind: 'note' }>).raw?.path, archived);
+
+    // The next repair of the same content: duplicates, nothing added.
+    const j2 = batch(h, 'job-rep2', [archived]);
+    await h.service.findForReview(j2, reviewInfo([page]));
+    await h.service.whenIdle();
+    assert.deepEqual((await h.service.jobActions('job-rep2')).proposals.map((p) => p.state), ['duplicate', 'duplicate']);
+    h.jobs.set('job-rep2', { ...j2, state: 'completed', operationID: 'op-r2', changedPaths: ['wiki/sources/meeting.md'], parts: [{ ...part, operationID: 'op-r2' }] });
+    await h.service.findInJob(h.jobs.get('job-rep2')!);
+    assert.equal((await h.service.listActions()).length, 2);
+  });
+
+  test('a hard-stopped source and the sources a fresh session reads next are not looked through with this part', async () => {
+    const h = harness();
+    setup(h);
+    fs.writeFileSync(path.join(h.vault, 'inbox', 'later.md'), 'Bo: I will renew the domain.\n');
+    fs.writeFileSync(path.join(h.vault, 'inbox', 'bad.md'), 'x\n');
+    const j = batch(h, 'job-s', ['inbox/meeting.md', 'inbox/later.md', 'inbox/bad.md'], {
+      stopped: [{ file: 'inbox/bad.md', reason: 'it isn’t valid UTF-8 text from line 1', at: 'x' }],
+      pendingPart: { reason: 'covered', unread: ['inbox/later.md'], expected: {}, excluded: [], labels: 'confirm' },
+    });
+    await h.service.findForReview(j, reviewInfo([{ page: 'wiki/sources/meeting.md', source: 'inbox/meeting.md', text: PAGE }]));
+    await h.service.whenIdle();
+    assert.deepEqual(Object.keys(loadFound(j)!.sources), ['inbox/meeting.md']);
+  });
+
+  test('Try again in Review after a restart reads the change from the bundle', async () => {
+    const h = harness();
+    setup(h);
+    h.runner.find = () => ({ isError: true, resultText: 'overloaded' });
+    const dir = path.join(h.vault, '.vault-meta', 'worker', 'job-t');
+    fs.mkdirSync(dir, { recursive: true });
+    const bundle = path.join(dir, 'bundle.json');
+    fs.writeFileSync(bundle, JSON.stringify({ writes: [{ path: 'wiki/sources/meeting.md', mode: 'create', content: PAGE }] }));
+    const j = batch(h, 'job-t', ['inbox/meeting.md'], { approval: { summary: '', questions: [], denials: [], skipped: [], bundlePath: bundle } });
+    await h.service.findForReview(j, reviewInfo([{ page: 'wiki/sources/meeting.md', source: 'inbox/meeting.md', text: PAGE }]));
+    await h.service.whenIdle();
+    // A new service: nothing in memory.
+    const restarted = createActionsService({
+      emit: () => undefined, getSettings: () => structuredClone(h.settings), runners: createRunnerRegistry([h.runner]),
+      file: path.join(path.dirname(h.vault), 'state', 'actions.json'), stateDir: path.join(path.dirname(h.vault), 'state'),
+      secrets: new MemorySecretStore(), setJobActions: (id, x) => h.summaries.set(id, x), getJob: (id) => h.jobs.get(id),
+    });
+    h.runner.find = () => ({ structured: FOUND });
+    await restarted.findInJob(j, { retry: true });
+    await restarted.whenIdle();
+    const after = await restarted.jobActions('job-t');
+    assert.equal(after.summary!.status, 'done');
+    assert.equal(after.proposals.length, 2);
+    assert.equal(after.proposals[0]!.page, 'wiki/sources/meeting.md');
+  });
+
   test('the pass runs on the batch’s own runner when the finding model is another provider', async () => {
     const h = harness();
     setup(h);

@@ -40,6 +40,17 @@ recommended defaults as the owner's pre-approval.
   post-apply pass for older jobs keeps the job id and the batch steps.
 - `JobActionsSummary.lines` is updated after each window, so Review's strip
   counts lines as they are looked through.
+- A source is matched to its page by `source_path`, then **by content**
+  (the archived copy's sha256 in its name, the page's source file's hash, or
+  the ledger records listing the page), then by one leftover source and page.
+  A re-read or repair reads `.raw/captured/<sha>.md` while its page keeps the
+  inbox path, so a path match alone would drop it. A hard-stopped source and
+  a covered part's `unread` sources are not looked through with that part.
+- Try again in Review after a restart reads the change again from the
+  bundle Review shows (`job.approval.bundlePath`); if it can't, the summary
+  says so (failed), never "finding" forever.
+- The source's page in each window prompt is capped at 12,000 characters.
+- A job without `runnerID` counts as Claude Code for the egress rule.
 - Not built: Ask's found rows don't use the new preview yet (they keep their
   own rows; the item detail shows the context).
 

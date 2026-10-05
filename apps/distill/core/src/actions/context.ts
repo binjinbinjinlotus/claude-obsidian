@@ -336,6 +336,53 @@ export function closestLines(lines: string[], query: string, minShare = CLOSEST_
   return best && best.share >= minShare ? best : undefined;
 }
 
+/** A source file's content hash: the name of an archived copy (`.raw/captured/<sha>.<ext>`), else its bytes. */
+export function contentShaOf(vaultPath: string, file: string): string | undefined {
+  const m = /^\.raw\/captured\/([0-9a-f]{64})(?:\.|$)/.exec(file);
+  if (m) return m[1];
+  const abs = inside(vaultPath, file);
+  return abs ? sha256File(abs) : undefined;
+}
+
+/**
+ * The page (of `pages`) a source file became. A page names its source by `source_path`, which stays
+ * the inbox path even when the batch reads the archived copy (a re-read or repair), so the match is
+ * by path (NFC, case), then by content: the page's source file's hash, or the ledger records that
+ * list the page.
+ */
+export function matchPage<P extends { page: string; source?: string | undefined }>(
+  file: string,
+  pages: P[],
+  vaultPath: string,
+  records: LedgerRecord[] = [],
+): P | undefined {
+  const norm = (s: string) => {
+    let rel = s.normalize('NFC');
+    if (path.isAbsolute(rel)) rel = path.relative(vaultPath, rel).split(path.sep).join('/');
+    return rel.toLowerCase();
+  };
+  const want = norm(file);
+  const byPath = pages.find((p) => p.source && norm(p.source) === want);
+  if (byPath) return byPath;
+  const sha = contentShaOf(vaultPath, file);
+  if (sha) {
+    for (const p of pages) {
+      if (p.source && contentShaOf(vaultPath, p.source.normalize('NFC')) === sha) return p;
+      if (records.some((r) => r.sha256 === sha && r.pages.includes(p.page))) return p;
+      if (p.source && records.some((r) => r.sha256 === sha && r.locator.toLowerCase() === norm(p.source!))) return p;
+    }
+  }
+  return pages.find((p) => p.source && path.basename(norm(p.source)) === path.basename(want));
+}
+
+/** Pages the source ledger lists for this content (any locator). */
+export function ledgerPagesOf(vaultPath: string, file: string, records: LedgerRecord[]): string[] {
+  const sha = contentShaOf(vaultPath, file);
+  const out = new Set<string>();
+  for (const r of records) if ((sha && r.sha256 === sha) || r.locator === file) for (const p of r.pages) out.add(p);
+  return [...out];
+}
+
 /** The archived (or still matching) original of a wiki page, through the source ledger or its `source_path`. */
 export function originalOfPage(vaultPath: string, page: string, records?: LedgerRecord[]): { path: string; sha256?: string; inboxPath?: string } | undefined {
   let recs: LedgerRecord[];
