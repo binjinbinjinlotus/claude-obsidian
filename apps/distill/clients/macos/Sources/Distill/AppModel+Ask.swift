@@ -166,14 +166,14 @@ extension AppModel {
                     terminalSessionPrompt = SessionPrompt(jobID: job.id, info: e.sessionUnavailable!, action: "resume")
                     return
                 } catch let e as CoreClientError where e.isNotAvailable {
-                    NSWorkspace.shared.open(try terminalScript(for: job)) // an older core: no session check there
+                    openTerminalScript(try terminalScript(for: job)) // an older core: no session check there
                     return
                 }
                 guard !resume.argv.isEmpty else {
                     lastError = "This batch has no AI session to open in Terminal."
                     return
                 }
-                NSWorkspace.shared.open(try Self.writeTerminalScript(name: job.id, argv: resume.argv, cwd: resume.cwd ?? job.vaultPath))
+                openTerminalScript(try Self.writeTerminalScript(name: job.id, argv: resume.argv, cwd: resume.cwd ?? job.vaultPath))
             } catch {
                 report(error)
             }

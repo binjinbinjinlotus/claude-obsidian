@@ -41,6 +41,8 @@ final class AppModel: ObservableObject {
     @Published var dismissedSessionMarkers: Set<String> = []
     /// A reply put back in Review's box after Cancel (job id, text).
     @Published var returnedReply: ReturnedReply?
+    /// Opens a Terminal `.command` script (tests replace it so nothing launches).
+    var openTerminalScript: (URL) -> Void = { NSWorkspace.shared.open($0) }
     /// QueueRefresh: "Checking…", then a result for 4 s after Refresh (AppModel+Queue.swift).
     @Published var refreshState: QueueRefreshState = .idle
     /// The last full queue scan this app saw (Refresh, window, periodic); see `queueCheckedAt`.

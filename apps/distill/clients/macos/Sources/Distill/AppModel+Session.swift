@@ -104,7 +104,7 @@ extension AppModel {
                     lastError = "No AI runner can open a new session in Terminal."
                     return
                 }
-                NSWorkspace.shared.open(try Self.writeTerminalScript(name: job.id, argv: resume.argv, cwd: resume.cwd ?? job.vaultPath))
+                openTerminalScript(try Self.writeTerminalScript(name: job.id, argv: resume.argv, cwd: resume.cwd ?? job.vaultPath))
             } catch {
                 report(error)
             }

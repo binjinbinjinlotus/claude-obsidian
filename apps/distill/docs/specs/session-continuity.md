@@ -1,7 +1,7 @@
 ---
 type: spec
 title: Session continuity
-status: designed
+status: built
 created: 2026-10-05
 updated: 2026-10-05
 tags:
@@ -110,3 +110,40 @@ output) stays an ordinary failure.
   call again with `newSession`.
 - CLI: prints the sentence and the detail, asks nothing, and exits 1.
   `--new-session` continues. `--json` returns the typed error.
+
+## Where it lives (built 2026-10-05)
+
+- `core/src/runners/session.ts` holds the shared detection:
+  - `sessionNotFoundIn` / `sessionNotFoundError` turn the runner's refusal
+    into a `RunnerError` with code `sessionNotFound`.
+  - `claudeTranscriptStatus` / `codexRolloutStatus` back each runner's
+    `sessionStatus()`.
+  - `checkResume` runs before the resume and `resumeFailure` after it.
+  - `sessionUnavailableError` builds the 409.
+- The runners use it in their own error paths:
+  - Claude Code checks stderr on any non-zero exit of a resume, before it
+    parses stdout. With `stream-json`, stdout also carries an error `result`
+    event.
+  - Codex checks stderr and its error events.
+  - A runner without `sessionStatus` (the model APIs, test fakes) is never
+    judged `missing`.
+- In the engine, every batch resume goes through `resumeBatchSession({job,
+  prompt, extraTools?, applyPlan?, action, snapshot?, text?, rules?})`, which
+  returns `{kind: 'started'}` or `{kind: 'session_unavailable', …}`. A refusal
+  after the turn started restores `snapshot` and sets the job marker.
+  `continueInNewSession` takes the `newSession` path. `engine/session-seed.ts`
+  builds the seed: `newSessionPrompt`, `terminalSeed`, and
+  `batchNeverStarted`, which looks for the exact "Cancelled before the first
+  turn." app turn.
+- Ask (`ask/index.ts`) runs the same checks. `historyReplay` covers the last
+  10 questions and answers, with each answer cut at 1,500 characters.
+- Mac:
+  - `DistillKit/SessionContinuity.swift` holds the lenient model and
+    `SessionReplaceText`, the design's wording.
+  - `CoreClientError.sessionUnavailable` is the typed error.
+  - The view is `SessionReplaceConfirm.swift`.
+  - The flows are in `AppModel+Session.swift` (Review, Terminal) and
+    `AskModel` (`continueInNewSession`, `cancelSessionReplace`).
+  - Open in Terminal reports core errors instead of swallowing them. It
+    builds the local `claude --resume` command only for an older core that has
+    no resume route.

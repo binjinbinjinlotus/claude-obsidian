@@ -42,7 +42,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Actions](docs/specs/actions.md) | built (core, API, CLI, macOS UI; answer selection bar not yet) |
 | [Collectors](docs/specs/collectors.md) | built (core, API, CLI, macOS UI incl. script files, TypeScript, packages and Test run; queue rows don't name the collector yet) |
 | [Activity log and trash](docs/specs/activity-log.md) | built (core, API, CLI, macOS UI) |
-| [Session continuity](docs/specs/session-continuity.md) | designed |
+| [Session continuity](docs/specs/session-continuity.md) | built (core, API, CLI, macOS UI; batch partial-approve path wired by review-labels) |
 | [Live log](docs/specs/live-log.md) | built (core, API, macOS UI; no CLI) |
 
 ## Layout

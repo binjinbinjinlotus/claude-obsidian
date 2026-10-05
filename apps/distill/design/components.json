@@ -5888,7 +5888,7 @@
     {
       "name": "SessionReplaceConfirm",
       "title": "Session replace confirm",
-      "swift": null,
+      "swift": "clients/macos/Sources/Distill/SessionReplaceConfirm.swift",
       "preview": [
         560,
         190
@@ -5940,7 +5940,7 @@
         "file": "SessionReplaceConfirmStates.dc.html",
         "title": "Session replace confirm states",
         "heading": "SessionReplaceConfirm",
-        "intro": "The one confirmation Distill shows, everywhere, when it would continue in an AI session that no longer exists (system-wide rule, 2026-10-05). It appears right where you acted (Approve, Send reply, Allow, an Ask follow-up, Open in Terminal), says plainly why the session is gone, and that a new session will be used. <b>Continue</b> starts the new session seeded with what that place needs; <b>Cancel</b> changes nothing. The quiet monospace line is the technical reason, for when you want it. Calm on purpose: blue, not a warning, because nothing was lost from your vault. Distill shows it only on positive evidence (the runner said the session is not found, its transcript file is gone, or the batch never started one); any other runner error stays an ordinary error. No Swift view yet: add <b>SessionReplaceConfirm</b>. Props: place (batch | conversation | terminal), reason (missing | notFound | neverStarted | runnerGone), runner, carries, detail, width.",
+        "intro": "The one confirmation Distill shows, everywhere, when it would continue in an AI session that no longer exists (system-wide rule, 2026-10-05). It appears right where you acted (Approve, Send reply, Allow, an Ask follow-up, Open in Terminal), says plainly why the session is gone, and that a new session will be used. <b>Continue</b> starts the new session seeded with what that place needs; <b>Cancel</b> changes nothing. The quiet monospace line is the technical reason, for when you want it. Calm on purpose: blue, not a warning, because nothing was lost from your vault. Distill shows it only on positive evidence (the runner said the session is not found, its transcript file is gone, or the batch never started one); any other runner error stays an ordinary error. Swift: <b>SessionReplaceConfirm</b> (SessionReplaceConfirm.swift). Props: place (batch | conversation | terminal), reason (missing | notFound | neverStarted | runnerGone), runner, carries, detail, width.",
         "width": 1280,
         "cols": 2,
         "wrap": "<div style=\"width: 580px; padding: 10px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
