@@ -4855,14 +4855,12 @@
         {
           "name": "changes",
           "type": "text",
-          "default": "",
-          "swiftPending": "the core reports what changed (script, manifest or both); the card names it"
+          "default": ""
         },
         {
           "name": "packages",
           "type": "text",
-          "default": "",
-          "swiftPending": "a new script with a manifest: the card says allowing also installs its packages"
+          "default": ""
         },
         {
           "name": "allowedText",
@@ -4966,6 +4964,7 @@
     {
       "name": "ScriptEditor",
       "title": "Script editor",
+      "swift": "clients/macos/Sources/Distill/CollectorsScriptViews.swift",
       "preview": [
         560,
         230
@@ -5077,6 +5076,7 @@
     {
       "name": "PackagesPanel",
       "title": "Packages panel",
+      "swift": "clients/macos/Sources/Distill/CollectorsScriptViews.swift",
       "preview": [
         560,
         240
