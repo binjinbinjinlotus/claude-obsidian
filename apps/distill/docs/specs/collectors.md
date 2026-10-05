@@ -615,18 +615,48 @@ CollectorsScriptFiles (frames T–Z2); Mac UI not built.
 | --- | --- | --- | --- |
 | zsh | `zsh` | `collector.zsh` | `zsh` |
 | Python | `python3` | `collector.py` | the folder's `.venv/bin/python3` once packages were installed (a symlink to the same `python3`), else `python3` |
-| JavaScript | `node` | `collector.js` | `node` |
-| TypeScript | `typescript` | `collector.ts` | `node` with its built-in type stripping |
+| JavaScript | `node` | `collector.js` | Distill's own Node |
+| TypeScript | `typescript` | `collector.ts` | Distill's own Node, with its built-in type stripping |
 
-TypeScript: the core asks the login shell's `node` for its version and
-`process.features.typescript` (cached 10 minutes). Node 22.18+ / 23.6+ strip
-types by default (no flag, no warning); 22.6–22.17 get
-`--experimental-strip-types --disable-warning=ExperimentalWarning`; older
-Node fails the run (`interpreterMissing`, "TypeScript needs Node 22.6 or
-later … or add tsx to package.json and Install"). Stripping handles erasable
-syntax only (no `enum`, `namespace`, parameter properties). When the folder
-has `tsx` installed (a devDependency the user adds), the core runs
-`node node_modules/tsx/dist/cli.mjs collector.ts` instead.
+**Which Node (2026-10-04).** JavaScript and TypeScript always run on
+Distill's own Node: the one the core runs on (`process.execPath`). The app
+chooses it: `settings.nodePath`, or the highest nvm Node. They never use the
+first `node` on the login shell's PATH. On the owner's Mac that was
+`/usr/local/bin/node` v14.16.0, which is ahead of nvm's 22.22.1. Node 14
+can't run the starter template's `import` or strip types, and its npm 6
+rewrote `package.json`. The rule is predictable and needs nothing new:
+Distill can't start without that Node. npm installs with the same Node, so
+native addons match the Node that runs them.
+- That Node's folder comes first on PATH for JavaScript and TypeScript runs
+  and for npm installs. A script that spawns `node`, a
+  `#!/usr/bin/env node` bin, and npm's lifecycle scripts all get the same
+  Node. The rest of the PATH is the login shell's.
+- zsh and Python are unchanged: they come from the login shell's PATH, and
+  Python uses the folder's `.venv` once packages are installed.
+- Every script run records what ran it in `run.runtime`, `{label, path,
+  version?}`. The label is "Node 22.22.1", "Node 22.22.1 with tsx",
+  "python3 (.venv)", "python3" or "zsh". It is also in the Activity
+  details: `runtime` on `collector.run` and `collector.test_run`. An npm
+  install records the Node whose npm ran it in `install.runtime`; the
+  Activity details of `collector.install` include its label. The Mac app
+  doesn't show the runtime yet; that needs a canvas pass.
+- The core option `nodePath` (`CollectorsOptions`) overrides
+  `process.execPath`. Only tests use it.
+
+TypeScript: the core reads Distill's Node's version and
+`process.features.typescript` straight from the running process (another
+`nodePath` is probed with `node -p` and cached for 10 minutes).
+- Node 22.18+ / 23.6+ strip types by default (no flag, no warning).
+- Node 22.6–22.17 get `--experimental-strip-types
+  --disable-warning=ExperimentalWarning`.
+- Older Node fails the run (`interpreterMissing`, "TypeScript needs Node 22.6
+  or later; Distill runs on Node X (path). Choose a newer Node for Distill, or
+  add tsx to package.json and Install").
+
+Stripping handles erasable syntax only (no `enum`, `namespace`, parameter
+properties). When the folder has `tsx` installed (a devDependency the user
+adds), the core runs `<Distill's node> node_modules/tsx/dist/cli.mjs
+collector.ts` instead.
 
 ### Packages
 
@@ -648,14 +678,34 @@ has `tsx` installed (a devDependency the user adds), the core runs
     already failed isn't retried by every run: the run fails at once
     (`installFailed`) until Install or a new manifest.
 - **How:**
-  - `package.json`: `npm install --no-audit --no-fund`, with the `npm` next to
-    the `node` scripts run with (so nvm versions match), else `npm` on PATH.
+  - `package.json`: `npm install --no-audit --no-fund`, with the npm that
+    ships with Distill's Node, run by that Node. The core looks for
+    `<bin>/../lib/node_modules/npm/bin/npm-cli.js` first, then for what
+    `<bin>/npm` links to when that is a `.js` file. It never goes through
+    npm's `#!/usr/bin/env node` shebang, which would find whichever node is
+    first on PATH. As a last resort it runs `<bin>/npm` itself, with `<bin>`
+    first on PATH. When there is no npm, the install fails with "There's no
+    npm next to Distill's Node". The displayed command and the output banner
+    stay `npm install --no-audit --no-fund`.
+  - **An install never changes what was allowed.** The core keeps the
+    manifest bytes from the start of the install. npm 6, and npm 7+ in some
+    cases, rewrites `package.json`: key order, indentation, normalized
+    fields. When the bytes differ afterwards, or the file is gone, the core
+    writes the kept bytes back atomically with the same file mode, whatever
+    the outcome (success, failed, stopped, timed out). So the manifest hash,
+    the consent hash and `installedSha256` stay put, and a successful
+    install ends `ready`, not `needsInstall` again. The core doesn't pass
+    `--no-save`, so npm still writes `package-lock.json`, which consent
+    doesn't cover. Saves are refused (`busy`) while an install runs, so the
+    restore can't overwrite an edit made in Distill. An external editor
+    writing `package.json` during an install loses that write.
   - `requirements.txt`: `python3 -m venv --symlinks .venv` only when there
     is no working venv, then `.venv/bin/python3 -m pip install
     --disable-pip-version-check -r requirements.txt`. A manifest change
     installs into the existing venv; never `--copies`, never `--clear`.
-  - cwd is the script's folder; the environment is a run's (login PATH, no
-    `DISTILL_*` variables, plus `npm_config_update_notifier=false`).
+  - cwd is the script's folder; the environment is a run's (login PATH,
+    with Distill's Node's folder first for npm; no `DISTILL_*` variables;
+    plus `npm_config_update_notifier=false`).
   - Timeout 10 minutes; Stop (`POST …/install/stop`) ends it the way Stop
     ends a script.
   - Output: stdout and stderr interleaved, the last 64 KB, with
@@ -749,7 +799,8 @@ interpreter, packages, environment, timeout, Stop and output capture), but
   output, `state`), `changes` and `lastTestRun`.
 - `CollectorInstall.trigger`: `manual`, `allow`, `beforeRun`.
   `CollectorRun.waiting` adds `install`; `CollectorTrigger` adds `test`;
-  `CollectorRun.outputDir` (test runs).
+  `CollectorRun.outputDir` (test runs); `CollectorRun.runtime` and
+  `CollectorInstall.runtime` (`{label, path, version?}`, what ran it).
 - Events: `collector.install.started {install}`, `collector.install.output
   {collectorId, installId, text}` (throttled by the process, at most 16 KB
   each), `collector.install.finished {install}`.

@@ -570,6 +570,8 @@ describe('activity through the core and the API', () => {
     vault = path.join(root, 'vault');
     queue = path.join(root, 'queue');
     for (const d of [state, vault, queue, path.join(root, 'Inbox'), path.join(root, 'trash'), path.join(root, 'bin')]) fs.mkdirSync(d, { recursive: true });
+    // Scripts' Node: the real one, seen from root/bin, so the npm next to it is the fake npm a test puts there.
+    fs.symlinkSync(process.execPath, path.join(root, 'bin', 'node'));
     fs.writeFileSync(path.join(state, 'settings.json'), JSON.stringify({ vaults: [{ path: vault, queueDirectory: queue }], activeVaultPath: vault, settleSeconds: 600 }));
     const done = { ...newJob({ id: 'job-20261004-120000-aaaa', kind: 'ingest', vaultPath: vault, files: ['inbox/x.md'], model: 'sonnet', now: new Date() }), state: 'completed', changedPaths: ['wiki/x.md'] };
     fs.writeFileSync(path.join(state, 'jobs.json'), JSON.stringify([done]));
@@ -580,7 +582,7 @@ describe('activity through the core and the API', () => {
       trashDir: path.join(root, 'trash'),
       secrets: new MemorySecretStore(),
       fetch: async () => new Response('{"message":"unauthorized"}', { status: 401, headers: { 'content-type': 'application/json' } }),
-      collectors: { homeDir: root, tmpDir: root, loginPath: async () => `${path.join(root, 'bin')}:${process.env.PATH ?? '/usr/bin:/bin'}` },
+      collectors: { homeDir: root, tmpDir: root, nodePath: path.join(root, 'bin', 'node'), loginPath: async () => `${path.join(root, 'bin')}:${process.env.PATH ?? '/usr/bin:/bin'}` },
     });
     core.subscribe((e) => events.push(e));
     server = await startServer({ core, token: TOKEN });
@@ -714,6 +716,7 @@ describe('activity through the core and the API', () => {
     assert.equal((await request('POST', `/v1/collectors/${id}/consent`, { sha256: sha })).status, 200);
     for (let i = 0; i < 100 && !last('collector.install'); i += 1) await new Promise((r) => setTimeout(r, 20));
     assert.equal(last('collector.install')?.outcome, 'ok');
+    assert.equal(last('collector.install')?.details?.runtime, `Node ${process.versions.node}`, 'which Node installed it');
     assert.ok(fs.existsSync(path.join(dir, 'node_modules', 'dep')));
     const savedEntry = last('collector.script_saved')!;
     assert.equal(savedEntry.details?.scriptBytes, Buffer.byteLength(body));
