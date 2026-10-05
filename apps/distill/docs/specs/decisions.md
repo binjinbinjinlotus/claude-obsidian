@@ -35,9 +35,12 @@ supersede it with a new entry.
   - "Show everything for X" adds a removable "For: X" chip; it is offered for
     chats, collectors, actions, batches and connections (queue ids are file
     paths), and not for an expired chat.
-  - The narrow layout starts under 760 pt of content: the app's minimum window
-    (900 pt) is narrow, 1200 pt is wide. The canvas's 890 pt frame is a
-    snapshot size; the app can't be narrower than 900.
+  - The narrow layout starts under 920 pt of content (a window under about
+    1140 pt): the list then keeps about 480 pt beside the 400 pt detail. At
+    a 1000 pt window the wide layout left the summary about 100 pt (with a
+    tag and "time · source"), so it is narrow there too. The canvas's 890 pt
+    frame is a snapshot size; the app can't be narrower than 900. Snapshot
+    guards `activity-width-1140` / `-1100` show both sides.
   - Deviations from the board: the detail shows only facts the core logs. The
     collector "Last run" says the total collected ("2 files collected"), not
     what that run added. The failed run's card leaves out "The next run at …

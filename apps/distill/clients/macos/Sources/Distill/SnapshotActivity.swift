@@ -239,6 +239,16 @@ extension StatesSnapshot {
         shot("activity-narrow-detail", "H · Narrow: an entry opens in place",
              "‹ Activity goes back; a delete with no copy says why.", e, size: narrow)
 
+        // Width guards (not board frames): the narrowest window that keeps the detail column, and just under it.
+        e = engine()
+        F.load(e, F.all(e))
+        shot("activity-width-1140", "Narrowest wide window (1140 pt)", "The list keeps about 480 pt beside the detail.", e,
+             size: CGSize(width: 1140, height: 760))
+        e = engine()
+        F.load(e, F.all(e), selected: nil)
+        shot("activity-width-1100", "Just under it (1100 pt)", "The list takes the width; the detail is pushed.", e,
+             size: CGSize(width: 1100, height: 760))
+
         // The detail for other kinds of entries, as cards.
         func card(_ file: String, _ state: String, _ desc: String, _ entry: JSONValue) {
             let e = engine()

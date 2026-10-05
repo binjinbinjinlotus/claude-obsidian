@@ -47,6 +47,8 @@ final class ActivityStore: ObservableObject {
     weak var engine: AppModel?
     private var reloadTask: Task<Void, Never>?
     private var loadToken = 0
+    /// The screen asked for the log (possibly before the core was attached): the next connect loads it.
+    private var wanted = false
     fileprivate static var stores: [ObjectIdentifier: ActivityStore] = [:]
 
     static let pageSize = 50
@@ -82,6 +84,7 @@ final class ActivityStore: ObservableObject {
 
     /// Page 1 for the filter, with the trash and the restores.
     func load() {
+        wanted = true
         guard let client else { return }
         loadToken += 1
         let token = loadToken
@@ -133,7 +136,7 @@ final class ActivityStore: ObservableObject {
 
     /// The core came back (start or restart): ask again if the screen was loaded.
     func reconnected() {
-        if phase != .idle { load() }
+        if phase != .idle || wanted { load() }
     }
 
     private func filterChanged(textOnly: Bool) {

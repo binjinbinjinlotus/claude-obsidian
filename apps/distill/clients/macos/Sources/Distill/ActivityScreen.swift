@@ -27,8 +27,9 @@ struct ActivityScreenContent: View {
     @ObservedObject var store: ActivityStore
     var ui = ActivityScreenUI()
 
-    /// Under this width the detail column gives way to a pushed detail (a 900 pt window is 680 here).
-    static let narrowWidth: CGFloat = 760
+    /// Under this width the detail column gives way to a pushed detail, so the list keeps about 480 pt
+    /// for a summary plus its tag and "time · source" (a 1200 pt window is 980 here; 900 pt is 680).
+    static let narrowWidth: CGFloat = 920
 
     var body: some View {
         GeometryReader { geo in
@@ -125,7 +126,7 @@ struct ActivityScreenContent: View {
     private func list(narrow: Bool) -> some View {
         let current = narrow ? nil : store.current?.id
         return Scrolling {
-            VStack(alignment: .leading, spacing: 1) {
+            LazyVStack(alignment: .leading, spacing: 1) {
                 ForEach(store.groups) { group in
                     Text(group.title).font(Theme.body(10, .heavy)).kerning(0.6).foregroundStyle(Theme.faint)
                         .padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 2)

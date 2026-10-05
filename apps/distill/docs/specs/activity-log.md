@@ -256,8 +256,10 @@ the Sidebar's new History sub-item. **Built 2026-10-04** (canvas v66 approved):
   (History → Jobs, that job), Open chat, Ask history settings, Show in Finder
   (the file in `~/.Trash`, else the Trash folder). Links to a thing that is
   gone are disabled.
-- Narrow: under 760 pt of content (a 900 pt window) the detail column goes and
-  a chosen entry is pushed in place with "‹ Activity" (Esc goes back).
+- Narrow: under 920 pt of content (a window under about 1140 pt, including
+  the usual 890–900 pt) the detail column goes and a chosen entry is pushed
+  in place with "‹ Activity" (Esc goes back). At 920 the list keeps about
+  480 pt beside the 400 pt detail, so summaries aren't cut to a few words.
 
 - **Where it lives: History → Activity**, a fourth sub-item after Jobs, Ask
   chats and Actions. History is where the app already answers "what
