@@ -325,5 +325,8 @@ item can use the same `distill serve` entry point later.
 - ~~Server lifecycle~~: built for the CLI (on demand, or `distill serve`).
   Whether the Mac app or a launchd login item also starts it is the macOS
   client's call; both would use `distill serve`.
-- Node: bundled runtime or system install with a `nodePath` setting.
+- Node: bundled runtime or system install with a `nodePath` setting. Partly
+  settled on 2026-10-04: the app picks a system Node (`settings.nodePath`, or
+  the highest nvm Node), and JS/TS collectors run on that same Node
+  ([decisions](decisions.md)). Bundling a runtime is still open.
 - Confirm the build order above.

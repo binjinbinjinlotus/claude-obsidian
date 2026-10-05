@@ -97,7 +97,7 @@ Usage:
   distill queue scan [--json]
   distill actions list [--type T] [--history] [--json]
   distill actions add "<title>" [--type todo] [--body "..."] [--why "..."] [--due YYYY-MM-DD]
-              [--new-session] [--vault PATH] [--json]
+              [--vault PATH] [--json]
   distill collectors list [--json]
   distill collectors run <id> [--json]
   distill collectors history <id> [--limit N] [--json]
@@ -735,7 +735,7 @@ async function actions(args: string[], io: CliIO, api: ApiFactory): Promise<numb
       vault: { type: 'string' },
     });
     const [title, extra] = positionals;
-    if (!title?.trim()) throw usageError('usage: distill actions add "<title>" [--type todo] [--body "..."] [--due YYYY-MM-DD]');
+    if (!title?.trim()) throw usageError('usage: distill actions add "<title>" [--type todo] [--body "..."] [--why "..."] [--due YYYY-MM-DD] [--vault PATH]');
     if (extra !== undefined) throw usageError(`unexpected argument "${extra}"`);
     const due = str(values.due);
     if (due !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(due)) throw usageError('--due must be a date like 2026-10-05');

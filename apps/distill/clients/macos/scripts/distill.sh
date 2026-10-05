@@ -10,7 +10,8 @@
 #   core-stop  stop the core server (SIGTERM; refuses while a job is running; --force overrides)
 #   update     back up your data, run tests, rebuild, install to ~/Applications,
 #              check your data is still there, relaunch if it was running
-#   backup [TAG]  copy settings, job history, Ask history, actions and connections to <state>/backups/<time>
+#   backup [TAG]  copy settings, job history, Ask history, actions, connections, collectors (with their
+#                 script files) and batch step logs to <state>/backups/<time>
 #   backups    list the backups (newest first)
 #   restore NAME  put a backup back (app and core must be stopped; backs up the current data first)
 #   status     show the app, the core, and running / awaiting-approval jobs
@@ -176,7 +177,12 @@ do_backup() {
     mkdir -p "$dest/collectors/runs"
     for f in "$STATE_DIR"/collectors/ledger-*(N.); do cp -p "$f" "$dest/collectors/"; done
     for f in "$STATE_DIR"/collectors/runs/*(N.); do cp -p "$f" "$dest/collectors/runs/"; done
+    # Scripts Distill keeps live only here since v6: the code and its package manifest, never the
+    # installed packages (node_modules, .venv), which an install recreates.
+    [[ -d "$STATE_DIR/collectors/scripts" ]] && rsync -a --exclude node_modules --exclude .venv "$STATE_DIR/collectors/scripts/" "$dest/collectors/scripts/"
   fi
+  # The live log's saved batch steps.
+  [[ -d "$STATE_DIR/steps" ]] && rsync -a "$STATE_DIR/steps/" "$dest/steps/"
   for f in "$STATE_DIR"/ask/*.json(N); do cp -p "$f" "$dest/ask/"; done
   # Label state for notes in the vault's inbox/ (kept out of inbox/ itself).
   [[ -f "$STATE_DIR/labels/notes.json" ]] && { mkdir -p "$dest/labels"; cp -p "$STATE_DIR/labels/notes.json" "$dest/labels/"; }
@@ -211,7 +217,10 @@ do_restore() {
     mkdir -p "$STATE_DIR/collectors/runs"
     for f in "$src"/collectors/ledger-*(N.); do cp -p "$f" "$STATE_DIR/collectors/"; done
     for f in "$src"/collectors/runs/*(N.); do cp -p "$f" "$STATE_DIR/collectors/runs/"; done
+    # Script files come back next to whatever is there; installed packages are kept.
+    [[ -d "$src/collectors/scripts" ]] && rsync -a "$src/collectors/scripts/" "$STATE_DIR/collectors/scripts/"
   fi
+  [[ -d "$src/steps" ]] && rsync -a "$src/steps/" "$STATE_DIR/steps/"
   mkdir -p "$STATE_DIR/ask"
   for f in "$src"/ask/*.json(N); do cp -p "$f" "$STATE_DIR/ask/"; done
   [[ -f "$src/labels/notes.json" ]] && { mkdir -p "$STATE_DIR/labels"; cp -p "$src/labels/notes.json" "$STATE_DIR/labels/notes.json"; }

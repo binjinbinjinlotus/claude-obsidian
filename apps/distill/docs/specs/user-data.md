@@ -86,10 +86,10 @@ Retention is the user's choice: Ask chats older than `askPreferences.historyDays
 - `activity/` and `trash/` are not backed up and a restore never touches
   them: the log is append-only history and must not be rewound
   ([Activity log and trash](activity-log.md)).
-- Also not in a backup today (2026-10-05): `collectors/scripts/`,
-  `collectors/installs/`, `collectors/test-runs/` and `steps/`. A restored
-  `collectors.json` points at the kept scripts in place; the scripts
-  themselves are not copied (open, listed for the owner).
+- Collector script files (`collectors/scripts/`, without `node_modules` and
+  `.venv`) and the live log's `steps/` are backed up and restored (since
+  2026-10-05). `collectors/installs/` (install logs) and
+  `collectors/test-runs/` (Test run output) are scratch and are not.
 - `backups` lists them, newest first.
 - `restore NAME` refuses while the app or the core runs, backs up the current
   data (`before-restore`), then copies the backup back.
