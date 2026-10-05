@@ -51,12 +51,57 @@ app, the CLI, the agent plugin, curl) is covered the same way.
 | Family | Types | Notes |
 |---|---|---|
 | Ask chats | `chat.created`, `chat.updated` (a follow-up), `chat.pinned`, `chat.unpinned`, `chat.deleted`, `chat.expired`, `chat.restored` | Title, turn count, size and dates only. Questions and answers are never logged. |
-| Collectors | `collector.created`, `.updated`, `.enabled`, `.disabled`, `.consented`, `.consent_revoked`, `.deleted`, `.restored`, `.stopped`, `.forgot`, `.forget_undone`, `.folder_created`, `.run`; v6: `.script_saved`, `.install` (from `collector.install.finished`), `.install_stopped`, `.test_run` | Script: interpreter, file path, **size and line count**, schedule, vault, and a 12-character consent hash prefix. Script saves: which parts changed (script, manifest), sizes and 12-character hash prefixes. Installs: result, trigger, manifest name, command, duration, exit code. Never the script, the manifest or install output (they can hold credentials). |
+| Collectors | `collector.created`, `.updated`, `.enabled`, `.disabled`, `.consented`, `.consent_revoked`, `.deleted`, `.restored`, `.stopped`, `.forgot`, `.forget_undone`, `.folder_created`, `.run`; v6: `.script_saved`, `.install` (from `collector.install.finished`), `.install_stopped`, `.test_run` | Script: interpreter, file path (`scriptFile`), `scriptManaged: true` for a script written in Distill (shown as "N lines · size, written in Distill"; the path stays for Show in Finder), **size and line count** (a final newline is not a line), schedule, vault, and a 12-character consent hash prefix. Script saves: which parts changed (script, manifest), sizes and 12-character hash prefixes. Installs: result, trigger, manifest name, command, duration, exit code. Never the script, the manifest or install output (they can hold credentials). |
 | Actions | `action.created`, `.updated` (which fields changed, not what they say), `.confirmed`, `.dismissed`, `.drafted`, `.improved`, `.improve_undone`, `.performed`, `.sent`, `.removed`, `.restored`, `.deleted`, `.expired`, `.found` | Title, type and status. |
 | Batches (jobs) | `batch.started`, `.ready`, `.approved`, `.replied` (length only), `.allowed` (tool rules), `.rejected`, `.cancelled`, `.applied` (changed paths, operation id), `.failed`, `.deleted`; `labels.suggest_started`, `labels.confirm_started` | Ingest results are `batch.applied` and `batch.failed`. |
 | Queue and notes | `queue.added`, `queue.removed` (with the macOS Trash as its recovery), `queue.scanned` (only when files appeared or went outside Distill), `note.added` (title, labels, file count; never the text), `note.labeled` | |
 | Connections | `connection.connected`, `connection.disconnected` | Site and status. Never the token or the email. |
-| Settings and keys | `settings.changed` (`key: old → new` for short values; `key: changed` for lists and secret-looking keys; no line when nothing changed), `runner.secret_saved`, `runner.secret_cleared` | For keys, only which runner and which key name. The value is never read. |
+| Settings and keys | `settings.changed` (summary in Settings' words: "Changed settings: Ask history (Keep history off)"; `changes` keeps the raw `key: old → new` for short values and `key: changed` for lists and secret-looking keys; `readableChanges` has one "Label: Old → New" line per setting; no entry when nothing changed), `runner.secret_saved`, `runner.secret_cleared` | For keys, only which runner and which key name. The value is never read. Names: see "Settings in Settings' words". |
+
+### Settings in Settings' words
+
+`core/src/activity/settings-labels.ts` is the one table that names
+settings. It maps each dotted key to its Settings section and label, and
+values to words. Section titles and labels are the Mac's own strings; a core
+test checks they still appear in `clients/macos/Sources/Distill/Settings*.swift`.
+
+- **Summary:** sections with short phrases, at most 2 phrases per section
+  and 3 sections ("Batching (Automatic batching off, Batch every 15
+  minutes)", "… and 2 more"). Paths, lists and selections give the label
+  only.
+- **`readableChanges`:** for example "Keep history: On → Off", "Batch every:
+  10 minutes → 15 minutes", "Adding notes: Claude Code · sonnet → Codex ·
+  gpt-5", "Keep action history: 90 days → Forever".
+- **Defaults:** absent settings read their defaults, so a first change
+  reads "On → Off", not "— → Off".
+- **Sections:** each leaf key has its own section, so
+  `askPreferences.labelMatch` is under Labels.
+- **Never shown, only "changed":** prompts (`findPrompt`), runner options
+  (URLs can hold credentials), action-type settings, and secret-looking
+  keys.
+- **Unknown keys:** the raw dotted key, and the summary names the key.
+- **Failed changes:** "Couldn't change settings: Batching".
+
+### Redaction
+
+Entries never hold secrets or script bodies. Redaction (`redact.ts`) is the
+second line of defence for user-typed text.
+
+- **Everywhere, paths included:** known token shapes (`sk-…`, `ghp_…`,
+  `xox…`, AKIA, AIza, ya29, `ATATT…`, JWTs, PEM private keys), Bearer and
+  Basic credentials, URL credentials, and `key=value` with a secret-looking
+  key.
+- **Outside paths only:** two guesses, 32+ hex characters and 40+ characters
+  mixing upper case, lower case and digits.
+  - A path starts at `/`, `~/`, `./` or `../`, not after a word character
+    or `:`, so a URL's path is not one.
+  - It includes a space when another `/` follows before the next space
+    (`Application Support`).
+  - Path-keyed details (`scriptFile`, `vault`, `folder`, `…path`, `…file`,
+    `…dir`) and `recovery.path` are treated as paths whole.
+- **Why:** long temp paths (`/private/var/folders/…/T/…`) and folders named
+  with hex or UUID parts read as they are. Before 2026-10-04 they could
+  show as `/[redacted].py`.
 
 Failures are logged with `outcome: "failed"` and the error message, shortened
 and redacted: a refused delete, a consent with a stale hash, a failed batch, a
@@ -259,7 +304,9 @@ the Sidebar's new History sub-item. **Built 2026-10-04** (canvas v66 approved):
   Today = since local midnight. "Show everything for X" adds a removable
   "For: X" chip (object id).
 - The detail's facts come from the keys the core writes (`instrument.ts`);
-  unknown keys show as they are. Kept N days/hours is `expiresAt − deletedAt`
+  unknown keys show as they are. Settings rows prefer `readableChanges`
+  (label kept as it is) over parsing `changes`. A script with
+  `scriptManaged` shows lines and size, "written in Distill" (2026-10-04). Kept N days/hours is `expiresAt − deletedAt`
   (24 hours for chats closed with Keep history off).
 - Links: Open collector / Open run log (Collectors, All runs), Open in History
   (History → Jobs, that job), Open chat, Ask history settings, Show in Finder

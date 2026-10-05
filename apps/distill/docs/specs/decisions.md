@@ -17,6 +17,42 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Activity log fixes from the Mac Activity screen: settings in Settings'
+  words, readable paths, scripts written in Distill (core built; Mac
+  DistillKit reads the new keys).** Spec: [Activity log and
+  trash](activity-log.md) → "What is logged", "Redaction".
+  - **Settings summaries use Settings' names**, as on the canvas v66 card:
+    "Changed settings: Ask history (Keep history off)". One table in the
+    core, `core/src/activity/settings-labels.ts`, maps dotted keys to the
+    Settings section and label and values to words (On/Off, "15 minutes",
+    "Every 5 min", "Forever", "Claude Code · sonnet"). Absent settings read
+    their defaults, so "— → false" reads "On → Off". Unknown keys keep the
+    raw key. Each leaf key gets its own section: `askPreferences.labelMatch`
+    is under Labels, not Ask history. The Swift catalog can't be imported
+    by the core, so the table is the one place, and a core test checks that
+    its section titles and labels still appear in the Mac's
+    `Settings*.swift`. A few names the log needs that Settings has no single
+    string for ("Keep history", "Days", "Active vault", "Runner options")
+    are listed in that test.
+  - **`details.changes` is unchanged** (raw `key: old → new`), for scripts
+    and older apps. **New, additive: `details.readableChanges`**, one
+    "Label: Old → New" line per setting. Newer Mac builds show it. Prompts,
+    runner options and action-type settings say only "changed".
+  - **Paths are not secrets.** The two guesses (32+ hex and a 40+ run mixing
+    upper case, lower case and digits) no longer run inside file paths
+    (`/…`, `~/…`, spaces included when another `/` follows) or path-keyed
+    details (`scriptFile`, `vault`, `folder`, `…Path`, `…Dir`). URLs are
+    not treated as paths. Precise shapes (sk-, ghp_, xox, AKIA, AIza,
+    ya29, ATATT, JWT, Bearer/Basic, URL credentials, key=value, PEM) still
+    run everywhere, paths included. Before: `/[redacted].py`, and "Into"
+    showed as `[redacted]`.
+  - **Scripts written in Distill:** collector facts add `scriptManaged:
+    true` for `{file, managed: true}` sources. `scriptFile` stays, for Show
+    in Finder. The Mac shows "N lines · size, written in Distill" for these,
+    and the path for the user's own files. Line counts no longer count a
+    final newline as a line. Entries written before this change have no
+    flag and still show the path. No path-sniffing fallback (my call).
+
 - **Collectors v6 follow-up: install on add, Test run, venv and Keychain,
   one trash (core built; boards updated, unpublished).** Specs:
   [Collectors](collectors.md) → "Script files and packages (v6)",
