@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 import DistillKit
 @testable import Distill
@@ -6,6 +7,29 @@ import DistillKit
 /// hashes), switching kinds, and the board's wording for installs, Test runs and Run now.
 @MainActor
 final class CollectorScriptsLogicTests: XCTestCase {
+
+    // MARK: PlainCodeView selection (crash 2026-10-04 22:41: an empty selection list after shorter text)
+
+    func testClampedSelectionIsNeverEmpty() {
+        XCTAssertEqual(PlainCodeView.clampedSelection([NSRange(location: 500, length: 0)], length: 10), [NSRange(location: 10, length: 0)])
+        XCTAssertEqual(PlainCodeView.clampedSelection([NSRange(location: 4, length: 20)], length: 10), [NSRange(location: 4, length: 6)])
+        XCTAssertEqual(PlainCodeView.clampedSelection([], length: 3), [NSRange(location: 3, length: 0)])
+        XCTAssertEqual(PlainCodeView.clampedSelection([NSRange(location: 1, length: 2), NSRange(location: 90, length: 5)], length: 5),
+                       [NSRange(location: 1, length: 2)])
+    }
+
+    @MainActor
+    func testShorterTextWithTheCaretAtTheEndDoesNotThrow() {
+        let tv = NSTextView()
+        tv.string = String(repeating: "print hi\n", count: 200)
+        tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
+        let old = tv.selectedRanges.map(\.rangeValue)
+        let short = "exit 0\n"
+        tv.string = short
+        tv.selectedRanges = PlainCodeView.clampedSelection(old, length: (short as NSString).length).map { NSValue(range: $0) }
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: (short as NSString).length, length: 0))
+    }
+
     let text = CollectorText(home: "/Users/mei")
 
     func managed(_ i: CollectorInterpreter = .node, manifest: CollectorManifestStatus? = nil) -> Collector {

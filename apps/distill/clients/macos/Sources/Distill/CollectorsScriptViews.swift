@@ -362,9 +362,25 @@ struct PlainCodeView: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         context.coordinator.text = $text
         guard let tv = scroll.documentView as? NSTextView, tv.string != text else { return }
-        let selected = tv.selectedRanges
+        let selected = tv.selectedRanges.map(\.rangeValue)
         tv.string = text
-        tv.selectedRanges = selected.filter { $0.rangeValue.upperBound <= (text as NSString).length }
+        // AppKit throws on an empty selection list, and the text can come back shorter (a save or reload),
+        // so ranges are clamped to the new text, never dropped.
+        tv.selectedRanges = Self.clampedSelection(selected, length: (text as NSString).length).map { NSValue(range: $0) }
+    }
+
+    /// The old selection fitted to text of `length` UTF-16 units: each range clamped, duplicates removed,
+    /// and never empty (the caret goes to the end when nothing is left).
+    static func clampedSelection(_ ranges: [NSRange], length: Int) -> [NSRange] {
+        var out: [NSRange] = []
+        for r in ranges {
+            let start = min(max(r.location, 0), length)
+            let end = min(max(r.location + r.length, start), length)
+            let c = NSRange(location: start, length: end - start)
+            if !out.contains(where: { NSEqualRanges($0, c) }) { out.append(c) }
+        }
+        if out.count > 1 { out.removeAll { $0.length == 0 } }
+        return out.isEmpty ? [NSRange(location: length, length: 0)] : out
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {

@@ -17,6 +17,14 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Script editor crash fixed: the selection is clamped, never dropped.** The
+  app quit at 22:41:41 (crash report `Distill-2026-10-04-224141.ips`). The
+  exception came from `NSTextView setSelectedRanges` in
+  `PlainCodeView.updateNSView`. When the editor's text was replaced from
+  outside with shorter text while the caret sat past the new end, the old code
+  filtered every range out and handed AppKit an empty list, which it rejects.
+  Ranges are now clamped to the new length, with the caret at the end if
+  nothing is left.
 - **Scripts are told the run's trigger: `DISTILL_RUN_TRIGGER`.** Spec:
   [Collectors](collectors.md) → Script contract, Test run. The owner Test-ran
   the meeting-notes script. Its 30 notes went to the test folder, as designed,
