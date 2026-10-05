@@ -56,7 +56,7 @@ https://claude.ai/artifact/VSqHFPZjcqY2bMqFEnPqpG
 - [Floating icon](floating-icon.md): the always-on-top flask, states, hover menu, click/drag/drop.
 - [Quick actions and shortcuts](quick-actions.md): quick ask and quick note windows, recorded global shortcuts.
 - [App icon](app-icon.md): the generated .icns.
-- [Resizable panes](resizable-panes.md): drag the divider between two columns on every split screen (sidebar, Review’s Conversation, History, Actions, Activity, Collectors, Settings nav); min and max per column, double-click for the automatic width, widths remembered per screen in UI preferences. Designed.
+- [Resizable panes](resizable-panes.md): drag the divider between two columns on every split screen (sidebar, Review’s Conversation, History, Actions, Activity, Collectors, Settings nav); min and max per column, double-click for the automatic width, widths remembered per screen in UI preferences. Built (macOS).
 - [Headless and snapshot modes](headless-and-snapshot.md): `--snapshot` renders; headless runs moved to the CLI.
 - [Tooling](tooling.md): build, install, control script, `/distill` skill, tests.
 

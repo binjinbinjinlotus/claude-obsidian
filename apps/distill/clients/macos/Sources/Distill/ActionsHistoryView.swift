@@ -101,7 +101,7 @@ struct ActionsHistoryContent: View {
                 }
             }
             .padding(.vertical, 24).padding(.horizontal, 18)
-            .frame(width: 340)
+            .paneWidth(.historyActions, automatic: 340)
             .background(Theme.window)
             .zIndex(5)
             Divider().overlay(Theme.border)
@@ -125,6 +125,7 @@ struct ActionsHistoryContent: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .paneContainer()
         .background(Color.white.opacity(0.001).onTapGesture { ui.menu = nil })
         .overlay {
             if let id = ui.confirmDelete, let item = store.items[id] { deleteDialog(item) }

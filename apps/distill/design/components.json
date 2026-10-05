@@ -7125,7 +7125,7 @@
     {
       "name": "PaneHandle",
       "title": "Pane handle",
-      "swift": null,
+      "swift": "clients/macos/Sources/Distill/PaneSplit.swift",
       "preview": [
         9,
         160

@@ -56,7 +56,7 @@ private struct CollectorsScreenContent: View {
                             // The list narrows in a small window so the detail keeps room (890–900 pt).
                             let listWidth: CGFloat = geo.size.width < 760 ? 240 : 300
                             HStack(alignment: .top, spacing: 24) {
-                                CollectorList(store: store).frame(width: listWidth)
+                                CollectorList(store: store).paneWidth(.collectorsList, automatic: listWidth, container: geo.size.width)
                                 CollectorDetailPane(store: store).frame(maxWidth: .infinity, alignment: .topLeading)
                             }
                             .padding(.leading, 20).padding(.trailing, 28).padding(.top, 20)

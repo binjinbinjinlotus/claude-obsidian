@@ -144,7 +144,7 @@ struct TodoScreen: View {
                 list
                 if let item = selectedItem ?? (visible.first { $0.status == .open }), store.phase == .loaded, !visible.isEmpty {
                     TodoDetail(store: store, item: item, editing: $ui.editing, menu: $ui.menu, now: now)
-                        .frame(width: 330)
+                        .paneWidth(.todoDetail, automatic: 330)
                         .frame(maxHeight: .infinity, alignment: .top)
                         .overlay(alignment: .leading) { Rectangle().fill(Theme.border).frame(width: 1) }
                         .zIndex(4)
@@ -152,6 +152,7 @@ struct TodoScreen: View {
             }
             .padding(.leading, 20)
             .frame(maxHeight: .infinity, alignment: .top)
+            .paneContainer()
         }
         .overlay(alignment: .bottom) {
             if !ui.selection.isEmpty { BulkBar(store: store, ui: $ui) }

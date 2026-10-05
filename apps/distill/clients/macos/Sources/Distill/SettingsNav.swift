@@ -54,7 +54,7 @@ struct SettingsSectionNav: View {
                 .buttonStyle(.plain).accessibilityLabel("Clear search")
             }
         }
-        .padding(.horizontal, 10).frame(width: 196, height: 30)
+        .padding(.horizontal, 10).frame(maxWidth: 196).frame(height: 30)
         .background(Capsule().fill(query.isEmpty && !focused ? Color(hex: 0xEDEBE6) : Color.white))
         .overlay(Capsule().strokeBorder(Theme.primary, lineWidth: 2).opacity(query.isEmpty ? 0 : 1))
     }

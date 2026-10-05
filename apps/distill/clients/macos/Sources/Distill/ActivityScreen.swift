@@ -95,10 +95,11 @@ struct ActivityScreenContent: View {
                                     ActivityDetail(store: store, entry: entry, pushed: false)
                                         .padding(.leading, 24).padding(.trailing, 26).padding(.top, 22).padding(.bottom, 20)
                                 }
-                                .frame(width: 400)
+                                .paneWidth(.activityDetail, automatic: 400)
                             }
                         }
                     }
+                    .paneContainer()
                     .frame(maxHeight: .infinity, alignment: .top)
                 }
             }

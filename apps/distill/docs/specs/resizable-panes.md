@@ -1,7 +1,7 @@
 ---
 type: spec
 title: Resizable panes
-status: designed
+status: built
 created: 2026-10-05
 updated: 2026-10-05
 tags:

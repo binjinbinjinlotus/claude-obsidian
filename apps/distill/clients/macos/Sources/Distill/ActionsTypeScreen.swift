@@ -91,7 +91,7 @@ struct TypeListScreen: View {
                             }
                             .padding(.bottom, 60)
                         }
-                        .frame(width: listWidth)
+                        .paneWidth(.actionsList(type.id), automatic: listWidth, container: geo.size.width)
                         Scrolling {
                             if let selected { detail(selected).padding(2).padding(.bottom, 60) }
                         }

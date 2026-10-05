@@ -32,6 +32,8 @@ enum StatesSnapshot {
     private static let baseDefaults: [String: Any] = ["distill.addMode": "files", "distill.labelsTab": "toReview",
                                                       AppModel.suggestAfterQueueKey: true,
                                                       "distill.todo.group": "", "distill.todo.sort": ""]
+        // Resizable panes: every column at its automatic width (0 = automatic).
+        .merging(Dictionary(uniqueKeysWithValues: PaneSpec.fixedKeys.map { ($0, 0.0 as Any) })) { a, _ in a }
 
     static func run(stateDir: URL, outDir: URL) {
         self.stateDir = stateDir

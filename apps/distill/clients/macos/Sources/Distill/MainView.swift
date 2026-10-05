@@ -37,6 +37,7 @@ struct MainView: View {
             .clipped()
             .background(Theme.window)
         }
+        .paneContainer() // resizable panes: the sidebar keeps the screen's 580 pt
         .environmentObject(engine.ask)
         .overlay { if section == .collectors { CollectorsOverlay(store: engine.collectors) } }
         .overlay(alignment: .bottom) { ErrorBanner() }
@@ -118,7 +119,7 @@ struct Sidebar: View {
         }
         .padding(.horizontal, 14)
         .padding(.bottom, 16)
-        .frame(width: 220)
+        .paneWidth(.sidebar, automatic: 220)
         .frame(maxHeight: .infinity)
         .background(Theme.panel)
     }
@@ -706,7 +707,7 @@ struct HistorySection: View {
                 }
             }
             .padding(.vertical, 24).padding(.horizontal, 18)
-            .frame(width: 320)
+            .paneWidth(.historyList, automatic: 320)
             .background(Theme.window)
             Divider().overlay(Theme.border)
             if part == .jobs, let id = selectedJob, jobs.contains(where: { $0.id == id }) {
@@ -719,6 +720,7 @@ struct HistorySection: View {
                 EmptyState(title: "Pick a job", message: "Select a job to see what Claude did.")
             }
         }
+        .paneContainer()
     }
 }
 
@@ -986,7 +988,8 @@ struct JobDetailView: View {
                         }
                         if !narrow {
                             conversation(job)
-                                .frame(width: talk)
+                                .paneWidth(collapsesConversation ? PaneSpec.reviewConversation : PaneSpec.historyConversation,
+                                           automatic: talk, container: geo.size.width)
                                 .padding(.top, 30).padding(.bottom, 20)
                         }
                     }

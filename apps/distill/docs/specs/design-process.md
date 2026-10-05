@@ -179,6 +179,7 @@ Swift view of the same name, in `clients/macos/Sources/Distill/`. Built
 | ScheduleField | `ScheduleField` (a `ScheduleDraft` binding; `preset`, `time` and `cron` read from it) | CollectorsComponents.swift |
 | RunLogEntry | `RunLogEntry` (`lines` is an array; plus `onToggle`) | CollectorsComponents.swift |
 | ScriptConsent | `ScriptConsent` (plus `problem`, `busy` and the button actions) | CollectorsComponents.swift |
+| PaneHandle | `PaneHandle` (state, line); `.paneWidth(_:automatic:container:)` puts it on a column | PaneSplit.swift |
 
 IconButton is round (fill and hover fill are circles, as on the canvas); the
 hover fill is ink at 6%. Icon-only buttons in rows, cards and toolbars use it

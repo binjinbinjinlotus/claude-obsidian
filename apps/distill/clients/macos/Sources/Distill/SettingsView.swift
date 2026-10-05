@@ -40,7 +40,7 @@ private struct SettingsWindowContent: View {
         HStack(spacing: 0) {
             SettingsSectionNav(selected: ui.target.section, query: $ui.query,
                                matches: searching ? SettingsIndex.counts(results) : nil) { ui.select(SettingsTarget($0)) }
-                .frame(width: SettingsWindowSize.nav)
+                .paneWidth(.settingsNav, automatic: SettingsWindowSize.nav)
             // minWidth 0 + clipped: a page that asks for more width than the window
             // has is squeezed (rows reflow) instead of pushing the nav off the left.
             content
@@ -48,6 +48,7 @@ private struct SettingsWindowContent: View {
                 .clipped()
                 .background(Theme.window)
         }
+        .paneContainer()
         .onAppear {
             engine.loadRunners()
             engine.refreshLabels()
