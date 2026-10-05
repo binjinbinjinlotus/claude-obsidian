@@ -19,6 +19,7 @@ import { titleFrom } from '../ask/conversations.js';
 import { currentMethod, currentSource, runInMethod } from './context.js';
 import type { ActivityLog } from './log.js';
 import { isSecretKey } from './redact.js';
+import { describeSettingsChanges, settingsPatchSections } from './settings-labels.js';
 import type { Trash } from './trash.js';
 
 /**
@@ -117,13 +118,15 @@ function scriptFacts(c: Collector | undefined): Record<string, unknown> {
   if (!s) return { kind: c.kind };
   const facts: Record<string, unknown> = { kind: 'script', interpreter: s.interpreter, schedule: c.schedule.cron, vault: c.vaultPath };
   if ('file' in s.source) {
+    // The path stays for Show in Finder; for a script Distill keeps, clients show "N lines · size, written in Distill".
     facts.scriptFile = s.source.file;
     if (s.source.managed) {
+      facts.scriptManaged = true;
       // A script Distill keeps: its size and line count, read here and never logged as text.
       try {
         const text = fs.readFileSync(s.source.file, 'utf8');
         facts.scriptBytes = Buffer.byteLength(text);
-        facts.scriptLines = text.split('\n').length;
+        facts.scriptLines = lineCount(text);
       } catch {
         // missing: the path says enough
       }
@@ -133,9 +136,29 @@ function scriptFacts(c: Collector | undefined): Record<string, unknown> {
   } else {
     // Never the body: it can hold credentials. Its size and line count say what was there.
     facts.scriptBytes = Buffer.byteLength(s.source.inline);
-    facts.scriptLines = s.source.inline.split('\n').length;
+    facts.scriptLines = lineCount(s.source.inline);
   }
   return facts;
+}
+
+/** Lines as an editor numbers them: a final newline doesn't start another line. */
+export function lineCount(text: string): number {
+  if (text === '') return 0;
+  const n = text.split('\n').length;
+  return text.endsWith('\n') ? n - 1 : n;
+}
+
+const kb = (bytes: number) => (bytes < 1024 ? `${bytes} bytes` : `${(bytes / 1024).toFixed(1).replace(/\.0$/, '')} KB`);
+
+/** "61 lines · 2.1 KB, written in Distill", or the user's own file's path. */
+function scriptLine(facts: Record<string, unknown>): string {
+  const bytes = typeof facts.scriptBytes === 'number' ? facts.scriptBytes : undefined;
+  const lines = typeof facts.scriptLines === 'number' ? facts.scriptLines : undefined;
+  if (facts.scriptManaged || !facts.scriptFile) {
+    const parts = [lines !== undefined ? plural(lines, 'line') : undefined, bytes !== undefined ? kb(bytes) : undefined].filter(Boolean);
+    return parts.length ? `${parts.join(' · ')}, written in Distill` : 'written in Distill';
+  }
+  return String(facts.scriptFile);
 }
 
 const isPlain = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -247,15 +270,21 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
       ok: (_args, after, before: Settings | undefined) => {
         const changes = settingsChanges(before, after);
         if (changes.length === 0) return null;
+        // In Settings' words ("Ask history (Keep history off)"); `changes` keeps the raw keys for scripts and older clients.
+        const readable = describeSettingsChanges(before, after);
         const keys = [...new Set(changes.map((c) => c.split(/[.:]/)[0]!))];
         return {
           type: 'settings.changed',
           object: { kind: 'settings', name: 'Settings' },
-          summary: `Changed settings: ${keys.join(', ')}`,
-          details: { changes },
+          summary: `Changed settings: ${readable.summary || keys.join(', ')}`,
+          details: { changes, ...(readable.lines.length ? { readableChanges: readable.lines } : {}) },
         };
       },
-      fail: ([patch]) => ({ type: 'settings.changed', object: { kind: 'settings', name: 'Settings' }, summary: `Couldn't change settings: ${Object.keys(patch ?? {}).join(', ')}` }),
+      fail: ([patch]) => ({
+        type: 'settings.changed',
+        object: { kind: 'settings', name: 'Settings' },
+        summary: `Couldn't change settings: ${settingsPatchSections(patch as Record<string, unknown> | undefined)}`,
+      }),
     },
     setRunnerSecret: {
       ok: ([runnerID, name, value]) => ({
@@ -532,7 +561,7 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
         if (patch.script?.source) {
           const was = scriptFacts(before);
           const now = scriptFacts(c);
-          details.script = `${was.scriptFile ?? `${String(was.scriptBytes ?? '?')} bytes inline`} → ${now.scriptFile ?? `${String(now.scriptBytes ?? '?')} bytes inline`}`;
+          details.script = `${scriptLine(was)} → ${scriptLine(now)}`;
         }
         if (patch.enabled !== undefined) details.enabled = patch.enabled;
         return { type: 'collector.updated', object: collectorObject(c.id, c), summary: `Changed ${q(c.name)}: ${changed.join(', ')}`, details };
@@ -582,8 +611,11 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
         // What changed, sizes and a hash prefix; never the text (scripts and manifests can hold credentials).
         if (update.code !== undefined) {
           parts.push('script');
+          // Only Distill's own script files are saved here: written in Distill.
+          if (c?.script?.interpreter) details.interpreter = c.script.interpreter;
+          details.scriptManaged = true;
           details.scriptBytes = Buffer.byteLength(update.code);
-          details.scriptLines = update.code.split('\n').length;
+          details.scriptLines = lineCount(update.code);
           details.scriptSha256 = files.sha256?.slice(0, 12) ?? null;
         }
         if (update.manifest !== undefined) {

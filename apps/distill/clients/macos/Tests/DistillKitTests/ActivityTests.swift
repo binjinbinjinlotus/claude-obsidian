@@ -186,6 +186,52 @@ final class ActivityTests: XCTestCase {
         XCTAssertFalse(facts.rows.contains { $0.label == "Script bytes" }, "known keys aren't listed twice")
     }
 
+    func testManagedScriptReadsWrittenInDistillAndOwnFileShowsItsPath() {
+        let t = ActivityText(home: "/Users/mei")
+        func scriptRow(_ details: [String: JSONValue]) -> (String?, [String]) {
+            let e = ActivityEntry(id: "1", at: Date(), type: "collector.deleted", source: .app,
+                                  object: ActivityObject(kind: "collector", id: "col-1", name: "Meeting notes"), summary: "Deleted", details: details)
+            let rows = t.facts(e, now: e.at).rows
+            return (rows.first { $0.label == "Script" }?.value, rows.map(\.label))
+        }
+        let managed: [String: JSONValue] = ["kind": .string("script"), "interpreter": .string("python3"),
+                                            "scriptFile": .string("/Users/mei/Library/Application Support/Distill/collectors/scripts/col-1/collector.py"),
+                                            "scriptManaged": .bool(true), "scriptBytes": .number(2140), "scriptLines": .number(61)]
+        let (value, labels) = scriptRow(managed)
+        XCTAssertEqual(value, "python3 · 61 lines · \(ActivityText.size(2140)), written in Distill")
+        XCTAssertFalse(labels.contains("Script managed") || labels.contains("Script file"), "known keys aren't listed twice")
+        // The file was already gone when it was read: no size, still written in Distill.
+        var gone = managed; gone["scriptBytes"] = nil; gone["scriptLines"] = nil
+        XCTAssertEqual(scriptRow(gone).0, "python3 · written in Distill")
+        // Your own file: its path.
+        let own: [String: JSONValue] = ["kind": .string("script"), "interpreter": .string("zsh"), "scriptFile": .string("/Users/mei/bin/collect.sh")]
+        XCTAssertEqual(scriptRow(own).0, "zsh · ~/bin/collect.sh")
+        // collector.script_saved (a Save in the script editor): written in Distill, the file and hash prefix not listed.
+        let saved: [String: JSONValue] = ["file": .string("/Users/mei/Library/Application Support/Distill/collectors/scripts/col-1/collector.py"),
+                                          "interpreter": .string("python3"), "scriptManaged": .bool(true),
+                                          "scriptBytes": .number(980), "scriptLines": .number(24), "scriptSha256": .string("9f86d081884c")]
+        let (savedValue, savedLabels) = scriptRow(saved)
+        XCTAssertEqual(savedValue, "python3 · 24 lines · \(ActivityText.size(980)), written in Distill")
+        XCTAssertEqual(savedLabels, ["Script", "Type"])
+    }
+
+    func testReadableSettingsChangesWin() {
+        let t = ActivityText()
+        let e = ActivityEntry(id: "1", at: Date(), type: "settings.changed", source: .app, object: ActivityObject(kind: "settings", name: "Settings"),
+                              summary: "Changed settings: Ask history (Keep history off), Labels (Queue folder: label automatically off)",
+                              details: ["changes": .array([.string("askPreferences.keepHistory: — → false"), .string("labeling.autoLabelQueueFolder: — → false"),
+                                                           .string("runnerOptions.openrouter: changed")]),
+                                        "readableChanges": .array([.string("Keep history: On → Off"), .string("Queue folder: label automatically: On → Off"),
+                                                                   .string("Runner options: changed")])])
+        let facts = t.facts(e, now: e.at)
+        XCTAssertEqual(facts.heading, "CHANGES")
+        XCTAssertEqual(Array(facts.rows.dropLast()), [ActivityText.Fact("Keep history", "On → ", emphasis: "Off"),
+                                                      ActivityText.Fact("Queue folder: label automatically", "On → ", emphasis: "Off"),
+                                                      ActivityText.Fact("Runner options", "Changed")])
+        XCTAssertEqual(t.readableSettingsFact("Adding notes: Claude Code · sonnet → Codex · gpt-5"),
+                       ActivityText.Fact("Adding notes", "Claude Code · sonnet → ", emphasis: "Codex · gpt-5"))
+    }
+
     func testSettingsChangesAndUnknownKeys() {
         let t = ActivityText()
         XCTAssertEqual(t.settingsFact("askPreferences.keepHistory: true → false"), ActivityText.Fact("Keep history", "On → ", emphasis: "Off"))

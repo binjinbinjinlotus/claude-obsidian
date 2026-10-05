@@ -11,7 +11,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, test } from 'node:test';
-import type { ActivityEntry, CoreEvent, Job } from '../contracts.js';
+import type { ActivityEntry, CoreEvent, Job, Settings } from '../contracts.js';
+import { describeSettingsChanges, SETTING_LABELS, SETTINGS_SECTIONS } from './settings-labels.js';
 import { createCore } from '../index.js';
 import { startServer, type RunningServer } from '../server/http.js';
 import { statePaths } from '../store/paths.js';
@@ -84,6 +85,62 @@ describe('redaction', () => {
     }
   });
 
+  // Paths on this Mac (2026-10-04): the Activity screen showed a script as "/[redacted].py" and the vault as "[redacted]".
+  const macPaths = [
+    '/Users/jinbinliu/Library/Application Support/Distill/collectors/scripts/col-3f2a9c1e-8d4b-4b2a-9c1e-8d4b4b2a9c1e/collector.py',
+    '~/Library/Application Support/Distill/collectors/scripts/col-3f2a9c1e-8d4b-4b2a-9c1e-8d4b4b2a9c1e/collector.py',
+    '/private/var/folders/1b/qpdk0gs15sl2jjwfmqcxvfjc0000gn/T/distill-activity-Xk9mQ2/state/collectors/scripts/col-a1b2/collector.py',
+    '/var/folders/1b/qpdk0gs15sl2jjwfmqcxvfjc0000gn/T/distill-activity-Xk9mQ2/Vault',
+    '/private/var/folders/1b/qpdk0gs15sl2jjwfmqcxvfjc0000gn/T/tmp.AbCdEf0123456789GhIjKlMnOpQrStUvWxYz/vault',
+    '/Users/jinbinliu/Library/Mobile Documents/iCloud~md~obsidian/Documents/Research Vault',
+    '/Users/jinbinliu/Distill Inbox/0123456789abcdef0123456789abcdef01234567/notes.md', // a folder named with 40 hex
+    '/tmp/3f2a9c1e8d4b4b2a9c1e8d4b4b2a9c1e/collector.py', // a UUID without dashes
+    '~/.Trash/export 2.zip',
+  ];
+
+  test('paths stay readable: long temp paths, Application Support, hex and UUID folder names', () => {
+    for (const p of macPaths) {
+      assert.equal(redactText(p), p);
+      assert.equal(redactText(p, { path: true }), p);
+      // inside text: an error message quoting the path, and a summary
+      const msg = `ENOENT: no such file or directory, open '${p}'`;
+      assert.equal(redactText(msg), msg);
+      const summary = `Couldn't read ${p} (gone)`;
+      assert.equal(redactText(summary), summary);
+    }
+    const d = redactDetails({ scriptFile: macPaths[0], vault: macPaths[3], folder: macPaths[6], changedPaths: [macPaths[2]] })!;
+    assert.equal(d.scriptFile, macPaths[0]);
+    assert.equal(d.vault, macPaths[3]);
+    assert.equal(d.folder, macPaths[6]);
+    assert.deepEqual(d.changedPaths, [macPaths[2]]);
+  });
+
+  test('secrets are still caught next to, inside and outside paths', () => {
+    const aws = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'; // AWS secret access key shape: 40 base64 chars with "/"
+    const b64 = 'Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MEFCQ0RFRkdISUpLTE1OT1A=';
+    const hex = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08';
+    for (const s of [aws, b64, hex]) {
+      const out = redactText(`secret ${s} here`);
+      assert.ok(!out.includes(s), `${s} survived: ${out}`);
+    }
+    // Precise shapes are caught even inside a path or a path-keyed detail.
+    const inPath = '/Users/jinbinliu/keys/sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789/x.py';
+    assert.ok(!redactText(inPath).includes('sk-ant-api03'));
+    assert.ok(!redactText(inPath, { path: true }).includes('sk-ant-api03'));
+    const d = redactDetails({ scriptFile: '/tmp/ATATT3xFfGF0abcdefghijklmnopqrstuvwxyz/run.py' })!;
+    assert.ok(!String(d.scriptFile).includes('ATATT3x'));
+    // A path next to a secret: the path stays, the secret goes.
+    const mixed = `Failed /Users/jinbinliu/Library/Application Support/Distill/collectors/scripts/col-a1b2/collector.py: Authorization: Bearer abcdefgh12345678 and ${aws}`;
+    const out = redactText(mixed);
+    assert.ok(out.includes('/Users/jinbinliu/Library/Application Support/Distill/collectors/scripts/col-a1b2/collector.py'), out);
+    assert.ok(!out.includes('abcdefgh12345678') && !out.includes(aws), out);
+    // URLs are not paths: credentials and tokens in them still go.
+    assert.equal(redactText('https://me:pa55@example.com/x'), `https://${REDACTED}@example.com/x`);
+    const url = `https://example.com/api/${b64}`;
+    assert.ok(!redactText(url).includes(b64));
+    assert.ok(!redactText('see eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U').includes('eyJhbGci'));
+  });
+
   test('details: secret-looking keys go, strings are clipped, lists capped', () => {
     const d = redactDetails({ token: 'abc', apiKey: 'x', note: 'ok', long: 'x'.repeat(1000), list: Array.from({ length: 30 }, (_, i) => `f${i}`), n: Number.NaN })!;
     assert.equal(d.token, REDACTED);
@@ -93,6 +150,82 @@ describe('redaction', () => {
     assert.equal((d.list as string[]).length, 21);
     assert.equal(d.n, null);
     assert.ok(clip('a  b\n c', 10) === 'a b c');
+  });
+});
+
+// ───────────── unit: settings in Settings' words ─────────────
+
+describe('settings labels', () => {
+  const base = {
+    vaults: [],
+    batchIntervalMinutes: 10,
+    settleSeconds: 600,
+    model: 'sonnet',
+    claudePath: '/Users/me/.local/bin/claude',
+    pythonPath: '/usr/bin/python3',
+    productRoot: '/Users/me/claude-obsidian',
+    extraAllowedTools: [],
+    autoProcessEnabled: true,
+    enabledRunners: ['claude-code'],
+    taskDefaults: {},
+  } as Settings;
+
+  test('the canvas card: "Ask history (Keep history off)", "Keep history: On → Off" (an absent setting reads its default)', () => {
+    const d = describeSettingsChanges(base, { ...base, askPreferences: { keepHistory: false } });
+    assert.equal(d.summary, 'Ask history (Keep history off)');
+    assert.deepEqual(d.lines, ['Keep history: On → Off']);
+  });
+
+  test('labels from Settings, values in words, grouped by section; leaf keys pick their own section', () => {
+    const d = describeSettingsChanges(base, {
+      ...base,
+      autoProcessEnabled: false,
+      batchIntervalMinutes: 90,
+      queueScanMinutes: 0,
+      askPreferences: { labelMatch: 'all', historyDays: 30 },
+      taskDefaults: { ingest: { runnerID: 'codex', model: 'gpt-5' } },
+      actionPreferences: { historyDays: 0 } as Settings['actionPreferences'],
+    });
+    assert.deepEqual(d.lines, [
+      'Keep action history: 90 days → Forever',
+      'Days: 10 days → 30 days',
+      'When Ask is limited to several labels, use notes with: Any label → All labels',
+      'Automatic batching: On → Off',
+      'Batch every: 10 minutes → 1 hour 30 minutes',
+      'Check the queue folder for changes: Every 5 min → Off',
+      'Adding notes: Claude Code · sonnet → Codex · gpt-5',
+    ]);
+    assert.equal(
+      d.summary,
+      'To-do defaults (Keep action history: Forever), Ask history (Keep chats 30 days), Labels (Use notes with all labels) and 2 more',
+    );
+    const batching = describeSettingsChanges(base, { ...base, autoProcessEnabled: false, batchIntervalMinutes: 15 });
+    assert.equal(batching.summary, 'Batching (Automatic batching off, Batch every 15 minutes)');
+  });
+
+  test('prompts and runner options never show values; unknown keys fall back to the raw key', () => {
+    const d = describeSettingsChanges(base, {
+      ...base,
+      runnerOptions: { openrouter: { baseURL: 'https://me:pa55@proxy.example.com' } },
+      actionPreferences: { findPrompt: 'Find the things' } as Settings['actionPreferences'],
+      fooBar: 3,
+    } as Settings);
+    assert.deepEqual(d.lines, ['Prompt for finding actions: changed', 'fooBar: — → 3', 'Runner options: changed']);
+    assert.equal(d.summary, 'Actions (Prompt for finding actions), fooBar, AI runners (Runner options)');
+    assert.ok(!JSON.stringify(d).includes('pa55') && !JSON.stringify(d).includes('Find the things'));
+  });
+
+  test('every section and label is one Settings shows (clients/macos/Sources/Distill)', (t) => {
+    const dir = path.resolve(here, '../../../clients/macos/Sources/Distill');
+    if (!fs.existsSync(dir)) return t.skip('no Mac sources in this checkout');
+    const swift = fs.readdirSync(dir).filter((f) => f.startsWith('Settings')).map((f) => fs.readFileSync(path.join(dir, f), 'utf8')).join('\n');
+    for (const section of Object.values(SETTINGS_SECTIONS)) assert.ok(swift.includes(`"${section}"`), `section “${section}” is not in Settings`);
+    // Names the activity log needs that Settings has no single string for (a switch without its own title, a whole list).
+    const ownWords = new Set(['Active vault', 'Keep history', 'Days', 'Runners turned on', 'Runner options', 'Action type settings', 'Prompt for finding actions', 'Include unconfirmed labels']);
+    for (const [key, entry] of Object.entries(SETTING_LABELS)) {
+      if (ownWords.has(entry.label) || key.startsWith('actionPreferences.sources.')) continue;
+      assert.ok(swift.includes(entry.label), `${key}: “${entry.label}” is not in Settings`);
+    }
   });
 });
 
@@ -507,7 +640,13 @@ describe('activity through the core and the API', () => {
     const deleted = last('collector.deleted')!;
     assert.equal(deleted.object.name, 'Meetings');
     assert.equal(deleted.details?.scriptBytes, Buffer.byteLength(body));
-    assert.equal(deleted.details?.scriptLines, 4);
+    assert.equal(deleted.details?.scriptLines, 3); // three lines and a final newline
+    // Written in Distill (a managed file since v6): flagged, and the path is kept whole for Show in Finder.
+    assert.equal(deleted.details?.scriptManaged, true);
+    const scriptFile = deleted.details?.scriptFile as string;
+    assert.ok(scriptFile.startsWith(state) && scriptFile.includes(`/collectors/scripts/${id}/`), scriptFile);
+    assert.ok(!scriptFile.includes(REDACTED));
+    assert.ok(!String(deleted.details?.vault ?? '').includes(REDACTED));
     assert.equal(deleted.recovery?.kind, 'trash');
     // The activity event went out too.
     assert.ok(events.some((e) => e.type === 'activity' && e.entry.type === 'collector.deleted'));
@@ -535,6 +674,31 @@ describe('activity through the core and the API', () => {
     assert.equal((await request('POST', `/v1/trash/${trashId}/restore`)).status, 404);
   });
 
+  test('scripts written in Distill read "N lines · size, written in Distill"; your own file stays a path', async () => {
+    const created = await request('POST', '/v1/collectors', { kind: 'script', name: 'Written here', script: { source: { inline: 'echo one\necho two\n' }, interpreter: 'zsh' } });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const id = created.body.id as string;
+    const made = last('collector.created')!;
+    assert.equal(made.details?.scriptManaged, true);
+    assert.equal(made.details?.scriptLines, 2);
+    assert.equal(made.details?.scriptBytes, 18);
+    assert.ok(String(made.details?.scriptFile).includes(`/collectors/scripts/${id}/`));
+
+    // Your own file: a path, not flagged.
+    const own = path.join(root, 'My Scripts', 'collect.sh');
+    fs.mkdirSync(path.dirname(own), { recursive: true });
+    fs.writeFileSync(own, 'echo mine\n');
+    assert.equal((await request('PATCH', `/v1/collectors/${id}`, { script: { source: { file: own } } })).status, 200);
+    const changed = last('collector.updated')!;
+    assert.equal(changed.details?.script, `2 lines · 18 bytes, written in Distill → ${own}`);
+    const ownCollector = await request('POST', '/v1/collectors', { kind: 'script', name: 'Mine', script: { source: { file: own }, interpreter: 'zsh' } });
+    assert.equal(ownCollector.status, 201, JSON.stringify(ownCollector.body));
+    const mine = last('collector.created')!;
+    assert.equal(mine.details?.scriptFile, own);
+    assert.equal(mine.details?.scriptManaged, undefined);
+    assert.equal(mine.details?.scriptLines, undefined);
+  });
+
   test('v6: one trash for a script collector: its folder goes with the record; delete, restore, allow (packages reinstall), run the same bytes', async () => {
     // A fake npm on the scripts' PATH (never the network).
     fs.writeFileSync(path.join(root, 'bin', 'npm'), '#!/bin/zsh\nprint "fake npm $*"\nmkdir -p node_modules/dep\n', { mode: 0o755 });
@@ -554,6 +718,8 @@ describe('activity through the core and the API', () => {
     const savedEntry = last('collector.script_saved')!;
     assert.equal(savedEntry.details?.scriptBytes, Buffer.byteLength(body));
     assert.equal(String(savedEntry.details?.scriptSha256).length, 12);
+    assert.equal(savedEntry.details?.scriptManaged, true);
+    assert.equal(savedEntry.details?.interpreter, 'node');
 
     assert.equal((await request('DELETE', `/v1/collectors/${id}`)).status, 200);
     assert.ok(!fs.existsSync(dir), 'the folder left scripts/');
@@ -656,6 +822,8 @@ describe('activity through the core and the API', () => {
     const offItem = ((await request('GET', '/v1/trash')).body.items as { objectID: string; details: Record<string, unknown> }[]).find((i) => i.objectID === 'chat-b');
     assert.equal(offItem?.details.reason, 'keep-history-off');
     assert.equal(last('settings.changed')?.details?.changes?.toString(), 'askPreferences.keepHistory: — → false');
+    assert.equal(last('settings.changed')?.summary, 'Changed settings: Ask history (Keep history off)');
+    assert.deepEqual(last('settings.changed')?.details?.readableChanges, ['Keep history: On → Off']);
 
     // Retention: an old unpinned chat removed by the sweep is "expired", from the scheduler.
     await core.updateSettings({ askPreferences: { keepHistory: true, historyDays: 10 } });
@@ -704,6 +872,8 @@ describe('activity through the core and the API', () => {
     assert.equal((await request('PUT', '/v1/settings', { batchIntervalMinutes: 15 })).status, 200);
     const s = last('settings.changed')!;
     assert.deepEqual(s.details?.changes, ['batchIntervalMinutes: 10 → 15']);
+    assert.equal(s.summary, 'Changed settings: Batching (Batch every 15 minutes)');
+    assert.deepEqual(s.details?.readableChanges, ['Batch every: 10 minutes → 15 minutes']);
     // no change, no line
     const before = readLog(state).length;
     await request('PUT', '/v1/settings', { batchIntervalMinutes: 15 });

@@ -354,13 +354,18 @@ public struct ActivityText: Sendable {
             if kind == "script" || e.details["interpreter"] != nil {
                 var parts: [String] = []
                 if let i = e.string("interpreter") { parts.append(i) }
-                if let file = e.string("scriptFile") {
+                // Written in Distill (inline, or a file Distill keeps: `scriptManaged`) shows lines and size;
+                // the path stays in the entry for Show in Finder. Your own file shows its path.
+                if let file = e.string("scriptFile"), e.details["scriptManaged"] != .bool(true) {
                     parts.append(collectorText.tilde(file))
                 } else {
                     if let lines = e.int("scriptLines") { parts.append(lines == 1 ? "1 line" : "\(lines) lines") }
                     if let bytes = e.int("scriptBytes") { parts.append(Self.size(bytes) + ", written in Distill") }
+                    else if e.details["scriptManaged"] == .bool(true) { parts.append("written in Distill") }
                 }
-                add("Script", parts.joined(separator: " · "), keys: ["interpreter", "scriptFile", "scriptLines", "scriptBytes"])
+                add("Script", parts.joined(separator: " · "), keys: ["interpreter", "scriptFile", "scriptManaged", "scriptLines", "scriptBytes"])
+                // collector.script_saved: the saved file's path is kept for Show in Finder; the hash prefix is for support.
+                if e.details["scriptManaged"] == .bool(true) { used.formUnion(["file", "scriptSha256"]) }
             }
             add("Folder", e.string("folder").map(collectorText.tilde), keys: ["folder"])
             add("After", e.string("afterCollect").map { $0 == "move" ? "Moves files into the queue" : $0 == "copy" ? "Copies files into the queue" : $0 },
@@ -395,10 +400,14 @@ public struct ActivityText: Sendable {
             if e.verb == "restored" { add("Deleted", whenText("deletedAt"), keys: ["deletedAt", "trashId"]) }
         case "settings":
             heading = "CHANGES"
-            for change in e.strings("changes") {
-                rows.append(settingsFact(change))
+            // `readableChanges` (newer cores) is already in Settings' words; `changes` has the raw keys.
+            let readable = e.strings("readableChanges")
+            if readable.isEmpty {
+                for change in e.strings("changes") { rows.append(settingsFact(change)) }
+            } else {
+                for line in readable { rows.append(readableSettingsFact(line)) }
             }
-            used.insert("changes")
+            used.formUnion(["changes", "readableChanges"])
             footnote = "Only what changed is listed. Keys and tokens are never shown, only that they changed."
         case "batch" where e.verb == "applied" || e.verb == "ready":
             heading = "PAGES"
@@ -432,6 +441,19 @@ public struct ActivityText: Sendable {
         if let arrow = rest.range(of: " → ") {
             let old = Self.word(String(rest[..<arrow.lowerBound])), new = Self.word(String(rest[arrow.upperBound...]))
             return Fact(label, "\(old) → ", emphasis: new)
+        }
+        return Fact(label, rest == "changed" ? "Changed" : rest)
+    }
+
+    /// "Keep history: On → Off" → Keep history: On → **Off**; "Runner options: changed" → Runner options: Changed.
+    /// The label is Settings' own and is kept as it is (it may hold a colon: "Queue folder: label automatically").
+    public func readableSettingsFact(_ line: String) -> Fact {
+        let head = line.range(of: " → ").map { line[..<$0.lowerBound] } ?? line[...]
+        guard let colon = head.range(of: ": ", options: .backwards) else { return Fact("Setting", line) }
+        let label = String(line[..<colon.lowerBound])
+        let rest = String(line[colon.upperBound...])
+        if let arrow = rest.range(of: " → ") {
+            return Fact(label, "\(rest[..<arrow.lowerBound]) → ", emphasis: String(rest[arrow.upperBound...]))
         }
         return Fact(label, rest == "changed" ? "Changed" : rest)
     }
