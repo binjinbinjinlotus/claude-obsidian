@@ -229,6 +229,21 @@ final class LiveCollectorsTests: XCTestCase {
         XCTAssertEqual(install?.result, "success")
         XCTAssertNotNil(install?.outputTail)
 
+        // Allow and run (frame X): allow starts the install, the run started right after waits for it
+        // and then finds the package (it would fail with "Cannot find module" if it ran first).
+        var ar = try await client.createCollector(NewCollectorInput(kind: .script, name: "Allow and run", vaultPath: vault.path, schedule: .hourly,
+                                                                    script: .init(source: .inline("require('tinypkg');\nconsole.log('found');\n"),
+                                                                                  interpreter: .node, manifest: manifest)))
+        ar = try await client.allowCollector(ar.id, sha256: try XCTUnwrap(ar.status?.currentSha256))
+        let queued = try await client.runCollector(ar.id)
+        var done: CollectorRun?
+        try await waitFor("allow and run") {
+            done = try await client.collectorRuns(ar.id, limit: 3).first { $0.id == queued.id && !$0.result.isActive }
+            return done != nil
+        }
+        XCTAssertTrue(done?.result == .success || done?.result == .nothing, "the run waited for the install: \(String(describing: done))")
+        XCTAssertEqual(done?.stdoutTail?.trimmingCharacters(in: .whitespacesAndNewlines), "found")
+
         // A manifest pointing at a missing local package: the install fails, runs wait (installFailed).
         let bad = try await client.collectorScript(n.id)
         _ = try await client.saveCollectorScript(n.id, CollectorScriptUpdate(manifest: .some("{ \"dependencies\": { \"nope\": \"file:\(root.path)/missing\" } }\n"),

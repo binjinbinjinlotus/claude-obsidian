@@ -128,9 +128,13 @@ extension CollectorsStore {
         let key = c.id + "|" + (c.status?.currentSha256 ?? "")
         if let f = consentFiles[key] { return f }
         guard let client, fixtureNow == nil else { return nil }
-        consentFiles[key] = CollectorScriptFiles(collectorId: c.id, interpreter: c.script?.interpreter ?? .zsh, managed: c.isManaged, path: "")
-        Task { [weak self] in
-            if let f = try? await client.collectorScript(c.id) { self?.consentFiles[key] = f }
+        // Called from view bodies: change published state after this update, never during it.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.consentFiles[key] == nil else { return }
+            self.consentFiles[key] = CollectorScriptFiles(collectorId: c.id, interpreter: c.script?.interpreter ?? .zsh, managed: c.isManaged, path: "")
+            Task { [weak self] in
+                if let f = try? await client.collectorScript(c.id) { self?.consentFiles[key] = f }
+            }
         }
         return nil
     }

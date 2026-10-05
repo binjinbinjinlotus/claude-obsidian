@@ -46,9 +46,10 @@ supersede it with a new entry.
     on every board (frame T's "· in Distill's collectors folder" was
     dropped for one calm form); W adds a Packages line.
   - **Code fields are an NSTextView** with smart quotes, dashes and text
-    replacement off and no wrapping (SwiftUI's TextEditor substituted quotes
-    in package.json and shell code, and wrapped lines broke the line
-    numbers).
+    replacement off and no wrapping (SwiftUI's TextEditor can substitute
+    quotes under the system's smart-quotes setting, which would break
+    package.json and shell code; wrapped lines broke the line numbers in the
+    first render).
   - **`.ts` opens in the default text editor** when the system's handler is
     a media player or none (`.ts` is also MPEG-2 transport stream).
   - **Found, not fixed here (core):** the core runs the login shell's
