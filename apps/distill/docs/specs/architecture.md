@@ -90,6 +90,7 @@ application/json`, at most 1 MiB). Every error is `{"error": {"code",
 | DELETE | `/v1/queue/entries` | `{path}` | `{entries}`: the file (and a note's `.distill.json`) moved to the Trash; 400 outside the active queue folder, 409 when a batch took it |
 | POST | `/v1/queue/process` | `{force?}` | `{job: Job \| null}` |
 | POST | `/v1/queue/scan` | `{trigger?: manual\|window}` | `QueueScanResult` (Refresh and the window-active scan; [Queue and batching](queue-and-batching.md)) |
+| POST | `/v1/batches/reread` | `{files: inbox paths \| jobId, perBatch?: 1–10 (3), vault?, instruction?}` | 201 `RereadResult` `{id, vaultPath, perBatch, fromJob?, groups: [{files, folders?, jobId?}], started: [Job], waiting, skipped?}`: re-read sources in place, one batch per group, one at a time ([Queue and batching](queue-and-batching.md) → Re-read sources); 400 for a missing file (named), 404 unknown job, 409 a job still running or in Review |
 | POST | `/v1/queue/labels` · `/v1/queue/labels/retry` · `/v1/queue/labels/skip` | `{path, labels}` · `{path}` · `{path}` | `{entries}`: confirm a queue file's labels, ask again after a failure, or send it without labels ([Labels and sources](labels-and-sources.md) → Queue files) |
 | POST | `/v1/notes` | `AddNoteRequest` (`labels?`, `suggest?: wait\|background\|none`, `origin?: app\|cli`) | 201 `AddNoteResult` |
 | POST | `/v1/images/extract` | `{imagePath, vaultPath?}` (absolute png/jpg/gif/webp) | `{text, model}` (`text` '' = none found); imageText task; closing the request stops the runner |
@@ -188,6 +189,8 @@ distill history show <id> [--json]
 distill history rm <id> [--json]
 distill status [--json]           # server, vault, queue, pending reviews
 distill queue scan [--json]       # Refresh: rescan the queue folder
+distill batch reread <inbox/file>... | --job JOB_ID [--per-batch N] [--instruction "…"] \
+            [--vault PATH] [--json]   # re-read in full, groups of 3; approves nothing
 distill actions list [--type T] [--history] [--json]
 distill actions add "<title>" [--type todo] [--body "…"] [--why "…"] [--due YYYY-MM-DD] \
             [--vault PATH] [--json]   # no confirm command
@@ -282,6 +285,9 @@ item can use the same `distill serve` entry point later.
   exits before it is ready, the CLI reports the log path and the new lines.
   Secret values are never logged.
 
+- `<state dir>/reread.json` (v9): re-reads with groups not started yet
+  ([Queue and batching](queue-and-batching.md) → Re-read sources); removed
+  when every group has started.
 - `<state dir>/actions.json` (v3): action items and the ids of batches
   already searched for actions; `<state dir>/connections.json` (mode `0600`):
   non-secret connection details (Atlassian site, display name). Connection

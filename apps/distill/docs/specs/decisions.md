@@ -17,6 +17,58 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+Full reads and re-reading sources. The owner's 22-note batch
+(`job-20261004-233313-0018`) read the Gemini summaries and only 8 files in
+full, following the ingest skill's "bounded first tranche". The owner wants the
+notes re-read in full, through Review as usual. This is core and CLI only, with
+no new UI. Specs: [Queue and batching](queue-and-batching.md) → Re-read sources,
+[Architecture](architecture.md).
+
+- **Every ingest prompt asks for a full read** (`FULL_READ_PROMPT` in
+  `engine/job-kinds.ts`):
+  - The source budget is the full size of every file. The existing-page budget
+    stays the skill's default.
+  - Read each file to its end in consecutive sections, using only the Read tool.
+    When a Read returns fewer lines than asked, continue from its last line.
+  - Skip lines that are only embedded base64 images.
+  - Process one file at a time: draft its source page before opening the next
+    file, then update the shared pages and build one bundle.
+  - For meetings, write a detailed source page: per-topic Discussion and Open
+    questions, as well as key points, decisions and actions.
+  - Mark a page partial only when a file truly can't be read.
+  
+  This replaces "default existing-page budget from the skill".
+- **Ingest turns always stream** (stream-json), even without a live-log sink,
+  so the record shows which tool calls read the sources.
+- **Re-read groups hold 3 sources by default** (`perBatch`, from 1 to 10). The
+  limit is what one session can hold. The 22 notes of that batch hold about 800 KB of text (measured, base64 image lines left out; 3.9 MB raw),
+  roughly 210–260k tokens. Three full transcripts come to about 30–100k tokens,
+  which leaves room for the existing pages and the bundle. One batch of 22 is
+  what read in part.
+- **Each group is its own ingest batch, with a fresh session.** Groups run one
+  at a time per vault, under the existing `batchBlocker` rule: a running batch
+  blocks, and a batch waiting in Review doesn't. Groups that haven't started
+  are kept in `<state>/reread.json`, so they survive a core restart.
+- **Files are read in place.** Nothing is moved or copied, and nothing is
+  written into `inbox/`. A file that is missing is refused by name when the
+  re-read is requested. If it goes missing later, that group's batch fails by
+  name and the next group still runs. A re-read never quietly reads only part
+  of what was asked.
+- **Each prompt names the existing pages.** It gives each file's size as text
+  and the existing source page, found read-only through the source ledger's
+  `pages` or `source_path`. It says to update that page and not create a
+  second one, and not to skip a source for having the same SHA-256 (the
+  skill's "unchanged input" check). The labels on each existing page are
+  written back unchanged; no label suggestions run.
+- **`--job` drops note manifests.** It takes the batch's files minus note
+  manifests, which are instructions whose images were handled at the first
+  ingest. Each folder stays one source.
+- **Cancelling a re-read batch drops its groups that haven't started.** A
+  failed or rejected group doesn't stop the rest.
+- **Finding actions stays on for re-read batches.** Its dedupe already skips
+  lines found before, in any status. Only new parts of the transcripts can add
+  items.
+
 Review after Approve and Clean up inbox. The owner: "add a manual cleanup
 button" and "I can see the progress after I approved". Canvas: ReviewProgress,
 InboxCleanup, ApplyProgress. Specs: [Clean up inbox](inbox-cleanup.md),

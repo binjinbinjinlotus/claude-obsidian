@@ -160,6 +160,74 @@ Canvas: "Queue rows: every state" and Main. Code: `QueueView` in
    `labels_by: user`; unconfirmed AI → `tags` + `labels_by: ai`,
    `labels_reviewed: false`, `labels_origin`; otherwise no labels. The
    approval gate is unchanged.
+   **Full reads** (2026-10-05): the scope line says the source budget is the
+   full size of the files and the existing-page budget is the skill's default.
+   A shared block (`FULL_READ_PROMPT`) says to:
+   - read each file to its end in consecutive sections, only with the Read
+     tool, continuing when a Read returns fewer lines than asked;
+   - skip base64 image lines;
+   - process one file at a time: draft its source page, then the next file,
+     then the shared pages and one bundle;
+   - write detailed meeting pages, with per-topic Discussion and Open
+     questions;
+   - mark a page partial only when a file truly can't be read.
+
+   Ingest turns always stream, so the tool calls that read the sources are on
+   record.
+
+## Re-read sources (built 2026-10-05)
+
+Sources already ingested are read again, completely, and their existing pages
+are updated through Review as usual. This was built for a batch that read its
+long meeting notes only in part. There is no UI yet; the core and CLI do it.
+Code: `core/src/engine/reread.ts`, `rereadSources` and `pumpRereads` in
+`core/src/engine/index.ts`, `rereadPrompt` in `core/src/engine/job-kinds.ts`.
+
+- **Request.** Make it with `POST /v1/batches/reread {files | jobId, perBatch?,
+  vault?, instruction?}`, or with
+  `distill batch reread <inbox/file>... | --job JOB_ID [--per-batch N]
+  [--instruction "..."] [--vault PATH] [--json]`.
+  - `files` are vault-relative paths in `inbox/`.
+  - `jobId` takes a finished batch's `files` minus note manifests
+    (`.distill.json`, listed in `skipped`). Each of its folders stays one
+    source.
+  - A batch still running or waiting in Review is refused.
+  - Every file must be a regular file inside `inbox/` (no symbolic links).
+    A missing one is refused by name, so a re-read never quietly skips part
+    of what was asked.
+- **Groups.** Sources go in groups of `perBatch`: 3 by default, from 1 to 10
+  ([Decisions](decisions.md), 2026-10-05; the limit is what one session
+  holds). Each group is its own ingest batch with a fresh session, and the
+  `reread` field on the job records `{id, group, groups, fromJob?,
+  instruction?}`. Groups run one at a time per vault, under the same rule as
+  any batch (`batchBlocker`): a running batch blocks the next, and batches
+  waiting in Review don't. The next group starts when the one before leaves
+  `running`. That happens straight away when it reaches Review, and also on
+  the 5-second tick and at core start. Groups that haven't started are kept in
+  `<state>/reread.json`.
+- **In place.** Nothing is moved, copied or written into `inbox/`, and the
+  queue is not touched. The job's `files` are set directly. If a file goes
+  missing before its group starts, that batch fails by name and the next group
+  runs. Cancelling a re-read batch drops its groups that haven't started.
+- **Prompt.** The ingest prompt, with the full-read block, plus a RE-READ
+  block that:
+  - says the sources were ingested before but only partly read;
+  - says not to skip them for an unchanged SHA-256;
+  - asks to update the existing source page, with no duplicate, plus the
+    entity and concept pages and the ledgers as needed;
+  - names, per file, its size as text, any embedded base64 image lines
+    (their line numbers, to skip), and the existing source page;
+  - includes any `instruction` from the user, marked as the user's.
+  
+  The core finds each existing page read-only, through the source ledger's
+  `pages` (by `origin.locator`) and through `source_path`. Its labels (`tags`,
+  `labels_by`, `labels_reviewed`, `labels_origin`) go into the Labels section
+  unchanged, and no label suggestions run.
+- **Activity and live log.** `batch.started` carries `reread: true`,
+  `rereadID`, `rereadGroup`, `rereadGroups` and `fromJob`, and its summary
+  reads "(re-read 1 of 8)". The first step of the live log is "Re-reading N
+  files already in your inbox (group g of n)", in place of "Moved N files…".
+  The steps after it are a normal batch's.
 
 ## Progress
 
