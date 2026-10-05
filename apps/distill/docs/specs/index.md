@@ -45,6 +45,7 @@ https://claude.ai/artifact/VSqHFPZjcqY2bMqFEnPqpG
 - [Activity log and trash](activity-log.md): what changed, when and from where (app, CLI, agent, scheduler) for chats, collectors, actions, batches, the queue, connections and settings; deletes of chats and collectors go to a 30-day trash with Restore. Core, API, CLI and Mac UI (History → Activity) built.
 - [Session continuity](session-continuity.md): when an AI session Distill would resume is gone, it asks before using a new one (batches, Ask, Terminal, CLI). Core, API, CLI and Mac UI built.
 - [Clean up inbox](inbox-cleanup.md): move files already in the knowledge base (ledger entry, unchanged, pages exist) from inbox/ to the Trash, only when you ask; from History, Review and Settings → Batching. Core, API and Mac UI built.
+- [Full reads](full-read.md): batches sized to what one session can read; coverage counted by the core from the tool results; automatic continuations, fresh-session parts and a hard stop that can't be approved; detail level and the page-vs-source check; originals archived in .raw/captured/ with each batch; automatic repair. Designed.
 - [Live log](live-log.md): a batch's steps in plain words (labels per file, the AI's steps, the core's check, your review, applying) and a collector's output in order, live and kept; Show steps / Show log / Open log open it in place. Core, API and Mac UI built.
 - [Intake: paste and drop](intake-paste-drop.md): how dropped files and pasted screenshots/text enter the queue.
 

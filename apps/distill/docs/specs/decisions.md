@@ -17,6 +17,41 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+Full reads (designed). The owner: "relying on human is wrong. we need the
+solution to be more automatic". Canvas: FullRead (row 11). Spec: [Full
+reads](full-read.md).
+
+- **Coverage comes from the tool results, never from the AI.**
+  - The core reads each Read result's returned span (`tool_use_result.file`)
+    from the turn's stream.
+  - The live log is not the evidence: it is capped and keeps words only.
+  - Reason: two of the owner's "whole" reads were cut at lines 139 and 221
+    with no error (`truncatedByTokenCap`).
+- **The core makes a reading copy before the turn.**
+  - Embedded image lines become placeholders, and long lines are split. The
+    estimate and the coverage use the copy.
+  - A file the core can't decode is unreadable by the core's decision.
+- **Missing lines are fixed without asking.**
+  - Up to 3 automatic continuations name the exact ranges.
+  - What is still left becomes an `unread` part in the same job, read again
+    in a new session.
+  - Review only ever shows 100% coverage, as information.
+  - The only owner-facing stop is a file that can't be read. It is excluded
+    from the change and can't be approved.
+- **Batch size is a token budget.**
+  - Automatic = 30% of the model's context, at most 100K: 60K on a 200K
+    model, so the session stays clear of compaction.
+  - The rest runs right after.
+- **Archive with the batch (Option A).** The ingest bundle creates
+  `.raw/captured/<sha256>.<ext>` and points the ledger locator at it, so
+  `.raw/` changes only through the reviewed transaction. Clean up then only
+  clears inbox copies. Pending the owner's confirmation.
+- **Partial is data.** It is the core's coverage record keyed by sha256, not
+  page prose. Existing pages are re-read automatically: all 22 of the
+  owner's, since prose can't be trusted.
+- **Ingest needs the `readCoverage` runner capability.** Codex is off for
+  ingest until core-fed sections exist. Pending the owner's confirmation.
+
 Review after Approve and Clean up inbox. The owner: "add a manual cleanup
 button" and "I can see the progress after I approved". Canvas: ReviewProgress,
 InboxCleanup, ApplyProgress. Specs: [Clean up inbox](inbox-cleanup.md),
