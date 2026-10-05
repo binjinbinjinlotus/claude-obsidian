@@ -1,7 +1,7 @@
 ---
 title: App shell and visual design
 status: built
-updated: 2026-10-04
+updated: 2026-10-05
 ---
 
 # App shell and visual design
@@ -81,17 +81,24 @@ using it. `distill.sh core-stop` stops it.
 ## Sections
 
 - **Queue**: heading with count and next-batch line, Process now, drop panel
-  with a flask that fills with the queue, file list.
-- **Review**: jobs waiting for approval (see [Approval and review](approval-and-review.md)).
+  with a flask that fills with the queue, file list ([Queue and
+  batching](queue-and-batching.md)).
+- **Collectors**: directly under Queue ([Collectors](collectors.md)).
+- **Review**: batches waiting for approval, oldest first, one tab each (see
+  [Approval and review](approval-and-review.md)).
+- **Actions**: to-dos and action types ([Actions](actions.md)).
   **Approve & apply** turns into a disabled "Applying N changes…" and the
   card locks (Reject, Send reply disabled; "Writing to <vault> · m:ss") until
   the job event arrives or the call fails.
 - **Ask**: questions over the vault ([Ask](ask.md)); "Recent questions" show
   under the nav while it is open.
 - **Labels**: label review ([Labels and sources](labels-and-sources.md)).
-- **History**: **Jobs | Ask chats**. Jobs: all other jobs with status dots and
-  details; **Clear** removes finished jobs (`DELETE /v1/jobs/:id`). Ask chats:
-  open, pin, delete.
+- **History**: sub-items Jobs · Ask chats · Actions · Activity. Jobs: all
+  other jobs with status dots and details; **Clear** removes finished jobs
+  (`DELETE /v1/jobs/:id`). Ask chats: open, pin, delete. Activity: the
+  activity log and trash ([Activity log and trash](activity-log.md)).
+- A batch's steps and a collector's output open in place ("‹ back") from
+  Queue, Review, History and Collectors ([Live log](live-log.md)).
 
 ### Loading states
 
@@ -109,12 +116,12 @@ using it. `distill.sh core-stop` stops it.
 - `progress` events are kept by key in `AppModel.progress` (also loaded from
   `GET /v1/progress` on connect); finished entries leave after 2 s.
 - Sidebar footer: active vault switcher with model and status.
-- Sidebar sections: Queue, Review, **Actions**, Ask, Labels, History
-  (canvas: Sidebar, SidebarStates). Pages with more than two parts use
+- Sidebar sections: Queue, **Collectors**, Review, **Actions**, Ask, Labels,
+  History (canvas: Sidebar, SidebarStates). Pages with more than two parts use
   sidebar **sub-items**, shown only while the parent is open: Actions has To
   do · Slack messages · Jira tickets · Confluence pages (one per enabled
   type from the registry; a type turned off has none), History has Jobs ·
-  Ask chats · Actions (replacing the old segmented control). An open parent
+  Ask chats · Actions · Activity (replacing the old segmented control). An open parent
   is not a card; its selected sub-item is (white, shadow, blue count). Each
   Actions sub-item counts what waits on you; closed, Actions shows the sum in
   a blue pill. Labels keeps its two tabs on the page.

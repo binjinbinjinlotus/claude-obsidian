@@ -6,10 +6,13 @@ updated: 2026-10-05
 
 # Approval and review
 
-Nothing reaches the vault without the user's decision. Code:
-`clients/macos/Sources/WorkerCore/WorkerEngine.swift`, `clients/macos/Sources/WorkerCore/JobKind.swift`
-(`WorkerProtocol`, `JobContext.planningTools`), UI in
-`clients/macos/Sources/Distill/MainView.swift` (`ReviewSection`, `JobDetailView`).
+Nothing reaches the vault without the user's decision. Code: the TS core,
+`core/src/engine/index.ts` (approve, reply, allow, reject, inspect),
+`core/src/engine/job-kinds.ts` (`WorkerProtocol`, `JobContext.planningTools`),
+`core/src/engine/review-labels.ts` and `core/src/runners/permissions.ts`. UI
+in `clients/macos/Sources/Distill/MainView.swift` (`ReviewSection`,
+`JobDetailView`), `JobReview.swift`, `ReviewRows.swift`, and the logic in
+`DistillKit/ReviewLogic.swift`.
 
 ## Phase 1: plan
 
@@ -54,9 +57,10 @@ structured status.
 
 ## The approval screen
 
-On `needs_approval` the app checks that `bundle_path` lies inside the job's own
-directory, then runs `transaction inspect` itself. The screen shows the core's
-plan (`changed_paths`, `approval_sha256`), not Claude's description of it. A
+On `needs_approval` the core checks that `bundle_path` lies inside the job's
+own directory (otherwise the plan error says it refused to inspect it), then
+runs `transaction inspect` itself. The screen shows the core's plan
+(`changed_paths`, `approval_sha256`), not Claude's description of it. A
 change is shown as new (+) when the target file does not exist yet.
 
 User actions:
@@ -69,7 +73,39 @@ User actions:
   the job. Compound shell commands get no rule (Claude Code checks them part by
   part); Bash and out-of-job-dir Edit grants show a warning that they bypass
   review. The core refuses the gate-breaking ones (see Phase 1).
-- **Reject**: ends the job. Inbox files are kept.
+- **Reject**: ends the job. Inbox files are kept. On a rebuilt part the app
+  shows **Discard this part** and **Reject batch** instead (see "Approving
+  part of a batch").
+
+Approve, Reply and Allow resume the batch's AI session. When that session is
+gone, nothing is sent: the app asks before a new one is used
+([Session continuity](session-continuity.md), "The session seam" below).
+
+**In the Mac app since 2026-10-05** (canvas Review, ReviewStates,
+ReviewChoose):
+
+- Several batches can wait; Review lists them oldest first as tabs, each
+  with "N sources" or, after a part applied, "N left"
+  (`ReviewBatches`).
+- The change is shown in folding groups: **New pages** (open), **Updated**
+  (folded; its summary names the pages, plus the bookkeeping files) and
+  **Sources** (each source with its page and its labels; folded past 6 rows,
+  showing the most used labels).
+- With more than one source in a pending batch, each source has a pick box
+  and the header says "8 of 22 picked · 1 removed", with Pick all / Pick
+  none. The Approve button reads "Approve & apply" with everything picked,
+  "Approve N sources" for a subset, and "Approve the rebuilt change" on a
+  rebuilt part. It is off with "Pick at least one source", while labels are
+  being suggested ("Approve when the labels are in") or saved.
+- The chevron next to Approve offers **Approve, review labels later** when
+  the core prepared the unconfirmed twin or a subset is picked. Otherwise
+  the footer says "Approving also confirms the labels shown".
+- A source row has **Open page**, **Remove** (Undo while in Review) and an
+  editable label line; Done sends `POST /v1/jobs/:id/labels`.
+- A batch left without a plan (`approval.needsRebuild`) shows **Rebuild N
+  sources**; while a part is rebuilt, "Rebuilding with <model>…".
+- History shows "Applied in parts", one line per part ("8 sources at 11:52
+  PM · <operation> · labels left to review").
 
 Layout (canvas: "Review"): the details column shows the heading, then what
 needs the user (plan error, Claude's questions, the blocked-tools card with

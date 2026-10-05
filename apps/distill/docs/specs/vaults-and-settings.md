@@ -22,8 +22,8 @@ Canvas: SettingsNav, Settings.
 
 - The Settings window opens at 1140×720 (min 820×600). Its left column,
   `SettingsSectionNav` (236 pt), lists the sections in three groups:
-  - **General**: Vaults, Batching (Batch every and Wait before picking up a
-    file), Sources, Labels, Ask history, Keyboard shortcuts.
+  - **General**: Vaults, Batching (Batch every, Wait before picking up a
+    file, and Check the queue folder for changes), Sources, Labels, Ask history, Keyboard shortcuts.
   - **AI**: AI runners, Models for tasks. Advanced (model, paths, extra
     allowed tools) is a disclosure at the end of the AI runners page
     (`SettingsSection.advancedHome`): most of it configures how the Claude
@@ -124,11 +124,12 @@ unknown keys.
 | --- | --- |
 | `batchIntervalMinutes` | 10 |
 | `settleSeconds` | 600 (10 minutes): a file is batched only once unchanged this long. Settings → "Wait before picking up a file" edits it as hours (0–24) + minutes (0–59), with presets No wait, 1 min, 10 min, 1 hour, 4 hours, 24 hours (2026-10-05; was minutes + seconds). 0 = no wait; the core clamps it to 0..86400. Process now ignores it. Text files also wait for their labels (the label gate, [Queue and batching](queue-and-batching.md)). |
+| `queueScanMinutes` (v5) | absent = 5: the core rescans the queue folder in full this often; 0 = Off (Refresh, the window-active scan and batches still scan). Settings → Batching → "Check the queue folder for changes" offers 1, 5, 15, 60 minutes and Off; the core clamps a stored value to 0..1440. See [Queue and batching](queue-and-batching.md). |
 | `autoProcessEnabled` | true |
 | `model` | `sonnet` (Haiku/Sonnet/Opus cards, pinned IDs, or custom) |
 | `claudePath` | `~/.local/bin/claude` |
 | `pythonPath` | `/usr/bin/python3` |
-| `nodePath` | unset: the app looks for node itself (see [App shell](app-shell.md#finding-the-core)) |
+| `nodePath` | unset: the app looks for node itself (see [App shell](app-shell.md#finding-the-core)). The Node the core runs on also runs JavaScript and TypeScript collectors and their npm installs ([Collectors](collectors.md) → Languages) |
 | `productRoot` | the checkout the core runs from |
 | `extraAllowedTools` | empty (rules that would get round the approval gate are ignored at use time, never removed: [Approval and review](approval-and-review.md) → Phase 1) |
 | `enabledRunners`, `taskDefaults`, v2 keys | see `contracts.ts`; Settings edits them (Sources, Labels, Ask history, Keyboard shortcuts, AI runners, Models for tasks) |

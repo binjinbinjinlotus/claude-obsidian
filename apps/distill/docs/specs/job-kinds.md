@@ -1,24 +1,26 @@
 ---
 title: Job kinds
 status: built
-updated: 2026-10-04
+updated: 2026-10-05
 ---
 
 # Job kinds
 
-The extension point for new kinds of work. Code: `clients/macos/Sources/WorkerCore/JobKind.swift`.
+The extension point for new kinds of work. Code: `core/src/engine/job-kinds.ts`.
 
-```swift
-public protocol JobKind: Sendable {
-    var id: String { get }
-    var displayName: String { get }
-    var consumesQueue: Bool { get }          // queue batches create this kind
-    func initialPrompt(_ ctx: JobContext) -> String
-    func allowedTools(_ ctx: JobContext) -> [String]
+```ts
+export interface JobKind {
+  readonly id: string;
+  readonly displayName: string;
+  readonly consumesQueue: boolean;   // queue batches create this kind
+  readonly task: AITask;             // which per-task runner/model/effort setting it uses
+  readonly appliesInCore?: boolean;  // the core builds the bundle and runs the approved apply
+  initialPrompt(ctx: JobContext): string;
+  allowedTools(ctx: JobContext): string[];
 }
 ```
 
-Register a kind in `JobKinds.all`. Every kind gets the shared machinery for
+Register a kind in `JOB_KINDS`. Every kind gets the shared machinery for
 free: session start/resume, structured status, approval screen, reply, allow,
 reject, cost tracking, Open Session in Terminal, and recovery.
 

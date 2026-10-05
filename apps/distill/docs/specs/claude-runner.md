@@ -1,16 +1,16 @@
 ---
 title: Claude runner
 status: built
-updated: 2026-10-01
+updated: 2026-10-05
 ---
 
 # Claude runner
 
 The Claude Code implementation of [AI runners](ai-runners.md). Every unit of
 work is one or more non-interactive `claude -p` turns in a single Claude Code
-session. Code: `core/src/runners/claude-code.ts` (TypeScript core) and
-`clients/macos/Sources/WorkerCore/Runners/ClaudeCodeRunner.swift`,
-`clients/macos/Sources/WorkerCore/WorkerEngine.swift` (`runTurn`).
+session. Code: `core/src/runners/claude-code.ts`, called from the engine's
+`runTurn` (`core/src/engine/index.ts`). The Swift runner was removed when
+the app became a client of the core (2026-10-01).
 
 ## Invocation
 
@@ -19,7 +19,7 @@ session. Code: `core/src/runners/claude-code.ts` (TypeScript core) and
   Jobs (ingest) run from the vault root. Ask runs from an empty workspace
   outside the vault, because Claude Code auto-approves reads inside its working
   directories and would bypass Ask's per-page `Read` rules (see [Ask](ask.md)).
-- Arguments (`claudeArguments` / `ClaudeInvocation.arguments`):
+- Arguments (`claudeArguments(ClaudeInvocation)`):
   `-p --output-format json --model <id>`, `--effort <level>` when set, then
   `--session-id <uuid>` on the first turn or `--resume <uuid>` afterwards,
   `--plugin-dir <productRoot>`, `--add-dir <dir>` for each
@@ -30,8 +30,7 @@ session. Code: `core/src/runners/claude-code.ts` (TypeScript core) and
 - Isolation: `--setting-sources '' --strict-mcp-config`. The run loads none of
   the user, project or local Claude Code settings and no MCP servers, so
   personal allow rules, hooks or tools never merge into Distill's permission
-  gate. The TypeScript core always passes them; the Swift runner does not yet,
-  and it has no `--tools` either.
+  gate. The core always passes them.
 - Visible tools: `RunRequest.availableTools` maps to `--tools a,b,c`, the
   complete set of tools the model can see (Ask: `Skill,Read,Glob,Grep`, or
   `Skill,Read` when filtered). `allowedTools` then decides which of them run
@@ -44,7 +43,7 @@ session. Code: `core/src/runners/claude-code.ts` (TypeScript core) and
 
 ## Output
 
-`--output-format json` returns an envelope. `ClaudeResult.parse` reads
+`--output-format json` returns an envelope. `parseClaudeJSON` reads
 `session_id`, `result`, `is_error`, `total_cost_usd`, `structured_output`, and
 `permission_denials` (`tool_name`, `tool_input`). The raw envelope of each turn is
 saved as `<vault>/.vault-meta/worker/<job-id>/turn-<n>.json`.

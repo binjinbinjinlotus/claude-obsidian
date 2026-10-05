@@ -24,8 +24,8 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Architecture](docs/specs/architecture.md) | built |
 | [AI runners](docs/specs/ai-runners.md) | built (Codex sandbox unverified) |
 | [Claude runner](docs/specs/claude-runner.md) | built |
-| [Approval and review](docs/specs/approval-and-review.md) | built |
-| [Queue and batching](docs/specs/queue-and-batching.md) | built (folder items, .gdoc waiting, queue scan: core, API, CLI and Mac UI) |
+| [Approval and review](docs/specs/approval-and-review.md) | built (labels in Review, pick/remove, approve-later, parts of a batch: core, API, macOS UI) |
+| [Queue and batching](docs/specs/queue-and-batching.md) | built (folder items, .gdoc waiting, queue scan: core, API, CLI and Mac UI; label gate and 0–24 h wait) |
 | [Intake: paste and drop](docs/specs/intake-paste-drop.md) | built |
 | [Vaults and settings](docs/specs/vaults-and-settings.md) | built |
 | [Job kinds](docs/specs/job-kinds.md) | built |
@@ -36,7 +36,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Ask](docs/specs/ask.md) | built |
 | [Write a note](docs/specs/notes-composer.md) | built |
 | [Markdown editing](docs/specs/markdown-editing.md) | built |
-| [Labels and sources](docs/specs/labels-and-sources.md) | built |
+| [Labels and sources](docs/specs/labels-and-sources.md) | built (queue-file labels and the label gate: core, API, macOS UI) |
 | [Quick actions and shortcuts](docs/specs/quick-actions.md) | built |
 | [App icon](docs/specs/app-icon.md) | built |
 | [Actions](docs/specs/actions.md) | built (core, API, CLI, macOS UI; answer selection bar not yet) |
