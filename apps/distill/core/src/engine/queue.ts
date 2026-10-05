@@ -846,18 +846,24 @@ function setGoogleDocsAside(folder: string, gdocs: FolderFile[]): string {
 }
 
 /**
- * Puts the staged .gdoc files back in the queue folder as a folder of the original name (" 2" if
- * that is taken again), where they wait for Google Drive access, and records them in the moved
- * folder's `.distill-folder.json` (path, size, kind only) so the prompt still lists them as
- * "Google Doc, not read".
+ * Records a folder item's .gdoc pointers (path, size, kind only) in its `.distill-folder.json`
+ * while the folder is still in the queue folder, so the prompt still lists them as "Google Doc,
+ * not read" after the move. Nothing inside the folder is written once it is in the vault inbox.
  */
-function leaveGoogleDocsQueued(staging: string, original: string, moved: string, name: string, gdocs: FolderFile[]): void {
-  const remaining = fs.existsSync(original) ? uniqueFolderDestination(name, path.dirname(original)) : original;
-  fs.renameSync(staging, remaining);
-  const manifest = readFolderManifest(moved) ?? { version: 1 as const, name, tree: [] };
+function recordGoogleDocs(folder: string, name: string, gdocs: FolderFile[]): void {
+  const manifest = readFolderManifest(folder) ?? { version: 1 as const, name, tree: [] };
   const listed = new Set(manifest.tree.map((t) => t.path));
   for (const g of gdocs) if (!listed.has(g.rel)) manifest.tree.push({ path: g.rel, size: g.size, kind: 'gdoc' });
-  fs.writeFileSync(path.join(moved, FOLDER_MANIFEST_NAME), JSON.stringify(manifest, null, 2) + '\n');
+  fs.writeFileSync(path.join(folder, FOLDER_MANIFEST_NAME), JSON.stringify(manifest, null, 2) + '\n');
+}
+
+/**
+ * Puts the staged .gdoc files back in the queue folder as a folder of the original name (" 2" if
+ * that is taken again), where they wait for Google Drive access.
+ */
+function leaveGoogleDocsQueued(staging: string, original: string, name: string): void {
+  const remaining = fs.existsSync(original) ? uniqueFolderDestination(name, path.dirname(original)) : original;
+  fs.renameSync(staging, remaining);
 }
 
 /** `yyyy-MM-dd` in local time: the inbox folder a batch moves folder items into. */
@@ -891,12 +897,14 @@ export function claimItems(
       } else {
         const day = path.join(inbox, batchDateFolder(date));
         fs.mkdirSync(day, { recursive: true });
-        const target = uniqueFolderDestination(entry.name, day);
         // .gdoc pointers never enter the vault: they step aside first and stay queued, waiting.
+        // The folder's manifest is written while it is still in the queue folder; the move into
+        // inbox/ is create-only (" 2" on a clash) and nothing inside the folder is written after it.
         const gdocs = entry.folder.files.filter((f) => f.gdoc);
         const staging = gdocs.length > 0 ? setGoogleDocsAside(entry.path, gdocs) : undefined;
-        moveFile(entry.path, target);
-        if (staging) leaveGoogleDocsQueued(staging, entry.path, target, entry.name, gdocs);
+        if (staging) recordGoogleDocs(entry.path, entry.name, gdocs);
+        const target = moveFolderIntoDirNoOverwrite(entry.path, day);
+        if (staging) leaveGoogleDocsQueued(staging, entry.path, entry.name);
         rel = `inbox/${path.basename(day)}/${path.basename(target)}`;
       }
       const sources = entry.folder.files.filter((f) => !f.gdoc && !f.seenBefore).map((f) => `${rel}/${f.rel}`);
@@ -911,8 +919,8 @@ export function claimItems(
     if (inPlace) {
       target = path.resolve(entry.path);
     } else {
-      target = uniqueDestination(entry.name, inbox);
-      moveFile(entry.path, target);
+      // Create-only: never replaces a file already in inbox/ (`name 2.ext` on a clash).
+      target = moveIntoDirNoOverwrite(entry.path, inbox);
     }
     const rel = 'inbox/' + path.basename(target);
     if (!alreadyClaimed.has(rel)) files.push(rel);

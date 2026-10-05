@@ -110,7 +110,8 @@ Canvas: "Queue rows: every state" and Main. Code: `QueueView` in
 
 1. Blocked when setup is invalid or another job holds the vault.
 2. Settled files are moved into `<vault>/inbox/` (name collisions become
-   `name 2.ext`). When the queue is the inbox, files stay and only unclaimed
+   `name 2.ext`). The move is create-only (hard link then unlink, or an
+   exclusive copy): it can never replace a file already in `inbox/`. When the queue is the inbox, files stay and only unclaimed
    ones are taken.
 3. One job is created for all of them (the queue-consuming `JobKind`, today
    Ingest).
@@ -313,10 +314,12 @@ Code: `scanQueueFolder`, `walkFolder`, `folderTreeEntries`,
   move they step into a hidden staging folder in the queue folder, then
   come back as a folder of the original name (" 2" if taken), at their
   relative paths, where they keep waiting ("google-drive"). Subfolders
-  left empty by that are not moved. The moved folder's
-  `.distill-folder.json` records each pointer (path, size, kind `gdoc`; no
-  contents), so the prompt still lists it as "Google Doc, not read" and
-  the header still counts it. When the queue is the inbox, folders stay where they are
+  left empty by that are not moved. The folder's `.distill-folder.json`
+  records each pointer (path, size, kind `gdoc`; no contents), so the
+  prompt still lists it as "Google Doc, not read" and the header still
+  counts it. That record is written while the folder is still in the queue
+  folder; the move into `inbox/<date>/` claims a free name first and nothing
+  inside the folder is written after it (inbox rule, 2026-10-04). When the queue is the inbox, folders stay where they are
   and a folder counts as taken once any of its files is in a job. "Reading N
   sources" and the app turn count a folder as one. Files inside a folder get
   no per-file AI labels (one folder would otherwise cost one label call per

@@ -17,6 +17,19 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **A batch's move into `inbox/` is create-only.** Spec: [Queue and
+  batching](queue-and-batching.md) → Batch, Folders. Follows the inbox rule
+  below.
+  - Loose files now move with `moveIntoDirNoOverwrite` (hard link, then
+    unlink, or an exclusive copy). Folder items move with
+    `moveFolderIntoDirNoOverwrite` (an exclusive `mkdir` claims the name).
+    Before, the batch checked `existsSync` and then used `renameSync`, which
+    silently replaces a file that appears in between.
+  - A folder item's `.gdoc` pointers are recorded in its
+    `.distill-folder.json` while the folder is still in the queue folder.
+    Before, that file was rewritten inside `inbox/<date>/<name>` after the
+    move.
+
 - **Distill may add new files to `inbox/`; it never edits one already there.**
   Specs: [Architecture](architecture.md) rule 2, [Queue and
   batching](queue-and-batching.md) → Queue folder. Owner-approved from the
