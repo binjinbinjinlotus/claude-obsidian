@@ -102,11 +102,11 @@ struct InboxCleanupSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(selectable ? "Clean up inbox" : InboxCleanupWords.confirmTitle(preview.fileCount))
+            Text(selectable ? InboxCleanupWords.title : InboxCleanupWords.confirmTitle(preview.fileCount))
                 .font(Theme.display(20))
             Text(selectable
-                 ? "Files below are in your knowledge base and unchanged since they were added. Pick what goes to the Trash; the rest stays in inbox/."
-                 : "These files from this batch are in your knowledge base: each one’s page is in wiki/ and the file hasn’t changed since it was added. Your pages stay as they are, and you can get a file back from the Trash.")
+                 ? InboxCleanupWords.confirmText + " Pick what is cleared; the rest stays in inbox/."
+                 : InboxCleanupWords.confirmText)
                 .font(Theme.body(12.5)).foregroundStyle(Color(hex: 0x48463F)).fixedSize(horizontal: false, vertical: true)
             if !preview.items.isEmpty { moveBox }
             if !preview.stays.isEmpty { stayBox }
@@ -116,7 +116,7 @@ struct InboxCleanupSheet: View {
                 }
                 Spacer()
                 SoftButton(title: "Cancel", action: onCancel).keyboardShortcut(.cancelAction)
-                PrimaryButton(title: moving ? "Moving…" : InboxCleanupWords.moveButton(pickedFiles), enabled: pickedFiles > 0 && !moving) {
+                PrimaryButton(title: moving ? "Clearing…" : InboxCleanupWords.moveButton(pickedFiles), enabled: pickedFiles > 0 && !moving) {
                     onMove(pickedItems.map(\.path))
                 }
             }
@@ -154,7 +154,7 @@ struct InboxCleanupSheet: View {
                 }
                 .frame(maxHeight: 220)
             } else {
-                Label { Text("Will move · \(filesWord(preview.fileCount))").font(Theme.body(12, .bold)) } icon: {
+                Label { Text(InboxCleanupWords.willClear(preview.fileCount)).font(Theme.body(12, .bold)) } icon: {
                     Image(systemName: "checkmark").font(.system(size: 11, weight: .bold))
                 }
                 .foregroundStyle(Theme.limeInk)
@@ -195,7 +195,7 @@ struct InboxCleanupSheet: View {
                         GridRow {
                             Text(InboxCleanupWords.reason(r.reason).capitalizedFirst).font(Theme.body(12.5))
                             Text(filesWord(r.count)).font(Theme.body(12.5))
-                                .foregroundStyle(r.reason == "changed" || r.reason == "pageMissing" ? Theme.peachInk : Theme.muted)
+                                .foregroundStyle(InboxCleanupWords.isWarning(r.reason) ? Theme.peachInk : Theme.muted)
                         }
                     }
                 }
@@ -255,7 +255,7 @@ struct InboxCleanupResultNotice: View {
     }
 }
 
-/// Settings → Batching: "Clean up inbox", every file in inbox/ that can go (canvas InboxCleanup card 1).
+/// Settings → Batching: "Clear inbox", every file in inbox/ that can go (canvas InboxCleanup card 1, FullRead card-clear).
 struct InboxCleanupSettingsRow: View {
     @EnvironmentObject var engine: AppModel
     @ObservedObject var store: InboxCleanupStore
@@ -265,7 +265,7 @@ struct InboxCleanupSettingsRow: View {
         let p = store.previews[""]
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Clean up inbox").font(Theme.body(13, .semibold))
+                Text(InboxCleanupWords.title).font(Theme.body(13, .semibold))
                 Text(line(p)).font(Theme.body(11)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)
@@ -285,14 +285,14 @@ struct InboxCleanupSettingsRow: View {
     private var titles: [String: String] { Dictionary(uniqueKeysWithValues: engine.jobs.map { ($0.id, $0.displayTitle) }) }
 
     private func line(_ p: InboxCleanupPreview?) -> String {
-        if store.unavailable { return "Update the Distill core to clean up inbox/ from here." }
-        guard let p else { return "Counting the files in inbox/ that are already in your knowledge base…" }
+        if store.unavailable { return "Update the Distill core to clear inbox/ from here." }
+        guard let p else { return "Counting the files in inbox/ that were read in full and archived…" }
         if let r = store.results[""], r.movedFiles > 0, p.fileCount == 0 { return InboxCleanupWords.resultTitle(r) + ". " + InboxCleanupWords.resultText(r) }
         if p.fileCount == 0 {
-            return p.stayFileCount == 0 ? "Nothing to clean up: inbox/ is empty."
-                : "Nothing to clean up: \(p.stayFileCount) file\(p.stayFileCount == 1 ? "" : "s") in inbox/ aren’t in your knowledge base yet, or a batch still needs them."
+            return p.stayFileCount == 0 ? "Nothing to clear: inbox/ is empty."
+                : "Nothing to clear: \(p.stayFileCount) file\(p.stayFileCount == 1 ? " in inbox/ isn’t" : "s in inbox/ aren’t") read in full and archived yet, or a batch still needs \(p.stayFileCount == 1 ? "it" : "them")."
         }
-        return "\(p.fileCount) file\(p.fileCount == 1 ? " in inbox/ is" : "s in inbox/ are") already in your knowledge base. Distill never removes them on its own; you pick what goes to the Trash."
+        return "\(p.fileCount) file\(p.fileCount == 1 ? " in inbox/ was" : "s in inbox/ were") read in full, and \(p.fileCount == 1 ? "its original is" : "their originals are") archived in your vault. Distill never clears them on its own; you pick what is cleared."
     }
 }
 
@@ -300,7 +300,7 @@ extension String {
     var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }
 
-/// History and Review: "Clean up inbox · 22 files" for one batch (only the files it used), with its confirm.
+/// History and Review: "Clear inbox · 22 files" for one batch (only the files it used), with its confirm.
 struct InboxCleanupButton: View {
     @ObservedObject var store: InboxCleanupStore
     let job: Job
@@ -311,9 +311,9 @@ struct InboxCleanupButton: View {
         let p = store.previews[job.id]
         Group {
             if let title = InboxCleanupWords.button(p), let p {
-                SoftButton(title: compact ? "Clean up inbox · \(p.fileCount)" : title, systemImage: "trash") { open = true }
+                SoftButton(title: compact ? "Clear inbox · \(p.fileCount)" : title, systemImage: "trash") { open = true }
                     .fixedSize()
-                    .help("Move this batch’s files that are already in your knowledge base from inbox/ to the Trash")
+                    .help("Clear this batch’s files from inbox/: their originals are archived in your vault; the inbox copies go to the Trash")
                     .sheet(isPresented: $open) { sheet(p) }
             } else if let line = InboxCleanupWords.nothingLine(p), let p {
                 HStack(spacing: 6) {

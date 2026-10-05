@@ -1,7 +1,8 @@
 import Foundation
 
 // v8 Clean up inbox (spec inbox-cleanup.md): what can go to the Trash, what stays and why. The core
-// decides and moves; these are its answers and the words the app shows.
+// decides and moves; these are its answers and the words the app shows. v10 (full-read.md, section 4):
+// "Clear inbox": only files read in full whose originals are archived in the vault go.
 
 public struct InboxCleanupItem: Codable, Equatable, Sendable, Identifiable {
     public var path: String
@@ -41,7 +42,7 @@ public struct InboxCleanupItem: Codable, Equatable, Sendable, Identifiable {
 public struct InboxCleanupStay: Codable, Equatable, Sendable, Identifiable {
     public var path: String
     public var kind: String
-    /// notAdded | changed | pageMissing | inReview | inQueue | unreadable
+    /// notAdded | changed | pageMissing | inReview | inQueue | unreadable; v10 notReadInFull | notArchived | held
     public var reason: String
     public var detail: String?
     public var fileCount: Int
@@ -64,8 +65,8 @@ public struct InboxCleanupStay: Codable, Equatable, Sendable, Identifiable {
     public var name: String { (path as NSString).lastPathComponent }
     /// "changed since it was added".
     public var reasonWords: String { InboxCleanupWords.reason(reason) }
-    /// Peach for a file that changed or lost its page; grey for one that simply isn't ready.
-    public var isWarning: Bool { reason == "changed" || reason == "pageMissing" || reason == "unreadable" }
+    /// Peach for a file that changed, lost its page or couldn't be read; grey for one that simply isn't ready.
+    public var isWarning: Bool { InboxCleanupWords.isWarning(reason) }
 }
 
 public struct InboxCleanupPreview: Codable, Equatable, Sendable {
@@ -133,7 +134,10 @@ public struct InboxCleanupResult: Codable, Equatable, Sendable {
 }
 
 public enum InboxCleanupWords {
-    public static let order = ["inReview", "inQueue", "notAdded", "changed", "pageMissing", "unreadable"]
+    public static let order = ["inReview", "inQueue", "notAdded", "notReadInFull", "notArchived", "changed", "pageMissing", "unreadable", "held"]
+
+    /// Reasons shown in peach.
+    public static func isWarning(_ r: String) -> Bool { ["changed", "pageMissing", "unreadable", "held"].contains(r) }
 
     public static func reason(_ r: String) -> String {
         switch r {
@@ -143,25 +147,34 @@ public enum InboxCleanupWords {
         case "inReview": return "waiting in Review"
         case "inQueue": return "in the queue, not batched yet"
         case "unreadable": return "can’t be read"
+        case "notReadInFull": return "not read in full yet"
+        case "notArchived": return "not archived yet"
+        case "held": return "couldn’t be read"
         default: return r
         }
     }
 
     static func files(_ n: Int) -> String { n == 1 ? "1 file" : "\(n) files" }
 
-    /// "Clean up inbox · 22 files", or nil when nothing can go.
+    /// "Clear inbox · 22 files", or nil when nothing can go.
     public static func button(_ p: InboxCleanupPreview?) -> String? {
         guard let p, p.fileCount > 0 else { return nil }
-        return "Clean up inbox · \(files(p.fileCount))"
+        return "Clear inbox · \(files(p.fileCount))"
     }
 
-    /// "Move 21 files to the Trash?"
-    public static func confirmTitle(_ n: Int) -> String { "Move \(files(n)) to the Trash?" }
-    public static func moveButton(_ n: Int) -> String { "Move \(n) to the Trash" }
+    /// The Settings → Batching row and the vault-wide sheet.
+    public static let title = "Clear inbox"
 
-    /// "Moved 20 files to the Trash" + what stayed and why.
+    /// "Clear 21 files from inbox?"
+    public static func confirmTitle(_ n: Int) -> String { "Clear \(files(n)) from inbox?" }
+    public static func moveButton(_ n: Int) -> String { "Clear \(n) from inbox" }
+    public static let confirmText = "Their originals are archived in your vault (.raw/captured/), byte for byte, and are never changed or deleted. Every one was read in full. The inbox copies go to the Trash."
+    /// "Will clear · 21 files, all archived".
+    public static func willClear(_ n: Int) -> String { "Will clear · \(files(n)), all archived" }
+
+    /// "Cleared 20 files from inbox" + what stayed and why.
     public static func resultTitle(_ r: InboxCleanupResult) -> String {
-        r.movedFiles == 0 ? "Nothing was moved" : "Moved \(files(r.movedFiles)) to the Trash"
+        r.movedFiles == 0 ? "Nothing was cleared" : "Cleared \(files(r.movedFiles)) from inbox"
     }
 
     public static func resultText(_ r: InboxCleanupResult) -> String {

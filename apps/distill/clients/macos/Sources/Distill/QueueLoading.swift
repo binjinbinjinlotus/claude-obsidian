@@ -82,6 +82,8 @@ struct BatchBanner: View {
     private func title(_ p: CoreProgress?) -> String {
         let n = job.files.count
         let vault = URL(fileURLWithPath: job.vaultPath).lastPathComponent
+        // v10: "Batch 1 of 3 · reading 9 sources into MyVault" when the queue was split by size.
+        if let batch = FullReadWords.batchTitle(job.batchOf, sources: job.sources.count, vault: vault) { return batch }
         if let p, !p.message.isEmpty { return "\(p.message) into \(vault)" }
         return "Reading \(n == 1 ? "1 source" : "\(n) sources") into \(vault)"
     }
@@ -90,6 +92,7 @@ struct BatchBanner: View {
         let runner = (p?.runnerID ?? job.selection.runnerID) == "claude-code" ? "Claude Code" : (p?.runnerID ?? job.selection.runnerID)
         let model = ModelChoice.shortName(p?.model ?? job.model)
         var parts = [runner, model]
+        if let tokens = FullReadWords.batchTokens(job.batchOf) { parts.insert(tokens, at: 0) }
         // A clock time, never a ticking counter (canvas: MainLoading).
         parts.append("started at \(ActionsClock.time(p?.startedAt ?? job.createdAt))")
         parts.append("nothing is written until you approve")

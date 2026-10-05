@@ -62,6 +62,8 @@ struct ReviewGroupsView: View {
                     }
                 }
             }
+            // v10 hard stop: what couldn't be read in full is not in the change and can't be approved.
+            if !job.stopped.isEmpty { StoppedGroup(job: job) }
             if let sources, !sources.isEmpty { sourcesGroup(sources) }
         }
     }
@@ -98,7 +100,7 @@ struct ReviewGroupsView: View {
         let labels = names.map { name in LabelSuggestion(name: name, existing: known?.contains(name) ?? true) }
         let file = ((source.source ?? source.page) as NSString).lastPathComponent
         return ReviewSourceRow(
-            title: source.title, file: file, labels: labels,
+            title: source.title, file: file, meta: job.coverage?.source(source.source).map(FullReadWords.sourceMeta), labels: labels,
             labelState: editing ? .editing : LabelLineState(review: source),
             hover: hoverPage == source.page, selectable: selectable, selected: !unpicked.contains(source.page), removed: source.removed,
             onSelect: { on in if on { unpicked.remove(source.page) } else { unpicked.insert(source.page) } },

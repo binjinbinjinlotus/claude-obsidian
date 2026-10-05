@@ -112,6 +112,8 @@ struct ReviewSourceRow: View {
     let title: String
     /// The input file's name ("tea-club-sync-2026-09-28.md").
     var file: String
+    /// v10: what the session read of it ("644 lines · read in full · 1 image not read").
+    var meta: String? = nil
     var labels: [LabelSuggestion] = []
     /// `.editing` turns the chips removable with an Add field, Done and Cancel.
     var labelState: LabelLineState = .suggested
@@ -149,6 +151,9 @@ struct ReviewSourceRow: View {
                     Text(title).font(Theme.body(14, .semibold)).strikethrough(removed).lineLimit(1).truncationMode(.tail)
                         .layoutPriority(1)
                     Text("from \(file)").font(Theme.body(12)).foregroundStyle(Theme.faint).lineLimit(1).truncationMode(.middle)
+                }
+                if let meta {
+                    Text(meta).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.tail)
                 }
                 if removed {
                     HStack(spacing: 8) {

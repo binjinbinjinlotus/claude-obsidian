@@ -122,7 +122,7 @@ final class ApplyAndCleanupTests: XCTestCase {
         """#.utf8)) }
         let p = try await client.inboxCleanup(jobID: "job-1")
         XCTAssertEqual(p.fileCount, 14)
-        XCTAssertEqual(InboxCleanupWords.button(p), "Clean up inbox · 14 files")
+        XCTAssertEqual(InboxCleanupWords.button(p), "Clear inbox · 14 files")
         XCTAssertEqual(p.stays[0].reasonWords, "changed since it was added")
         XCTAssertTrue(p.stays[0].isWarning)
         XCTAssertEqual(p.staysByReason.map(\.reason), ["notAdded", "changed"])
@@ -139,7 +139,7 @@ final class ApplyAndCleanupTests: XCTestCase {
         """#.utf8)) }
         let r = try await client.cleanUpInbox(paths: ["inbox/a.md", "inbox/b.md"], jobID: "job-1")
         XCTAssertEqual(r.movedFiles, 2)
-        XCTAssertEqual(InboxCleanupWords.resultTitle(r), "Moved 2 files to the Trash")
+        XCTAssertEqual(InboxCleanupWords.resultTitle(r), "Cleared 2 files from inbox")
         XCTAssertEqual(InboxCleanupWords.resultText(r), "1 stayed in inbox/: b.md changed, so it was left alone. Put Back in the Trash returns a file to inbox/.")
         let last = try XCTUnwrap(StubProtocol.recorded.last)
         XCTAssertEqual(last.method, "POST")

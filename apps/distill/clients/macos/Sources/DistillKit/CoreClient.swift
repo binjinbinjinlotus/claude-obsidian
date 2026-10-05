@@ -247,6 +247,24 @@ public final class CoreClient: Sendable {
         return try await send("POST", "/v1/inbox/cleanup", body: body, timeout: 180)
     }
 
+    /// v10 `GET /v1/held[?vault=PATH]`: sources held in inbox/ because they couldn't be read in full.
+    /// An older core without the route has none.
+    public func held(vaultPath: String? = nil) async throws -> [HeldSource] {
+        do {
+            return try await get("/v1/held" + Self.vaultQuery(vaultPath), as: Wrapped<LossyList<HeldSource>>.self, key: "held").value.items
+        } catch let e as CoreClientError where e.isNotAvailable {
+            return []
+        }
+    }
+
+    /// v10 `POST /v1/held/retry {file, vault?}`: Try again on a held source; the core checks its bytes, then
+    /// reads it in a batch of its own (201 with the re-read).
+    public func retryHeld(file: String, vaultPath: String? = nil) async throws -> RereadResult {
+        var body: [String: JSONValue] = ["file": .string(file)]
+        if let vaultPath { body["vault"] = .string(vaultPath) }
+        return try await send("POST", "/v1/held/retry", body: body)
+    }
+
     /// v7 `GET /v1/jobs/:id/steps`: the job's live log as kept.
     public func jobSteps(_ id: String) async throws -> JobStepsPage {
         try await get("/v1/jobs/\(Self.segment(id))/steps")

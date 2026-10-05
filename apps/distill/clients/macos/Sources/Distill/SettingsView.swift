@@ -387,10 +387,12 @@ struct BatchingSettings: View {
                 .accessibilityLabel("Check the queue folder for changes")
             }
             .padding(.top, 6)
-            // v8 Clean up inbox (inbox-cleanup.md): every file in inbox/ that is already in the knowledge base; only when you ask.
+            // v10 Full reads (full-read.md): the batch size and how much of each source goes into its page.
+            FullReadSettings()
+            // v8 Clean up inbox (inbox-cleanup.md), v10 "Clear inbox": files read in full and archived; only when you ask.
             InboxCleanupSettingsRow(store: engine.inboxCleanup)
                 .padding(.top, 6)
-                .settingsAnchor("Clean up inbox")
+                .settingsAnchor("Clear inbox")
         }
     }
 

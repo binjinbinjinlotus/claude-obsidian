@@ -158,6 +158,10 @@ public struct Settings: Codable, Equatable, Sendable {
     public var actionPreferences: ActionPreferences?
     /// v5: the queue check, in minutes (absent = 5, 0 = Off). Never written unless the user picks a value.
     public var queueScanMinutes: Int?
+    /// v10 (full reads): source text one batch takes, in estimated tokens (nil = Automatic). Never written unless the user picks a size.
+    public var batchSourceTokens: Int?
+    /// v10: how much of each source goes into its page, per source type (nil = the core's defaults). Raw object, so unknown keys survive.
+    public var detailLevel: DetailLevels?
 
     /// The queue check as the core applies it: absent = 5; clamped to 0…1440.
     public var resolvedQueueScanMinutes: Int { queueScanMinutes.map { min(1440, max(0, $0)) } ?? 5 }
@@ -202,6 +206,8 @@ public struct Settings: Codable, Equatable, Sendable {
         runnerOptions = c.lossy([String: [String: String]].self, .runnerOptions)
         actionPreferences = c.lossy(ActionPreferences.self, .actionPreferences)
         queueScanMinutes = c.lossyInt(.queueScanMinutes).map { min(1440, max(0, $0)) }
+        batchSourceTokens = c.lossyInt(.batchSourceTokens).flatMap { $0 > 0 ? $0 : nil }
+        detailLevel = c.lossy(DetailLevels.self, .detailLevel)
     }
 
     /// This value as a JSON object (nil optionals omitted).
@@ -365,7 +371,7 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, kind, vaultPath, files, sessionID, runnerID, model, effort, state, createdAt, updatedAt
         case approval, turns, grantedTools, operationID, changedPaths, error, actionsFound, folders, parts, pendingPart, sessionUnavailable
-        case approvedChange, reviewDoneAt
+        case approvedChange, reviewDoneAt, coverage, stopped, batchOf
     }
 
     public var id: String
@@ -400,6 +406,12 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
     public var approvedChange: ApprovedChange?
     /// v8: Done was pressed on this approved batch in Review; it is only in History now.
     public var reviewDoneAt: Date?
+    /// v10 (full reads): what this batch's session read, counted by the core from the tool results. nil on older cores.
+    public var coverage: CoverageSummary?
+    /// v10: sources that couldn't be read in full: left out of the change, never approvable.
+    public var stopped: [StoppedSource] = []
+    /// v10: one of several batches the queue was split into by size ("Batch 1 of 3").
+    public var batchOf: BatchOf?
 
     public var totalCostUSD: Double { turns.reduce(0) { $0 + $1.costUSD } }
     public var selection: ModelSelection { ModelSelection(runnerID: runnerID ?? "claude-code", model: model, effort: effort) }
@@ -454,6 +466,9 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
         sessionUnavailable = c.lossy(SessionUnavailable.self, .sessionUnavailable)
         approvedChange = c.lossy(ApprovedChange.self, .approvedChange)
         reviewDoneAt = c.lossyDate(.reviewDoneAt)
+        coverage = c.lossy(CoverageSummary.self, .coverage)
+        stopped = c.lossyArray(StoppedSource.self, .stopped)
+        batchOf = c.lossy(BatchOf.self, .batchOf)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -482,6 +497,9 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
         try c.encodeIfPresent(sessionUnavailable, forKey: .sessionUnavailable)
         try c.encodeIfPresent(approvedChange, forKey: .approvedChange)
         try c.encodeIfPresent(reviewDoneAt.map(CoreDate.format), forKey: .reviewDoneAt)
+        try c.encodeIfPresent(coverage, forKey: .coverage)
+        if !stopped.isEmpty { try c.encode(stopped, forKey: .stopped) }
+        try c.encodeIfPresent(batchOf, forKey: .batchOf)
     }
 }
 
@@ -823,7 +841,7 @@ public struct RunnerStatus: Codable, Equatable, Sendable {
 public struct StatusResponse: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case version, activeVault, problems, queueCount, pendingApprovals, runningJobs, nextBatchAt, runners
-        case lastQueueScanAt, nextQueueScanAt
+        case lastQueueScanAt, nextQueueScanAt, batchBudget, heldCount
     }
 
     public var version: String
@@ -837,10 +855,14 @@ public struct StatusResponse: Codable, Equatable, Sendable {
     /// v5: the last full queue scan of any kind ("checked at 3:41 AM"); the next queue check (nil when Off or on an older core).
     public var lastQueueScanAt: Date?
     public var nextQueueScanAt: Date?
+    /// v10: the batch size in force (tokens), the model's context window it comes from, and whether it is Automatic.
+    public var batchBudget: BatchBudget?
+    /// v10: sources held in inbox/ because they couldn't be read in full (0 on an older core).
+    public var heldCount: Int
 
     public init(version: String = "", activeVault: VaultProfile? = nil, problems: [SetupProblem] = [], queueCount: Int = 0,
                 pendingApprovals: Int = 0, runningJobs: Int = 0, nextBatchAt: Date? = nil, runners: [RunnerStatus] = [],
-                lastQueueScanAt: Date? = nil, nextQueueScanAt: Date? = nil) {
+                lastQueueScanAt: Date? = nil, nextQueueScanAt: Date? = nil, batchBudget: BatchBudget? = nil, heldCount: Int = 0) {
         self.version = version
         self.activeVault = activeVault
         self.problems = problems
@@ -851,6 +873,8 @@ public struct StatusResponse: Codable, Equatable, Sendable {
         self.runners = runners
         self.lastQueueScanAt = lastQueueScanAt
         self.nextQueueScanAt = nextQueueScanAt
+        self.batchBudget = batchBudget
+        self.heldCount = heldCount
     }
 
     public init(from decoder: Decoder) throws {
@@ -865,6 +889,8 @@ public struct StatusResponse: Codable, Equatable, Sendable {
         runners = c.lossyArray(RunnerStatus.self, .runners)
         lastQueueScanAt = c.lossyDate(.lastQueueScanAt)
         nextQueueScanAt = c.lossyDate(.nextQueueScanAt)
+        batchBudget = c.lossy(BatchBudget.self, .batchBudget)
+        heldCount = max(0, c.lossyInt(.heldCount) ?? 0)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -879,6 +905,8 @@ public struct StatusResponse: Codable, Equatable, Sendable {
         try c.encode(runners, forKey: .runners)
         try c.encodeIfPresent(lastQueueScanAt.map(CoreDate.format), forKey: .lastQueueScanAt)
         try c.encodeIfPresent(nextQueueScanAt.map(CoreDate.format), forKey: .nextQueueScanAt)
+        try c.encodeIfPresent(batchBudget, forKey: .batchBudget)
+        if heldCount > 0 { try c.encode(heldCount, forKey: .heldCount) }
     }
 }
 

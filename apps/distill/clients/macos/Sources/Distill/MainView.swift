@@ -97,7 +97,7 @@ struct Sidebar: View {
             .padding(.horizontal, 6)
 
             VStack(spacing: 2) {
-                navItem(.queue, "Queue", "tray", count: QueueRows.count(engine.queued), highlight: false)
+                navItem(.queue, "Queue", "tray", count: QueueRows.count(engine.queued) + engine.heldCount, highlight: false)
                 SidebarCollectors(store: engine.collectors, section: $section, alert: collectorsAlert)
                 navItem(.review, "Review", "checkmark.square", count: engine.pendingApprovals.count, highlight: true)
                 SidebarActions(section: $section)
@@ -388,9 +388,13 @@ struct QueueView: View {
                     if let batch = engine.runningBatch { BatchBanner(job: batch, onShowSteps: { stepsJob = batch.id }) }
                     dropPanel
                     if engine.isStarting { StartingPlaceholder() } else { fileList }
+                    // v10: sources that couldn't be read in full stay in inbox/ until Try again reads them.
+                    HeldSection(store: engine.heldSources)
                 }
                 .padding(.horizontal, 44).padding(.top, 44).padding(.bottom, 30)
             }
+            .onAppear { engine.heldSources.load() }
+            .onChange(of: engine.heldCount) { engine.heldSources.load() }
             .confirmationDialog(removalTitle, isPresented: Binding(get: { confirmRemoval != nil }, set: { if !$0 { confirmRemoval = nil } }),
                                 titleVisibility: .visible, presenting: confirmRemoval) { entry in
                 Button("Move to Trash", role: .destructive) { engine.removeFromQueue(entry); confirmRemoval = nil }
@@ -484,8 +488,7 @@ struct QueueView: View {
     private var title: String {
         if let batch = engine.runningBatch {
             let inBatch = batch.sources.count // a folder counts once
-            let waiting = rows.count
-            return "\(inBatch) in this batch" + (waiting > 0 ? " · \(waiting) waiting" : "")
+            return FullReadWords.queueTitle(inBatch: inBatch, waiting: rows.count, of: batch.batchOf)
         }
         switch rows.count {
         case 0: return "All caught up"
@@ -579,7 +582,7 @@ struct QueueView: View {
                              onOpenLink: QueueRows.googleDocURL(entry).map { url in { NSWorkspace.shared.open(url) } })
                     .id(entry.path)
             }
-            if rows.isEmpty && engine.runningBatch == nil {
+            if rows.isEmpty && engine.runningBatch == nil && engine.heldSources.held.isEmpty {
                 Text("Nothing waiting. New files will show up here.")
                     .font(Theme.body(13)).foregroundStyle(Theme.faint)
                     .frame(maxWidth: .infinity).padding(.vertical, 20)
@@ -1107,7 +1110,11 @@ struct JobDetailView: View {
                         text: approval.questions.map { "• \($0)" }.joined(separator: "\n"))
             }
             if !approval.denials.isEmpty { blocked(job, approval) }
-            if let rebuilt = approval.rebuilt { rebuiltNotice(rebuilt) }
+            // v10: sources one session couldn't finish are read next, in a fresh session (the covered part).
+            if let later = job.coverage?.later, !later.isEmpty { LaterNotice(later: later) }
+            if let rebuilt = approval.rebuilt, rebuilt.reason != .covered {
+                rebuiltNotice(rebuilt)
+            }
             if approval.needsRebuild == true {
                 ReviewNotice(tone: .calm, title: "These sources wait for their change",
                              text: "Nothing was applied. They stay in this batch: Rebuild asks this batch’s session for their change again, or Reject batch ends it.",
@@ -1122,7 +1129,12 @@ struct JobDetailView: View {
             }
         }
         if job.state == .running {
-            if let part = job.pendingPart {
+            if let part = job.pendingPart, part.reason == .unread {
+                let n = job.sources.count
+                ReviewNotice(tone: .blue, title: "Reading \(n == 1 ? "1 source" : "\(n) sources") again, in a fresh session…",
+                             text: "This session ran out of room before their last lines, so Claude reads them again from the start. They come back here as the next part.",
+                             busy: true)
+            } else if let part = job.pendingPart {
                 let n = part.expected.count
                 ReviewNotice(tone: .blue, title: "Rebuilding the change for your \(n == 1 ? "source" : "\(n) sources")…",
                              text: "In this batch’s own \(runnerName(job)) session (the one that read these notes). Your source pages and their labels stay exactly as you saw them; the index, log, hot cache, overview and ledgers are written again for just these.",
@@ -1143,6 +1155,10 @@ struct JobDetailView: View {
             }
         }
         if let summary = job.actionsFound { JobActionsLine(job: job, summary: summary) }
+        // v10: what the session read, counted by the core (information, no buttons).
+        if let coverage = job.coverage, coverage.of > 0, coverage.state != "reading" {
+            CoverageBlock(coverage: coverage, stopped: job.stopped.count)
+        }
         ReviewGroupsView(job: job, summary: summary, unpicked: $unpicked, editingPage: $editingPage, editDraft: $editDraft,
                          labelError: $labelError, overrides: $groupOverrides, hoverPage: hoverPage,
                          openable: collapsesConversation && job.state == .completed && job.approvedChange != nil && job.operationID == job.approvedChange?.operationID,
@@ -1258,18 +1274,18 @@ struct JobDetailView: View {
                 let applying = engine.isApplying(job.id)
                 let approval = job.approval
                 let blocker = ReviewPicking.blocker(approval, unpicked: unpicked)
-                if approval?.rebuilt != nil {
+                if ReviewPicking.offersDiscardPart(job) {
                     // Discards only this rebuilt change: its sources stay in this batch (decision 2026-10-05).
                     SoftButton(title: "Discard this part", tint: Theme.peachInk, fill: .clear) { engine.reject(job.id) }
                         .disabled(applying).opacity(applying ? 0.35 : 1)
                         .help("Nothing is applied; these sources go back to this batch's Review.")
                 }
-                SoftButton(title: approval?.isPart == true ? "Reject batch" : "Reject", tint: Theme.peachInk, fill: .clear) {
+                SoftButton(title: ReviewPicking.rejectTitle(job), tint: Theme.peachInk, fill: .clear) {
                     engine.reject(job.id, batch: true)
                 }
                 .disabled(applying).opacity(applying ? 0.35 : 1)
                 Spacer()
-                if !applying { footerStatus(approval, blocker: blocker) }
+                if !applying { footerStatus(approval, blocker: blocker, stopped: job.stopped.count) }
                 SoftButton(title: "Send reply") { send(job) }
                     .disabled(applying || reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .opacity(applying ? 0.35 : 1)
@@ -1285,12 +1301,14 @@ struct JobDetailView: View {
                 }
             case .running:
                 if let part = job.pendingPart {
+                    let n = part.reason == .unread ? job.sources.count : part.expected.count
                     Spacer()
                     HStack(spacing: 6) {
                         Spinner(color: Theme.muted, size: 11)
-                        Text("Rebuilding with \(ModelChoice.shortName(job.model))…").font(Theme.body(12)).foregroundStyle(Theme.muted)
+                        Text(part.reason == .unread ? "Reading with \(ModelChoice.shortName(job.model))…" : "Rebuilding with \(ModelChoice.shortName(job.model))…")
+                            .font(Theme.body(12)).foregroundStyle(Theme.muted)
                     }
-                    PrimaryButton(title: part.expected.count == 1 ? "Approve 1 source" : "Approve \(part.expected.count) sources",
+                    PrimaryButton(title: n == 1 ? "Approve 1 source" : "Approve \(n) sources",
                                   systemImage: "checkmark", enabled: false) {}
                 } else if ApplyTimeline.isApplying(job) {
                     // v8: nothing needs you while the approved change goes in (Show steps is in the heading and the card).
@@ -1336,7 +1354,7 @@ struct JobDetailView: View {
     }
 
     /// "Approving also confirms the labels shown", or why Approve waits (labels being saved or suggested).
-    @ViewBuilder private func footerStatus(_ approval: ApprovalRequest?, blocker: String?) -> some View {
+    @ViewBuilder private func footerStatus(_ approval: ApprovalRequest?, blocker: String?, stopped: Int = 0) -> some View {
         if let labels = approval?.labels, labels.state == .confirming {
             HStack(spacing: 6) {
                 Spinner(color: Theme.muted, size: 11)
@@ -1344,6 +1362,9 @@ struct JobDetailView: View {
             }
         } else if let blocker, !blocker.isEmpty {
             Text(blocker).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
+        } else if stopped > 0 {
+            // v10: a source that couldn't be read is never in the change, and nothing here approves it.
+            Text(FullReadWords.stoppedFooter(stopped)).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
         } else if let sources = approval?.sources, sources.contains(where: { !$0.labels.isEmpty && !$0.removed }),
                   approval?.labels?.state != .unconfirmed {
             Text("Approving also confirms the labels shown").font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)

@@ -55,6 +55,7 @@ enum StatesSnapshot {
         activityStates()
         liveLogStates()
         applyCleanupStates()
+        fullReadStates()
         settingsNavStates()
         writeManifest()
     }

@@ -242,8 +242,13 @@ public enum ReviewPicking {
         return o
     }
 
-    /// "Approve & apply" when everything is picked, "Approve 8 sources" for a subset, "Approve the rebuilt change".
+    /// "Approve & apply" when everything is picked, "Approve 8 sources" for a subset, "Approve the rebuilt change";
+    /// v10: "Approve 4 sources" for the covered part (nothing of the batch is applied yet).
     public static func approveTitle(_ approval: ApprovalRequest?, unpicked: Set<String>) -> String {
+        if let rebuilt = approval?.rebuilt, rebuilt.reason == .covered {
+            let n = approval?.sources.map { active($0).count } ?? rebuilt.pages.count
+            return n == 1 ? "Approve 1 source" : "Approve \(n) sources"
+        }
         if approval?.rebuilt != nil { return "Approve the rebuilt change" }
         guard let sources = approval?.sources, !allPicked(sources, unpicked: unpicked) else { return "Approve & apply" }
         let n = picked(sources, unpicked: unpicked).count
@@ -262,6 +267,18 @@ public enum ReviewPicking {
         let n = picked(approval?.sources ?? [], unpicked: unpicked).count
         return n == 1 ? "Approve 1 source" : "Approve \(n) sources"
     }
+
+    /// v10: the covered part, the sources read in full split from those one session couldn't finish. Nothing of the
+    /// batch is applied before it, so its footer is the plain one (Reject · Approve N sources), never "Discard this part".
+    public static func isCoveredPart(_ job: Job) -> Bool {
+        job.approval?.rebuilt?.reason == .covered || job.pendingPart?.reason == .covered
+    }
+
+    /// "Discard this part": a rebuilt part when some of the batch is already in the vault (not the covered part).
+    public static func offersDiscardPart(_ job: Job) -> Bool { job.approval?.rebuilt != nil && !isCoveredPart(job) }
+
+    /// "Reject batch" for a part of a batch already partly applied; "Reject" otherwise (the covered part included).
+    public static func rejectTitle(_ job: Job) -> String { job.approval?.isPart == true && !isCoveredPart(job) ? "Reject batch" : "Reject" }
 
     /// Why Approve is off right now (nil = it can be pressed).
     public static func blocker(_ approval: ApprovalRequest?, unpicked: Set<String>) -> String? {

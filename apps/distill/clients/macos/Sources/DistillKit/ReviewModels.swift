@@ -154,7 +154,9 @@ public struct UnconfirmedPlan: Codable, Equatable, Sendable {
 }
 
 /// partial = the user approved some sources; remaining = what is left after a part applied; stale = the vault changed.
-public enum PartReason: String, Codable, Sendable { case partial, remaining, stale }
+/// v10 adds covered (the sources read in full, split from those one session couldn't finish) and unread
+/// (those sources, read again in a fresh session).
+public enum PartReason: String, Codable, Sendable { case partial, remaining, stale, covered, unread }
 
 /// confirm = approving confirms the labels shown; later = apply them unconfirmed (Labels → To review).
 public enum ApproveLabels: String, Codable, Sendable { case confirm, later }
@@ -216,12 +218,15 @@ public struct PendingPart: Codable, Equatable, Sendable {
     public var expected: [String: String]
     public var excluded: [String]
     public var labels: ApproveLabels
+    /// v10 (covered): the sources left out, read next in a fresh session after this part applies.
+    public var unread: [String]?
 
-    public init(reason: PartReason, expected: [String: String] = [:], excluded: [String] = [], labels: ApproveLabels = .confirm) {
-        self.reason = reason; self.expected = expected; self.excluded = excluded; self.labels = labels
+    public init(reason: PartReason, expected: [String: String] = [:], excluded: [String] = [], labels: ApproveLabels = .confirm,
+                unread: [String]? = nil) {
+        self.reason = reason; self.expected = expected; self.excluded = excluded; self.labels = labels; self.unread = unread
     }
 
-    enum CodingKeys: String, CodingKey { case reason, expected, excluded, labels }
+    enum CodingKeys: String, CodingKey { case reason, expected, excluded, labels, unread }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -229,6 +234,7 @@ public struct PendingPart: Codable, Equatable, Sendable {
         expected = c.lossy([String: String].self, .expected) ?? [:]
         excluded = c.lossyArray(String.self, .excluded)
         labels = c.lossy(String.self, .labels).flatMap(ApproveLabels.init(rawValue:)) ?? .confirm
+        unread = c.lossy([Lossy<String>].self, .unread).map { $0.compactMap(\.value) }
     }
 }
 

@@ -93,6 +93,7 @@ public enum QueueRows {
             case "too big": return "Too big"
             case "too deep": return "Too deep"
             case "empty folder": return "Empty folder"
+            case FullReadWords.heldPill: return FullReadWords.heldPill // v10: held in inbox/
             default: return "Couldn’t read"
             }
         case .waiting: return "Waiting"
