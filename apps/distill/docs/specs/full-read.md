@@ -65,6 +65,9 @@ Both files end in one 64 to 88 KB line, an embedded image
 (`[image1]: <data:image/png;base64,…>`). **A successful Read is not proof of a
 full read.**
 
+The huge image line is the likely cause of those two cuts. The reading copy
+removes it, and the coverage gate catches any other cut, whatever its cause.
+
 **Most of the bytes are images.**
 
 - Ten of the 22 files carry base64 image definitions.
@@ -148,6 +151,17 @@ A source's estimate in tokens is its copy's bytes divided by **2.6**:
 ### The budget
 
 **`settings.batchSourceTokens`**. Absent means **Automatic**.
+
+**Where the window comes from.** Nothing in the core knows a model's context
+window today. Two sources are proposed, in this order:
+
+1. The model's context window as Claude Code reports it in the `result`
+   event's `modelUsage` (a `contextWindow` field). This is to be verified on
+   the real CLI. Once seen, it is cached per model id in Distill's state.
+2. A small table in the core (`runners/models.ts`), keyed by model alias.
+
+An unknown model counts as **200K**, the conservative case. No model's size
+is assumed without one of these.
 
 **Automatic** is 30% of the ingest model's context window, capped at 100K:
 
@@ -277,10 +291,25 @@ job.coverage: {
 
 - The ranges are numbers only.
 - It accumulates across the turns of **one session**.
-- It is **reset** when the batch moves to a new session (`continueInNewSession`,
-  which may switch runners, or a split part) and on a `compact_boundary` event
-  in the stream.
+- It is **reset** when the batch moves to a new session. That happens through
+  `continueInNewSession`, which may switch runners, or through an `unread`
+  part.
 - It is saved with `jobs.json`, so a restart keeps it.
+
+**Compaction.** This narrows the reviewer's "reset on compaction". A full
+reset would hard-stop every source too long for one context: the source
+compacts, its fresh session compacts again, and it stops every time. Instead,
+a `compact_boundary` voids only the read ranges that **no later page-draft
+write follows**.
+
+- A draft is a file on disk, so it survives compaction.
+- The `reread-sources` prompt helper asks that a long source's draft be
+  written or updated after **each section**, not only at the end. A
+  compaction then loses at most one section's reading.
+- The gate also checks the order. A source counts as covered only when its
+  draft was written or edited after the read that completed it. The order
+  comes from the stream, which marks Write and Edit calls on the job's draft
+  paths.
 
 **The source-coverage index.** Once a batch's pages apply, each source's
 result is written to `<state>/coverage/sources.json`, keyed by
@@ -334,13 +363,30 @@ only claim from the queue.
    it has **no page and no ledger entry** for the unread sources. That part
    goes to Review.
 2. **The unread sources become a pending part** with a new reason, `unread`.
-   - It runs in a **new session** (`newSession`; coverage reset) that
-     re-reads them from the start, with sections at half size.
    - It starts after the covered part applies (`continueAfterPart`,
      `index.ts:1304-1345`), and its result comes back to Review as the next
      part.
    - Review shows it meanwhile as "2 sources are read next in a fresh
      session".
+   - **How it starts.** This is not `sendPartInBackground`, which resumes the
+     old session with `partPrompt`. Instead, a new path,
+     `startUnreadPart(id)`:
+     1. Clear `job.sessionID` and give the job a new session id.
+     2. Reset `job.coverage` for those files.
+     3. Build the **full ingest prompt** (`IngestJobKind.initialPrompt`,
+        through a `JobContext` limited to the unread files), with the
+        `FULL_READ_PROMPT` block, `RereadFacts` and sections at half size.
+     4. Tell the prompt it rebuilds `bundle-part-<n>.json` and that the
+        earlier part already applied. The covered sources' pages are on disk,
+        so the shared pages are read fresh.
+     5. Run it as a `first: true` turn (`runTurn(id, prompt, { first: true
+        })`), with `pendingPart.reason = 'unread'` and `pendingPart.expected =
+        {}`.
+
+     The gate applies to its turns as to any reading turn. It never opens
+     SessionReplaceConfirm, because nothing is resumed. `verifyRebuilt` checks
+     that the bundle holds pages for exactly the unread files and none for
+     the parts already applied.
 3. **The batch reaches Review only at 100% coverage** of the sources in the
    part being shown.
 
@@ -394,7 +440,8 @@ saved Codex ingest choice runs on Claude Code, and the app says so once.
 **Later option.** Codex ingest with sections fed in by the core: the core puts
 each section's text in the prompt, so coverage is by construction.
 
-This is the lead's recommendation, for the owner to confirm.
+This is adopted as the default on the lead's recommendation and recorded as
+vetoable in `decisions.md`.
 
 ## 4. Never lose originals: archive with the batch (Option A)
 
@@ -444,8 +491,9 @@ archives them.
 
 **Re-reads find their sources** by `content_sha256` → `.raw/captured/`.
 
-**Option A is pending the owner's confirmation.** The fallback, Option B, is
-a separate `capture apply` transaction at clean-up time.
+**Option A is the default**, adopted on the lead's recommendation. The owner
+may veto it (see `decisions.md`). The fallback, Option B, is a separate
+`capture apply` transaction at clean-up time.
 
 ## 5. Pages that reflect the source
 
@@ -482,8 +530,29 @@ A meeting's source page has:
 - **Open questions**;
 - People.
 
-The skill's compilation-value gate still decides which concept and entity
-pages exist. The source page itself carries the detail.
+### The skill's compilation-value gate
+
+`SKILL.md:75-79` pushes source pages to be short: "A concise, searchable
+source may need only its source/ledger record … do not paraphrase merely to
+create pages". That conflicts with a detail level. **Both are done:**
+
+**Distill's prompt overrides the gate for the source page.** The
+`reread-sources` helper states:
+
+- The detail level the owner chose is the requirement for each source page.
+- The compilation-value gate still decides **which concept and entity pages**
+  are created or expanded.
+- The gate never shortens the source page below the chosen level.
+
+Why both: the prompt binds Distill today, and only the prompt can carry a
+per-source level the owner picked.
+
+**The skill is reworded too**, so other hosts behave the same (section 7).
+
+The core has no page-size or format limit to fight:
+
+- `transaction inspect` checks address front matter (`transaction.py:2789`).
+- A file may be up to 64 MB.
 
 ### Deterministic checks (always, before Review)
 
@@ -506,11 +575,16 @@ These run after coverage reaches 100%.
   partial wording and update the page from lines …".
 - **The page changed.** After a continuation that read new lines, that page
   draft's sha256 must change.
-- **The page is long enough.** The draft must reach the floor of its detail
-  level, measured against the copy's text. For example, Detailed is at least
-  10% of a meeting's text. A thin page triggers the detail pass at once.
-
 These continuations count toward the 3.
+
+**No size floor gates.** Size is a weak signal. The owner's complaint page
+(2,824 of 23,750 bytes, 11.9%) would pass a 10% floor, and a 20% floor would
+fail good pages built from repetitive transcripts. The detail pass decides
+instead. The ratio is shown only in the live log's Details.
+
+**The test case for the detail pass is that page:** "the full transcript was
+all read", 411 lines, yet information is missing. It must come back with
+`missing` items, which then get added before Review.
 
 ### The detail pass: automatic, before Review
 
@@ -518,9 +592,16 @@ These continuations count toward the 3.
 
 **How it works.**
 
-1. A **separate, tool-less call** on the labels runner's small model takes the
-   copy, section by section, and the page draft. It returns structured
-   output, `missing: [{lines, kind, what}]`.
+1. A **separate, tool-less call** takes the copy, section by section, and the
+   page draft. It returns structured output, `missing: [{lines, kind,
+   what}]`.
+   - **Runner and egress.** It runs on the **ingest runner's own provider**:
+     Claude Code, with a small model (Haiku), no tools, a JSON schema and no
+     session.
+   - It never runs on the `labelSuggest` runner. That can be OpenRouter or
+     OpenAI, which would send whole transcripts to a provider the batch never
+     used.
+   - So the pass adds no new egress.
    - `kind` is one of: decision, action, proposal, objection, number, date,
      name, open question.
    - It lists only what the detail level expects and the page lacks.
@@ -648,6 +729,18 @@ tranche instead of promising exhaustive processing." with:
 **Also needed:** "A re-read of a source replaces its existing page; do not
 skip it as unchanged input" (step 1).
 
+**`:75-79` (the compilation-value gate, Analyze step 3).** Keep the gate for
+canonical pages, and stop it from thinning the source page. Proposed:
+
+> Apply a compilation-value gate to canonical pages: create or expand a
+> concept, entity or synthesis page only when the source adds durable
+> synthesis, navigation, a decision or a reusable connection. The gate does
+> not shorten a source's own page. That page records what the source says
+> at the detail the user asked for (by default, for meetings and
+> conversations: decisions, actions, and each topic's proposals, objections,
+> reasons, numbers, dates and names), so a reader need not open the source.
+> A short, already-searchable source may still need only its ledger record.
+
 These are claude-obsidian product changes. They need `make test` and the
 skills reviewer.
 
@@ -689,17 +782,31 @@ skills reviewer.
 
 ## Open questions
 
-1. **Option A for `.raw/`.** Archive in the ingest bundle (recommended) or at
-   clean-up time (Option B)? The owner must confirm.
-2. **Codex for ingest.** Off until core-fed sections exist (recommended)? The
-   owner must confirm.
-3. **Stale batches.** A batch built while another waits in Review rebuilds
+1. **Verify on the real CLI before building** (`claude -p --output-format
+   stream-json`). This blocks the build. Three things are unverified:
+   - **`tool_use_result` on `user` events.** The owner's session jsonl carries
+     `toolUseResult`, but that is a different channel. The fallback, line
+     numbers parsed from the result text, covers line spans either way.
+   - **`compact_boundary`.** Nothing else detects compaction. Without it, the
+     draft-after-read order is the only guard.
+   - **`modelUsage[…].contextWindow`** on the result event, used for the
+     budget.
+2. **Option A and Codex.** Both are recorded as vetoable defaults in
+   `decisions.md`: Option A for `.raw/`, and ingest only on Claude Code. Does
+   the owner veto either?
+3. **Repair approvals.** The repair runs 8 serial batches of 3 for the 22
+   sources. Each batch rewrites the index, log and hot cache, so a batch
+   built while another waits in Review goes stale. That can mean about 15
+   approvals. Packing the repair groups by tokens instead of 3 at a time gives
+   about 4 batches. That needs `rereadSources` to take a token budget rather
+   than `perBatch`.
+4. **Stale batches.** A batch built while another waits in Review rebuilds
    after that one applies, and the owner approves twice. An alternative: one
    Review per drop, backed by several reading sessions plus one merge
    session, the skill's "workers return drafts, one merge" pattern.
-4. **When unread sources start.** They start after the covered part applies,
+5. **When unread sources start.** They start after the covered part applies,
    using the existing machinery. Should they start at once, in a parallel
    session instead?
-5. **Embedded images.** Should they get text through the image-text path?
+6. **Embedded images.** Should they get text through the image-text path?
    Today they are placeholders.
-6. **Showing cost.** Should the expected cost appear on the Queue card?
+7. **Showing cost.** Should the expected cost appear on the Queue card?
