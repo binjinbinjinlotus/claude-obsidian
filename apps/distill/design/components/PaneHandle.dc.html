@@ -1,0 +1,13 @@
+<!-- PaneHandle: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<span role="separator" aria-orientation="vertical" aria-label="Resize" style="position: absolute; top: 0; bottom: 0; left: 0; width: 9px; display: block"><span style="position: absolute; top: 0; bottom: 0; left: {{lineLeft}}; width: {{lineWidth}}; background: {{lineColor}}"></span><span style="position: absolute; top: 50%; left: 2.5px; width: 4px; height: 32px; margin-top: -16px; border-radius: 2px; background: {{grip}}; opacity: {{gripOpacity}}"></span></span>
+</x-dc>
+<script type="text/x-dc-logic">
+const s = p.state || 'idle';
+const line = on(p.line, true);
+const C = { idle: line ? '#ECEAE5' : 'transparent', hover: '#D9D6CF', dragging: '#1F6FEB', limit: '#B03A0A' };
+const wide = s === 'dragging' || s === 'limit';
+return { lineColor: C[s] || C.idle, lineWidth: wide ? '2px' : '1px', lineLeft: wide ? '3.5px' : '4px',
+  grip: s === 'hover' ? '#9B978F' : (s === 'idle' ? 'transparent' : C[s]), gripOpacity: s === 'idle' ? 0 : 1 };
+</script>
