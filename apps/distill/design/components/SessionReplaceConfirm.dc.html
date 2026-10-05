@@ -1,0 +1,44 @@
+<!-- SessionReplaceConfirm: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<div role="alertdialog" aria-label="{{heading}}" style="width: {{w}}; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 14px; background: #F2F7FF; box-shadow: inset 0 0 0 1px #D6E4FB">
+<div style="display: flex; align-items: flex-start; gap: 10px">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1F6FEB" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 1px"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"></path></svg>
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+<span style="font-size: 14px; font-weight: 700; color: #1D1C1A">{{heading}}</span>
+<span style="font-size: 12.5px; color: #48463F; line-height: 1.5">{{body}}</span>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">{{carries}}</span>
+</div></div>
+<div style="display: flex; align-items: center; gap: 8px; margin-left: 28px">
+<dc-import name="PrimaryButton" title="{{continueTitle}}" size="small" hint-size="{{continueW}},30px"></dc-import>
+<dc-import name="SoftButton" title="Cancel" size="small" tint="#1D1C1A" fill="#FFFFFF" stroke="#ECEAE5" hint-size="76px,30px"></dc-import>
+<span style="flex-grow: 1"></span>
+</div>
+<sc-if value="{{hasDetail}}" hint-placeholder-val="{{ true }}"><span title="{{detail}}" style="margin-left: 28px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10.5px; color: #9B978F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0">{{detail}}</span></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc-logic">
+const px = (v, d) => (v === undefined || v === null || v === '') ? d : (/^[0-9.]+$/.test(String(v)) ? v + 'px' : String(v));
+// place: what the session belonged to. reason: why it is gone (the core's reason code).
+const place = p.place || 'batch', reason = p.reason || 'missing', runner = p.runner || 'Claude Code';
+const noun = { batch: 'batch', conversation: 'conversation', terminal: 'batch' }[place] || 'batch';
+const why = {
+  missing: 'its history is no longer on this Mac',
+  notFound: runner + ' couldn’t find it',
+  neverStarted: 'it never started: the batch stopped before ' + runner + ' read the sources',
+  runnerGone: runner + ' isn’t available anymore',
+}[reason] || 'it can’t be resumed';
+const next = place === 'terminal' ? 'Distill will open a new session in Terminal instead.' : 'Distill will start a new session to continue.';
+const carriesDefault = {
+  batch: 'The new session starts with this batch’s sources, your labels and the plan you are reviewing.',
+  conversation: 'The new session starts with this conversation so far, so your follow-up keeps its context.',
+  terminal: 'It starts with this batch’s sources, labels and plan. The batch in Distill is not changed.',
+}[place];
+return { w: px(p.width, '100%'),
+  heading: 'This ' + noun + '’s AI session isn’t available anymore',
+  body: why.charAt(0).toUpperCase() + why.slice(1) + '. ' + next,
+  carries: p.carries || carriesDefault,
+  continueTitle: place === 'terminal' ? 'Open new session' : 'Continue',
+  continueW: place === 'terminal' ? '140px' : '88px',
+  detail: p.detail || '', hasDetail: !!p.detail };
+</script>
