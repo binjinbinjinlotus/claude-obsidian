@@ -246,6 +246,13 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     }
   }
 
+  /** The last install was of this exact manifest and failed: no automatic retry (Install tries again). */
+  function installFailedFor(c: Collector): boolean {
+    const m = manifestOf(c);
+    const last = installs.get(c.id).last;
+    return !!m?.bytes && !!last && last.manifestSha256 === sha256Text(m.bytes) && ['failed', 'timedout'].includes(last.result);
+  }
+
   function needsInstall(c: Collector): boolean {
     const m = manifestOf(c);
     if (!m?.bytes || !hasDependencies(m.name, m.bytes)) return false;
@@ -278,7 +285,10 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
         needsInstall: needsInstall(c),
         installing: !!running,
         lastInstall,
+        state: 'none',
       };
+      const mm = out.manifest;
+      mm.state = !mm.hasDependencies ? 'none' : running ? 'installing' : !mm.needsInstall ? 'ready' : installFailedFor(c) ? 'failed' : 'needsInstall';
     }
     const allowed = script.allowedFiles;
     if (allowed && script.allowedSha256) {
@@ -475,6 +485,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     const current = find(c.id);
     if (current) changed(current);
     resolveDone();
+    pump();
     checkIdle();
     return clone(rec);
   }
@@ -505,6 +516,13 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     return ledgerFor(c.vaultPath).entries.filter((e) => isUnder(e.sourcePath, source));
   }
 
+  /** The newest run that isn't a test run (test runs never set lastRun or the sidebar count). */
+  function latestReal(id: string): CollectorRun | undefined {
+    const latest = runs.latest(id, now());
+    if (!latest || latest.trigger !== 'test') return latest;
+    return runs.list(id, now()).find((r) => r.trigger !== 'test');
+  }
+
   function summary(run: CollectorRun | undefined): CollectorRun | null {
     if (!run) return null;
     const { files: _f, stdoutTail: _o, stderrTail: _e, ...rest } = run;
@@ -515,15 +533,17 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     const out = clone(c);
     const isRunning = active.has(c.id) || pending.some((r) => r.collectorId === c.id);
     const due = c.enabled ? dueAt(c) : undefined;
-    const last = active.get(c.id)?.run ?? pending.find((r) => r.collectorId === c.id) ?? runs.latest(c.id, now());
+    const current = active.get(c.id)?.run ?? pending.find((r) => r.collectorId === c.id);
+    const last = current && current.trigger !== 'test' ? current : latestReal(c.id);
     let needsConsent = false;
     out.status = { running: isRunning, nextRunAt: due ? isoDate(due.getTime() < now().getTime() ? now() : due) : null, lastRun: summary(last), needsConsent, needsAttention: false };
     let installFailed = false;
     if (c.kind === 'script' && c.script) {
       const h = currentHash(c);
       out.status.script = scriptStatus(c);
+      out.status.script.lastTestRun = summary(current?.trigger === 'test' ? current : runs.list(c.id, now()).find((r) => r.trigger === 'test'));
       const m = out.status.script.manifest;
-      installFailed = !!m && m.needsInstall && !!m.lastInstall && ['failed', 'timedout'].includes(m.lastInstall.result);
+      installFailed = m?.state === 'failed';
       if ('sha256' in h) {
         out.status.currentSha256 = h.sha256;
         needsConsent = c.script.allowedSha256 !== h.sha256;
@@ -659,8 +679,10 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
         continue;
       }
       let waiting: CollectorRun['waiting'];
-      if (active.size >= maxConcurrent) waiting = 'slot';
-      else if (c.kind === 'script' && opts.isVaultBusy?.(c.vaultPath)) waiting = 'batch';
+      if (installing.has(c.id) && !active.has(c.id)) waiting = 'install';
+      else if (active.size >= maxConcurrent) waiting = 'slot';
+      // A test run writes to its scratch folder, not the queue: no need to wait for a batch.
+      else if (c.kind === 'script' && run.trigger !== 'test' && opts.isVaultBusy?.(c.vaultPath)) waiting = 'batch';
       if (waiting) {
         if (run.waiting !== waiting) {
           run.waiting = waiting;
@@ -716,7 +738,14 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       run.error = { code: 'vaultMissing', message: `${c.vaultPath} is no longer one of your vaults.` };
       return;
     }
-    const queueDir = path.resolve(vault.queueDirectory);
+    let queueDir = path.resolve(vault.queueDirectory);
+    if (run.trigger === 'test') {
+      // A scratch folder stands in for the queue; the previous test run's output is replaced.
+      queueDir = folders.testDir(c.id);
+      fs.rmSync(queueDir, { recursive: true, force: true });
+      fs.mkdirSync(queueDir, { recursive: true, mode: 0o700 });
+      run.outputDir = queueDir;
+    }
     if (c.kind === 'folder' && c.folder) {
       const outcome = await runFolder({
         collectorId: c.id,
@@ -767,7 +796,15 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       return;
     }
     const searchPath = await loginPath();
-    // The manifest changed since the last install (or packages are missing): install first.
+    // Safety net: packages missing (node_modules deleted, or a version allowed before v6 installed at once).
+    // An install of this exact manifest that already failed isn't retried every run; Install tries again.
+    if (needsInstall(c) && installFailedFor(c)) {
+      const last = installs.get(c.id).last!;
+      run.installId = last.id;
+      run.result = 'failed';
+      run.error = { code: 'installFailed', message: `Not run · installing packages failed: ${last.error?.message ?? last.result}. Install again.` };
+      return;
+    }
     if (needsInstall(c)) {
       const done = await install(c, 'beforeRun', false, {
         onStart: (i) => {
@@ -944,15 +981,10 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
         finishedRun(c, trigger, 'skipped', { skipReason: `the ${clock(new Date(running.startedAt))} run was still going` });
         continue;
       }
-      const inst = installing.get(c.id)?.install;
-      if (inst) {
-        finishedRun(c, trigger, 'skipped', { skipReason: `packages were being installed (started ${clock(new Date(inst.startedAt))})` });
-        continue;
-      }
       if (c.kind === 'script' && c.script) {
         // A script waiting for consent records "Not run" once, not every tick.
         const h = currentHash(c);
-        const last = runs.latest(c.id, t);
+        const last = latestReal(c.id);
         if ('sha256' in h && c.script.allowedSha256 !== h.sha256 && last?.result === 'notTrusted' && last.sha256 === h.sha256) continue;
       }
       enqueue(c, trigger);
@@ -976,6 +1008,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       if (touched) persist();
       try {
         folders.pruneTrash(now());
+        folders.pruneTestRuns(now());
       } catch {
         // the trash is best effort
       }
@@ -1128,6 +1161,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       persist();
       runs.remove(id);
       installs.remove(id);
+      fs.rmSync(folders.testDir(id), { recursive: true, force: true });
       // Its script folder goes to the trash (kept 30 days), never deleted at once.
       try {
         folders.trash(c, now());
@@ -1138,9 +1172,15 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     },
     async runCollector(id) {
       const c = require(id);
-      const busy = busyWith(id);
-      if (busy) throw new CoreError('busy', busy === 'run' ? `${c.name} is already running.` : `${c.name} is installing packages.`);
+      // While packages install, the run waits for them (queued, waiting 'install'): "Allow and run" works.
+      if (busyWith(id) === 'run') throw new CoreError('busy', `${c.name} is already running.`);
       return enqueue(c, 'now');
+    },
+    async testCollector(id) {
+      const c = require(id);
+      if (c.kind !== 'script' || !c.script) throw new CoreError('invalid_request', 'Test run is for script collectors.');
+      if (busyWith(id) === 'run') throw new CoreError('busy', `${c.name} is already running.`);
+      return enqueue(c, 'test');
     },
     async stopCollector(id) {
       require(id);
@@ -1179,6 +1219,8 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       c.enabled = true;
       c.updatedAt = isoDate(now());
       persist();
+      // Packages install as part of adding (or of allowing a changed manifest), not at the first run.
+      if (needsInstall(c) && !busyWith(id)) void install(c, 'allow', false);
       changed(c);
       return view(c);
     },

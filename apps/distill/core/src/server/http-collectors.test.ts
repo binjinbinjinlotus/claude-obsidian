@@ -160,6 +160,10 @@ describe('HTTP API: collectors', () => {
     assert.deepEqual(last('installCollectorPackages')!.args, [id, undefined]);
     assert.deepEqual((await request(port, 'POST', `/v1/collectors/${id}/install/stop`)).body, { install: null });
     assert.deepEqual((await request(port, 'GET', `/v1/collectors/${id}/install`)).body, { install: null });
+    const test = await request(port, 'POST', `/v1/collectors/${id}/test`);
+    assert.equal(test.status, 200);
+    assert.equal(test.body.run.trigger, 'test');
+    assert.deepEqual(last('testCollector')!.args, [id]);
     core.failNext('installCollectorPackages', new CoreError('invalid_state', 'Allow first.'));
     assert.equal((await request(port, 'POST', `/v1/collectors/${id}/install`, {})).status, 409);
   });

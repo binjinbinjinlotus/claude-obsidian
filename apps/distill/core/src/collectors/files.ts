@@ -32,6 +32,7 @@ export const MANIFEST: Record<CollectorInterpreter, CollectorManifestName | null
 /** Installed packages, per manifest: removed by a clean install and before a folder goes to the trash. */
 export const PACKAGES_DIR: Record<CollectorManifestName, string> = { 'package.json': 'node_modules', 'requirements.txt': '.venv' };
 export const TRASH_KEEP_DAYS = 30;
+export const TEST_KEEP_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FILE_MODE = 0o600;
 
@@ -97,6 +98,33 @@ export class ScriptFolders {
 
   get trashDir(): string {
     return path.join(this.dir, 'trash');
+  }
+
+  /** v6: a test run's scratch folder, <state>/collectors/test-runs/<id>; emptied at the start of each test run. */
+  testDir(id: string): string {
+    const root = path.join(this.dir, 'test-runs');
+    const f = path.join(root, safeID(id));
+    if (!isInside(f, root)) throw new Error(`Bad collector id ${id}.`);
+    return f;
+  }
+
+  /** Remove test-run folders not touched for 7 days. */
+  pruneTestRuns(now: Date): void {
+    const root = path.join(this.dir, 'test-runs');
+    let names: string[] = [];
+    try {
+      names = fs.readdirSync(root);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      const p = path.join(root, name);
+      try {
+        if (isInside(p, root) && fs.statSync(p).mtimeMs < now.getTime() - TEST_KEEP_DAYS * DAY_MS) fs.rmSync(p, { recursive: true, force: true });
+      } catch {
+        // gone
+      }
+    }
   }
 
   /** <state>/collectors/scripts/<id>; never outside scripts/ whatever the id holds. */

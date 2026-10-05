@@ -120,7 +120,7 @@ describe('script files (v6)', () => {
     const stored = fs.readFileSync(path.join(env.state, 'collectors.json'), 'utf8');
     assert.ok(!stored.includes('hi.md'), 'no code in collectors.json');
     assert.equal(c.status!.currentSha256, sha256Text(code), 'no manifest: the hash is the script’s');
-    assert.deepEqual(c.status!.script, { path: file, dir: path.dirname(file), managed: true, manifest: null });
+    assert.deepEqual(c.status!.script, { path: file, dir: path.dirname(file), managed: true, manifest: null, lastTestRun: null });
     await allow(env, c);
     const run = await runAndWait(env.svc, c.id);
     assert.equal(run.result, 'success');
@@ -288,21 +288,22 @@ describe('script files (v6)', () => {
     assert.equal((await env.svc.getCollector(c.id))!.status!.needsConsent, false);
   });
 
-  test('Install: npm in the script folder, output captured and masked, consent unchanged afterwards', async () => {
+  test('allowing a script with packages installs them at once: npm in the folder, output masked, consent unchanged', async () => {
     const env = setup();
     fakeNpm(env);
     const code = 'import pad from "leftpad"; import fs from "node:fs"; fs.writeFileSync(process.argv[3] + "/p.md", pad("x"));';
     const manifest = '{"type":"module","dependencies":{"leftpad":"^1.0.0"}}\n';
     const c = await env.svc.createCollector({ kind: 'script', script: { source: { inline: code }, interpreter: 'node', manifest } });
+    assert.equal(c.status!.script!.manifest!.state, 'needsInstall');
     const allowed = await allow(env, c);
-    const started = await env.svc.installCollectorPackages(c.id);
-    assert.equal(started.result, 'running');
-    assert.equal(started.command, 'npm install --no-audit --no-fund');
-    await rejects(env.svc.runCollector(c.id), 'busy');
+    assert.equal(allowed.status!.script!.manifest!.state, 'installing', 'adding = allow → installing, before any run');
+    assert.equal(allowed.status!.script!.manifest!.installing, true);
     await rejects(env.svc.installCollectorPackages(c.id), 'busy');
     await env.svc.whenIdle();
     const done = (await env.svc.getCollectorInstall(c.id))!;
     assert.equal(done.result, 'success', JSON.stringify(done));
+    assert.equal(done.trigger, 'allow');
+    assert.equal(done.command, 'npm install --no-audit --no-fund');
     assert.equal(fs.readFileSync(path.join(env.root, 'npm-cwd'), 'utf8').trim(), path.join(env.state, 'collectors', 'scripts', c.id));
     assert.equal(fs.readFileSync(path.join(env.root, 'npm-env'), 'utf8').trim(), 'unset', 'no DISTILL_* variables');
     assert.match(done.outputTail!, /fake npm install --no-audit --no-fund/);
@@ -310,10 +311,9 @@ describe('script files (v6)', () => {
     assert.match(done.outputTail!, /_authToken=\*\*\*/);
     const outputs = env.events.filter((e) => e.type === 'collector.install.output').map((e) => (e as { text: string }).text).join('');
     assert.ok(!outputs.includes('hunter2'), 'live output is masked too');
-    assert.ok(env.events.some((e) => e.type === 'collector.install.finished'));
     const after = (await env.svc.getCollector(c.id))!;
     assert.equal(after.status!.currentSha256, allowed.script!.allowedSha256, 'installing never changes what consent covers');
-    assert.equal(after.status!.script!.manifest!.needsInstall, false);
+    assert.equal(after.status!.script!.manifest!.state, 'ready');
     assert.equal(after.status!.script!.manifest!.lastInstall!.outputTail, undefined, 'status leaves the output out');
     const run = await runAndWait(env.svc, c.id);
     assert.equal(run.result, 'success', JSON.stringify(run));
@@ -321,30 +321,66 @@ describe('script files (v6)', () => {
     assert.equal(fs.readFileSync(path.join(env.queue, 'p.md'), 'utf8'), '  x');
   });
 
-  test('a changed manifest installs before the next run; a failed install fails the run', async () => {
+  test('Allow and run: Run now during the install waits for it, then runs', async () => {
     const env = setup();
     fakeNpm(env);
-    const c = await env.svc.createCollector({
-      kind: 'script',
-      script: { source: { inline: 'import "leftpad"; console.log("ran")' }, interpreter: 'node', manifest: '{"dependencies":{"leftpad":"1"}}' },
-    });
+    const c = await env.svc.createCollector({ kind: 'script', script: { source: { inline: 'import "leftpad"; console.log("ran")' }, interpreter: 'node', manifest: '{"dependencies":{"leftpad":"1"}}' } });
     await allow(env, c);
-    const first = await runAndWait(env.svc, c.id);
-    assert.equal(first.result, 'nothing', JSON.stringify(first));
-    assert.ok(first.installId, 'the run installed first');
-    assert.equal((await env.svc.getCollectorInstall(c.id))!.trigger, 'beforeRun');
-    assert.match(first.stdoutTail!, /ran/);
+    const queued = await env.svc.runCollector(c.id);
+    assert.equal(queued.result, 'queued');
+    assert.equal(queued.waiting, 'install');
+    await env.svc.whenIdle();
+    const run = (await env.svc.listCollectorRuns(c.id))[0]!;
+    assert.equal(run.result, 'nothing', JSON.stringify(run));
+    assert.match(run.stdoutTail!, /ran/);
+    assert.equal(run.installId, undefined, 'the run itself installed nothing');
+  });
 
-    await env.svc.writeCollectorScript(c.id, { manifest: '{"dependencies":{"leftpad":"2"}}' });
-    await allow(env, c);
+  test('a failed install shows as failed and is not retried by every run; missing packages reinstall before a run', async () => {
+    const env = setup();
     fakeNpm(env, 'fail');
-    const second = await runAndWait(env.svc, c.id);
-    assert.equal(second.result, 'failed');
-    assert.equal(second.error!.code, 'installFailed');
-    const status = (await env.svc.getCollector(c.id))!.status!;
+    const c = await env.svc.createCollector({ kind: 'script', script: { source: { inline: 'import "leftpad"; console.log("ran")' }, interpreter: 'node', manifest: '{"dependencies":{"leftpad":"2"}}' } });
+    await allow(env, c);
+    await env.svc.whenIdle();
+    const failedInstall = (await env.svc.getCollectorInstall(c.id))!;
+    assert.equal(failedInstall.result, 'failed');
+    let status = (await env.svc.getCollector(c.id))!.status!;
+    assert.equal(status.script!.manifest!.state, 'failed');
     assert.equal(status.needsAttention, true);
-    assert.equal(status.script!.manifest!.needsInstall, true);
-    assert.equal(status.script!.manifest!.lastInstall!.result, 'failed');
+    const run = await runAndWait(env.svc, c.id);
+    assert.equal(run.result, 'failed');
+    assert.equal(run.error!.code, 'installFailed');
+    assert.equal(run.installId, failedInstall.id, 'no second install attempt');
+    // Install again (explicit) works once npm does.
+    fakeNpm(env, 'ok');
+    await env.svc.installCollectorPackages(c.id);
+    await env.svc.whenIdle();
+    status = (await env.svc.getCollector(c.id))!.status!;
+    assert.equal(status.script!.manifest!.state, 'ready');
+    // Safety net: node_modules deleted by hand → the next run installs first.
+    fs.rmSync(path.join(env.state, 'collectors', 'scripts', c.id, 'node_modules'), { recursive: true });
+    const again = await runAndWait(env.svc, c.id);
+    assert.equal(again.result, 'nothing', JSON.stringify(again));
+    assert.ok(again.installId);
+    assert.equal((await env.svc.getCollectorInstall(c.id))!.trigger, 'beforeRun');
+  });
+
+  test('allowing a changed manifest installs at once', async () => {
+    const env = setup();
+    fakeNpm(env);
+    const c = await env.svc.createCollector({ kind: 'script', script: { source: { inline: 'console.log(1)' }, interpreter: 'node', manifest: '{"dependencies":{"a":"1"}}' } });
+    await allow(env, c);
+    await env.svc.whenIdle();
+    const first = (await env.svc.getCollectorInstall(c.id))!;
+    await env.svc.writeCollectorScript(c.id, { manifest: '{"dependencies":{"a":"2"}}' });
+    assert.equal((await env.svc.getCollector(c.id))!.status!.script!.manifest!.state, 'needsInstall');
+    const again = await allow(env, c);
+    assert.equal(again.status!.script!.manifest!.state, 'installing');
+    await env.svc.whenIdle();
+    const second = (await env.svc.getCollectorInstall(c.id))!;
+    assert.notEqual(second.id, first.id);
+    assert.equal(second.trigger, 'allow');
+    assert.equal(second.result, 'success');
   });
 
   test('install timeout, Stop and clean reinstall', async () => {
@@ -352,7 +388,6 @@ describe('script files (v6)', () => {
     fakeNpm(env, 'hang');
     const c = await env.svc.createCollector({ kind: 'script', script: { source: { inline: 'console.log(1)' }, interpreter: 'node', manifest: '{"dependencies":{"a":"1"}}' } });
     await allow(env, c);
-    await env.svc.installCollectorPackages(c.id);
     await env.svc.whenIdle();
     assert.equal((await env.svc.getCollectorInstall(c.id))!.result, 'timedout');
 
@@ -360,7 +395,6 @@ describe('script files (v6)', () => {
     fakeNpm(env2, 'hang');
     const d = await env2.svc.createCollector({ kind: 'script', script: { source: { inline: 'console.log(1)' }, interpreter: 'node', manifest: '{"dependencies":{"a":"1"}}' } });
     await allow(env2, d);
-    await env2.svc.installCollectorPackages(d.id);
     await new Promise((r) => setTimeout(r, 200));
     assert.equal((await env2.svc.stopCollectorInstall(d.id))!.result, 'running');
     await env2.svc.whenIdle();
@@ -375,24 +409,25 @@ describe('script files (v6)', () => {
     const clean = (await env2.svc.getCollectorInstall(d.id))!;
     assert.equal(clean.result, 'success');
     assert.equal(clean.clean, true);
+    assert.equal(clean.trigger, 'manual');
     assert.ok(!fs.existsSync(stale), 'clean removed node_modules first');
   });
 
   test('Python: requirements.txt installs into a .venv in the folder, and runs use it', async () => {
     const env = setup();
-    // A fake python3: `-m venv .venv` makes a venv whose python3 marks that it ran, then runs the real python3.
+    // A fake python3: `-m venv --symlinks .venv` makes a venv whose python3 marks that it ran, then runs the real python3.
     exe(
       path.join(env.bin, 'python3'),
       [
         '#!/bin/zsh',
-        'if [[ "$1 $2" == "-m venv" ]]; then',
-        '  mkdir -p "$3/bin"',
-        `  print -r -- '#!/bin/zsh' > "$3/bin/python3"`,
-        `  print -r -- 'if [[ "$1 $2" == "-m pip" ]]; then print -r -- "pip $*"; exit 0; fi' >> "$3/bin/python3"`,
-        `  print -r -- 'print venv > "$HOME/venv-used"; exec ${REAL_PYTHON ?? '/usr/bin/python3'} "$@"' >> "$3/bin/python3"`,
-        '  chmod +x "$3/bin/python3"; print "created venv"; exit 0',
+        'if [[ "$1 $2 $3" == "-m venv --symlinks" ]]; then',
+        '  mkdir -p "$4/bin"',
+        `  print -r -- '#!/bin/zsh' > "$4/bin/python3"`,
+        `  print -r -- 'if [[ "$1 $2" == "-m pip" ]]; then print -r -- "pip $*"; exit 0; fi' >> "$4/bin/python3"`,
+        `  print -r -- 'print venv > "$HOME/venv-used"; exec ${REAL_PYTHON ?? '/usr/bin/python3'} "$@"' >> "$4/bin/python3"`,
+        '  chmod +x "$4/bin/python3"; print "created venv"; exit 0',
         'fi',
-        `exec ${REAL_PYTHON ?? '/usr/bin/python3'} "$@"`,
+        'print -u2 "unexpected: $*"; exit 9',
       ].join('\n'),
     );
     const code = 'import sys, pathlib\npathlib.Path(sys.argv[2], "py.md").write_text("py")\n';
@@ -400,18 +435,62 @@ describe('script files (v6)', () => {
     assert.equal(path.basename((c.script!.source as { file: string }).file), 'collector.py');
     assert.equal(c.status!.script!.manifest!.name, 'requirements.txt');
     await allow(env, c);
-    await env.svc.installCollectorPackages(c.id);
     await env.svc.whenIdle();
     const inst = (await env.svc.getCollectorInstall(c.id))!;
     assert.equal(inst.result, 'success', JSON.stringify(inst));
-    assert.match(inst.command, /^python3 -m venv \.venv && \.venv\/bin\/python3 -m pip install --disable-pip-version-check -r requirements\.txt$/);
+    assert.equal(inst.command, 'python3 -m venv --symlinks .venv && .venv/bin/python3 -m pip install --disable-pip-version-check -r requirements.txt');
     assert.match(inst.outputTail!, /created venv[\s\S]*pip -m pip install/);
     const run = await runAndWait(env.svc, c.id);
     assert.equal(run.result, 'success', JSON.stringify(run));
     assert.ok(fs.existsSync(path.join(env.root, 'venv-used')), 'the run used the folder’s .venv');
-    // With the venv in place, the next install skips creating it.
+    // With the venv in place, the next install reuses it (no venv step).
     const plan = planInstall('requirements.txt', path.join(env.state, 'collectors', 'scripts', c.id), `${env.bin}:${process.env.PATH}`);
     assert.ok(!('error' in plan) && plan.steps.length === 1);
+  });
+
+  test('a real venv: its python resolves to the base python3; restarts, re-points and manifest changes keep the same .venv', async (t) => {
+    if (!REAL_PYTHON) {
+      t.skip('no python3 on PATH');
+      return;
+    }
+    const env = setup();
+    fs.symlinkSync(REAL_PYTHON, path.join(env.bin, 'python3'));
+    // Offline: pip is already in a new venv, so "pip" with --no-index is satisfied without the network.
+    const c = await env.svc.createCollector({
+      kind: 'script',
+      script: { source: { inline: 'import sys, pathlib\npathlib.Path(sys.argv[2], "v.md").write_text(sys.executable)\n' }, interpreter: 'python3', manifest: '--no-index\npip\n' },
+    });
+    await allow(env, c);
+    await env.svc.whenIdle();
+    const inst = (await env.svc.getCollectorInstall(c.id))!;
+    assert.equal(inst.result, 'success', inst.outputTail);
+    const dir = path.join(env.state, 'collectors', 'scripts', c.id);
+    const venvPython = path.join(dir, '.venv', 'bin', 'python3');
+    assert.ok(fs.lstatSync(venvPython).isSymbolicLink(), 'symlinks, never copies');
+    const base = (await import('node:child_process')).execFileSync(REAL_PYTHON, ['-c', 'import os, sys; print(os.path.realpath(sys.executable))']).toString().trim();
+    assert.equal(fs.realpathSync(venvPython), base, 'the Keychain sees the same program');
+    const fingerprint = () => {
+      const cfg = fs.statSync(path.join(dir, '.venv', 'pyvenv.cfg'));
+      const py = fs.lstatSync(venvPython);
+      return `${cfg.ino}:${cfg.mtimeMs}:${py.ino}:${py.mtimeMs}`;
+    };
+    const before = fingerprint();
+    // A core restart (with migration and a state-dir re-point) leaves the venv alone.
+    const file = path.join(env.state, 'collectors.json');
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replaceAll(env.state, '/old/state'));
+    const svc2 = env.make();
+    svc2.start();
+    await svc2.stop();
+    assert.equal(fingerprint(), before);
+    // A manifest change installs into the same venv.
+    await svc2.writeCollectorScript(c.id, { manifest: '--no-index\npip  # still offline\n' });
+    const fresh = (await svc2.getCollector(c.id))!;
+    await svc2.allowCollector(c.id, fresh.status!.currentSha256!);
+    await svc2.whenIdle();
+    const second = (await svc2.getCollectorInstall(c.id))!;
+    assert.equal(second.result, 'success', second.outputTail);
+    assert.ok(!second.command.includes('venv --symlinks'), 'no new venv');
+    assert.equal(fingerprint(), before);
   });
 
   test('a real npm install, offline, with a file: dependency', async (t) => {
@@ -463,6 +542,51 @@ describe('script files (v6)', () => {
     fs.utimesSync(path.join(trash, kept!), old, old);
     assert.equal(folders.pruneTrash(new Date()).length, 1);
     assert.deepEqual(fs.readdirSync(trash), []);
+  });
+
+  test('Test run: like a real run, into a scratch folder; never the queue, lastRun or the sidebar count', async () => {
+    const env = setup();
+    const code = 'print -r -- "$DISTILL_QUEUE_DIR" > "$2/where.txt"; print -r -- one > "$2/a.md"; [[ -f "$2/old.md" ]] && print stale; exit ${FAIL:-0}';
+    const c = await env.svc.createCollector({ kind: 'script', script: { source: { inline: code }, interpreter: 'zsh' } });
+    await env.svc.testCollector(c.id);
+    await env.svc.whenIdle();
+    const refused = (await env.svc.listCollectorRuns(c.id))[0]!;
+    assert.equal(refused.trigger, 'test');
+    assert.equal(refused.result, 'notTrusted', 'same consent as a real run');
+    await allow(env, c);
+    const scratch = path.join(env.state, 'collectors', 'test-runs', c.id);
+    fs.mkdirSync(scratch, { recursive: true });
+    fs.writeFileSync(path.join(scratch, 'old.md'), 'from the last test run');
+    await env.svc.testCollector(c.id);
+    await env.svc.whenIdle();
+    const run = (await env.svc.listCollectorRuns(c.id))[0]!;
+    assert.equal(run.result, 'success', JSON.stringify(run));
+    assert.equal(run.outputDir, scratch);
+    assert.deepEqual(run.filesAdded, ['a.md', 'where.txt']);
+    assert.equal(fs.readFileSync(path.join(scratch, 'where.txt'), 'utf8').trim(), scratch, '$2 and DISTILL_QUEUE_DIR are the scratch folder');
+    assert.ok(!run.stdoutTail!.includes('stale'), 'the previous test output was cleared first');
+    assert.deepEqual(fs.readdirSync(env.queue), [], 'nothing reached the queue');
+    const status = (await env.svc.getCollector(c.id))!.status!;
+    assert.notEqual(status.lastRun?.trigger, 'test', 'lastRun is the real runs only');
+    assert.equal(status.script!.lastTestRun!.id, run.id);
+    assert.equal(status.script!.lastTestRun!.outputDir, scratch);
+    assert.equal(status.needsAttention, false, 'a refused test run raises no count');
+  });
+
+  test('Test run is for scripts; deleting removes its output', async () => {
+    const env = setup();
+    const f = await env.svc.createCollector({ kind: 'folder', folder: { source: path.join(env.root, 'in') } });
+    await rejects(env.svc.testCollector(f.id), 'invalid_request');
+    const c = await env.svc.createCollector({ kind: 'script', script: { source: { inline: 'print x > "$2/x.md"; exit 3' }, interpreter: 'zsh' } });
+    await allow(env, c);
+    await env.svc.testCollector(c.id);
+    await env.svc.whenIdle();
+    const status = (await env.svc.getCollector(c.id))!.status!;
+    assert.equal(status.script!.lastTestRun!.result, 'failed');
+    assert.equal(status.needsAttention, false, 'a failed test run raises no count');
+    assert.equal(status.lastRun, null);
+    await env.svc.deleteCollector(c.id);
+    assert.ok(!fs.existsSync(path.join(env.state, 'collectors', 'test-runs', c.id)));
   });
 
   test('ids never leave the scripts folder', () => {

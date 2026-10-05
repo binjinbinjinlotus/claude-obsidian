@@ -31,7 +31,7 @@ import { bool, encodeJSON, isObject, normalizeDate, num, preserveUnreadable, rea
 export const INTERPRETERS: CollectorInterpreter[] = ['zsh', 'python3', 'node', 'typescript'];
 export const PRESETS: SchedulePreset[] = ['every15', 'hourly', 'daily', 'weekdays', 'custom'];
 export const RUN_RESULTS: CollectorRunResult[] = ['queued', 'running', 'success', 'nothing', 'failed', 'timedout', 'skipped', 'notTrusted', 'stopped'];
-const TRIGGERS: CollectorTrigger[] = ['schedule', 'now', 'catchup'];
+const TRIGGERS: CollectorTrigger[] = ['schedule', 'now', 'catchup', 'test'];
 const ERROR_CODES: CollectorErrorCode[] = [
   'sourceMissing', 'noPermission', 'queueMissing', 'vaultMissing', 'scriptMissing', 'interpreterMissing',
   'scriptFailed', 'notAllowed', 'scriptChanged', 'interrupted', 'installFailed', 'other',
@@ -83,7 +83,7 @@ export function decodeInstall(v: unknown, now = new Date()): CollectorInstall | 
   const out: CollectorInstall = {
     id,
     collectorId,
-    trigger: v.trigger === 'beforeRun' ? 'beforeRun' : 'manual',
+    trigger: v.trigger === 'beforeRun' || v.trigger === 'allow' ? v.trigger : 'manual',
     startedAt: normalizeDate(v.startedAt, now),
     result,
     command: str(v.command) ?? '',
@@ -263,7 +263,7 @@ export function decodeRun(v: unknown, now = new Date()): CollectorRun | undefine
   if (v.endedAt !== undefined) run.endedAt = normalizeDate(v.endedAt, now);
   const duration = num(v.durationMs);
   if (duration !== undefined) run.durationMs = duration;
-  if (v.waiting === 'slot' || v.waiting === 'batch') run.waiting = v.waiting;
+  if (v.waiting === 'slot' || v.waiting === 'batch' || v.waiting === 'install') run.waiting = v.waiting;
   const skipReason = str(v.skipReason);
   if (skipReason) run.skipReason = skipReason;
   if (isObject(v.error)) {
@@ -295,7 +295,7 @@ export function decodeRun(v: unknown, now = new Date()): CollectorRun | undefine
   if (v.exitCode === null || typeof v.exitCode === 'number') run.exitCode = v.exitCode as number | null;
   const signal = nullableStr(v.signal);
   if (signal !== undefined) run.signal = signal;
-  for (const k of ['sha256', 'stdoutTail', 'stderrTail', 'installId'] as const) {
+  for (const k of ['sha256', 'stdoutTail', 'stderrTail', 'installId', 'outputDir'] as const) {
     const x = str(v[k]);
     if (x !== undefined) run[k] = x;
   }

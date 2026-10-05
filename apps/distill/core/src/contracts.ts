@@ -951,6 +951,11 @@ export interface CollectorManifestStatus {
   installing: boolean;
   /** The newest install (output left out; see getCollectorInstall). */
   lastInstall: CollectorInstall | null;
+  /**
+   * v6, one word for the app: none (no packages), ready (installed for this version), installing, failed
+   * (the last install of this version failed: Install again), needsInstall (not installed yet).
+   */
+  state: 'none' | 'ready' | 'installing' | 'failed' | 'needsInstall';
 }
 
 /** v6: computed on every read. */
@@ -964,6 +969,8 @@ export interface CollectorScriptStatus {
   manifest: CollectorManifestStatus | null;
   /** Needs consent after an allowed version: which files changed since. Absent when never allowed or unknown (allowed before v6). */
   changes?: ('script' | 'manifest')[];
+  /** v6: the newest test run (without files and output tails), and its scratch folder. */
+  lastTestRun?: CollectorRun | null;
 }
 
 /**
@@ -974,8 +981,12 @@ export interface CollectorScriptStatus {
 export interface CollectorInstall {
   id: string; // ins-<uuid>
   collectorId: string;
-  /** manual = Install (API); beforeRun = the manifest changed since the last install, so a run installed first. */
-  trigger: 'manual' | 'beforeRun';
+  /**
+   * manual = Install (API); allow = the user allowed a version whose packages weren't installed (adding a
+   * script, or OK after a manifest change), so it installs at once; beforeRun = the safety net: packages
+   * went missing (node_modules deleted), so a run installed first.
+   */
+  trigger: 'manual' | 'allow' | 'beforeRun';
   startedAt: string;
   endedAt?: string;
   durationMs?: number;
@@ -1065,7 +1076,12 @@ export interface CollectorPatch {
   script?: Partial<{ source: ScriptSource; interpreter: CollectorInterpreter; timeoutSeconds: number }>;
 }
 
-export type CollectorTrigger = 'schedule' | 'now' | 'catchup';
+/**
+ * v6: 'test' = Test run: the script runs exactly like a real run, but $2 / DISTILL_QUEUE_DIR is a scratch
+ * folder Distill owns (`outputDir`), so nothing reaches the queue. Not a scheduled run: it never changes
+ * status.lastRun, the sidebar count or the schedule. Kept in run history.
+ */
+export type CollectorTrigger = 'schedule' | 'now' | 'catchup' | 'test';
 
 /**
  * queued    – waiting for a free slot (at most 2 collectors run at once) or, for a script,
@@ -1120,8 +1136,8 @@ export interface CollectorRun {
   endedAt?: string;
   durationMs?: number;
   result: CollectorRunResult;
-  /** While queued: what it waits for. */
-  waiting?: 'slot' | 'batch';
+  /** While queued: what it waits for. v6: 'install' = the packages being installed for this collector. */
+  waiting?: 'slot' | 'batch' | 'install';
   /** Skipped: why, e.g. "the 6:00 AM run was still going". */
   skipReason?: string;
   error?: { code: CollectorErrorCode; message: string };
@@ -1139,6 +1155,8 @@ export interface CollectorRun {
   stderrTail?: string;
   /** v6: the install this run did first (the manifest changed since the last install). */
   installId?: string;
+  /** v6, test runs: the scratch folder that stood in for the queue folder (filesAdded are its names). Kept until the next test run, at most 7 days. */
+  outputDir?: string;
 }
 
 /** One entry of a vault's ledger: a file a Folder collector took (name, size, times, hash; never content). */
@@ -1360,6 +1378,8 @@ export interface DistillCore {
   stopCollectorInstall(id: string): Promise<CollectorInstall | null>;
   /** v6: the newest install with its output; null when there was none. */
   getCollectorInstall(id: string): Promise<CollectorInstall | null>;
+  /** v6: Test run (scripts): like Run now, into a scratch folder instead of the queue. Same consent; busy like Run now. */
+  testCollector(id: string): Promise<CollectorRun>;
 
   subscribe(listener: (event: CoreEvent) => void): () => void;
 }

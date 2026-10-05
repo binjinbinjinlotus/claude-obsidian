@@ -115,7 +115,7 @@ export type CollectorsOwned =
   | 'listCollectors' | 'getCollector' | 'createCollector' | 'updateCollector' | 'deleteCollector' | 'runCollector'
   | 'stopCollector' | 'allowCollector' | 'revokeCollector' | 'listCollectorRuns' | 'listCollected' | 'forgetCollected'
   | 'restoreCollected' | 'createCollectorFolder' | 'checkSchedule'
-  | 'getCollectorScript' | 'writeCollectorScript' | 'installCollectorPackages' | 'stopCollectorInstall' | 'getCollectorInstall';
+  | 'getCollectorScript' | 'writeCollectorScript' | 'installCollectorPackages' | 'stopCollectorInstall' | 'getCollectorInstall' | 'testCollector';
 /** Actions and connections: core/src/actions (createActionsService). */
 export type ActionsOwned =
   | 'listActionTypes' | 'listActions' | 'getAction' | 'createAction' | 'updateAction' | 'confirmActions'

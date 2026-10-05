@@ -1072,6 +1072,7 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
       },
     },
     { method: 'POST', pattern: /^\/v1\/collectors\/([^/]+)\/install\/stop$/, handler: async ({ params }) => ({ install: await core.stopCollectorInstall(params[0]!) }) },
+    { method: 'POST', pattern: /^\/v1\/collectors\/([^/]+)\/test$/, handler: async ({ params }) => ({ run: await core.testCollector(params[0]!) }) },
     { method: 'GET', pattern: /^\/v1\/collectors\/([^/]+)\/install$/, handler: async ({ params }) => ({ install: await core.getCollectorInstall(params[0]!) }) },
     {
       method: 'GET',
