@@ -86,7 +86,7 @@ export const HELP = `distill: ask your notes and queue new ones for Distill
 Usage:
   distill ask "<question>" [--label L]... [--match any|all] [--unconfirmed include|exclude]
               [--source S]... [--runner R] [--model M] [--effort E] [--conversation ID]
-              [--vault PATH] [--json]
+              [--new-session] [--vault PATH] [--json]
   distill note add --title T [--text "..." | --file PATH | -] [--image PATH[:extract|:keep]]...
               [--source S] [--ref "..."] [--label L]... [--no-suggest] [--vault PATH] [--json]
   distill note label <request-id> --label L... [--json]
@@ -97,7 +97,7 @@ Usage:
   distill queue scan [--json]
   distill actions list [--type T] [--history] [--json]
   distill actions add "<title>" [--type todo] [--body "..."] [--why "..."] [--due YYYY-MM-DD]
-              [--vault PATH] [--json]
+              [--new-session] [--vault PATH] [--json]
   distill collectors list [--json]
   distill collectors run <id> [--json]
   distill collectors history <id> [--limit N] [--json]
@@ -115,6 +115,9 @@ Commands:
                 --runner/--model/--effort override the "ask" defaults from settings
                 (effort: low | medium | high | xhigh | max). --conversation ID continues
                 a previous answer's conversation. "-" as the question reads stdin.
+                If that conversation's AI session is gone, nothing is asked: the
+                error (code session_unavailable, exit 1) says so, and --new-session
+                continues in a new session that starts with the conversation so far.
                 --match any (a note with at least one --label) or all (every --label);
                 --unconfirmed include|exclude decides whether AI labels nobody has
                 confirmed yet count. Both default to the user's Ask settings.
@@ -296,7 +299,7 @@ export async function run(argv: string[], io: CliIO = defaultIO()): Promise<numb
     return await dispatch(argv, io);
   } catch (err) {
     const e = err instanceof CliError ? err : new CliError((err as Error).message ?? String(err));
-    if (wantsJSON) io.stdout(JSON.stringify({ error: { code: e.code, message: e.message } }) + '\n');
+    if (wantsJSON) io.stdout(JSON.stringify({ error: { ...e.details, code: e.code, message: e.message } }) + '\n');
     else io.stderr(`distill: ${e.message}${e.exitCode === 2 ? '\nRun `distill --help` for usage.' : ''}\n`);
     return e.exitCode;
   }
@@ -363,6 +366,7 @@ async function ask(args: string[], io: CliIO, api: ApiFactory): Promise<number> 
     vault: { type: 'string' },
     match: { type: 'string' },
     unconfirmed: { type: 'string' },
+    'new-session': { type: 'boolean' },
   });
   const out = new Output(io, values.json === true);
   const match = str(values.match);
@@ -385,6 +389,8 @@ async function ask(args: string[], io: CliIO, api: ApiFactory): Promise<number> 
   if (unconfirmed) req.includeUnconfirmed = unconfirmed === 'include';
   const conversation = str(values.conversation);
   if (conversation) req.conversationID = conversation;
+  // Session continuity: only after the user saw session_unavailable and chose a new session.
+  if (values['new-session'] === true) req.newSession = true;
   const vault = str(values.vault);
   if (vault) req.vaultPath = path.resolve(io.cwd, vault);
 
@@ -424,6 +430,16 @@ async function ask(args: string[], io: CliIO, api: ApiFactory): Promise<number> 
     res = await client.request<AskResponse>('POST', '/v1/ask', req);
   } catch (err) {
     if (stopping && err instanceof CliError && err.code === 'invalid_state') throw new CliError('Stopped. Your question was not saved.', 'stopped', 130);
+    if (err instanceof CliError && err.code === 'session_unavailable') {
+      // The CLI can't show the confirmation: it says the same thing, asks nothing, and names the flag.
+      const detail = typeof err.details.detail === 'string' && err.details.detail ? `\ndetail: ${err.details.detail}` : '';
+      throw new CliError(
+        `${err.message}\nNothing was asked. To continue in a new session that starts with this conversation so far, run the same command with --new-session.${detail}`,
+        'session_unavailable',
+        1,
+        err.details,
+      );
+    }
     throw err;
   } finally {
     removeInterrupt();

@@ -76,7 +76,8 @@ struct AskThreadView: View {
                         }
                         .frame(maxWidth: 760, alignment: .leading)
                     } else {
-                        AskHaltRow(pending: pending) { ask.retry(thread) }
+                        AskHaltRow(pending: pending, width: 620, continueNew: { ask.continueInNewSession(thread) },
+                                   cancel: { ask.cancelSessionReplace(thread) }) { ask.retry(thread) }
                             .frame(maxWidth: 760, alignment: .leading)
                     }
                 }

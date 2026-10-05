@@ -5884,6 +5884,150 @@
           "caption": "The folder is missing or unreadable; QueuePath shows Create folder."
         }
       ]
+    },
+    {
+      "name": "SessionReplaceConfirm",
+      "title": "Session replace confirm",
+      "swift": "clients/macos/Sources/Distill/SessionReplaceConfirm.swift",
+      "preview": [
+        560,
+        190
+      ],
+      "props": [
+        {
+          "name": "place",
+          "type": "enum",
+          "default": "batch",
+          "options": [
+            "batch",
+            "conversation",
+            "terminal"
+          ]
+        },
+        {
+          "name": "reason",
+          "type": "enum",
+          "default": "missing",
+          "options": [
+            "missing",
+            "notFound",
+            "neverStarted",
+            "runnerGone"
+          ]
+        },
+        {
+          "name": "runner",
+          "type": "text",
+          "default": "Claude Code"
+        },
+        {
+          "name": "carries",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "detail",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "SessionReplaceConfirmStates.dc.html",
+        "title": "Session replace confirm states",
+        "heading": "SessionReplaceConfirm",
+        "intro": "The one confirmation Distill shows, everywhere, when it would continue in an AI session that no longer exists (system-wide rule, 2026-10-05). It appears right where you acted (Approve, Send reply, Allow, an Ask follow-up, Open in Terminal), says plainly why the session is gone, and that a new session will be used. <b>Continue</b> starts the new session seeded with what that place needs; <b>Cancel</b> changes nothing. The quiet monospace line is the technical reason, for when you want it. Calm on purpose: blue, not a warning, because nothing was lost from your vault. Distill shows it only on positive evidence (the runner said the session is not found, its transcript file is gone, or the batch never started one); any other runner error stays an ordinary error. Swift: <b>SessionReplaceConfirm</b> (SessionReplaceConfirm.swift). Props: place (batch | conversation | terminal), reason (missing | notFound | neverStarted | runnerGone), runner, carries, detail, width.",
+        "width": 1280,
+        "cols": 2,
+        "wrap": "<div style=\"width: 580px; padding: 10px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
+      },
+      "states": [
+        {
+          "name": "Review · after Approve: transcript gone",
+          "props": {
+            "place": "batch",
+            "reason": "missing",
+            "detail": "~/.claude/projects/…/3f2a91c0-…-c217.jsonl is missing"
+          },
+          "size": [
+            "560px",
+            "190px"
+          ],
+          "caption": "The core checks before resuming. Continue runs the approved apply in a new session; the plan and its approval hash stay the same."
+        },
+        {
+          "name": "Review · after Send reply: runner says not found",
+          "props": {
+            "place": "batch",
+            "reason": "notFound",
+            "detail": "claude exited 1: No conversation found with session ID: 3f2a91c0-…-c217"
+          },
+          "size": [
+            "560px",
+            "190px"
+          ],
+          "caption": "Caught when the runner refuses to resume. Your reply is kept and goes to the new session."
+        },
+        {
+          "name": "Review · reply to a batch that stopped early",
+          "props": {
+            "place": "batch",
+            "reason": "neverStarted",
+            "carries": "The new session starts with this batch’s sources and labels, then reads them as usual.",
+            "detail": "No AI turn ran: cancelled while suggesting labels"
+          },
+          "size": [
+            "560px",
+            "190px"
+          ],
+          "caption": "Known from the batch itself (no AI turn ever ran), not guessed from files."
+        },
+        {
+          "name": "Review · the batch’s runner is gone",
+          "props": {
+            "place": "batch",
+            "reason": "runnerGone",
+            "runner": "Codex",
+            "carries": "The new session uses Claude Code · Sonnet (your batch default) and starts with this batch’s sources, labels and plan.",
+            "detail": "codex CLI not found"
+          },
+          "size": [
+            "560px",
+            "190px"
+          ],
+          "caption": "The runner that held the session was removed or can no longer resume. The new session uses your current batch runner."
+        },
+        {
+          "name": "Ask · follow-up",
+          "props": {
+            "place": "conversation",
+            "reason": "notFound",
+            "detail": "claude exited 1: No conversation found with session ID: 8c1d…04ab"
+          },
+          "size": [
+            "560px",
+            "190px"
+          ],
+          "caption": "In the thread, in place of the pending question. Continue asks again in a new session that starts with the earlier questions and answers; Cancel puts your question back in the box."
+        },
+        {
+          "name": "Open in Terminal (a batch’s conversation)",
+          "props": {
+            "place": "terminal",
+            "reason": "missing",
+            "detail": "~/.claude/projects/…/3f2a91c0-…-c217.jsonl is missing"
+          },
+          "size": [
+            "560px",
+            "190px"
+          ],
+          "caption": "Open new session opens Terminal with a fresh session primed with the batch. The batch in Distill keeps its own session record."
+        }
+      ]
     }
   ]
 }

@@ -6,6 +6,7 @@ import type {
   JobActionsSummary,
   JobState,
   PermissionDenial,
+  SessionUnavailable,
   TransactionPlan,
   TurnRecord,
 } from '../contracts.js';
@@ -164,7 +165,31 @@ export function decodeJob(v: unknown, now = new Date()): Job | undefined {
   // v5: folder items in the batch; absent (or not a string list) stays absent.
   const folders = strArray(v.folders);
   if (folders && folders.length > 0) job.folders = folders;
+  // v6: session continuity marker (lenient: a wrong shape is dropped).
+  const su = decodeSessionUnavailable(v.sessionUnavailable);
+  if (su) job.sessionUnavailable = su;
   return job;
+}
+
+const PLACES: SessionUnavailable['place'][] = ['batch', 'conversation', 'terminal'];
+const REASONS: SessionUnavailable['reason'][] = ['notFound', 'missing', 'neverStarted', 'runnerGone'];
+const ACTIONS: NonNullable<SessionUnavailable['action']>[] = ['approve', 'reply', 'allow', 'ask', 'resume'];
+
+export function decodeSessionUnavailable(v: unknown): SessionUnavailable | undefined {
+  if (!isObject(v)) return undefined;
+  const place = str(v.place) as SessionUnavailable['place'] | undefined;
+  const reason = str(v.reason) as SessionUnavailable['reason'] | undefined;
+  if (!place || !PLACES.includes(place) || !reason || !REASONS.includes(reason)) return undefined;
+  const out: SessionUnavailable = { place, reason, message: str(v.message) ?? '', detail: str(v.detail) ?? '' };
+  const action = str(v.action) as SessionUnavailable['action'] | undefined;
+  if (action && ACTIONS.includes(action)) out.action = action;
+  const text = str(v.text);
+  if (text !== undefined) out.text = text;
+  const rules = strArray(v.rules);
+  if (rules) out.rules = rules;
+  const at = str(v.at);
+  if (at !== undefined) out.at = at;
+  return out;
 }
 
 const SUMMARY_STATES: JobActionsSummary['status'][] = ['finding', 'done', 'failed', 'skipped'];
@@ -238,7 +263,7 @@ function encodeApproval(a: ApprovalRequest): JSONObject {
 
 const JOB_KEYS = [
   'id', 'kind', 'vaultPath', 'files', 'sessionID', 'runnerID', 'model', 'effort', 'state',
-  'createdAt', 'updatedAt', 'approval', 'turns', 'grantedTools', 'operationID', 'changedPaths', 'error', 'actionsFound', 'folders',
+  'createdAt', 'updatedAt', 'approval', 'turns', 'grantedTools', 'operationID', 'changedPaths', 'error', 'actionsFound', 'folders', 'sessionUnavailable',
 ];
 
 /** Every non-optional key is always written; nil optionals are omitted (never `null`). */
@@ -272,6 +297,15 @@ export function encodeJob(job: Job, raw: JSONObject = {}): JSONObject {
     out.actionsFound = summary;
   }
   if (job.folders != null && job.folders.length > 0) out.folders = [...job.folders];
+  if (job.sessionUnavailable != null) {
+    const u = job.sessionUnavailable;
+    const m: JSONObject = { place: u.place, reason: u.reason, message: u.message, detail: u.detail };
+    if (u.action != null) m.action = u.action;
+    if (u.text != null) m.text = u.text;
+    if (u.rules != null) m.rules = [...u.rules];
+    if (u.at != null) m.at = u.at;
+    out.sessionUnavailable = m;
+  }
   return out;
 }
 

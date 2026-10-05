@@ -54,6 +54,12 @@ Past conversations: `distill history --json` lists them
 `distill ask "…" --conversation ID` continues one. Delete one
 (`distill history rm ID`) only when the user asks.
 
+If a follow-up fails with `session_unavailable`, that conversation's AI
+session is gone and nothing was asked. Tell the user in one plain sentence
+(the error's message says why) and ask before running the same command again
+with `--new-session`, which starts a new session with the conversation so far.
+Never add `--new-session` on your own.
+
 The first call may print nothing for a few seconds while the Distill server
 starts in the background. Answers can take a minute or more (longer at high
 effort): give the shell command a timeout of at least 5 minutes and do not

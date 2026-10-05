@@ -20,6 +20,8 @@ struct PendingQuestion: Equatable {
         case running
         case stopped
         case failed(String)
+        /// The conversation's AI session is gone: SessionReplaceConfirm (Continue asks again in a new session).
+        case sessionUnavailable(SessionUnavailable)
     }
 
     var question: String
@@ -93,6 +95,7 @@ enum BackgroundAskText {
     static func meta(_ run: BackgroundAsk, now: Date = Date()) -> String {
         let asked = HistoryTime.asked(run.pending.startedAt, now: now)
         if case .failed(let message) = run.pending.status { return "\(asked) · couldn't answer: \(message)" }
+        if case .sessionUnavailable = run.pending.status { return "\(asked) · its AI session isn’t available anymore" }
         return "\(asked) · answering…"
     }
 }
@@ -205,7 +208,8 @@ final class AskModel: ObservableObject {
 
     // MARK: Asking
 
-    func send(_ thread: AskThread, question raw: String? = nil) {
+    /// `newSession`: only after the user confirmed SessionReplaceConfirm for this conversation.
+    func send(_ thread: AskThread, question raw: String? = nil, newSession: Bool = false) {
         let question = (raw ?? thread.draft).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty, !thread.isRunning else { return }
         guard let client = engine.client else { engine.lastError = "The Distill core is not connected."; return }
@@ -214,6 +218,7 @@ final class AskModel: ObservableObject {
         var request = AskRequest(question: question, conversationID: id, selection: selection(for: thread),
                                  vaultPath: engine.activeVault?.path)
         thread.filter.apply(to: &request)
+        if newSession { request.newSession = true }
         thread.draft = ""
         thread.note = nil
         thread.inFlightID = id
@@ -252,7 +257,7 @@ final class AskModel: ObservableObject {
                 thread.pending = nil
                 if thread === quick, !quickVisible { quickUnseen = true }
             case .failure(let error):
-                thread.pending?.status = .failed(Self.message(for: error))
+                thread.pending?.status = Self.haltStatus(for: error)
             }
             return
         }
@@ -262,7 +267,7 @@ final class AskModel: ObservableObject {
             background[id] = nil
             refresh() // the core's conversation event usually arrives first; this covers a missed one
         case .failure(let error):
-            run.pending.status = .failed(Self.message(for: error))
+            run.pending.status = Self.haltStatus(for: error)
             background[id] = run
         }
     }
@@ -308,6 +313,27 @@ final class AskModel: ObservableObject {
             Task { try? await client.cancelAsk(conversationID: id) }
         }
         thread.inFlightID = nil
+    }
+
+    /// SessionReplaceConfirm → Continue: the same question again, in a new session that starts
+    /// with the conversation so far.
+    func continueInNewSession(_ thread: AskThread) {
+        guard let pending = thread.pending, case .sessionUnavailable = pending.status else { return }
+        thread.pending = nil
+        send(thread, question: pending.question, newSession: true)
+    }
+
+    /// SessionReplaceConfirm → Cancel: nothing was asked; the question goes back in the box.
+    func cancelSessionReplace(_ thread: AskThread) {
+        guard let pending = thread.pending, case .sessionUnavailable = pending.status else { return }
+        thread.pending = nil
+        if thread.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { thread.draft = pending.question }
+    }
+
+    /// A failed turn: the session-gone confirmation, or the ordinary "Couldn't get an answer".
+    static func haltStatus(for error: Error) -> PendingQuestion.Status {
+        if let s = (error as? CoreClientError)?.sessionUnavailable { return .sessionUnavailable(s) }
+        return .failed(message(for: error))
     }
 
     /// Sends the kept question again (Ask again / Retry).

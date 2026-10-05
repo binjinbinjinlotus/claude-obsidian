@@ -22,14 +22,20 @@ public enum CoreClientError: Error, Equatable, CustomStringConvertible, Sendable
     case api(status: Int, code: String, message: String)
     /// The response did not have the expected shape.
     case badResponse(String)
+    /// 409 `session_unavailable`: the AI session the call would resume is gone (session continuity).
+    /// The app shows SessionReplaceConfirm and sends the same call again with `newSession`.
+    case sessionUnavailable(SessionUnavailable)
 
     public var description: String {
         switch self {
         case .unreachable(let m): return "Cannot reach the Distill core: \(m)"
         case .api(_, _, let message): return message
         case .badResponse(let m): return "Unexpected response from the Distill core: \(m)"
+        case .sessionUnavailable(let s): return s.message.isEmpty ? SessionReplaceText.heading(place: s.place) : s.message
         }
     }
+
+    public var sessionUnavailable: SessionUnavailable? { if case .sessionUnavailable(let s) = self { return s }; return nil }
 
     public var isUnreachable: Bool { if case .unreachable = self { return true }; return false }
 
@@ -50,8 +56,16 @@ public enum CoreClientError: Error, Equatable, CustomStringConvertible, Sendable
             || (status == 400 && code == "invalid_request")
     }
 
-    public var status: Int? { if case .api(let s, _, _) = self { return s }; return nil }
-    public var code: String? { if case .api(_, let c, _) = self { return c }; return nil }
+    public var status: Int? {
+        if case .api(let s, _, _) = self { return s }
+        if case .sessionUnavailable = self { return 409 }
+        return nil
+    }
+    public var code: String? {
+        if case .api(_, let c, _) = self { return c }
+        if case .sessionUnavailable = self { return "session_unavailable" }
+        return nil
+    }
 }
 
 /// Thin async client for the core's local HTTP API (core/src/server/http.ts).
@@ -150,12 +164,19 @@ public final class CoreClient: Sendable {
 
     public func job(_ id: String) async throws -> Job { try await get("/v1/jobs/\(Self.segment(id))") }
 
-    @discardableResult public func approve(_ id: String) async throws -> Job? { try await jobAction(id, "approve") }
-    @discardableResult public func reply(_ id: String, text: String) async throws -> Job? {
-        try await jobAction(id, "reply", body: ["text": .string(text)])
+    /// `newSession`: the user confirmed SessionReplaceConfirm; continue in a new, seeded session.
+    @discardableResult public func approve(_ id: String, newSession: Bool = false) async throws -> Job? {
+        try await jobAction(id, "approve", body: newSession ? ["newSession": .bool(true)] : [:])
     }
-    @discardableResult public func allow(_ id: String, rules: [String]) async throws -> Job? {
-        try await jobAction(id, "allow", body: ["rules": .array(rules.map(JSONValue.string))])
+    @discardableResult public func reply(_ id: String, text: String, newSession: Bool = false) async throws -> Job? {
+        var body: [String: JSONValue] = ["text": .string(text)]
+        if newSession { body["newSession"] = .bool(true) }
+        return try await jobAction(id, "reply", body: body)
+    }
+    @discardableResult public func allow(_ id: String, rules: [String], newSession: Bool = false) async throws -> Job? {
+        var body: [String: JSONValue] = ["rules": .array(rules.map(JSONValue.string))]
+        if newSession { body["newSession"] = .bool(true) }
+        return try await jobAction(id, "allow", body: body)
     }
     @discardableResult public func reject(_ id: String) async throws -> Job? { try await jobAction(id, "reject") }
     @discardableResult public func cancel(_ id: String) async throws -> Job? { try await jobAction(id, "cancel") }
@@ -171,8 +192,10 @@ public final class CoreClient: Sendable {
     }
 
     /// `GET /v1/jobs/:id/resume`: the argv that reopens the job's runner session interactively.
-    public func jobResume(_ id: String) async throws -> ResumeCommand {
-        try await get("/v1/jobs/\(Self.segment(id))/resume")
+    /// A session that is gone throws `.sessionUnavailable`; `newSession` returns a new interactive
+    /// session primed with the batch instead.
+    public func jobResume(_ id: String, newSession: Bool = false) async throws -> ResumeCommand {
+        try await get("/v1/jobs/\(Self.segment(id))/resume\(newSession ? "?newSession=1" : "")")
     }
 
     private func jobAction(_ id: String, _ action: String, body: [String: JSONValue] = [:]) async throws -> Job? {
@@ -523,6 +546,13 @@ public final class CoreClient: Sendable {
     static func apiError(status: Int, data: Data) -> CoreClientError {
         struct Body: Decodable { struct E: Decodable { let code: String?; let message: String? }; let error: E? }
         if let body = try? JSONDecoder().decode(Body.self, from: data), let e = body.error {
+            if e.code == "session_unavailable" {
+                struct S: Decodable { let error: SessionUnavailable }
+                if var s = (try? JSONDecoder().decode(S.self, from: data))?.error {
+                    if s.message.isEmpty { s.message = e.message ?? "" }
+                    return .sessionUnavailable(s)
+                }
+            }
             return .api(status: status, code: e.code ?? "http_\(status)", message: e.message ?? "HTTP \(status)")
         }
         let text = String(decoding: data.prefix(300), as: UTF8.self)

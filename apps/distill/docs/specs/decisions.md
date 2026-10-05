@@ -17,6 +17,21 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+- **A lost AI session is never replaced silently (system-wide).** Spec:
+  [Session continuity](session-continuity.md).
+  - The owner's rule covers every place that resumes a session: batches
+    (approve, reply, allow), Ask follow-ups, Open in Terminal and
+    `distill ask --conversation`. Wherever Distill would resume a session that
+    no longer exists, it shows one shared confirmation, `SessionReplaceConfirm`,
+    and continues in a new session only after your OK.
+  - Detection uses positive evidence only: the runner's not-found error with
+    the exact ID, a missing transcript under a readable store, a job that never
+    ran a turn, or a runner that's gone. Ordinary failures stay failures.
+  - Actions, label suggestions and image text are not covered. They start a
+    fresh session on every call, so they never resume one.
+  - Ask's deliberate resets (runner, vault, scope or workspace changed) keep
+    their notice. They are your change, not a lost session.
+
 - **Live log: one view for a batch's steps and a collector's output, opened
   in place.** Spec: [Live log](live-log.md). The owner asked for the
   progress of a batch and for a collector's live output. A real batch
