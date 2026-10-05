@@ -398,10 +398,14 @@ public struct ActivityText: Sendable {
             if e.verb == "restored" { add("Deleted", whenText("deletedAt"), keys: ["deletedAt", "trashId"]) }
         case "settings":
             heading = "CHANGES"
-            for change in e.strings("changes") {
-                rows.append(settingsFact(change))
+            // `readableChanges` (newer cores) is already in Settings' words; `changes` has the raw keys.
+            let readable = e.strings("readableChanges")
+            if readable.isEmpty {
+                for change in e.strings("changes") { rows.append(settingsFact(change)) }
+            } else {
+                for line in readable { rows.append(readableSettingsFact(line)) }
             }
-            used.insert("changes")
+            used.formUnion(["changes", "readableChanges"])
             footnote = "Only what changed is listed. Keys and tokens are never shown, only that they changed."
         case "batch" where e.verb == "applied" || e.verb == "ready":
             heading = "PAGES"
@@ -435,6 +439,19 @@ public struct ActivityText: Sendable {
         if let arrow = rest.range(of: " → ") {
             let old = Self.word(String(rest[..<arrow.lowerBound])), new = Self.word(String(rest[arrow.upperBound...]))
             return Fact(label, "\(old) → ", emphasis: new)
+        }
+        return Fact(label, rest == "changed" ? "Changed" : rest)
+    }
+
+    /// "Keep history: On → Off" → Keep history: On → **Off**; "Runner options: changed" → Runner options: Changed.
+    /// The label is Settings' own and is kept as it is (it may hold a colon: "Queue folder: label automatically").
+    public func readableSettingsFact(_ line: String) -> Fact {
+        let head = line.range(of: " → ").map { line[..<$0.lowerBound] } ?? line[...]
+        guard let colon = head.range(of: ": ", options: .backwards) else { return Fact("Setting", line) }
+        let label = String(line[..<colon.lowerBound])
+        let rest = String(line[colon.upperBound...])
+        if let arrow = rest.range(of: " → ") {
+            return Fact(label, "\(rest[..<arrow.lowerBound]) → ", emphasis: String(rest[arrow.upperBound...]))
         }
         return Fact(label, rest == "changed" ? "Changed" : rest)
     }

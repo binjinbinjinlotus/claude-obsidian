@@ -19,6 +19,7 @@ import { titleFrom } from '../ask/conversations.js';
 import { currentMethod, currentSource, runInMethod } from './context.js';
 import type { ActivityLog } from './log.js';
 import { isSecretKey } from './redact.js';
+import { describeSettingsChanges, settingsPatchSections } from './settings-labels.js';
 import type { Trash } from './trash.js';
 
 /**
@@ -269,15 +270,21 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
       ok: (_args, after, before: Settings | undefined) => {
         const changes = settingsChanges(before, after);
         if (changes.length === 0) return null;
+        // In Settings' words ("Ask history (Keep history off)"); `changes` keeps the raw keys for scripts and older clients.
+        const readable = describeSettingsChanges(before, after);
         const keys = [...new Set(changes.map((c) => c.split(/[.:]/)[0]!))];
         return {
           type: 'settings.changed',
           object: { kind: 'settings', name: 'Settings' },
-          summary: `Changed settings: ${keys.join(', ')}`,
-          details: { changes },
+          summary: `Changed settings: ${readable.summary || keys.join(', ')}`,
+          details: { changes, ...(readable.lines.length ? { readableChanges: readable.lines } : {}) },
         };
       },
-      fail: ([patch]) => ({ type: 'settings.changed', object: { kind: 'settings', name: 'Settings' }, summary: `Couldn't change settings: ${Object.keys(patch ?? {}).join(', ')}` }),
+      fail: ([patch]) => ({
+        type: 'settings.changed',
+        object: { kind: 'settings', name: 'Settings' },
+        summary: `Couldn't change settings: ${settingsPatchSections(patch as Record<string, unknown> | undefined)}`,
+      }),
     },
     setRunnerSecret: {
       ok: ([runnerID, name, value]) => ({

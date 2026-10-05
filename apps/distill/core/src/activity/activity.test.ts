@@ -11,7 +11,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, test } from 'node:test';
-import type { ActivityEntry, CoreEvent, Job } from '../contracts.js';
+import type { ActivityEntry, CoreEvent, Job, Settings } from '../contracts.js';
+import { describeSettingsChanges, SETTING_LABELS, SETTINGS_SECTIONS } from './settings-labels.js';
 import { createCore } from '../index.js';
 import { startServer, type RunningServer } from '../server/http.js';
 import { statePaths } from '../store/paths.js';
@@ -149,6 +150,82 @@ describe('redaction', () => {
     assert.equal((d.list as string[]).length, 21);
     assert.equal(d.n, null);
     assert.ok(clip('a  b\n c', 10) === 'a b c');
+  });
+});
+
+// ───────────── unit: settings in Settings' words ─────────────
+
+describe('settings labels', () => {
+  const base = {
+    vaults: [],
+    batchIntervalMinutes: 10,
+    settleSeconds: 600,
+    model: 'sonnet',
+    claudePath: '/Users/me/.local/bin/claude',
+    pythonPath: '/usr/bin/python3',
+    productRoot: '/Users/me/claude-obsidian',
+    extraAllowedTools: [],
+    autoProcessEnabled: true,
+    enabledRunners: ['claude-code'],
+    taskDefaults: {},
+  } as Settings;
+
+  test('the canvas card: "Ask history (Keep history off)", "Keep history: On → Off" (an absent setting reads its default)', () => {
+    const d = describeSettingsChanges(base, { ...base, askPreferences: { keepHistory: false } });
+    assert.equal(d.summary, 'Ask history (Keep history off)');
+    assert.deepEqual(d.lines, ['Keep history: On → Off']);
+  });
+
+  test('labels from Settings, values in words, grouped by section; leaf keys pick their own section', () => {
+    const d = describeSettingsChanges(base, {
+      ...base,
+      autoProcessEnabled: false,
+      batchIntervalMinutes: 90,
+      queueScanMinutes: 0,
+      askPreferences: { labelMatch: 'all', historyDays: 30 },
+      taskDefaults: { ingest: { runnerID: 'codex', model: 'gpt-5' } },
+      actionPreferences: { historyDays: 0 } as Settings['actionPreferences'],
+    });
+    assert.deepEqual(d.lines, [
+      'Keep action history: 90 days → Forever',
+      'Days: 10 days → 30 days',
+      'When Ask is limited to several labels, use notes with: Any label → All labels',
+      'Automatic batching: On → Off',
+      'Batch every: 10 minutes → 1 hour 30 minutes',
+      'Check the queue folder for changes: Every 5 min → Off',
+      'Adding notes: Claude Code · sonnet → Codex · gpt-5',
+    ]);
+    assert.equal(
+      d.summary,
+      'To-do defaults (Keep action history: Forever), Ask history (Keep chats 30 days), Labels (Use notes with all labels) and 2 more',
+    );
+    const batching = describeSettingsChanges(base, { ...base, autoProcessEnabled: false, batchIntervalMinutes: 15 });
+    assert.equal(batching.summary, 'Batching (Automatic batching off, Batch every 15 minutes)');
+  });
+
+  test('prompts and runner options never show values; unknown keys fall back to the raw key', () => {
+    const d = describeSettingsChanges(base, {
+      ...base,
+      runnerOptions: { openrouter: { baseURL: 'https://me:pa55@proxy.example.com' } },
+      actionPreferences: { findPrompt: 'Find the things' } as Settings['actionPreferences'],
+      fooBar: 3,
+    } as Settings);
+    assert.deepEqual(d.lines, ['Prompt for finding actions: changed', 'fooBar: — → 3', 'Runner options: changed']);
+    assert.equal(d.summary, 'Actions (Prompt for finding actions), fooBar, AI runners (Runner options)');
+    assert.ok(!JSON.stringify(d).includes('pa55') && !JSON.stringify(d).includes('Find the things'));
+  });
+
+  test('every section and label is one Settings shows (clients/macos/Sources/Distill)', (t) => {
+    const dir = path.resolve(here, '../../../clients/macos/Sources/Distill');
+    if (!fs.existsSync(dir)) return t.skip('no Mac sources in this checkout');
+    const swift = fs.readdirSync(dir).filter((f) => f.startsWith('Settings')).map((f) => fs.readFileSync(path.join(dir, f), 'utf8')).join('\n');
+    for (const section of Object.values(SETTINGS_SECTIONS)) assert.ok(swift.includes(`"${section}"`), `section “${section}” is not in Settings`);
+    // Names the activity log needs that Settings has no single string for (a switch without its own title, a whole list).
+    const ownWords = new Set(['Active vault', 'Keep history', 'Days', 'Runners turned on', 'Runner options', 'Action type settings', 'Prompt for finding actions', 'Include unconfirmed labels']);
+    for (const [key, entry] of Object.entries(SETTING_LABELS)) {
+      if (ownWords.has(entry.label) || key.startsWith('actionPreferences.sources.')) continue;
+      assert.ok(swift.includes(entry.label), `${key}: “${entry.label}” is not in Settings`);
+    }
   });
 });
 
@@ -743,6 +820,8 @@ describe('activity through the core and the API', () => {
     const offItem = ((await request('GET', '/v1/trash')).body.items as { objectID: string; details: Record<string, unknown> }[]).find((i) => i.objectID === 'chat-b');
     assert.equal(offItem?.details.reason, 'keep-history-off');
     assert.equal(last('settings.changed')?.details?.changes?.toString(), 'askPreferences.keepHistory: — → false');
+    assert.equal(last('settings.changed')?.summary, 'Changed settings: Ask history (Keep history off)');
+    assert.deepEqual(last('settings.changed')?.details?.readableChanges, ['Keep history: On → Off']);
 
     // Retention: an old unpinned chat removed by the sweep is "expired", from the scheduler.
     await core.updateSettings({ askPreferences: { keepHistory: true, historyDays: 10 } });
@@ -791,6 +870,8 @@ describe('activity through the core and the API', () => {
     assert.equal((await request('PUT', '/v1/settings', { batchIntervalMinutes: 15 })).status, 200);
     const s = last('settings.changed')!;
     assert.deepEqual(s.details?.changes, ['batchIntervalMinutes: 10 → 15']);
+    assert.equal(s.summary, 'Changed settings: Batching (Batch every 15 minutes)');
+    assert.deepEqual(s.details?.readableChanges, ['Batch every: 10 minutes → 15 minutes']);
     // no change, no line
     const before = readLog(state).length;
     await request('PUT', '/v1/settings', { batchIntervalMinutes: 15 });

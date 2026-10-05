@@ -208,6 +208,23 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(scriptRow(own).0, "zsh · ~/bin/collect.sh")
     }
 
+    func testReadableSettingsChangesWin() {
+        let t = ActivityText()
+        let e = ActivityEntry(id: "1", at: Date(), type: "settings.changed", source: .app, object: ActivityObject(kind: "settings", name: "Settings"),
+                              summary: "Changed settings: Ask history (Keep history off), Labels (Queue folder: label automatically off)",
+                              details: ["changes": .array([.string("askPreferences.keepHistory: — → false"), .string("labeling.autoLabelQueueFolder: — → false"),
+                                                           .string("runnerOptions.openrouter: changed")]),
+                                        "readableChanges": .array([.string("Keep history: On → Off"), .string("Queue folder: label automatically: On → Off"),
+                                                                   .string("Runner options: changed")])])
+        let facts = t.facts(e, now: e.at)
+        XCTAssertEqual(facts.heading, "CHANGES")
+        XCTAssertEqual(Array(facts.rows.dropLast()), [ActivityText.Fact("Keep history", "On → ", emphasis: "Off"),
+                                                      ActivityText.Fact("Queue folder: label automatically", "On → ", emphasis: "Off"),
+                                                      ActivityText.Fact("Runner options", "Changed")])
+        XCTAssertEqual(t.readableSettingsFact("Adding notes: Claude Code · sonnet → Codex · gpt-5"),
+                       ActivityText.Fact("Adding notes", "Claude Code · sonnet → ", emphasis: "Codex · gpt-5"))
+    }
+
     func testSettingsChangesAndUnknownKeys() {
         let t = ActivityText()
         XCTAssertEqual(t.settingsFact("askPreferences.keepHistory: true → false"), ActivityText.Fact("Keep history", "On → ", emphasis: "Off"))

@@ -79,7 +79,8 @@ enum ActivityFixtures {
 
     static let settingsChanged = entry("settings.changed", at(14, 15), "app", kind: "settings", name: "Settings",
                                        "Changed settings: Ask history (Keep history off)",
-                                       details: ["changes": .array([.string("askPreferences.keepHistory: true → false")])])
+                                       details: ["changes": .array([.string("askPreferences.keepHistory: true → false")]),
+                                                 "readableChanges": .array([.string("Keep history: On → Off")])])
 
     static let kettleExpired = entry("chat.expired", at(3, 0, daysAgo: 1), "scheduler", kind: "chat", id: "c-kettle", name: "Kettle comparison",
                                      "Removed the chat “Kettle comparison”: older than 10 days",
