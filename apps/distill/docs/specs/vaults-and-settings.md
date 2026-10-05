@@ -127,7 +127,7 @@ unknown keys.
 | `pythonPath` | `/usr/bin/python3` |
 | `nodePath` | unset: the app looks for node itself (see [App shell](app-shell.md#finding-the-core)) |
 | `productRoot` | the checkout the core runs from |
-| `extraAllowedTools` | empty |
+| `extraAllowedTools` | empty (rules that would get round the approval gate are ignored at use time, never removed: [Approval and review](approval-and-review.md) → Phase 1) |
 | `enabledRunners`, `taskDefaults`, v2 keys | see `contracts.ts`; Settings edits them (Sources, Labels, Ask history, Keyboard shortcuts, AI runners, Models for tasks) |
 | `actionPreferences` (v3) | `DEFAULT_ACTION_PREFERENCES`; Settings → Actions and To-do defaults edit it. See [Actions](actions.md#settings). |
 

@@ -12,6 +12,7 @@ import type {
   RunnerCapability,
 } from '../contracts.js';
 import { createRunnerRegistry } from '../runners/registry.js';
+import { writableRoots } from '../runners/codex.js';
 import { cancelledError, type ProcessOutput, type RunProcessOptions } from '../runners/process.js';
 import { statePaths } from '../store/paths.js';
 import { RECOVERY_NOTE } from '../store/jobs.js';
@@ -77,7 +78,10 @@ interface Harness {
 let h: Harness;
 let tmp: string;
 
-function setup(steps: Step[], o: { runner?: FakeRunner; jobs?: unknown; queueIsInbox?: boolean; tickMs?: number; now?: () => Date } = {}): Harness {
+function setup(
+  steps: Step[],
+  o: { runner?: FakeRunner; jobs?: unknown; queueIsInbox?: boolean; tickMs?: number; now?: () => Date; settings?: Record<string, unknown>; onJobApplied?: (job: Job) => void } = {},
+): Harness {
   const root = tmp;
   const vault = path.join(root, 'vault');
   const product = path.join(root, 'product');
@@ -100,6 +104,7 @@ function setup(steps: Step[], o: { runner?: FakeRunner; jobs?: unknown; queueIsI
       autoProcessEnabled: false,
       // The fake runner is scripted per turn; queue-folder label suggestions are tested in labels.test.ts.
       labeling: { autoLabelQueueFolder: false },
+      ...o.settings,
     }),
   );
   if (o.jobs) fs.writeFileSync(path.join(state, 'jobs.json'), JSON.stringify(o.jobs));
@@ -115,6 +120,7 @@ function setup(steps: Step[], o: { runner?: FakeRunner; jobs?: unknown; queueIsI
     launch,
     tickMs: o.tickMs ?? 60_000,
     ...(o.now ? { now: o.now } : {}),
+    ...(o.onJobApplied ? { onJobApplied: o.onJobApplied } : {}),
   });
   const events: CoreEvent[] = [];
   engine.subscribe((e) => events.push(e));
@@ -154,7 +160,8 @@ describe('engine state machine', () => {
       if (h.runner.requests.length === 0) {
         const jobID = h.engine.listJobs()[0]!.id;
         steps.push(needsApproval(path.join(h.vault, '.vault-meta/worker', jobID, 'bundle.json')));
-        steps.push({ structured: { status: 'done', summary: 'Applied.', operation_id: 'op-1', changed_paths: ['wiki/a.md'] } });
+        // The model's changed_paths are not trusted: the plan's are recorded.
+        steps.push({ structured: { status: 'done', summary: 'Applied.', operation_id: 'op-1', changed_paths: ['wiki/model-says.md'] } });
       }
       return originalRun(req);
     };
@@ -182,8 +189,9 @@ describe('engine state machine', () => {
     job = h.engine.getJob(created.id)!;
     assert.equal(job.state, 'completed');
     assert.equal(job.operationID, 'op-1');
-    assert.deepEqual(job.changedPaths, ['wiki/a.md']);
+    assert.deepEqual(job.changedPaths, ['wiki/a.md'], 'from the inspected plan, not the model');
     assert.equal(job.approval, undefined);
+    assert.equal(job.turns.at(-1)!.text, 'Applied op-1:\n- wiki/a.md');
     assert.ok(fs.existsSync(path.join(h.vault, '.vault-meta/worker', job.id, 'turn-3.json')));
     assert.ok(job.turns.some((t) => t.author === 'user' && t.text === `Approved op-1 (${'f'.repeat(12)}…)`));
 
@@ -261,6 +269,120 @@ describe('engine state machine', () => {
     const second = h.runner.requests[1]!;
     assert.ok(second.allowedTools.includes('Bash(ls /tmp)'));
     assert.ok(second.prompt.includes('- Bash(ls /tmp)'));
+  });
+
+  test('done in the apply turn with another operation id records nothing; onJobApplied does not fire', async () => {
+    const applied: Job[] = [];
+    h = setup([], { onJobApplied: (j) => void applied.push(j) });
+    const created = await firstJob();
+    h.runner.steps.push(needsApproval(h.bundle(created)));
+    h.runner.steps.push({ structured: { status: 'done', summary: 'Applied.', operation_id: 'op-made-up', changed_paths: ['wiki/x.md'] } });
+    await h.engine.whenIdle();
+    await h.engine.approve(created.id);
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(job.state, 'completed');
+    assert.equal(job.operationID, undefined);
+    assert.deepEqual(job.changedPaths, []);
+    assert.match(job.turns.at(-1)!.text, /^Nothing recorded as applied: the turn did not report the approved operation op-1 \(it reported op-made-up\)/);
+    assert.equal(applied.length, 0);
+  });
+
+  test('done outside an approved apply turn records nothing, even with an operation id', async () => {
+    const applied: Job[] = [];
+    h = setup([{ structured: { status: 'done', summary: 'Applied it myself.', operation_id: 'op-1', changed_paths: ['wiki/a.md'] } }], {
+      onJobApplied: (j) => void applied.push(j),
+    });
+    const created = await firstJob();
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(job.state, 'completed');
+    assert.equal(job.operationID, undefined);
+    assert.deepEqual(job.changedPaths, []);
+    assert.equal(job.turns.at(-1)!.text, 'Nothing was applied: this turn had no approved plan to apply.');
+    assert.equal(applied.length, 0);
+  });
+
+  test('a verified agent apply fires onJobApplied once with the plan paths', async () => {
+    const applied: Job[] = [];
+    h = setup([], { onJobApplied: (j) => void applied.push(j) });
+    const created = await firstJob();
+    h.runner.steps.push(needsApproval(h.bundle(created)));
+    h.runner.steps.push({ structured: { status: 'done', summary: 'ok', operation_id: 'op-1' } });
+    await h.engine.whenIdle();
+    await h.engine.approve(created.id);
+    await h.engine.whenIdle();
+    assert.deepEqual(applied.map((j) => [j.operationID, j.changedPaths]), [['op-1', ['wiki/a.md']]]);
+  });
+
+  test('nothing_to_do never records changed paths', async () => {
+    h = setup([{ structured: { status: 'nothing_to_do', summary: 'none', changed_paths: ['wiki/a.md'] } }]);
+    const created = await firstJob();
+    await h.engine.whenIdle();
+    assert.deepEqual(h.engine.getJob(created.id)!.changedPaths, []);
+  });
+
+  test('allow refuses rules that get round the approval gate, before changing anything', async () => {
+    h = setup([{ structured: { status: 'failed', summary: 'Needed tools.' }, denials: [{ toolName: 'Bash', input: { command: 'ls /tmp' } }] }]);
+    const created = await firstJob();
+    await h.engine.whenIdle();
+    const dir = path.dirname(h.bundle(created));
+    const before = h.engine.getJob(created.id)!;
+    for (const rule of [
+      'Bash',
+      'Bash(*)',
+      'Bash(python3:*)',
+      'Bash(/usr/bin/python3:*)',
+      'Bash(bash -c x)',
+      `Bash(python3 ${path.join(h.root, 'product/scripts/claude-obsidian.py')} transaction apply x --vault ${h.vault} --approved-plan-sha256 abc)`,
+      'Edit',
+      `Edit(//${h.vault.slice(1)}/wiki/**)`,
+      `Edit(/${dir}/../../../wiki/**)`,
+      `Edit(/${path.join(path.dirname(dir), 'job-other')}/**)`,
+      `Edit(/${dir}/*/x/**)`,
+      'Edit(wiki/a.md)',
+    ]) {
+      await assert.rejects(h.engine.allow(created.id, ['Read(//tmp/x)', rule]), { code: 'invalid_request', message: /without your review/ }, rule);
+    }
+    const after = h.engine.getJob(created.id)!;
+    assert.deepEqual(after.grantedTools, before.grantedTools);
+    assert.equal(after.state, 'awaitingApproval');
+    assert.equal(after.turns.length, before.turns.length);
+    // Inside this job's own folder is fine.
+    h.runner.steps.push({ structured: { status: 'nothing_to_do', summary: 'ok' } });
+    await h.engine.allow(created.id, [`Edit(/${dir}/drafts/**)`, 'Bash(ls /tmp)']);
+    await h.engine.whenIdle();
+    assert.deepEqual(h.engine.getJob(created.id)!.grantedTools, ['Bash(ls /tmp)', `Edit(/${dir}/drafts/**)`]);
+  });
+
+  test('planningTools drops gate-breaking extraAllowedTools at use time; saved settings are untouched', async () => {
+    const extras = ['Bash(python3:*)', 'Edit(//etc/**)', 'Bash', 'Read(//opt/docs/**)', 'WebFetch(domain:example.com)'];
+    h = setup([{ structured: { status: 'nothing_to_do', summary: 'ok' } }], { settings: { extraAllowedTools: extras } });
+    const saved = fs.readFileSync(path.join(h.root, 'state/settings.json'), 'utf8');
+    const created = await firstJob();
+    await h.engine.whenIdle();
+    const tools = h.runner.requests[0]!.allowedTools;
+    assert.ok(tools.includes('Read(//opt/docs/**)') && tools.includes('WebFetch(domain:example.com)'));
+    for (const bad of ['Bash(python3:*)', 'Edit(//etc/**)', 'Bash']) assert.ok(!tools.includes(bad), bad);
+    // Codex turns directory Edit rules into sandbox writable roots: it sees the filtered list.
+    assert.deepEqual(writableRoots(h.runner.requests[0]!), [path.dirname(h.bundle(created))]);
+    assert.equal(fs.readFileSync(path.join(h.root, 'state/settings.json'), 'utf8'), saved);
+    assert.deepEqual(h.engine.getSettings().extraAllowedTools, extras);
+  });
+
+  test("with extraAllowedTools: [] (the owner's setup) the phase-1 tools are exactly the defaults", async () => {
+    h = setup([{ structured: { status: 'nothing_to_do', summary: 'ok' } }], { settings: { extraAllowedTools: [] } });
+    const created = await firstJob();
+    await h.engine.whenIdle();
+    const core = path.join(h.root, 'product/scripts/claude-obsidian.py');
+    assert.deepEqual(h.runner.requests[0]!.allowedTools, [
+      'Skill', 'Read', 'Glob', 'Grep',
+      `Edit(/${path.dirname(h.bundle(created))}/**)`,
+      `Bash(python3 ${core} transaction inspect:*)`,
+      `Bash(python3 ${core} doctor:*)`,
+      `Bash(python3 ${core} lint:*)`,
+      'Bash(shasum -a 256:*)',
+    ]);
   });
 
   test('done ignores denials', async () => {

@@ -4,6 +4,7 @@ import { yamlScalar } from '../labels/frontmatter.js';
 import { coreScriptPath } from '../store/settings.js';
 import { jobStateDirectory } from '../store/jobs.js';
 import { folderSourceBlock, walkFolder } from './queue.js';
+import { gateBreakingReason } from '../runners/permissions.js';
 
 /** Single-quotes a string only when the shell needs it, so common paths stay readable and rules simple. */
 export function shellQuote(s: string): string {
@@ -65,8 +66,9 @@ export class JobContext {
       `Bash(${this.coreCommand} doctor:*)`,
       `Bash(${this.coreCommand} lint:*)`,
       'Bash(shasum -a 256:*)',
-      ...this.settings.extraAllowedTools,
-      ...this.job.grantedTools,
+      // Extra and granted rules that would get round the approval gate are dropped here, at use
+      // time; saved settings and the job's grants are never rewritten.
+      ...[...this.settings.extraAllowedTools, ...this.job.grantedTools].filter((r) => gateBreakingReason(r, this) === undefined),
     ];
   }
 }

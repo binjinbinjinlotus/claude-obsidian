@@ -1011,7 +1011,7 @@ struct JobDetailView: View {
                                          set: { on in if on { allowed.insert(rule) } else { allowed.remove(rule) } })) {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(denial.display).font(.system(size: 12, design: .monospaced)).lineLimit(3)
-                            if denial.bypassesApproval {
+                            if denial.bypassesApproval(jobDirectory: (job.vaultPath as NSString).appendingPathComponent(".vault-meta/worker/\(job.id)")) {
                                 Text("Allowing this lets Claude change files without your review.")
                                     .font(Theme.body(12)).foregroundStyle(Theme.peachInk)
                             }

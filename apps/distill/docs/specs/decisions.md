@@ -17,6 +17,42 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **After an agent apply, Distill records what it approved, not what the
+  model reports.** Spec: [Approval and review](approval-and-review.md) →
+  What Distill records after an agent apply. Audit item B2.
+  - Before, a `done` recorded `status.operation_id` and
+    `status.changed_paths` straight from the model. A `done` in a turn that
+    never ran an approved apply also completed the job, possibly with a
+    made-up operation ID, and triggered "Finding actions".
+  - **Decision:** `approve()` passes the approved plan to that one turn. On
+    `done`, the job records the operation only when the turn was the apply
+    turn and `operation_id` equals `plan.operation_id`, and takes the paths
+    from `plan.changed_paths`. An app turn says "Applied <op>:". Otherwise
+    nothing is recorded, and an app turn says so. The job still completes,
+    because a `done` is the agent's final word. `nothing_to_do` never records
+    paths. The plan is the trusted source, because a committed transaction
+    leaves nothing under `.vault-meta/transactions` (checked on a real
+    vault).
+- **The core enforces the approval gate on tool rules.** Spec: [Approval
+  and review](approval-and-review.md) → Phase 1. Audit item B1.
+  - Before, `settings.extraAllowedTools` and `job.grantedTools` reached
+    phase 1 unfiltered, and `allow()` stored any rule. The only check was
+    the UI's substring test (`!rule.includes('/.vault-meta/worker/')`), so
+    `…/worker/../../wiki/**` or another job's folder passed.
+  - **Decision:** one classifier, `gateBreakingReason`
+    (`runners/permissions.ts`), used by `planningTools` (filters at use
+    time; never rewrites settings), `allow()` (refuses the whole call with
+    a `CoreError` naming each rule) and `bypassesApproval`. The Swift
+    warning now resolves `..` and checks the job's own folder.
+  - Beyond the audit list, exact rules for shell interpreters are refused,
+    not only prefix rules: `Bash(sh /job/x.sh)` would run a script the agent
+    wrote. Any spelling of `transaction apply` (extra spaces, quotes) is
+    refused too.
+  - Any Bash grant still shows the warning, because even an exact
+    `Bash(cp … wiki/x)` writes. Prefix rules for other write-capable
+    programs (`cp`, `mv`, `tee`, `python3 <script>`, `node`, `perl`) are
+    not refused; they are listed as residual risk rather than a denylist.
+
 - **Inside the vault, the queue may only be exactly `<vault>/inbox`, and a
   Folder collector may not read from a vault.** Specs: [Vaults and
   settings](vaults-and-settings.md) → Validation, [Queue and

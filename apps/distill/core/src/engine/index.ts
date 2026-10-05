@@ -53,7 +53,7 @@ import {
   selectionFor,
   SettingsStore,
 } from '../store/settings.js';
-import { uniqueDenials } from '../runners/permissions.js';
+import { gateBreakingReason, uniqueDenials } from '../runners/permissions.js';
 import { isCancelled, runProcess, type ProcessOutput, type RunProcessOptions } from '../runners/process.js';
 import { defaultRegistry } from '../runners/registry.js';
 import {
@@ -576,7 +576,11 @@ export function createEngine(opts: EngineOptions): Engine {
 
   // ───────────── turns ─────────────
 
-  function runTurn(id: string, prompt: string, extra: { extraTools?: string[]; first?: boolean } = {}): void {
+  function runTurn(
+    id: string,
+    prompt: string,
+    extra: { extraTools?: string[]; first?: boolean; /** Set only for the turn approve() starts to run this plan's apply. */ applyPlan?: TransactionPlan } = {},
+  ): void {
     const job = findJob(id);
     if (!job) return;
     const vault = vaultProfileFor(job);
@@ -630,7 +634,7 @@ export function createEngine(opts: EngineOptions): Engine {
           } catch {
             /* the raw envelope is a debugging aid */
           }
-          await handle(result, id, vault);
+          await handle(result, id, vault, extra.applyPlan);
         } catch (err) {
           if (isCancelled(err) || controller.signal.aborted) {
             mutate(id, (j) => {
@@ -647,7 +651,7 @@ export function createEngine(opts: EngineOptions): Engine {
     );
   }
 
-  async function handle(result: RunResult, id: string, vault: VaultProfile): Promise<void> {
+  async function handle(result: RunResult, id: string, vault: VaultProfile, applyPlan?: TransactionPlan): Promise<void> {
     const status = parseWorkerStatus(result.structured);
     const summary = status?.summary ?? result.resultText;
     mutate(id, (j) => {
@@ -666,11 +670,30 @@ export function createEngine(opts: EngineOptions): Engine {
           await requestDecision(id, status, result, vault);
           return;
         }
+        // The model's report is not evidence: an operation is recorded only when this was the
+        // approved apply turn and it names the approved operation; the paths come from the
+        // inspected plan, never from the model.
         mutate(id, (j) => {
           j.state = 'completed';
           delete j.approval;
-          if (status.operation_id) j.operationID = status.operation_id;
-          if (status.changed_paths.length > 0) j.changedPaths = status.changed_paths;
+          if (status.status !== 'done') return;
+          if (applyPlan && status.operation_id === applyPlan.operation_id) {
+            j.operationID = applyPlan.operation_id;
+            j.changedPaths = [...applyPlan.changed_paths];
+            j.turns.push(newTurn('app', `Applied ${applyPlan.operation_id}:\n` + applyPlan.changed_paths.map((p) => `- ${p}`).join('\n'), now()));
+          } else if (applyPlan) {
+            j.turns.push(
+              newTurn(
+                'app',
+                `Nothing recorded as applied: the turn did not report the approved operation ${applyPlan.operation_id}` +
+                  (status.operation_id ? ` (it reported ${status.operation_id}).` : '.') +
+                  ' Check the vault log before running it again.',
+                now(),
+              ),
+            );
+          } else {
+            j.turns.push(newTurn('app', 'Nothing was applied: this turn had no approved plan to apply.', now()));
+          }
         });
         return;
       case 'needs_approval':
@@ -886,7 +909,7 @@ export function createEngine(opts: EngineOptions): Engine {
     const applyRule = `Bash(${WorkerProtocol.applyCommand(ctx, plan, bundle)})`;
     mutate(id, (j) => j.turns.push(newTurn('user', `Approved ${plan.operation_id} (${plan.approval_sha256.slice(0, 12)}…)`, now())));
     applying(true);
-    runTurn(id, WorkerProtocol.approvedPrompt(ctx, plan, bundle), { extraTools: [applyRule] });
+    runTurn(id, WorkerProtocol.approvedPrompt(ctx, plan, bundle), { extraTools: [applyRule], applyPlan: clone(plan) });
   }
 
   async function reply(id: string, text: string): Promise<void> {
@@ -909,6 +932,20 @@ export function createEngine(opts: EngineOptions): Engine {
     const job = requireJob(id);
     requireSession(job);
     if (job.state !== 'awaitingApproval') throw new CoreError('invalid_state', `Job ${id} is not awaiting approval.`);
+    // Nothing that gets round the approval gate is granted; the whole call is refused before any change.
+    const ctx = new JobContext(clone(job), vaultProfileFor(job), settings);
+    const refused = clean.flatMap((r) => {
+      const why = gateBreakingReason(r, ctx);
+      return why ? [`${r} (${why})`] : [];
+    });
+    if (refused.length > 0) {
+      throw new CoreError(
+        'invalid_request',
+        `Distill can't allow ${refused.length === 1 ? 'this rule' : 'these rules'}: they would change the vault without your review.\n` +
+          refused.map((r) => `- ${r}`).join('\n') +
+          '\nReply with guidance instead.',
+      );
+    }
     mutate(id, (j) => {
       j.grantedTools = [...new Set([...j.grantedTools, ...clean])].sort();
       j.turns.push(newTurn('user', 'Allowed:\n' + clean.map((r) => `- ${r}`).join('\n'), now()));
