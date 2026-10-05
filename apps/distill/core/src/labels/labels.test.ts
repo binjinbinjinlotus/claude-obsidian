@@ -358,6 +358,47 @@ describe('addNote and labelNote', () => {
     await engine.whenIdle();
     await assert.rejects(engine.labelNote(r.requestID, ['x']), { code: 'invalid_state' });
   });
+
+  test('queue = inbox/: labels and suggestions live in Distill state; the note files are never edited (decision 2026-10-04)', async () => {
+    const vault = path.join(tmp, 'vault');
+    const { engine, ingest } = setup({
+      settings: { vaults: [{ path: vault, queueDirectory: path.join(vault, 'inbox') }], labeling: { autoLabelQueueFolder: false, cliFallbackToAI: true } },
+    });
+    const files = (notePath: string) => [notePath, notePath.replace(/\.md$/, '.distill.json')];
+    const snap = (notePath: string) => files(notePath).map((f) => [fs.readFileSync(f, 'utf8'), fs.statSync(f).mtimeMs]);
+
+    // Background suggestion lands in the overlay, not the manifest.
+    const bg = await engine.addNote({ title: 'Bg', text: 'about tea', origin: 'cli' });
+    const bgBefore = snap(bg.notePath);
+    await engine.whenIdle();
+    assert.deepEqual(snap(bg.notePath), bgBefore);
+    assert.equal(manifestOf(bg.notePath).suggestedLabels, undefined);
+
+    // Confirmed labels, and confirmed-empty ([] = no labels, no AI fallback).
+    const q = await engine.addNote({ title: 'Q', text: 'body', origin: 'cli', suggest: 'none' });
+    const e = await engine.addNote({ title: 'E', text: 'body', origin: 'cli', suggest: 'none' });
+    const qBefore = snap(q.notePath);
+    assert.deepEqual(await engine.labelNote(q.requestID, ['Tea']), { notePath: q.notePath, labels: ['tea'] });
+    await engine.labelNote(e.requestID, []);
+    assert.deepEqual(snap(q.notePath), qBefore, 'neither the note nor its manifest changed');
+    assert.ok(!fs.readdirSync(path.join(vault, 'inbox')).some((n) => n.endsWith('.tmp')), 'no temp file in inbox/');
+    const stored = JSON.parse(fs.readFileSync(path.join(tmp, 'state', 'labels', 'notes.json'), 'utf8'));
+    assert.deepEqual(stored[q.requestID].labels, ['tea']);
+    assert.deepEqual(stored[e.requestID].labels, []);
+
+    // The queue row reads the overlay.
+    const row = engine.listQueue().find((r) => r.path === q.notePath)!;
+    assert.equal(row.note?.labelsConfirmed, true);
+
+    // The batch reads it too: confirmed, confirmed-empty, and the background suggestion (CLI fallback).
+    await engine.processQueue({ force: true });
+    await engine.whenIdle();
+    const prompt = ingest.requests[0]!.prompt;
+    assert.ok(prompt.includes('- inbox/Q.md: labels the user confirmed:\n    tags:\n      - tea\n    labels_by: user'), prompt);
+    assert.ok(prompt.includes('- inbox/E.md: no labels.'));
+    assert.ok(prompt.includes('- inbox/Bg.md: AI labels the user has not confirmed yet:\n    tags:\n      - tea\n      - brewing'));
+    assert.deepEqual(snap(q.notePath), qBefore);
+  });
 });
 
 // ───────────── batch: ingest prompt per origin ─────────────

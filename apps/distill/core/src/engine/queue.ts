@@ -501,12 +501,15 @@ export interface NoteSet {
   source?: string;
   labelsConfirmed: boolean;
   imageCount: number;
+  /** The manifest's requestID (label state for a note in inbox/ lives in Distill's state under it). */
+  requestID?: string;
 }
 
 interface ParsedManifest {
   source?: string;
   labelsConfirmed: boolean;
   images: string[];
+  requestID?: string;
 }
 
 /** Lenient read of a manifest (queue.ts stays independent of notes.ts). Unreadable = no fields. */
@@ -527,6 +530,7 @@ function parseManifest(file: string): ParsedManifest {
   // Labels present (even empty) = confirmed, as in NoteManifest.
   const out: ParsedManifest = { labelsConfirmed: Array.isArray(obj.labels), images };
   if (typeof obj.source === 'string' && obj.source.trim() !== '') out.source = obj.source;
+  if (typeof obj.requestID === 'string' && obj.requestID !== '') out.requestID = obj.requestID;
   return out;
 }
 
@@ -547,6 +551,7 @@ export function noteSets(all: ScanEntry[]): NoteSet[] {
     });
     const set: NoteSet = { note, manifest: e.path, images, labelsConfirmed: m.labelsConfirmed, imageCount: m.images.length };
     if (m.source) set.source = m.source;
+    if (m.requestID) set.requestID = m.requestID;
     out.push(set);
   }
   return out;
@@ -662,6 +667,8 @@ export interface QueueListOptions {
   firstSeen?: ReadonlyMap<string, number>;
   /** Display text for a manifest's source id (e.g. "in-person" → "In person"). */
   sourceLabel?: (source: string) => string;
+  /** Whether labels were confirmed for this requestID in Distill's state (a note in inbox/; note-labels.ts). */
+  labelsConfirmed?: (requestID: string) => boolean;
 }
 
 /**
@@ -684,7 +691,8 @@ export function queueList(entries: ScanEntry[], settleSeconds: number, now: Date
     if (set) {
       const members = [set.manifest, ...set.images];
       entry.members = members;
-      const note: NonNullable<QueueEntry['note']> = { labelsConfirmed: set.labelsConfirmed, imageCount: set.imageCount };
+      const confirmed = set.labelsConfirmed || (set.requestID !== undefined && opts.labelsConfirmed?.(set.requestID) === true);
+      const note: NonNullable<QueueEntry['note']> = { labelsConfirmed: confirmed, imageCount: set.imageCount };
       if (set.source) note.source = opts.sourceLabel ? opts.sourceLabel(set.source) : set.source;
       entry.note = note;
       if (!entry.problem) {

@@ -17,6 +17,19 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **When the queue is `inbox/`, a note's label state lives in Distill's
+  state.** Spec: [Notes composer](notes-composer.md). Follows the inbox rule
+  below.
+  - Before, `labelNote` rewrote the note's `tags` and its `.distill.json`
+    manifest, and a background suggestion rewrote the manifest. With the
+    queue set to `inbox/`, those are files already in the inbox.
+  - **Decision:** in inbox mode those writes go to
+    `<state>/labels/notes.json` instead (keyed by requestID, newest 2000
+    kept). The queue row's `labelsConfirmed` and the batch's label plan
+    merge it over the manifest, so what reaches the wiki is unchanged. When
+    the queue is elsewhere, the files are still in the queue, not the vault,
+    and are edited as before.
+
 - **A batch's move into `inbox/` is create-only.** Spec: [Queue and
   batching](queue-and-batching.md) → Batch, Folders. Follows the inbox rule
   below.

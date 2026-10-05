@@ -4,6 +4,7 @@ import type { LabelingPreferences } from '../contracts.js';
 import type { SourceLabels } from '../engine/job-kinds.js';
 import { NOTE_MANIFEST_SUFFIX } from '../engine/job-kinds.js';
 import { readManifest } from '../engine/notes.js';
+import { withLabelOverlay, type NoteLabelOverlay } from '../engine/note-labels.js';
 import { bodyOf } from './frontmatter.js';
 import type { SuggestInput } from './suggest.js';
 import { pageTags } from './vault.js';
@@ -56,7 +57,13 @@ export interface BatchLabelDraft {
  * - any other text file, autoLabelQueueFolder → AI labels, unconfirmed,
  *   origin `queue-folder`; binary files → none.
  */
-export function draftBatchLabels(vaultPath: string, files: string[], prefs: LabelingPreferences): BatchLabelDraft {
+export function draftBatchLabels(
+  vaultPath: string,
+  files: string[],
+  prefs: LabelingPreferences,
+  /** Label state kept in Distill's state for notes in `inbox/` (note-labels.ts); wins over the manifest. */
+  overlay?: (requestID: string | undefined) => NoteLabelOverlay | undefined,
+): BatchLabelDraft {
   const plan: SourceLabels[] = [];
   const pending: PendingSuggestion[] = [];
   const owned = new Set<string>();
@@ -66,7 +73,8 @@ export function draftBatchLabels(vaultPath: string, files: string[], prefs: Labe
     owned.add(rel);
     const noteRel = rel.slice(0, -NOTE_MANIFEST_SUFFIX.length) + '.md';
     owned.add(noteRel);
-    const manifest = readManifest(path.join(vaultPath, rel));
+    const read = readManifest(path.join(vaultPath, rel));
+    const manifest = read && withLabelOverlay(read, overlay?.(read.requestID));
     const dir = path.posix.dirname(rel);
     for (const img of manifest?.images ?? []) owned.add(`${dir}/${img.file}`);
     if (!inBatch.has(noteRel)) continue;

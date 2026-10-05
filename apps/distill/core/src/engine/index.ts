@@ -70,6 +70,7 @@ import {
 import { CoreError } from './errors.js';
 import { searchVaultPages } from './pages.js';
 import { noteFileFor, readManifest, validateNote, writeManifest, writeNote, type NoteLabelState } from './notes.js';
+import { NoteLabelStore } from './note-labels.js';
 import { draftBatchLabels } from '../labels/batch.js';
 import { bodyOf, parseFrontmatter, scalarValue, setLabelProperties } from '../labels/frontmatter.js';
 import { extractImageText } from './image-text.js';
@@ -259,6 +260,8 @@ export function createEngine(opts: EngineOptions): Engine {
   const noteRequests = new Map<string, { vaultPath: string; manifest: string }>();
   /** Empty working directory for label suggestion runs (never the vault). */
   const labelScratch = path.join(paths.dir, 'labels', 'scratch');
+  /** Label state for notes in the vault's inbox/ (never written into inbox/; decision 2026-10-04). */
+  const noteLabels = NoteLabelStore.at(paths.dir);
 
   // ───────────── events & persistence ─────────────
 
@@ -462,7 +465,11 @@ export function createEngine(opts: EngineOptions): Engine {
   }
 
   function queueEntries(): QueueEntry[] {
-    return queueList(queued, settings.settleSeconds, now(), { firstSeen, sourceLabel });
+    return queueList(queued, settings.settleSeconds, now(), {
+      firstSeen,
+      sourceLabel,
+      labelsConfirmed: (id) => noteLabels.get(id)?.labels !== undefined,
+    });
   }
 
   /**
@@ -773,7 +780,7 @@ export function createEngine(opts: EngineOptions): Engine {
     ];
     job.turns.push(newTurn('app', `Batched ${files.length} file(s):\n` + batched.join('\n'), now()));
     insert(job);
-    const draft = draftBatchLabels(vault.path, loose, labelingPreferences(settings));
+    const draft = draftBatchLabels(vault.path, loose, labelingPreferences(settings), (rid) => noteLabels.get(rid));
     jobSteps.set(job.id, batchSteps(draft.pending.length > 0));
     const reading = `Reading ${plural(itemCount, 'source')} into ${vaultName(vault.path)}`;
     const start = (plan: SourceLabels[]) => {
@@ -1176,7 +1183,10 @@ export function createEngine(opts: EngineOptions): Engine {
     }
     // Check and write in one synchronous step so a batch can't claim the note in between.
     const where = locateRequest(requestID);
-    if (where?.state === 'queued') {
+    if (where?.state === 'queued' && queueIsInbox(where.vault)) {
+      // The note is in inbox/: its files are the user's now; keep the result in Distill's state.
+      noteLabels.setSuggestion(requestID, error ? { error } : { labels }, now());
+    } else if (where?.state === 'queued') {
       const m = readManifest(where.manifest);
       if (m) {
         if (error) m.suggestError = error;
@@ -1208,13 +1218,19 @@ export function createEngine(opts: EngineOptions): Engine {
     }
     const m = readManifest(where.manifest);
     if (!m) throw new CoreError('not_found', `No queued note for request ${requestID}.`);
-    m.labels = clean; // [] = confirmed: no labels (no AI fallback)
-    writeManifest(where.manifest, m);
     const notePath = noteFileFor(where.manifest);
-    const page = readPage(path.dirname(notePath), path.basename(notePath));
-    if (typeof page !== 'string') {
-      const next = setLabelProperties(page.text, { tags: clean });
-      if (next !== page.text) writeFileAtomic(notePath, next);
+    if (queueIsInbox(where.vault)) {
+      // The queue is the vault's inbox/: Distill never edits a file already there (decision
+      // 2026-10-04). The labels live in Distill's state; the batch reads them from there.
+      noteLabels.setLabels(requestID, clean, now());
+    } else {
+      m.labels = clean; // [] = confirmed: no labels (no AI fallback)
+      writeManifest(where.manifest, m);
+      const page = readPage(path.dirname(notePath), path.basename(notePath));
+      if (typeof page !== 'string') {
+        const next = setLabelProperties(page.text, { tags: clean });
+        if (next !== page.text) writeFileAtomic(notePath, next);
+      }
     }
     if (where.vault.path === activeVault(settings)?.path) refreshQueue();
     return { notePath, labels: clean };
