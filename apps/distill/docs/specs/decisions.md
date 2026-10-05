@@ -17,6 +17,24 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+**Full reads, after the design review (2026-10-05).** Spec: [Full
+reads](full-read.md).
+
+- **Re-reads and repairs pack by token budget.** This supersedes the default
+  group of 3 in the re-read entry below. `rereadSources` takes a
+  `tokenBudget`, the same budget as normal batches.
+- **The next repair batch starts when the previous one applies**, not when it
+  reaches Review. So no repair bundle goes stale against another one.
+- **Automatic batch size is 100K on the owner's Sonnet.** The CLI reports
+  `modelUsage.contextWindow` = 1,000,000 (verified on CLI 2.1.289).
+- **Compaction is designed for its absence.** `compact_boundary` isn't
+  verified in `-p`, so either it or a sharp drop in context counts. The
+  draft-after-read order applies only after one.
+- **Moving a ledger locator to `.raw/captured/` migrates the record.** The bundle
+  adds the new record with `supersedes`, removes the old one, and moves its
+  claim references. Lookups key on `content_sha256`.
+- **Cost is shown as an estimate at list price**, or in tokens.
+
 **Owner decisions on full reads (2026-10-05).** These supersede the "vetoable
 default" wording in the entry below.
 

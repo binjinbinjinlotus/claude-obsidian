@@ -106,13 +106,17 @@ nothing in the vault changes.
   - zero readable lines;
   - a missing or unreadable file.
 
-**The lines.** One copy line per source line, so line numbers stay true.
+**The lines.** Copy line *n* is source line *n*, so line numbers stay true.
 
 - A line that is only a data URI becomes a one-line placeholder, for example
   `[image1: embedded PNG, 87 KB, not text]`.
-- A line over 1,900 characters is cut into continuation lines (`↪ …`).
-- `read/<n>.map.json` records those splits, so copy lines map back to source
-  lines.
+- A line over 1,900 characters keeps its first 1,900 characters in place and
+  ends with `→ L<n>↪`.
+  - Its remaining pieces go **after the last line** of the copy, each prefixed
+    `L<n>↪ `. Nothing is inserted between source lines.
+  - Those appendix lines are part of the required ranges.
+- `read/<n>.map.json` records the appendix lines and the source line each one
+  belongs to.
 
 **What the AI is told.** The prompt gives each source's original path, the
 copy's path and its planned sections. The AI reads the copy and cites the
@@ -125,7 +129,7 @@ are measured on.
 
 | Kind | Handling |
 | --- | --- |
-| PDF | Read by page, with Read's `pages` |
+| PDF | Read by page, with Read's `pages` (unverified: check that its result reports the pages it returned) |
 | Image | One read |
 | `.distill.json` manifests, `seenBefore` files, `.gdoc` pointers | Not sources here |
 | Folder item | Each file inside is a source |
@@ -152,45 +156,47 @@ A source's estimate in tokens is its copy's bytes divided by **2.6**:
 
 **`settings.batchSourceTokens`**. Absent means **Automatic**.
 
-**Where the window comes from.** Nothing in the core knows a model's context
-window today. Two sources are proposed, in this order:
+**Where the window comes from.** The `result` event's
+`modelUsage[model].contextWindow`. This was verified on CLI 2.1.289:
+`claude-sonnet-5-5` reports 1,000,000.
 
-1. The model's context window as Claude Code reports it in the `result`
-   event's `modelUsage` (a `contextWindow` field). This is to be verified on
-   the real CLI. Once seen, it is cached per model id in Distill's state.
-2. A small table in the core (`runners/models.ts`), keyed by model alias.
-
-An unknown model counts as **200K**, the conservative case. No model's size
-is assumed without one of these.
+- It is cached per model id in Distill's state after the first run.
+- Until a model has been seen, a small table in the core
+  (`runners/models.ts`) is used.
+- An unknown model counts as **200K**, the conservative case.
 
 **Automatic** is 30% of the ingest model's context window, capped at 100K:
 
 | Model context | Budget |
 | --- | --- |
 | 200K | 60K |
-| 1M | 100K |
+| 1M (the owner's Sonnet) | **100K** |
 
-**Why 60K on a 200K model.** It keeps the session clear of compaction, which
-would void the coverage (section 3). The parts of the session:
+**How 100K fits a 1M session.** It stays far below the point where Claude Code
+compacts:
 
 | Part | Tokens |
 | --- | --- |
 | Measured overhead before the first source | 29K |
-| Sources | 60K |
-| Detailed drafts, about 0.25 × sources | 15K |
-| Existing pages | about 20K |
-| Bundle, inspect, continuations and the detail pass | about 20K |
-| **Total** | **about 145K** |
+| Sources | 100K |
+| Detailed drafts, about 0.25 × sources | 25K |
+| Existing pages | about 30K |
+| Bundle, inspect, continuations and the detail pass | about 25K |
+| **Total** | **about 210K** |
 
-**The reviewer's 80–100K holds where it fits.** It keeps cost roughly linear
-on a 1M model. On a 200K model, 100K of sources would reach compaction.
+On a 200K model, the 60K budget keeps the same parts to about 145K.
+
+**Why 100K is the cap even on 1M.** Cost per source grows with the session's
+context, because every turn re-reads it. 100K keeps cost roughly linear, as
+the reviewer recommended.
 
 **Settings → Batching → "Batch size"** offers:
 
-- **Automatic**: "Sonnet: up to 60K tokens, about 160 KB of text, 5–6 long
+- **Automatic**: "Sonnet: up to 100K tokens, about 260 KB of text, 8–10 long
   transcripts".
-- **Smaller**: 30K.
-- **Larger**: 100K. It is shown capped on a 200K model.
+- **Smaller**: 50K.
+- **Larger**: 200K. This needs a 1M-context model; on a smaller model it is
+  shown capped.
 
 The setting is clamped to 10K–300K, is additive, and is decoded leniently.
 
@@ -210,8 +216,8 @@ The setting is clamped to 10K–300K, is additive, and is decoded leniently.
 **The rest runs right away.** When a job leaves `running` and ready items
 remain, the engine calls `processQueue` again. It does not wait for the
 schedule. `batchBlocker` blocks only while a batch is running. The Queue card
-reads "Batch 1 of 4 · 6 sources · about 58K tokens", then "Next batch starts
-when this one is ready for review".
+reads "Batch 1 of 3 · 9 sources · about 96K tokens · about $2.6 at list price",
+then "Next batch starts when this one is ready for review".
 
 ### Sections
 
@@ -225,22 +231,22 @@ A continuation names these exact sections.
 
 ### Cost (expected)
 
-**Unit.** The old run's blended rate is used: $3.24 for 6.4M cache-read
-tokens, so about $0.5 per million context tokens re-read.
+**Measured.** The re-read job `job-20261005-123916-df39`:
 
-**One 60K batch.**
+- 3 notes, 89,957 bytes of text, about 35K tokens;
+- 37 turns;
+- **$0.93**, the CLI's `total_cost_usd` (`costBasis: list`);
+- coverage 100%.
 
-- About 45 turns at an average context of about 85K: about 3.8M tokens.
-- About **$1.9 per batch**, plus the detail pass (section 5).
+**Scaled.** About **$2.6 per 100K-token batch**, at list price.
 
-**The owner's 22 notes** need 4 batches: about **$7–9**.
+**The owner's 22 notes** hold about 826 KB of text, about 320K tokens. That is
+4 batches, about **$10–12 at list price**, plus the detail pass (cents).
 
-- The partial run cost $3.24 and read under half of the text.
-- Cost grows with the text actually read, not with the square of a batch's
-  size.
+- The old partial run cost $3.24 and read under half of the text.
 
-**On screen.** The Queue card can show "about $2" from the same estimate.
-This is open question 6.
+**On screen.** The Queue card shows the estimate as "about $2.6 at list price".
+A runner with no price shows it in tokens.
 
 ## 3. Coverage: computed by the core, from tool results
 
@@ -252,10 +258,12 @@ This is open question 6.
 **Coverage is computed in `handle()` from `result.raw`**, the turn's
 stream-json:
 
-- Each successful `Read` result's `tool_use_result.file` gives `{filePath,
-  startLine, numLines, totalLines, truncatedByTokenCap}`.
-- If that object is missing, the first and last line numbers in the result
-  text are the fallback.
+- Each successful `Read` result carries a top-level, snake_case
+  `tool_use_result` on the `user` event. It holds `file {filePath,
+  startLine, numLines, totalLines}` and `truncatedByTokenCap`. This was
+  verified on CLI 2.1.289.
+- If that object is missing (an older CLI), the first and last line numbers in
+  the result text are the fallback.
 - Only Read results count.
   - The prompt says to read sources only with the Read tool.
   - Bash, Grep and subagent reads are never credited.
@@ -296,20 +304,32 @@ job.coverage: {
   part.
 - It is saved with `jobs.json`, so a restart keeps it.
 
-**Compaction.** This narrows the reviewer's "reset on compaction". A full
-reset would hard-stop every source too long for one context: the source
-compacts, its fresh session compacts again, and it stops every time. Instead,
-a `compact_boundary` voids only the read ranges that **no later page-draft
-write follows**.
+**Compaction: designed for its absence.** `compact_boundary` is seen only in
+interactive JSONL (`system` / `compact_boundary`). It is not verified in `-p`
+stream-json. So:
 
-- A draft is a file on disk, so it survives compaction.
-- The `reread-sources` prompt helper asks that a long source's draft be
-  written or updated after **each section**, not only at the end. A
-  compaction then loses at most one section's reading.
-- The gate also checks the order. A source counts as covered only when its
-  draft was written or edited after the read that completed it. The order
-  comes from the stream, which marks Write and Edit calls on the job's draft
-  paths.
+- **The budget is the main guard.** About 210K of 1M, so `-p` turns are not
+  expected to compact.
+- **Two signals count as a compaction.** Either is enough:
+  - a `compact_boundary` event, if one appears;
+  - the context shrinking. A later assistant message's `usage` (input plus
+    cache-read plus cache-creation tokens) falls below 60% of the previous
+    message's, within one session.
+- **After a compaction, and only then**, the draft-after-read order applies,
+  within that session. A read range counts only if a later write of that
+  source's page follows it.
+  - **Draft, page, source.** The final bundle's writes say which
+    `content_file` holds which page. Each page names its source through
+    `source_path`. A Write or Edit of that `content_file` is a draft write.
+  - **Inline pages.** A page written as inline `content` counts the Write of
+    `bundle.json` instead.
+  - Draft file names are the AI's choice, so the mapping comes from the
+    bundle, never from names.
+- **Before any compaction, order doesn't matter.** Every returned range
+  counts.
+- **The prompt helps.** The `reread-sources` helper asks that a long source's
+  draft be updated after each section, so a compaction loses at most one
+  section.
 
 **The source-coverage index.** Once a batch's pages apply, each source's
 result is written to `<state>/coverage/sources.json`, keyed by
@@ -325,8 +345,8 @@ prose.**
 
 - Today `nothing_to_do` completes with no Review. That changes: an unread
   batch can't claim it has nothing to add.
-- A `needs_input` with a blocked tool still reaches the owner. The gate runs
-  again on the next decision.
+- A `needs_input` with real questions, or with a blocked tool, still reaches
+  the owner. The gate runs on the turn after their reply.
 - The AI's `skipped` list never exempts a file.
 
 **When it is skipped.** Apply turns (`applyPlan`) and the rebuild of a part
@@ -336,10 +356,16 @@ the owner picked (`pendingPart` with reason `partial`, `remaining` or
 **Covered.** The gate goes on to the result checks (section 5).
 
 **Not covered.** Nothing reaches Review. The core **continues the same session
-by itself**, through the background path that `sendPartInBackground` uses
-(`index.ts:1271-1301`). If the session is gone, it never opens
-SessionReplaceConfirm. Instead it moves straight to the split below. The
-continuation's wording:
+by itself**.
+
+- **How.** A plain `runTurn(id, prompt, { autoContinue: true })` resume. The
+  job stays `running` throughout, with no `awaitingApproval` and no
+  `needsRebuild`. This is not `sendPartInBackground`.
+- **If the session is gone.** The `autoContinue` flag makes a refused resume
+  skip `restoreJob` and SessionReplaceConfirm (`index.ts:774-781`). It goes
+  straight to the fresh-session path below, with every source of the batch.
+
+The continuation's wording:
 
 > These parts of the batch were not read. Read each one with the Read tool
 > exactly as given, then update that source's page draft from what you read,
@@ -353,42 +379,58 @@ a round credits no new lines.
 
 ### Splitting what one session could not read
 
-Splitting reuses the partial-approval machinery inside the **same job**. A new
-batch cannot work here: `claimedFiles` (`index.ts:517-518`) and `processQueue`
-only claim from the queue.
+The split stays inside the **same job**. A new batch can't take these files:
+`claimedFiles` (`index.ts:517-518`) and `processQueue` only claim from the
+queue. `startPart` and `partPrompt` can't be reused at gate time either:
 
-1. **The covered sources become a part.** `partPrompt` gets the unread
-   sources as `leaveOut`. The session rebuilds `bundle-part-<n>.json` for the
-   covered sources only. `verifyRebuilt` (`index.ts:1347-1366`) checks that
-   it has **no page and no ledger entry** for the unread sources. That part
-   goes to Review.
-2. **The unread sources become a pending part** with a new reason, `unread`.
-   - It starts after the covered part applies (`continueAfterPart`,
-     `index.ts:1304-1345`), and its result comes back to Review as the next
-     part.
-   - Review shows it meanwhile as "2 sources are read next in a fresh
-     session".
-   - **How it starts.** This is not `sendPartInBackground`, which resumes the
-     old session with `partPrompt`. Instead, a new path,
-     `startUnreadPart(id)`:
-     1. Clear `job.sessionID` and give the job a new session id.
-     2. Reset `job.coverage` for those files.
-     3. Build the **full ingest prompt** (`IngestJobKind.initialPrompt`,
-        through a `JobContext` limited to the unread files), with the
-        `FULL_READ_PROMPT` block, `RereadFacts` and sections at half size.
-     4. Tell the prompt it rebuilds `bundle-part-<n>.json` and that the
-        earlier part already applied. The covered sources' pages are on disk,
-        so the shared pages are read fresh.
-     5. Run it as a `first: true` turn (`runTurn(id, prompt, { first: true
-        })`), with `pendingPart.reason = 'unread'` and `pendingPart.expected =
-        {}`.
+- they need `approval.bundlePath` and `approval.sources`
+  (`index.ts:1217-1234`);
+- they pin pages byte for byte (`review-labels.ts:249-252`, `:287`).
 
-     The gate applies to its turns as to any reading turn. It never opens
-     SessionReplaceConfirm, because nothing is resumed. `verifyRebuilt` checks
-     that the bundle holds pages for exactly the unread files and none for
-     the parts already applied.
-3. **The batch reaches Review only at 100% coverage** of the sources in the
-   part being shown.
+So the split is **a dedicated step, `splitCovered(id)`**. It runs after the
+3 continuations, and **after the detail pass on the covered sources**, so
+their pages are final.
+
+1. **Read the current bundle** with `sourcePages()`.
+2. **Map each page to its source** through the page's `source_path`.
+   - The prompt must keep `source_path` as the source's inbox (or
+     `.raw/captured/`) path, never the reading copy's path.
+   - The gate checks it, and sends a continuation on a mismatch.
+3. **Build a PendingPart with the new reason `covered`.** The gate skips this
+   reason.
+   - `expected` holds the covered pages' sha256 values, taken from the current
+     bundle.
+   - `leaveOut` lists the unread sources.
+   - A split prompt, `splitPrompt` (shaped like `partPrompt`, built from
+     `sourcePages()` instead of `approval`), asks the same session for
+     `bundle-part-<n>.json` with exactly the covered sources.
+4. **Verify the rebuilt bundle** with `verifyRebuilt`. The covered pages must be
+   byte for byte as expected. There must be **no page and no ledger entry**
+   for the unread sources.
+5. **The covered part goes to Review.**
+6. **If the session is gone at split time,** nothing is split. Every source of
+   the batch goes down the fresh-session path.
+
+**The unread sources become the next part**, with the new reason `unread`.
+
+- It starts after the covered part applies (`continueAfterPart`,
+  `index.ts:1304-1345`). Review shows it meanwhile as "2 sources are read next
+  in a fresh session".
+- It starts through a new path, `startUnreadPart(id)`:
+  1. Clear `job.sessionID`, so the job gets a new session.
+  2. Reset `job.coverage` for those files.
+  3. Build the full ingest prompt (`IngestJobKind.initialPrompt`, through a
+     `JobContext` limited to the unread files), with `FULL_READ_PROMPT`,
+     `RereadFacts` and sections at half size.
+  4. The prompt names `bundle-part-<n>.json` and says that the earlier part
+     already applied.
+  5. Run it as a `first: true` turn.
+
+  Nothing is resumed, so SessionReplaceConfirm can't open. The gate applies
+  as to any reading turn.
+
+**The batch reaches Review only at 100% coverage** of the sources in the
+part being shown.
 
 ### Hard stop: the only thing that reaches the owner
 
@@ -463,13 +505,41 @@ the ingest bundle** that the owner reviews:
 - After inspect, the core verifies each source's capture write and locator.
   If one is missing, a continuation names it.
 
+**Ledger IDs change, so records are migrated.**
+`stable_source_id` = hash(origin kind + locator + `content_sha256`)
+(`ledgers.py:407-414`), and inspect rejects a mismatch. So a source already
+in the ledger under its `inbox/` locator gets a **new `src-` ID** when its
+locator moves to `.raw/captured/`.
+
+**The migration**, in the same bundle (repair and re-read bundles; a first
+ingest has no old record):
+
+1. Remove the old source record.
+2. Add the new record, with `supersedes: <old id>` (`ledgers.py:746-748`) and
+   the same `pages`.
+3. Rewrite every claim-ledger reference from the old ID to the new one.
+
+The core supplies the old ID, the new locator and the claim references to the
+prompt helper, as facts.
+
+**After inspect, the core asserts exactly one source record per
+`content_sha256`.** A duplicate sends a continuation that names both IDs.
+
+**Lookups key on `content_sha256`.** Two lookups change:
+
+- **Inbox cleanup** (`inbox-cleanup.ts:49-75`) and **the re-read lookup**
+  (`reread.ts:181-201`) find a file's record by its `content_sha256`, not by
+  locator.
+- A page's `source_path` is the fallback.
+- A file whose bytes changed has no match, as before.
+
 **Review.** It shows the archive as one line: "22 originals archived in your
 vault (.raw/captured/)". This is information.
 
 **Clean up inbox** then needs no Trash-only path. A file can go when:
 
-- a ledger entry with its sha256 has a locator under `.raw/captured/` that
-  exists and hashes the same;
+- the ledger record found by its sha256 has a locator under `.raw/captured/`
+  that exists and hashes the same;
 - its pages exist;
 - the coverage index says `full` for that sha256.
 
@@ -571,6 +641,10 @@ These run after coverage reaches 100%.
 
   A match triggers a continuation: "All lines of X were read; drop the
   partial wording and update the page from lines …".
+
+  **It never escalates to a hard stop.** The source *was* read. If the
+  wording survives the continuations, Review shows the line "The page for X
+  still calls itself partial, though every line was read", as information.
 - **The page changed.** After a continuation that read new lines, that page
   draft's sha256 must change.
 These continuations count toward the 3.
@@ -600,6 +674,8 @@ all read", 411 lines, yet information is missing. It must come back with
      OpenAI, which would send whole transcripts to a provider the batch never
      used.
    - So the pass adds no new egress.
+   - It gets the job's `controller.signal`, so Cancel stops it.
+   - To verify at build time: `--tools ''` together with `--json-schema`.
    - `kind` is one of: decision, action, proposal, objection, number, date,
      name, open question.
    - It lists only what the detail level expects and the page lacks.
@@ -647,13 +723,26 @@ applied batch.
 2. Otherwise the locator, if it still hashes the same.
 3. Otherwise the source is "original missing": it is logged and not queued.
 
-**Queueing.** The scan queues re-read batches through the `reread-sources`
-entry point, in groups of 3, with `reason: 'repair'`:
+**Queueing.** The scan calls `rereadSources({ files, tokenBudget, reason:
+'repair' })`. `tokenBudget` is a new parameter that replaces `perBatch`, and it
+packs files with the same budget as normal batches.
 
-- One group runs at a time. The next starts when the previous one reaches
-  Review.
-- Each group passes every gate above. Its bundle replaces the source page and
-  archives the original into `.raw/captured/` (Option A).
+- **One batch at a time. The next starts when the previous one applies**, not
+  when it reaches Review. So no repair bundle goes stale against another one,
+  and each needs one approval.
+- Each batch passes every gate above.
+- Its bundle replaces the source page, archives the original into
+  `.raw/captured/` and migrates the ledger record (section 4).
+
+**What has already run.** The re-read group 1, job
+`job-20261005-123916-df39`:
+
+- 3 notes, 100% covered (checked by the reviewer from its stream);
+- the build back-fills those 3 into the coverage index from its saved turn
+  files, so they are not read again.
+
+The repair then covers the **other 19**. At about 270K tokens, that is **3
+batches**.
 
 **Never twice.** Attempts are recorded in `<state>/repair.json` by sha256. A
 source is repaired automatically once. A repair that ends stopped becomes a
@@ -662,8 +751,8 @@ hard stop.
 **No click starts it.** The owner approves each repair in Review, as with any
 change: the approval gate stays.
 
-**Activity:** "22 sources weren't checked for a full read; reading them again
-in 8 batches of up to 3" (`batch.repair_queued`).
+**Activity:** "19 sources weren't checked for a full read; reading them again
+in 3 batches, each after the one before is added" (`batch.repair_queued`).
 
 ## Building on the re-read entry point
 
@@ -698,6 +787,20 @@ and `RereadFacts`. Prompt text stays with `reread-sources`.
 3. **`sections` and `readingCopy` in `RereadFacts`.** All ingest gets them,
    not only re-reads.
 4. **`detailLevel` per source.** The detail level reaches the prompt this way.
+5. **`tokenBudget`** in place of `perBatch`, for packing (section 6).
+6. **Ledger facts** for the migration (section 4): the old ID, the new locator
+   and the claim references.
+7. **Lookup by `content_sha256`** in `reread.ts:181-201`, with `source_path` as
+   the fallback.
+
+These are kept from `reread-sources` (the build owns them now):
+
+- A missing file still fails by name. This also holds for `.raw/captured/`
+  paths.
+- A new `decisions.md` entry replaces the group size of 3 with the token
+  budget.
+- "Name them in skipped" comes out of the long-line fact, with matching
+  `reread.test.ts` edits.
 
 **Not used for splitting.** A split stays inside the same job as an `unread`
 part (section 3), because the covered sources must reach Review together with
@@ -752,8 +855,8 @@ skills reviewer.
   - "2 sources go to a fresh session: this one ran out of room".
 
   Details shows the line ranges.
-- **Queue card.** "Batch 1 of 4 · 6 sources · about 58K tokens", then "Next
-  batch starts when this one is ready for review".
+- **Queue card.** "Batch 1 of 3 · 9 sources · about 96K tokens · about $2.6 at
+  list price", then "Next batch starts when this one is ready for review".
 - **Review.** These lines are information:
   - "Read in full · 20 of 20 sources · 9,412 lines · counted from Claude's
     reads";
@@ -770,51 +873,36 @@ skills reviewer.
 
 | Area | Addition |
 | --- | --- |
-| Settings | `batchSourceTokens?`, `detailLevel?` |
+| Settings | `batchSourceTokens?`, `detailLevel?`, plus a cached `modelContext` per model id |
 | Job | `coverage?`, `stopped?: {file, reason, words}[]`, `batchOf?: {index, total}`, `detailCheck?` |
-| PendingPart | reason `unread` |
+| PendingPart | reasons `covered` and `unread`; the gate skips `covered` |
+| runTurn | option `autoContinue` |
 | Runner | capability `readCoverage` |
 | JobStep | verbs `coverage`, `continue`, `detail`, `stop` |
-| API | `GET /v1/jobs/:id/coverage` (ranges for Details) |
+| API | `GET /v1/jobs/:id/coverage` (ranges for Details); `POST /v1/batches/reread` takes `tokenBudget` and `reason` |
 | Activity | kinds `batch.read_stopped`, `batch.repair_queued` |
 
 ## Open questions
 
-1. **Verify on the real CLI before building** (`claude -p --output-format
-   stream-json`). This blocks the build. Three things are unverified:
-   - **`tool_use_result` on `user` events.** The owner's session jsonl carries
-     `toolUseResult`, but that is a different channel. The fallback, line
-     numbers parsed from the result text, covers line spans either way.
-   - **`compact_boundary`.** Nothing else detects compaction. Without it, the
-     draft-after-read order is the only guard.
-   - **`modelUsage[…].contextWindow`** on the result event, used for the
-     budget.
-2. (Settled 2026-10-05: Option A confirmed; Codex ingest deferred.)
-3. **Repair approvals.** The repair runs 8 serial batches of 3 for the 22
-   sources. Each batch rewrites the index, log and hot cache, so a batch
-   built while another waits in Review goes stale. That can mean about 15
-   approvals. Packing the repair groups by tokens instead of 3 at a time gives
-   about 4 batches. That needs `rereadSources` to take a token budget rather
-   than `perBatch`.
-   **What has already run.** Re-read group 1 ran before this design was
-   built: job `job-20261005-123916-df39`, 3 notes, started 16:39Z. It has no
-   coverage record, so the repair would read those 3 again.
+Settled by the reviewer and the CLI check (2026-10-05):
 
-   **Options for those 3:**
-   - Accept the repeat.
-   - Back-fill coverage from that job's saved stream (`turn-*.json` holds
-     `result.raw`) with the same parser, when the stream has the Read
-     results. This is preferred if they are there; it must be checked at
-     build time.
+- **Stream fields.** `tool_use_result` and `modelUsage[…].contextWindow` are
+  verified. `compact_boundary` is not verified in `-p`, so the design works
+  without it.
+- **Repair.** It packs by token budget, and the next batch starts when the
+  previous one applies.
+- **Stale overflow batches** keep rebuilding.
+- **Unread sources** start after the covered part applies.
+- **Image text** comes later.
+- **Cost** shows as an estimate at list price, or as tokens.
+- **The owner's decisions:** Option A, and Codex deferred.
 
-   **The other 19 notes** go through the repair as designed.
-4. **Stale batches.** A batch built while another waits in Review rebuilds
-   after that one applies, and the owner approves twice. An alternative: one
-   Review per drop, backed by several reading sessions plus one merge
-   session, the skill's "workers return drafts, one merge" pattern.
-5. **When unread sources start.** They start after the covered part applies,
-   using the existing machinery. Should they start at once, in a parallel
-   session instead?
-6. **Embedded images.** Should they get text through the image-text path?
-   Today they are placeholders.
-7. **Showing cost.** Should the expected cost appear on the Queue card?
+Still open:
+
+1. **Compaction in `-p`.** Is the 60% usage-drop threshold right? It needs one
+   long solo batch to calibrate.
+2. **PDF `pages` reads.** Does Read's result report which pages it returned?
+   This is unverified, so PDFs are credited only on a result that names its
+   pages.
+3. **The `--tools ''` and `--json-schema` combination** for the detail pass,
+   checked at build time.

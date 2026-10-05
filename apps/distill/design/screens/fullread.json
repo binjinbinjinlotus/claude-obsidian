@@ -52,7 +52,7 @@
   {
    "id": "fullread-queue",
    "base": "queue",
-   "label": "A \u00b7 Queue: batch 1 of 4, sized to what Claude can read in full; the rest wait for the batches that start right after"
+   "label": "A \u00b7 Queue: batch 1 of 3, sized to what Claude can read in full; the rest wait for the batches that start right after"
   },
   {
    "id": "fullread-steps",
@@ -104,7 +104,7 @@
   {
    "id": "fullread-card-settings",
    "label": "Settings \u2192 Batching: batch size and detail level",
-   "caption": "Two new rows. Batch size is Automatic by default (30% of the model\u2019s context, at most 100K).",
+   "caption": "Two new rows. Batch size is Automatic by default: 30% of the model\u2019s context, at most 100K (100K on the owner\u2019s 1M Sonnet).",
    "card": {
     "height": 560,
     "bg": "#E4E1DB",
