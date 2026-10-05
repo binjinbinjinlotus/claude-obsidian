@@ -592,6 +592,38 @@ describe('distill CLI', () => {
     });
   });
 
+  describe('batch reread', () => {
+    it('--job sends the job id; files go as given; --per-batch and --instruction pass through', async () => {
+      const r = await cli(['batch', 'reread', '--job', 'job-20261001-120000-abcd']);
+      assert.equal(r.code, 0, r.stderr);
+      assert.deepEqual(lastCall('rereadSources')?.args, [{ jobId: 'job-20261001-120000-abcd' }]);
+      assert.match(r.stdout, /^Re-reading 1 source from job-20261001-120000-abcd in 1 batch of up to 3 \(reread-/);
+      assert.match(r.stdout, /1\. started as job-reread-1: a\.md/);
+      assert.match(r.stdout, /nothing is applied until you approve it/);
+
+      const j = await cli(['batch', 'reread', 'inbox/a.md', './inbox/b.md', 'inbox/c.md', 'inbox/d.md', '--per-batch', '2', '--instruction', 'Keep owners.', '--json']);
+      assert.equal(j.code, 0, j.stderr);
+      assert.deepEqual(lastCall('rereadSources')?.args, [{ files: ['inbox/a.md', 'inbox/b.md', 'inbox/c.md', 'inbox/d.md'], perBatch: 2, instruction: 'Keep owners.' }]);
+      const res = JSON.parse(j.stdout);
+      assert.deepEqual(res.groups.map((g: { files: string[] }) => g.files.length), [2, 2]);
+      assert.equal(res.waiting, 1);
+      assert.equal(res.started[0].reread.group, 1);
+    });
+    it('usage errors: both or neither, bad --per-batch, unknown sub-command', async () => {
+      assert.equal((await cli(['batch', 'reread'])).code, 2);
+      assert.equal((await cli(['batch', 'reread', 'inbox/a.md', '--job', 'j'])).code, 2);
+      assert.equal((await cli(['batch', 'reread', 'inbox/a.md', '--per-batch', '0'])).code, 2);
+      assert.equal((await cli(['batch', 'reread', 'inbox/a.md', '--per-batch', '11'])).code, 2);
+      assert.equal((await cli(['batch', 'run'])).code, 2);
+      assert.ok((await cli(['--help'])).stdout.includes('distill batch reread'));
+    });
+    it('an unknown job is refused by the route', async () => {
+      const unknown = await cli(['batch', 'reread', '--job', 'job-nope', '--json']);
+      assert.equal(unknown.code, 1);
+      assert.equal(JSON.parse(unknown.stdout).error.code, 'job_not_found');
+    });
+  });
+
   describe('status', () => {
     it('--json includes StatusResponse and the server lock', async () => {
       const r = await cli(['status', '--json']);

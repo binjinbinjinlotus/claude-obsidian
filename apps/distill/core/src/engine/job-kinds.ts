@@ -23,6 +23,12 @@ export interface SourceLabels {
   origin?: LabelOrigin;
 }
 
+/** What a re-read batch's first prompt says about each input (read-only facts the core found). */
+export interface RereadFacts {
+  /** Per input: its size, and the existing source page(s) found through the ledger or `source_path`. */
+  sources: { file: string; bytes?: number; lines?: number; textBytes?: number; imageLines?: number; longLines?: number; imageAt?: number[]; pages: string[] }[];
+}
+
 /** Everything a job kind needs to build prompts and permission rules. */
 export class JobContext {
   constructor(
@@ -30,6 +36,7 @@ export class JobContext {
     readonly vault: VaultProfile,
     readonly settings: Settings,
     readonly labelPlan: SourceLabels[] = [],
+    readonly reread?: RereadFacts,
   ) {}
 
   get corePath(): string {
@@ -255,6 +262,99 @@ other page.
 ${plan.map(labelLines).join('\n')}`;
 }
 
+/**
+ * How every ingest batch reads its files (decision 2026-10-05): the whole of each file, one file
+ * at a time. A batch once read only the Gemini summaries of long meeting notes and left the
+ * transcripts out ("a bounded first tranche"); the owner found out only by reading a page.
+ */
+export const FULL_READ_PROMPT = `Source budget: the full size of every file listed. Read each file completely, \
+including any transcript, from the first line to the last, and read sources only with the \
+Read tool (not \`cat\`, \`sed\`, \`head\` or other shell commands), so the reads are on record. \
+When a file is long, read it in consecutive sections until you reach its end: Read with \
+\`offset\` and \`limit\` (a few hundred lines at a time). The Read tool can return fewer lines \
+than asked without an error (it stops at 2000 lines or at a size cap); when it does, continue \
+from the last line it returned. Do not stop early, sample, or choose a first tranche. Lines \
+that are only embedded base64 image data (\`[image1]: <data:image/png;base64,...>\`, often \
+tens of thousands of characters at the end of a meeting note) are image attachments, not \
+text: skip them, and read around them with \`offset\` (one such line can fill a whole Read).
+
+Process the files one at a time, in order: (1) read file N completely; (2) write or update its \
+source page draft, and note the entities, concepts and claims it adds, before opening the next \
+file; (3) move on to file N+1. After the last file, update the shared pages (index, entities, \
+concepts, ledgers) from your notes, then build the one bundle.
+
+For a meeting note or transcript, the source page is detailed, not highlights: key points, \
+decisions and action items (with owners and dates), then a Discussion section per topic \
+(proposals, objections, the reasons given, numbers, dates and names) and Open questions. \
+Keep what a reader would need if they never open the transcript.
+
+Mark a page partial only if a file truly cannot be read, and say which lines and why; never to \
+save effort.`;
+
+function kb(bytes: number): string {
+  return bytes < 1024 ? `${bytes} bytes` : `${Math.round(bytes / 1024)} KB`;
+}
+
+/** One input's line in a re-read prompt: its size as text and the source page to update. */
+function rereadSourceLine(s: RereadFacts['sources'][number]): string {
+  const facts: string[] = [];
+  if (s.lines !== undefined && s.textBytes !== undefined) facts.push(`${s.lines} lines, ${kb(s.textBytes)} of text`);
+  if (s.imageLines) {
+    const at = s.imageAt?.length ? ` at line${s.imageAt.length === 1 ? '' : 's'} ${s.imageAt.join(', ')}${s.imageLines > s.imageAt.length ? ', …' : ''}` : '';
+    facts.push(`${s.imageLines} embedded base64 image line(s)${at}, ${kb((s.bytes ?? 0) - (s.textBytes ?? 0))}: image data, not text; skip them`);
+  }
+  if (s.longLines) facts.push(`${s.longLines} text line(s) over 2000 characters, which the Read tool cuts: name them in \`skipped\` if you could not read them whole`);
+  const page = s.pages.length === 0
+    ? 'no source page found by the core: look it up in the source ledger and by `source_path`; create one only if none exists'
+    : s.pages.length === 1
+      ? `update ${s.pages[0]}`
+      : `update ${s.pages[0]} (also listed: ${s.pages.slice(1).join(', ')}; do not add another)`;
+  return `- ${s.file}${facts.length ? ` (${facts.join('; ')})` : ''}: ${page}`;
+}
+
+/**
+ * v9: what a re-read batch adds to the ingest prompt (queue-and-batching.md, "Re-read sources").
+ * The sources were ingested before but partly read; this batch reads them completely and updates
+ * the pages it made, through Review as usual.
+ */
+export function rereadPrompt(ctx: JobContext): string {
+  const r = ctx.job.reread;
+  if (!r) return '';
+  const facts: RereadFacts['sources'] = ctx.reread?.sources ?? ctx.job.files.map((file) => ({ file, pages: [] }));
+  const total = facts.reduce((n, s) => n + (s.textBytes ?? s.bytes ?? 0), 0);
+  const instruction = r.instruction?.trim()
+    ? `
+
+The user added this for the re-read (from the user, not from a source):
+${r.instruction.trim()}`
+    : '';
+  return `
+
+This is a RE-READ (group ${r.group} of ${r.groups}${r.fromJob ? ` of the sources of batch ${r.fromJob}` : ''}). \
+These sources were ingested before, but only partly read: earlier source pages were written \
+from parts of them (for example only the meeting summary, or only the first minutes of a \
+transcript). This time, besides reading every file completely as above (${kb(total)} of \
+text in all):
+- Do not skip a source because the ledger already holds it with the same SHA-256 (the \
+skill's "unchanged input" check): the bytes are unchanged, but the earlier read was not \
+complete, so every source here is processed again.
+- Update the EXISTING source page for each input; do not create a second source page \
+for a source that has one. Find it through the source ledger's \`pages\` \
+(wiki/meta/ledgers/source-ledger.json, by \`origin.locator\`) or the page's \
+\`source_path\`. Rewrite it from the whole source and remove notes that say it was read \
+only in part.
+- Update the entity and concept pages, and the source and claim ledgers, with what the \
+parts not read before add or change. Reuse existing pages; raise the existing-page budget \
+as far as this needs.
+- Keep the labels already on those source pages: their \`tags\`, \`labels_by\`, \
+\`labels_reviewed\` and \`labels_origin\` stay as they are (the Labels section below, \
+when there is one, repeats them).
+
+The sources and the pages to update:
+
+${facts.map(rereadSourceLine).join('\n')}${instruction}`;
+}
+
 export const IngestJobKind: JobKind = {
   id: 'ingest',
   displayName: 'Ingest',
@@ -264,6 +364,9 @@ export const IngestJobKind: JobKind = {
   initialPrompt(ctx: JobContext): string {
     const list = ctx.job.files.map((f) => `- ${f}`).join('\n');
     const skillDir = path.join(ctx.settings.productRoot, 'skills', 'wiki-ingest');
+    const pageBudget = ctx.job.reread != null
+      ? "the existing-page budget raised as far as updating these sources' pages needs"
+      : "the skill's default existing-page budget";
     return `Use the claude-obsidian:wiki-ingest skill to ingest this batch from the \
 selected vault's inbox. If that skill is not loaded (some runners have no plugin), \
 read ${path.join(skillDir, 'SKILL.md')} with the Read tool and follow it; paths it \
@@ -274,8 +377,10 @@ The batch (vault-relative paths):
 ${list}
 
 Agreed scope: exactly these ${ctx.job.files.length} local file(s); no network \
-egress; default existing-page budget from the skill. Media you cannot read \
-must be reported as unsupported, not invented.${manifestPrompt(ctx)}${folderPrompt(ctx)}${labelsPrompt(ctx.labelPlan)}
+egress; the source budget is the full size of these files; ${pageBudget}. Media \
+you cannot read must be reported as unsupported, not invented.
+
+${FULL_READ_PROMPT}${rereadPrompt(ctx)}${manifestPrompt(ctx)}${folderPrompt(ctx)}${labelsPrompt(ctx.labelPlan)}
 
 Build ONE \`claude-obsidian.transaction.v1\` ingest bundle for the whole batch \
 at ${ctx.bundlePath}, then run:

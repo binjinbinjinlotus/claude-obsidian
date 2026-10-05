@@ -190,6 +190,19 @@ describe('HTTP API', () => {
   });
 
   describe('routes', () => {
+    it('POST /v1/batches/reread: files or jobId (not both), perBatch, vault; 201 with the groups', async () => {
+      const ok = await request(port, 'POST', '/v1/batches/reread', { body: { files: ['inbox/a.md', 'inbox/b.md'], perBatch: 1, vault: '/tmp/vault', instruction: 'x' } });
+      assert.equal(ok.status, 201);
+      assert.deepEqual(lastCall()?.args, [{ files: ['inbox/a.md', 'inbox/b.md'], vaultPath: '/tmp/vault', perBatch: 1, instruction: 'x' }]);
+      assert.equal(ok.body.groups.length, 2);
+      assert.equal(ok.body.started[0].reread.group, 1);
+      for (const body of [{}, { files: ['inbox/a.md'], jobId: 'job-20261001-120000-abcd' }, { files: 'inbox/a.md' }, { files: ['inbox/a.md'], perBatch: 1.5 }, { jobId: '' }]) {
+        const bad = await request(port, 'POST', '/v1/batches/reread', { body });
+        assert.equal(bad.status, 400, JSON.stringify(body));
+      }
+      const gone = await request(port, 'POST', '/v1/batches/reread', { body: { jobId: 'job-nope' } });
+      assert.equal(gone.status, 404);
+    });
     it('GET /v1/status', async () => {
       const res = await request(port, 'GET', '/v1/status');
       assert.equal(res.status, 200);

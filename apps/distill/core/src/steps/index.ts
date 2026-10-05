@@ -342,7 +342,11 @@ export function createStepLog(opts: StepLogOptions): StepLog {
     const prev = l.last;
     l.last = structuredClone(job);
     if (!known) {
-      if (job.kind === 'ingest' && job.files.length + (job.folders?.length ?? 0) > 0) {
+      if (job.kind === 'ingest' && job.reread) {
+        // v9: a re-read reads files already in inbox/ where they are; nothing moves.
+        const n = job.files.length;
+        step(job.id, { phase: 'prepare', kind: 'step', state: 'done', verb: 'reread', text: `Re-reading ${plural(n, 'file')} already in your inbox (group ${job.reread.group} of ${job.reread.groups})` });
+      } else if (job.kind === 'ingest' && job.files.length + (job.folders?.length ?? 0) > 0) {
         const n = job.files.length;
         step(job.id, { phase: 'prepare', kind: 'step', state: 'done', verb: 'move', text: `Moved ${plural(n, 'file')} from the queue to your inbox` });
       }

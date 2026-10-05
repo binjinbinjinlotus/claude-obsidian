@@ -363,6 +363,26 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       record('processQueue', opts);
       return opts?.force ? sampleJob({ id: 'job-processed', state: 'running' }) : null;
     },
+    async rereadSources(req) {
+      record('rereadSources', req);
+      // The fake expands a job to its files and groups them like the real core (default 3).
+      const files = req.jobId ? (fake.jobs.find((j) => j.id === req.jobId)?.files ?? []).filter((f) => !f.endsWith('.distill.json')) : (req.files ?? []);
+      const per = req.perBatch ?? 3;
+      const groups = [];
+      for (let i = 0; i < files.length; i += per) groups.push({ files: files.slice(i, i + per) });
+      const reread = { id: 'reread-20261005-120000-abcd', group: 1, groups: groups.length, ...(req.jobId ? { fromJob: req.jobId } : {}) };
+      const first = sampleJob({ id: 'job-reread-1', state: 'running', files: groups[0]?.files ?? [], reread });
+      if (groups[0]) Object.assign(groups[0], { jobId: first.id });
+      return {
+        id: reread.id,
+        vaultPath: req.vaultPath ?? '/tmp/vault',
+        perBatch: per,
+        ...(req.jobId ? { fromJob: req.jobId } : {}),
+        groups,
+        started: groups.length ? [first] : [],
+        waiting: Math.max(0, groups.length - 1),
+      };
+    },
     async addNote(req: AddNoteRequest): Promise<AddNoteResult> {
       record('addNote', req);
       const notePath = `/tmp/vault/inbox/${req.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`;

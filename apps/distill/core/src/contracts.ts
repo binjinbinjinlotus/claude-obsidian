@@ -263,6 +263,54 @@ export interface Job {
   approvedChange?: ApprovedChange | null;
   /** v8: the user pressed Done on this batch in Review after it was approved; it is then only in History. */
   reviewDoneAt?: string | null;
+  /** v9 (2026-10-05): this batch re-reads sources already ingested (POST /v1/batches/reread); absent on other batches. */
+  reread?: JobReread | null;
+}
+
+/** v9: which re-read a batch belongs to: group `group` of `groups` (1-based). */
+export interface JobReread {
+  id: string; // reread-yyyyMMdd-HHmmss-xxxx
+  group: number;
+  groups: number;
+  /** The batch whose sources are read again, when the request named one. */
+  fromJob?: string | null;
+  /** Extra words from the user for every group's prompt. */
+  instruction?: string | null;
+}
+
+/**
+ * v9: re-read sources already in inbox/ (queue-and-batching.md, "Re-read sources"). Give `files`
+ * (vault-relative inbox paths) or `jobId` (that batch's sources: its files minus note manifests,
+ * each folder one item). Files are read in place: nothing is moved, copied or written into inbox/.
+ */
+export interface RereadRequest {
+  vaultPath?: string;
+  files?: string[];
+  jobId?: string;
+  /** Sources per batch (default 3, 1-10). Each batch is its own job with a fresh AI session. */
+  perBatch?: number;
+  instruction?: string;
+}
+
+export interface RereadGroup {
+  files: string[];
+  folders?: string[];
+  /** The batch this group became, once it started. */
+  jobId?: string | null;
+}
+
+export interface RereadResult {
+  id: string;
+  vaultPath: string;
+  perBatch: number;
+  fromJob?: string | null;
+  groups: RereadGroup[];
+  /** Batches started by this call (at most one: one runs at a time per vault). */
+  started: Job[];
+  /** Groups still waiting for the vault to be free. */
+  waiting: number;
+  /** Sources left out (note manifests), with why. */
+  skipped?: { path: string; reason: string }[];
 }
 
 /** v8: the approved change (plan counts, never the model's words). */
@@ -1701,6 +1749,11 @@ export interface DistillCore {
   previewInboxCleanup?(opts?: { jobId?: string; vaultPath?: string }): Promise<InboxCleanupPreview>;
   /** v8: move these items (paths from a preview) to the Trash, each checked again first. Never automatic. */
   cleanUpInbox?(req: InboxCleanupRequest): Promise<InboxCleanupResult>;
+  /**
+   * v9: read sources already ingested again, completely, in groups of `perBatch` (one batch and one
+   * fresh session each, one after another). Updates the existing pages through Review as usual.
+   */
+  rereadSources?(req: RereadRequest): Promise<RereadResult>;
   /** Vault pages for the note picker (`[[`), best matches first. */
   searchPages(query: string, opts?: { vaultPath?: string; limit?: number }): Promise<{ path: string; title: string }[]>;
   /**

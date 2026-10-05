@@ -53,6 +53,10 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",
 ]
 KEYCHAIN_SERVICE = "distill.meeting-notes"
+# Google calls are retried with backoff on timeouts and 5xx errors; one slow file
+# never stops the whole run.
+RETRIES = 4
+NETWORK_ERRORS = (HttpError, TimeoutError, ConnectionError, OSError)
 KC_CLIENT = "oauth-client"
 KC_TOKEN = "oauth-token"
 
@@ -165,9 +169,9 @@ def download(drive, file_id, out_dir, state, prefix="", recordings=False):
     try:
         meta = drive.files().get(
             fileId=file_id, fields="id,name,mimeType,modifiedTime", supportsAllDrives=True
-        ).execute()
-    except HttpError as e:
-        print(f"  ! cannot read {file_id}: {e.reason}")
+        ).execute(num_retries=RETRIES)
+    except NETWORK_ERRORS as e:
+        print(f"  ! cannot read {file_id}: {getattr(e, 'reason', e)}")
         return False
 
     if state.get(file_id) == meta["modifiedTime"]:
@@ -191,14 +195,15 @@ def download(drive, file_id, out_dir, state, prefix="", recordings=False):
         downloader = MediaIoBaseDownload(buf, request)
         done = False
         while not done:
-            _, done = downloader.next_chunk()
+            _, done = downloader.next_chunk(num_retries=RETRIES)
         # Write under a hidden name, then link it in, so Distill never sees half a file.
         part = out_dir / f".{path.name}.part"
         part.write_bytes(buf.getvalue())
         path = place_new(part, path)
-    except HttpError as e:
-        # Common cause: the owner disabled download/copy for viewers
-        print(f"  ! cannot download '{meta['name']}': {e.reason}")
+    except NETWORK_ERRORS as e:
+        # Common causes: the owner disabled download/copy for viewers, or the network timed out
+        # (the file is tried again on the next run, since it isn't recorded as downloaded).
+        print(f"  ! cannot download '{meta['name']}': {getattr(e, 'reason', e)}")
         return False
 
     state[file_id] = meta["modifiedTime"]
@@ -218,7 +223,7 @@ def from_calendar(cal, drive, since, until, match, out_dir, state, recordings):
             orderBy="startTime",
             pageToken=page,
             fields="nextPageToken,items(summary,start,attachments)",
-        ).execute()
+        ).execute(num_retries=RETRIES)
         for ev in resp.get("items", []):
             day = (ev["start"].get("dateTime") or ev["start"].get("date"))[:10]
             for att in ev.get("attachments", []):
@@ -237,7 +242,7 @@ def from_drive_folder(drive, folder_name, since, match, out_dir, state, recordin
     folders = drive.files().list(
         q=f"mimeType='application/vnd.google-apps.folder' and name='{escaped}' and trashed=false",
         fields="files(id)",
-    ).execute().get("files", [])
+    ).execute(num_retries=RETRIES).get("files", [])
     if not folders:
         print("  (folder not found)")
         return
@@ -252,7 +257,7 @@ def from_drive_folder(drive, folder_name, since, match, out_dir, state, recordin
                 pageToken=page,
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True,
-            ).execute()
+            ).execute(num_retries=RETRIES)
             for f in resp.get("files", []):
                 if match and not re.search(match, f["name"], re.I):
                     continue
