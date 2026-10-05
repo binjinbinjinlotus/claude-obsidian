@@ -734,7 +734,25 @@ packs files with the same budget as normal batches.
 - Its bundle replaces the source page, archives the original into
   `.raw/captured/` and migrates the ledger record (section 4).
 
-**What has already run.** The re-read group 1, job
+**Back-fill from every job with stream turn files.** At first start, the
+build computes coverage from the saved `turn-*.json` of every past job whose
+turns ran with stream-json. It uses the same parser and the same session
+rule, and records the full-read results in the coverage index. The repair
+then re-reads only what is still uncovered.
+
+**What is on the owner's vault now:**
+
+- **`reread-20261005-124520-4eb8`**: the remaining 19 notes, in 4 groups
+  (5/5/5/4), with stream-json. It was started by the owner on the current
+  build.
+- **`job-20261005-123403-ddeb`**: the owner's own 10-05 batch of 3 notes. It
+  was sent a reply to read everything in full before approval.
+- Both are back-filled like any other job. A note they read in full is not
+  read again.
+- The "19 sources, 3 batches" below is the case where nothing had been
+  re-read. The real repair is whatever stays uncovered after the back-fill.
+
+**The first case, kept as an example.** The re-read group 1, job
 `job-20261005-123916-df39`:
 
 - 3 notes, 100% covered (checked by the reviewer from its stream);
