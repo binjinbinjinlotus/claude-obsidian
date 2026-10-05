@@ -169,10 +169,6 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras &
   };
   // Work the core does on its own (batches moving on, runs, retention, queue scans) is logged from events.
   const names = new Map<string, string>();
-  void collectors
-    .listCollectors()
-    .then((list) => list.forEach((c) => names.set(c.id, c.name)))
-    .catch(() => undefined);
   const logEvent = createEventLogger(
     { log: activity.log, getSettings: () => engine.getSettings(), collectorName: (id) => names.get(id) },
     engine.listJobs(),
@@ -184,6 +180,12 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras &
     }
     logEvent(e);
   });
+  // After the logger listens: listing notices a kept script edited while the core was down
+  // (collector.script.changed_outside), and that entry must not be lost.
+  void collectors
+    .listCollectors()
+    .then((list) => list.forEach((c) => names.set(c.id, c.name)))
+    .catch(() => undefined);
   // Every user-visible change through the core is logged here, whoever calls it.
   return instrumentCore(core, { log: activity.log, trash: activity.trash, askDir });
 }

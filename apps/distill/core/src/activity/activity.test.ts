@@ -730,7 +730,8 @@ describe('activity through the core and the API', () => {
 
   test('v6: one trash for a script collector: its folder goes with the record; delete, restore, allow (packages reinstall), run the same bytes', async () => {
     // A fake npm on the scripts' PATH (never the network).
-    fs.writeFileSync(path.join(root, 'bin', 'npm'), '#!/bin/zsh\nprint "fake npm $*"\nmkdir -p node_modules/dep\n', { mode: 0o755 });
+    // It rewrites package.json as npm 6 does; the core puts the bytes back, so that is no outside edit.
+    fs.writeFileSync(path.join(root, 'bin', 'npm'), '#!/bin/zsh\nprint "fake npm $*"\nmkdir -p node_modules/dep\nprint >> package.json\n', { mode: 0o755 });
     const body = 'print -r -- "token=hunter2-secret" >/dev/null; print -r -- restored > "$2/r.md"\n';
     const created = await request('POST', '/v1/collectors', { kind: 'script', name: 'Round trip', script: { source: { inline: 'console.log(1)' }, interpreter: 'node', manifest: '{"dependencies":{"dep":"1"}}' } });
     assert.equal(created.status, 201);
@@ -856,6 +857,17 @@ describe('activity through the core and the API', () => {
     server = await startServer({ core, token: TOKEN });
     await request('GET', '/v1/collectors');
     assert.equal(readLog(state).length, before);
+
+    // Saved in IDLE while the core was down (update + core-stop): logged once by the next core.
+    await server.close();
+    await core.stop();
+    fs.writeFileSync(file, 'print("while the core was down")\n');
+    core = createCore({ paths: statePaths(state), trashDir: path.join(root, 'trash'), secrets: new MemorySecretStore(), collectors: { homeDir: root, tmpDir: root } });
+    server = await startServer({ core, token: TOKEN });
+    await request('GET', '/v1/collectors');
+    await request('GET', '/v1/collectors');
+    assert.equal(outside().length, 3, 'an edit made while the core was down is logged once');
+    assert.deepEqual(outside()[2]!.details?.changes, ['script']);
     const text = fs.readFileSync(path.join(state, 'activity', 'activity.jsonl'), 'utf8');
     assert.ok(!text.includes('supersecret') && !text.includes('replaced'), 'no script text in the log');
   });
