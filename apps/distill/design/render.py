@@ -290,7 +290,7 @@ def render_node(node, screen):
 
 def render_list(node, screen):
     """A row list from screen["lists"]: ActionRow rows, or the component named by the node's "row"
-    (CollectorRow). Group heads count the rows of their group that are not gone (or show a fixed
+    (CollectorRow, ActivityRow; "rowHeight" is the row's hint height, default 56px). Group heads count the rows of their group that are not gone (or show a fixed
     "count"); selected / hover / gone are row indexes, heads not counted."""
     items = screen['lists'][node['list']]
     sel, hov, gone = node.get('selected'), node.get('hover'), node.get('gone')
@@ -323,7 +323,7 @@ def render_list(node, screen):
         r = idx[j]
         props = {k: v for k, v in it.items() if k != 'mode'}
         props.update(selected=True if r == sel else None, hover=True if r == hov else None, mode=it.get('mode'), faded=True if r == gone else None)
-        out.append(dc_import(node.get('row', 'ActionRow'), props, ['100%', '56px']))
+        out.append(dc_import(node.get('row', 'ActionRow'), props, ['100%', node.get('rowHeight', '56px')]))
     return ''.join(out)
 
 

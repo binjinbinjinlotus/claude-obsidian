@@ -4,6 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
 import type {
+  ActivityEntry,
+  ActivityPage,
+  RestoreResult,
+  TrashItem,
   ActionItem,
   AddNoteRequest,
   AddNoteResult,
@@ -97,6 +101,10 @@ Usage:
   distill collectors list [--json]
   distill collectors run <id> [--json]
   distill collectors history <id> [--limit N] [--json]
+  distill activity [--type T]... [--object ID] [--kind K] [--source S]... [--since WHEN]
+              [--until WHEN] [--search TEXT] [--failed] [--limit N] [--cursor C] [--json]
+  distill trash [list] [--json]
+  distill trash restore <trash-id> [--json]
   distill serve [--port N]
   distill plugin install --target claude|codex [--dry-run] [--copy] [--force] [--json]
   distill --help | --version
@@ -154,6 +162,19 @@ Commands:
   collectors history
                 A collector's runs, newest first (--limit N, default 20), with per-file
                 results for Folder runs and output tails for scripts (with --json).
+  activity      What changed, when and from where: the activity log of Ask chats,
+                collectors, actions, batches, the queue, connections and settings
+                (newest first, 50 per page; --limit up to 500, then --cursor from the
+                last line). --type takes a type or a family (collector, chat.deleted);
+                --kind an object kind (chat, collector, action, batch, queue, note,
+                connection, settings, runner, labels); --object an id; --source app,
+                cli, agent, scheduler, api or core. --since/--until take a date, a
+                time, or an age like 30m, 24h, 7d. --search matches the summary, names
+                and details. Deletes say where a copy is kept (Distill's trash, or the
+                macOS Trash for queue files). The log stays on this Mac.
+  trash         Deleted Ask chats and collectors that Distill keeps for 30 days.
+                \`trash restore ID\` puts a chat back; collectors are restored in
+                the Distill app (they come back off; a script needs your OK again).
   serve         Run the Distill core server in the foreground (one per user).
   plugin install
                 Install the distill-ask and distill-note agent skills.
@@ -211,6 +232,11 @@ or $DISTILL_STATE_DIR.
              "filesAdded","files"?,"exitCode"?,"stdoutTail"?,"stderrTail"?,"error"?}}
   collectors history
             {"runs": [run, ...]}
+  activity  {"entries": [{"id","at","type","source","object": {"kind","id","name"},"summary",
+             "outcome","error"?,"details"?,"recovery"?,"pid"}], "nextCursor"}
+  trash     {"items": [{"id","kind","objectID","name","deletedAt","expiresAt","source","sizeBytes","details"}]}
+  trash restore
+            {"item", "objectID", "note"?}
   plugin install
             {"target", "dryRun", "pluginDir", "actions": [{"action","skill","source","destination","command"}],
              "notes": [..]}
@@ -309,6 +335,10 @@ async function dispatch(argv: string[], io: CliIO): Promise<number> {
       return actions(rest, io, api);
     case 'collectors':
       return collectors(rest, io, api);
+    case 'activity':
+      return activity(rest, io, api);
+    case 'trash':
+      return trash(rest, io, api);
     case 'serve':
       return serve(rest, io, paths);
     case 'plugin':
@@ -829,6 +859,123 @@ async function collectors(args: string[], io: CliIO, api: ApiFactory): Promise<n
     return 0;
   }
   throw usageError(sub ? `unknown collectors command "${sub}" (use list, run or history)` : 'usage: distill collectors list | run <id> | history <id>');
+}
+
+// ───────────────────────────── activity ─────────────────────────────
+
+/** "24h", "7d", "30m" → that long ago; else a date or time. */
+export function parseWhen(text: string, now = new Date()): string {
+  const rel = /^(\d+)\s*(m|h|d|w)$/i.exec(text.trim());
+  if (rel) {
+    const unit = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 }[rel[2]!.toLowerCase() as 'm' | 'h' | 'd' | 'w'];
+    return new Date(now.getTime() - Number(rel[1]) * unit).toISOString();
+  }
+  const t = Date.parse(text);
+  if (Number.isNaN(t)) throw usageError(`"${text}" is not a date, a time or an age like 24h`);
+  return new Date(t).toISOString();
+}
+
+function localTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+export function describeActivity(e: ActivityEntry): string {
+  const lines = [`${localTime(e.at)}  ${e.source.padEnd(9)}  ${e.outcome === 'failed' ? 'FAILED ' : ''}${e.summary}  [${e.type}]`];
+  if (e.error) lines.push(`    error: ${e.error}`);
+  if (e.recovery?.kind === 'trash') lines.push(`    kept in Distill's trash until ${localTime(e.recovery.expiresAt).slice(0, 10)}: distill trash restore ${e.recovery.trashId}`);
+  else if (e.recovery?.kind === 'macosTrash') lines.push(`    moved to the macOS Trash: ${e.recovery.path}`);
+  else if (e.recovery?.kind === 'none') lines.push(`    no copy kept: ${e.recovery.reason}`);
+  return lines.join('\n');
+}
+
+async function activity(args: string[], io: CliIO, api: ApiFactory): Promise<number> {
+  const { values, positionals } = parse(args, {
+    type: { type: 'string', multiple: true },
+    object: { type: 'string' },
+    kind: { type: 'string' },
+    source: { type: 'string', multiple: true },
+    since: { type: 'string' },
+    until: { type: 'string' },
+    search: { type: 'string' },
+    failed: { type: 'boolean' },
+    limit: { type: 'string' },
+    cursor: { type: 'string' },
+  });
+  if (positionals.length) throw usageError(`unexpected argument "${positionals[0]}"`);
+  const params = new URLSearchParams();
+  const types = strs(values.type);
+  const sources = strs(values.source);
+  if (types.length) params.set('type', types.join(','));
+  if (sources.length) params.set('source', sources.join(','));
+  const object = str(values.object);
+  const kind = str(values.kind);
+  const search = str(values.search);
+  const cursor = str(values.cursor);
+  if (object) params.set('object', object);
+  if (kind) params.set('kind', kind);
+  if (search) params.set('q', search);
+  if (cursor) params.set('cursor', cursor);
+  const since = str(values.since);
+  const until = str(values.until);
+  if (since) params.set('since', parseWhen(since));
+  if (until) params.set('until', parseWhen(until));
+  if (values.failed === true) params.set('outcome', 'failed');
+  const limitText = str(values.limit);
+  if (limitText !== undefined) {
+    const limit = Number(limitText);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw usageError('--limit must be an integer from 1 to 500');
+    params.set('limit', String(limit));
+  }
+  const out = new Output(io, values.json === true);
+  const client = await api(out);
+  const query = params.toString();
+  const page = await client.request<ActivityPage>('GET', `/v1/activity${query ? `?${query}` : ''}`);
+  out.result(page, () => {
+    if (page.entries.length === 0) return 'No activity matches.\n';
+    const more = page.nextCursor ? `\nOlder entries: distill activity --cursor ${page.nextCursor}${query ? ' (with the same filters)' : ''}\n` : '';
+    return page.entries.map(describeActivity).join('\n') + '\n' + more;
+  });
+  return 0;
+}
+
+function describeTrash(t: TrashItem): string {
+  const facts = Object.entries(t.details)
+    .map(([k, v]) => `${k} ${String(v)}`)
+    .join(' · ');
+  return `${t.id}  ${t.kind}  “${t.name}”  deleted ${localTime(t.deletedAt)} from ${t.source}, kept until ${localTime(t.expiresAt).slice(0, 10)}${facts ? `\n    ${facts}` : ''}`;
+}
+
+async function trash(args: string[], io: CliIO, api: ApiFactory): Promise<number> {
+  const [sub, ...rest] = args[0] === undefined || args[0].startsWith('-') ? ['list', ...args] : args;
+  if (sub === 'list') {
+    const { values, positionals } = parse(rest, {});
+    if (positionals.length) throw usageError(`unexpected argument "${positionals[0]}"`);
+    const out = new Output(io, values.json === true);
+    const client = await api(out);
+    const res = await client.request<{ items: TrashItem[] }>('GET', '/v1/trash');
+    out.result(res, () => (res.items.length ? res.items.map(describeTrash).join('\n') + '\n' : "Distill's trash is empty.\n"));
+    return 0;
+  }
+  if (sub === 'restore') {
+    const { values, positionals } = parse(rest, {});
+    const [id, extra] = positionals;
+    if (!id) throw usageError('usage: distill trash restore <trash-id>');
+    if (extra !== undefined) throw usageError(`unexpected argument "${extra}"`);
+    const out = new Output(io, values.json === true);
+    const client = await api(out);
+    // The CLI never adds collectors: those are restored in the app, where the script is reviewed.
+    const list = await client.request<{ items: TrashItem[] }>('GET', '/v1/trash');
+    const item = list.items.find((t) => t.id === id);
+    if (!item) throw new CliError(`No trash item ${id} (see "distill trash").`, 'not_found');
+    if (item.kind !== 'chat') throw new CliError(`Restore the collector “${item.name}” in the Distill app (History → Activity).`, 'use_app');
+    const res = await client.request<RestoreResult>('POST', `/v1/trash/${encodeURIComponent(id)}/restore`);
+    out.result(res, () => `Restored the chat “${res.item.name}” (${res.objectID}).\n`);
+    return 0;
+  }
+  throw usageError(sub ? `unknown trash command "${sub}" (use list or restore)` : 'usage: distill trash [list] | restore <id>');
 }
 
 // ───────────────────────────── status ─────────────────────────────

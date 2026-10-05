@@ -134,6 +134,70 @@ supersede it with a new entry.
     with a reason), first item in ⋯, a play button on the selected row, and
     the manual run's result plus output tail in the status card. "Save and
     run" was dropped: a saved change always needs a new OK first.
+- **Activity log and trash (owner request: "a log system for the app
+  activity"; built in the core, API and CLI; Mac UI designed, not built).**
+  Spec: [Activity log and trash](activity-log.md). Three chats and a script
+  collector disappeared, the owner had deleted them, and nothing could show
+  it. Decisions and defaults, each one open to veto:
+  - **Log in the core, not in clients.** One wrapper over the core facade,
+    plus the core's event stream for what happens without a request. A mapped
+    type classifies every core method (logged, read, event or quiet), so a new
+    method fails typecheck until someone decides. Clients log nothing.
+  - **Sources come from a header.** The CLI sends
+    `X-Distill-Client: cli` or `agent` (`agent` inside Claude Code or Codex;
+    `DISTILL_CLIENT` overrides). The Mac app is recognised by its URLSession
+    User-Agent until it sends `app` (open question). Unidentified HTTP is
+    `api`. Timers enter a `scheduler` context explicitly, rather than
+    treating "no context" as the scheduler, so tests and dev scripts read as
+    `core`. Background work inherits the source of the request that started
+    it, and runs are attributed by their `trigger`.
+  - **Never log content or secrets.** Titles, ids, counts, sizes, paths and
+    changed keys only. Questions, answers, note text, replies, action bodies
+    and script bodies are never logged; a script is described by size, line
+    count and a 12-character hash prefix. Everything also passes a redactor:
+    known token shapes, `key=value` with a secret-looking key, Bearer, URLs
+    with credentials, long hex or base64. Details whose key looks secret are
+    dropped.
+  - **Distill's trash for chats and collectors**, because the log alone could
+    not have brought the script back. The copy is written before the delete,
+    and a delete whose copy can't be written is refused. Kept 30 days, at most
+    200 items and 50 MB. Restore: a collector comes back off with consent
+    cleared; a chat is refused if its id exists. The CLI restores chats only
+    (it never adds collectors).
+  - **Not trashed:**
+    - chats deleted while Keep history is off (the user chose not to keep
+      chats; logged with that reason)
+    - retention removals (logged as `chat.expired` and `action.expired`)
+    - actions deleted forever
+    - jobs removed from the list
+    - queue files, which already go to the macOS Trash and are logged with
+      that path
+  - **Quiet by default:** scheduled runs that found nothing, and skipped
+    ticks, aren't logged (they are in run history); queue scans are logged
+    only when files appeared or went; settings saves that change nothing
+    leave no line; core warnings aren't logged.
+  - **Storage:** `<state>/activity/activity.jsonl`, append-only JSON Lines,
+    0600. One O_APPEND write per entry, at most 8 KB, so concurrent writers
+    never interleave. Rotation at 2 MB under a lock directory (stale after
+    30 s). Keep 10 rotated files and 180 days. Both `activity/` and `trash/`
+    stay out of `distill.sh backup` and restore, so history is never rewound.
+  - **API and CLI:**
+    - `GET /v1/activity` filters by type or family, kind, object, source,
+      since/until, text and outcome. `limit` is 50 by default (max 500), with
+      a time-sortable id as the cursor.
+    - `GET /v1/trash` and `POST /v1/trash/:id/restore`.
+    - `distill activity` and `distill trash`.
+    - Contract additions are additive: the activity types, a `conflict` error
+      code, and an `activity` CoreEvent.
+  - **A restored chat starts its retention days again** (`updatedAt` = the
+    restore time). Without this, a chat older than `historyDays` would be
+    removed again by the next hourly sweep, right after Restore.
+  - **Mac UI placement: History → Activity**, a fourth History sub-item.
+    History already answers "what happened" and is where a missing chat would
+    be looked for. Settings is configuration. A new window would be a new kind
+    of place for one list. Calm by default: one line per entry, pills only for
+    failures, details and recovery in the detail pane. At 890 pt the detail is
+    pushed in place of the list.
 
 - **Queue folders, Google Docs and the queue scan built in the core, API
   and CLI (core-queue).** Specs: [Queue and batching](queue-and-batching.md)

@@ -35,7 +35,8 @@
             "confluence",
             "jobs",
             "chats",
-            "actions"
+            "actions",
+            "activity"
           ],
           "swift": false,
           "why": "selection inside the open section: SidebarActions and the historyPart binding"
@@ -4091,6 +4092,239 @@
             "330px",
             "56px"
           ]
+        }
+      ]
+    },
+    {
+      "name": "ActivityRow",
+      "title": "Activity row",
+      "preview": [
+        440,
+        40
+      ],
+      "props": [
+        {
+          "name": "family",
+          "type": "enum",
+          "default": "collector",
+          "options": [
+            "chat",
+            "collector",
+            "action",
+            "batch",
+            "queue",
+            "note",
+            "connection",
+            "settings",
+            "runner"
+          ]
+        },
+        {
+          "name": "summary",
+          "type": "text",
+          "default": "Deleted the script collector “Meeting notes”"
+        },
+        {
+          "name": "time",
+          "type": "text",
+          "default": "7:04 PM"
+        },
+        {
+          "name": "source",
+          "type": "enum",
+          "default": "Mac app",
+          "options": [
+            "Mac app",
+            "CLI",
+            "Agent",
+            "Automatic",
+            "Other app",
+            "Distill"
+          ]
+        },
+        {
+          "name": "outcome",
+          "type": "enum",
+          "default": "ok",
+          "options": [
+            "ok",
+            "failed"
+          ]
+        },
+        {
+          "name": "tag",
+          "type": "enum",
+          "default": "",
+          "options": [
+            "",
+            "In trash",
+            "Restored"
+          ]
+        },
+        {
+          "name": "selected",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "hover",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "ActivityRowStates.dc.html",
+        "title": "Activity row states",
+        "heading": "ActivityRow",
+        "intro": "One line per entry in History → Activity: a quiet tile for the kind of thing (chat, collector, action, batch, queue, note, connection, settings, key), the summary the core wrote, then “time · source” in faint text. Calm by default: tiles are neutral, and only a failure gets colour (peach tile and a Failed pill). A delete whose copy is in Distill’s trash carries a small “In trash” tag; after Restore it reads “Restored”. Source names: Mac app, CLI, Agent (the CLI run by Claude Code or Codex), Automatic (Distill on its own: schedules, retention), Other app (an HTTP caller that didn’t say who it is). No Swift view yet: add <b>ActivityRow</b>. Props: family, summary, time, source, outcome (ok | failed), tag (“” | In trash | Restored), selected, hover, width.",
+        "width": 1480,
+        "cols": 3
+      },
+      "states": [
+        {
+          "name": "A delete, kept in the trash",
+          "props": {
+            "family": "collector",
+            "summary": "Deleted the script collector “Meeting notes”",
+            "time": "7:04 PM",
+            "source": "Mac app",
+            "tag": "In trash",
+            "width": 440
+          },
+          "size": [
+            "440px",
+            "40px"
+          ],
+          "caption": "The detail shows what was there and Restore."
+        },
+        {
+          "name": "Selected",
+          "props": {
+            "family": "chat",
+            "summary": "Deleted the chat “Q3 tea club plan”",
+            "time": "7:02 PM",
+            "source": "Mac app",
+            "tag": "In trash",
+            "selected": true,
+            "width": 440
+          },
+          "size": [
+            "440px",
+            "40px"
+          ],
+          "caption": "Its detail is open on the right (or pushed in, in a narrow window)."
+        },
+        {
+          "name": "Hover",
+          "props": {
+            "family": "batch",
+            "summary": "Batch · 4 files applied 6 page changes",
+            "time": "6:41 PM",
+            "source": "Mac app",
+            "hover": true,
+            "width": 440
+          },
+          "size": [
+            "440px",
+            "40px"
+          ]
+        },
+        {
+          "name": "Distill on its own",
+          "props": {
+            "family": "collector",
+            "summary": "Pocket export added 4 files to the queue",
+            "time": "7:00 PM",
+            "source": "Automatic",
+            "width": 440
+          },
+          "size": [
+            "440px",
+            "40px"
+          ],
+          "caption": "Scheduled runs that found nothing aren’t listed; they stay in the collector’s run history."
+        },
+        {
+          "name": "A failure",
+          "props": {
+            "family": "collector",
+            "summary": "Slack saved items failed: exit 1",
+            "time": "4:30 PM",
+            "source": "Automatic",
+            "outcome": "failed",
+            "width": 440
+          },
+          "size": [
+            "440px",
+            "40px"
+          ],
+          "caption": "The only row with colour."
+        },
+        {
+          "name": "From an agent",
+          "props": {
+            "family": "note",
+            "summary": "Added the note “Gyokuro tasting” to the queue",
+            "time": "5:12 PM",
+            "source": "Agent",
+            "width": 440
+          },
+          "size": [
+            "440px",
+            "40px"
+          ],
+          "caption": "The plugin skills run the CLI inside Claude Code or Codex."
+        },
+        {
+          "name": "From the CLI",
+          "props": {
+            "family": "chat",
+            "summary": "Deleted the chat “Kettle comparison”",
+            "time": "11:20 AM",
+            "source": "CLI",
+            "tag": "In trash",
+            "width": 440
+          },
+          "size": [
+            "440px",
+            "40px"
+          ]
+        },
+        {
+          "name": "Settings",
+          "props": {
+            "family": "settings",
+            "summary": "Changed settings: Ask history (Keep history off)",
+            "time": "2:15 PM",
+            "source": "Mac app",
+            "width": 440
+          },
+          "size": [
+            "440px",
+            "40px"
+          ],
+          "caption": "The detail lists each change as old → new."
+        },
+        {
+          "name": "Restored",
+          "props": {
+            "family": "collector",
+            "summary": "Deleted the script collector “Meeting notes”",
+            "time": "7:04 PM",
+            "source": "Mac app",
+            "tag": "Restored",
+            "width": 440
+          },
+          "size": [
+            "440px",
+            "40px"
+          ],
+          "caption": "After Restore; a “Restored …” line joins the top of the list."
         }
       ]
     },
