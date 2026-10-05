@@ -23,7 +23,7 @@
 </x-dc>
 <script type="text/x-dc-logic">
 const px = (v, d) => (v === undefined || v === null || v === '') ? d : (/^[0-9.]+$/.test(String(v)) ? v + 'px' : String(v));
-const py = p.manifest === 'requirements.txt', st = p.state || 'installed';
+const py = p.manifest === 'requirements.txt', st = p.state || 'ready';
 const defLines = py ? 'requests>=2.32|google-api-python-client|keyring' : '{|  "type": "module",|  "dependencies": {|    "date-fns": "^4.1.0",|+    "@slack/web-api": "^7.8.0"|  }|}';
 const defOut = py ? '$ python3 -m venv .venv|$ .venv/bin/pip install -r requirements.txt|Collecting requests>=2.32|Successfully installed certifi-2025.8.3 requests-2.32.5 …'
   : '$ npm install|added 12 packages in 3s';
@@ -36,12 +36,12 @@ const outRaw = (p.output || (st === 'failed' ? failOut : defOut)).split('|').fil
 const out = outRaw.map((t) => ({ t: t.replace(/^!/, ''), ink: t.startsWith('!') ? '#FFB894' : '#E8E6E1' }));
 const S = {
   none: ['No packages. Add one to install it into this folder.', '#6B6862'],
-  installed: [py ? '3 packages installed · Oct 3 at 9:12 AM' : '2 packages installed · Oct 3 at 9:12 AM', '#3D6110'],
-  pending: [p.manifest + ' changed · installs before the next run', '#1D1C1A'],
+  ready: [py ? '3 installed · ready · Oct 3 at 9:12 AM' : '2 installed · ready · Oct 3 at 9:12 AM', '#3D6110'],
+  needsInstall: ['Not installed yet · Install now, or it installs before the next run', '#1D1C1A'],
   installing: ['Installing… 14 s', '#1F6FEB'],
-  failed: ['Install failed · exit 1 · the collector waits', '#B03A0A'],
-  needsOK: ['Changed · waits for your OK before it installs', '#8A5A00'] };
-const s = S[st] || S.installed;
+  failed: ['Couldn’t install · exit 1 · runs wait until it installs', '#B03A0A'],
+  needsOK: ['Changed · installs when you allow it', '#8A5A00'] };
+const s = S[st] || S.ready;
 const hint = st === 'needsOK' ? 'Installing runs code from the package’s authors, so a change to ' + p.manifest + ' asks first, like the script.'
   : py ? 'Installed with pip into .venv/ in the collector’s folder; the script runs with that Python.'
   : 'Installed with npm into node_modules/ in the collector’s folder.';

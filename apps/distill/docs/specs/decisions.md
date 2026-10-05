@@ -38,8 +38,11 @@ supersede it with a new entry.
   - **Test run:** scratch folder `<state>/collectors/test-runs/<id>/`,
     **kept until the next test run** (emptied when it starts), deleted with
     the collector, pruned after 7 days. In the run history with trigger
-    `test`, never `lastRun` or the sidebar count. In the app: a secondary
-    "Test run" button beside Run now on script collectors (see the boards).
+    `test`, never `lastRun` or the sidebar count. In the app: a quiet
+    "Test run" link before Run now on script collectors (Run now stays the
+    one button; also second in the script ⋯ menu), and its result card is
+    blue-grey so it never reads as a real run (board CollectorsScriptFiles,
+    frame V2).
   - **One trash:** Distill's trash copies a script collector's folder
     (without `node_modules`/`.venv`) as `<trash-id>.files/` before the
     delete; Restore copies it back and re-points the record; the 30-day,
