@@ -357,6 +357,44 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
       }),
       fail: ([requestID]) => ({ type: 'note.labeled', object: { kind: 'note', id: requestID }, summary: `Couldn't label the note` }),
     },
+    labelQueueItem: {
+      ok: ([file, labels]) => ({
+        type: 'queue.labeled',
+        object: { kind: 'queue', id: file, name: path.basename(file) },
+        summary: `Labeled ${q(path.basename(file))} in the queue: ${labels.map((l) => `#${l}`).join(' ') || 'no labels'}`,
+        details: { labels },
+      }),
+      fail: ([file]) => ({ type: 'queue.labeled', object: { kind: 'queue', id: file, name: path.basename(file) }, summary: `Couldn't label ${q(path.basename(file))}` }),
+    },
+    retryQueueLabels: 'read',
+    skipQueueLabels: {
+      ok: ([file]) => ({ type: 'queue.labeled', object: { kind: 'queue', id: file, name: path.basename(file) }, summary: `Sent ${q(path.basename(file))} to the next batch without labels` }),
+      fail: ([file]) => ({ type: 'queue.labeled', object: { kind: 'queue', id: file, name: path.basename(file) }, summary: `Couldn't send ${q(path.basename(file))} without labels` }),
+    },
+    removeReviewSource: {
+      before: (id) => getJob(id),
+      ok: ([id, page, removed], _r, job: Job | undefined) => ({
+        type: removed ? 'batch.source_removed' : 'batch.source_restored',
+        object: jobObject(id, job),
+        summary: `${removed ? 'Removed' : 'Put back'} ${q(path.posix.basename(page, '.md'))} ${removed ? 'from' : 'in'} ${jobName(job)}`,
+        details: { page },
+      }),
+      fail: ([id, , removed], job: Job | undefined) => ({
+        type: removed ? 'batch.source_removed' : 'batch.source_restored',
+        object: jobObject(id, job),
+        summary: `Couldn't change a source in ${jobName(job)}`,
+      }),
+    },
+    editReviewLabels: {
+      before: (id) => getJob(id),
+      ok: ([id, edits], _r, job: Job | undefined) => ({
+        type: 'batch.labels_edited',
+        object: jobObject(id, job),
+        summary: `Changed labels on ${plural(edits.length, 'source page')} in ${jobName(job)}`,
+        details: { pages: edits.map((e) => e.page), labels: edits.map((e) => e.labels) },
+      }),
+      fail: ([id], job: Job | undefined) => ({ type: 'batch.labels_edited', object: jobObject(id, job), summary: `Couldn't change labels in ${jobName(job)}` }),
+    },
 
     // ── batches (jobs) ──
     approve: jobVerb('batch.approved', 'Approved', 'approve'),
@@ -371,7 +409,15 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
       ok: ([id, rules], _r, job: Job | undefined) => ({ type: 'batch.allowed', object: jobObject(id, job), summary: `Allowed ${plural(rules.length, 'tool rule')} for ${jobName(job)}`, details: { rules } }),
       fail: ([id], job: Job | undefined) => ({ type: 'batch.allowed', object: jobObject(id, job), summary: `Couldn't allow tools for ${jobName(job)}` }),
     },
-    reject: jobVerb('batch.rejected', 'Rejected', 'reject'),
+    reject: {
+      before: (id) => getJob(id),
+      // A rebuilt part discarded alone leaves the batch in Review: not a rejection of the batch.
+      ok: ([id], _r, job: Job | undefined) =>
+        getJob(id)?.state === 'awaitingApproval'
+          ? { type: 'batch.part_discarded', object: jobObject(id, job), summary: `Discarded a rebuilt part of ${jobName(job)}` }
+          : { type: 'batch.rejected', object: jobObject(id, job), summary: `Rejected ${jobName(job)}` },
+      fail: ([id], job: Job | undefined) => ({ type: 'batch.rejected', object: jobObject(id, job), summary: `Couldn't reject ${jobName(job)}` }),
+    },
     cancel: jobVerb('batch.cancelled', 'Cancelled', 'cancel'),
     deleteJob: {
       before: (id) => (getJob(id) ? structuredClone(getJob(id)) : undefined),

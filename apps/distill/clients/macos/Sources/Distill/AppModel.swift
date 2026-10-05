@@ -49,6 +49,9 @@ final class AppModel: ObservableObject {
     @Published var lastScanSeen: Date?
     /// Rows that just appeared through a scan flash once.
     @Published var flashingPaths: Set<String> = []
+    /// The dark toast at the bottom of the main window after Process now (AppModel+Labels.swift).
+    @Published var queueToast: QueueToast?
+    var queueToastTask: Task<Void, Never>?
     var refreshResetTask: Task<Void, Never>?
     var flashTask: Task<Void, Never>?
     var lastWindowScan: Date?
@@ -334,7 +337,8 @@ final class AppModel: ObservableObject {
         sessionAware(id, action: "reply", text: trimmed) { try await $0.reply(id, text: trimmed) }
     }
     func allow(_ id: String, rules: [String]) { sessionAware(id, action: "allow", rules: rules) { try await $0.allow(id, rules: rules) } }
-    func reject(_ id: String) { jobAction { try await $0.reject(id) } }
+    /// A rebuilt part: `batch: false` discards only that part; `batch: true` rejects the whole batch.
+    func reject(_ id: String, batch: Bool = false) { jobAction { try await $0.reject(id, batch: batch) } }
     func cancel(_ id: String) { jobAction { try await $0.cancel(id) } }
 
     private func jobAction(_ call: @escaping (CoreClient) async throws -> Job?) {

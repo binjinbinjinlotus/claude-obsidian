@@ -20,10 +20,13 @@ public struct SessionUnavailable: Codable, Equatable, Hashable, Sendable {
     /// The reply text / allow rules to send again (batches).
     public var text: String?
     public var rules: [String]?
+    /// Approve options to send again (batches): "later", or the source pages picked for part of a batch.
+    public var labels: String?
+    public var pages: [String]?
     public var at: String?
 
     public init(place: String, reason: String, message: String = "", detail: String = "", action: String? = nil,
-                text: String? = nil, rules: [String]? = nil, at: String? = nil) {
+                text: String? = nil, rules: [String]? = nil, labels: String? = nil, pages: [String]? = nil, at: String? = nil) {
         self.place = place
         self.reason = reason
         self.message = message
@@ -31,10 +34,12 @@ public struct SessionUnavailable: Codable, Equatable, Hashable, Sendable {
         self.action = action
         self.text = text
         self.rules = rules
+        self.labels = labels
+        self.pages = pages
         self.at = at
     }
 
-    enum CodingKeys: String, CodingKey { case place, reason, message, detail, action, text, rules, at }
+    enum CodingKeys: String, CodingKey { case place, reason, message, detail, action, text, rules, labels, pages, at }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -45,6 +50,8 @@ public struct SessionUnavailable: Codable, Equatable, Hashable, Sendable {
         action = c.lossy(String.self, .action)
         text = c.lossy(String.self, .text)
         rules = c.lossy([String].self, .rules)
+        labels = c.lossy(String.self, .labels)
+        pages = c.lossy([String].self, .pages)
         at = c.lossy(String.self, .at)
     }
 }

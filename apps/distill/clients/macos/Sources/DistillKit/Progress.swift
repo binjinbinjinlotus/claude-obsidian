@@ -19,13 +19,17 @@ public struct CoreProgress: Codable, Equatable, Sendable, Identifiable {
     public var model: String?
     public var finished: Bool
     public var error: String?
+    /// v6: the file a per-file progress is about (label suggestions, 3 files at a time).
+    public var item: String?
+    /// v6: the group it belongs to (a batch's job id).
+    public var group: String?
     /// v7, batches: the file being worked on now (labels being suggested).
     public var current: String?
 
     public var id: String { key }
 
     enum CodingKeys: String, CodingKey {
-        case key, kind, message, steps, stepIndex, done, total, startedAt, runnerID, model, finished, error, current
+        case key, kind, message, steps, stepIndex, done, total, startedAt, runnerID, model, finished, error, item, group, current
     }
 
     public init(key: String, kind: String, message: String, steps: [String] = [], stepIndex: Int? = nil, done: Int? = nil,
@@ -50,6 +54,8 @@ public struct CoreProgress: Codable, Equatable, Sendable, Identifiable {
         model = c.lossy(String.self, .model)
         finished = c.lossy(Bool.self, .finished) ?? false
         error = c.lossy(String.self, .error)
+        item = c.lossy(String.self, .item)
+        group = c.lossy(String.self, .group)
         current = c.lossy(String.self, .current)
     }
 
@@ -67,6 +73,8 @@ public struct CoreProgress: Codable, Equatable, Sendable, Identifiable {
         try c.encodeIfPresent(model, forKey: .model)
         if finished { try c.encode(true, forKey: .finished) }
         try c.encodeIfPresent(error, forKey: .error)
+        try c.encodeIfPresent(item, forKey: .item)
+        try c.encodeIfPresent(group, forKey: .group)
         try c.encodeIfPresent(current, forKey: .current)
     }
 

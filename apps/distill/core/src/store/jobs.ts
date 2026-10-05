@@ -3,9 +3,13 @@ import path from 'node:path';
 import type {
   ApprovalRequest,
   Job,
+  JobPart,
+  PendingPart,
   JobActionsSummary,
   JobState,
   PermissionDenial,
+  ReviewLabels,
+  ReviewSource,
   SessionUnavailable,
   TransactionPlan,
   TurnRecord,
@@ -111,7 +115,96 @@ function decodeApproval(v: unknown): ApprovalRequest | undefined {
   if (plan) a.plan = plan;
   const planError = str(v.planError);
   if (planError !== undefined) a.planError = planError;
+  if (Array.isArray(v.sources)) a.sources = v.sources.map(decodeReviewSource).filter((x): x is ReviewSource => !!x);
+  const labels = decodeReviewLabels(v.labels);
+  if (labels) a.labels = labels;
+  if (isObject(v.unconfirmed)) {
+    const bp = str(v.unconfirmed.bundlePath);
+    const plan = decodePlan(v.unconfirmed.plan);
+    if (bp !== undefined && plan) a.unconfirmed = { bundlePath: bp, plan };
+  }
+  if (isObject(v.rebuilt)) {
+    const reason = str(v.rebuilt.reason);
+    const lab = str(v.rebuilt.labels);
+    if (reason === 'partial' || reason === 'remaining' || reason === 'stale') {
+      a.rebuilt = { reason, pages: strArray(v.rebuilt.pages) ?? [], labels: lab === 'later' ? 'later' : 'confirm' };
+    }
+  }
+  if (v.needsRebuild === true) a.needsRebuild = true;
   return a;
+}
+
+function stringMap(v: unknown): Record<string, string> {
+  if (!isObject(v)) return {};
+  return Object.fromEntries(Object.entries(v).filter((e): e is [string, string] => typeof e[1] === 'string'));
+}
+
+function sourceList(v: unknown): ReviewSource[] | undefined {
+  return Array.isArray(v) ? v.map(decodeReviewSource).filter((x): x is ReviewSource => !!x) : undefined;
+}
+
+function decodePart(v: unknown): JobPart | undefined {
+  if (!isObject(v)) return undefined;
+  const operationID = str(v.operationID);
+  if (operationID === undefined) return undefined;
+  return { operationID, pages: strArray(v.pages) ?? [], labels: str(v.labels) === 'later' ? 'later' : 'confirm', at: str(v.at) ?? '' };
+}
+
+function decodePendingPart(v: unknown): PendingPart | undefined {
+  if (!isObject(v)) return undefined;
+  const reason = str(v.reason);
+  if (reason !== 'partial' && reason !== 'remaining' && reason !== 'stale') return undefined;
+  const out: PendingPart = { reason, expected: stringMap(v.expected), excluded: strArray(v.excluded) ?? [], labels: str(v.labels) === 'later' ? 'later' : 'confirm' };
+  const rest = sourceList(v.rest);
+  if (rest) out.rest = rest;
+  if (isObject(v.restExpected)) out.restExpected = stringMap(v.restExpected);
+  if (isObject(v.restFiles)) out.restFiles = stringMap(v.restFiles);
+  const removed = sourceList(v.removed);
+  if (removed) out.removed = removed;
+  const shown = sourceList(v.shown);
+  if (shown) out.shown = shown;
+  const before = decodeApproval(v.before);
+  if (before) out.before = before;
+  const prompt = str(v.prompt);
+  if (prompt !== undefined) out.prompt = prompt;
+  const bundlePath = str(v.bundlePath);
+  if (bundlePath !== undefined) out.bundlePath = bundlePath;
+  return out;
+}
+
+const REVIEW_LABEL_STATES: ReviewLabels['state'][] = ['suggesting', 'confirming', 'confirmed', 'unconfirmed'];
+
+function decodeReviewLabels(v: unknown): ReviewLabels | undefined {
+  if (!isObject(v)) return undefined;
+  const state = str(v.state) as ReviewLabels['state'] | undefined;
+  if (!state || !REVIEW_LABEL_STATES.includes(state)) return undefined;
+  const out: ReviewLabels = { state };
+  const message = str(v.message);
+  if (message !== undefined) out.message = message;
+  for (const k of ['done', 'total', 'revision'] as const) {
+    const n = num(v[k]);
+    if (n !== undefined) out[k] = n;
+  }
+  return out;
+}
+
+function decodeReviewSource(v: unknown): ReviewSource | undefined {
+  if (!isObject(v)) return undefined;
+  const page = str(v.page);
+  if (page === undefined) return undefined;
+  const by = str(v.by);
+  const out: ReviewSource = {
+    page,
+    title: str(v.title) ?? path.posix.basename(page, '.md'),
+    labels: strArray(v.labels) ?? [],
+    by: by === 'ai' || by === 'user' ? by : 'none',
+  };
+  const source = str(v.source);
+  if (source !== undefined) out.source = source;
+  const state = str(v.state);
+  if (state === 'waiting' || state === 'suggesting' || state === 'failed') out.state = state;
+  if (v.removed === true) out.removed = true;
+  return out;
 }
 
 function decodeTurn(v: unknown, fallback: Date): TurnRecord | undefined {
@@ -165,6 +258,13 @@ export function decodeJob(v: unknown, now = new Date()): Job | undefined {
   // v5: folder items in the batch; absent (or not a string list) stays absent.
   const folders = strArray(v.folders);
   if (folders && folders.length > 0) job.folders = folders;
+  // v6: parts applied, and the part being rebuilt.
+  if (Array.isArray(v.parts)) {
+    const parts = v.parts.map(decodePart).filter((x): x is JobPart => !!x);
+    if (parts.length > 0) job.parts = parts;
+  }
+  const pendingPart = decodePendingPart(v.pendingPart);
+  if (pendingPart) job.pendingPart = pendingPart;
   // v6: session continuity marker (lenient: a wrong shape is dropped).
   const su = decodeSessionUnavailable(v.sessionUnavailable);
   if (su) job.sessionUnavailable = su;
@@ -187,6 +287,10 @@ export function decodeSessionUnavailable(v: unknown): SessionUnavailable | undef
   if (text !== undefined) out.text = text;
   const rules = strArray(v.rules);
   if (rules) out.rules = rules;
+  const labels = str(v.labels);
+  if (labels === 'confirm' || labels === 'later') out.labels = labels;
+  const pages = strArray(v.pages);
+  if (pages) out.pages = pages;
   const at = str(v.at);
   if (at !== undefined) out.at = at;
   return out;
@@ -258,12 +362,33 @@ function encodeApproval(a: ApprovalRequest): JSONObject {
     };
   }
   if (a.planError != null) out.planError = a.planError;
+  if (a.sources) {
+    out.sources = a.sources.map((src) => {
+      const o: JSONObject = { page: src.page, title: src.title, labels: [...src.labels], by: src.by };
+      if (src.source != null) o.source = src.source;
+      if (src.state != null) o.state = src.state;
+      if (src.removed) o.removed = true;
+      return o;
+    });
+  }
+  if (a.labels != null) {
+    const l: JSONObject = { state: a.labels.state };
+    if (a.labels.message != null) l.message = a.labels.message;
+    if (a.labels.done !== undefined) l.done = a.labels.done;
+    if (a.labels.total !== undefined) l.total = a.labels.total;
+    if (a.labels.revision !== undefined) l.revision = a.labels.revision;
+    out.labels = l;
+  }
+  if (a.unconfirmed != null) out.unconfirmed = JSON.parse(JSON.stringify(a.unconfirmed)) as JSONObject;
+  if (a.rebuilt != null) out.rebuilt = { reason: a.rebuilt.reason, pages: [...a.rebuilt.pages], labels: a.rebuilt.labels };
+  if (a.needsRebuild === true) out.needsRebuild = true;
   return out;
 }
 
 const JOB_KEYS = [
   'id', 'kind', 'vaultPath', 'files', 'sessionID', 'runnerID', 'model', 'effort', 'state',
   'createdAt', 'updatedAt', 'approval', 'turns', 'grantedTools', 'operationID', 'changedPaths', 'error', 'actionsFound', 'folders', 'sessionUnavailable',
+  'parts', 'pendingPart',
 ];
 
 /** Every non-optional key is always written; nil optionals are omitted (never `null`). */
@@ -297,12 +422,16 @@ export function encodeJob(job: Job, raw: JSONObject = {}): JSONObject {
     out.actionsFound = summary;
   }
   if (job.folders != null && job.folders.length > 0) out.folders = [...job.folders];
+  if (job.parts != null && job.parts.length > 0) out.parts = JSON.parse(JSON.stringify(job.parts)) as JSONObject[];
+  if (job.pendingPart != null) out.pendingPart = JSON.parse(JSON.stringify(job.pendingPart)) as JSONObject;
   if (job.sessionUnavailable != null) {
     const u = job.sessionUnavailable;
     const m: JSONObject = { place: u.place, reason: u.reason, message: u.message, detail: u.detail };
     if (u.action != null) m.action = u.action;
     if (u.text != null) m.text = u.text;
     if (u.rules != null) m.rules = [...u.rules];
+    if (u.labels != null) m.labels = u.labels;
+    if (u.pages != null) m.pages = [...u.pages];
     if (u.at != null) m.at = u.at;
     out.sessionUnavailable = m;
   }

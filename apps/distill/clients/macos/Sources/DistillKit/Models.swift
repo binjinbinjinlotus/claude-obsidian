@@ -273,11 +273,25 @@ public struct ApprovalRequest: Codable, Equatable, Sendable {
     public var planError: String?
     public var denials: [PermissionDenial]
     public var skipped: [String]
+    /// v6: each source page the bundle creates, with its labels (nil from an older core).
+    public var sources: [ReviewSource]?
+    /// v6: where the labels shown in Review stand.
+    public var labels: ReviewLabels?
+    /// v6: the same change with labels left unconfirmed (Approve, review labels later).
+    public var unconfirmed: UnconfirmedPlan?
+    /// v6: the plan was rebuilt in the batch's session and checked against what the user approved.
+    public var rebuilt: RebuiltPlan?
+    /// v6: the user discarded the rebuilt change for these sources; nothing was applied. Approve rebuilds it again.
+    public var needsRebuild: Bool?
 
     public var canApplyPlan: Bool { plan?.valid == true && bundlePath != nil }
+    /// v6: a rebuilt part of a batch (Reject discards only it) or a discarded one (Approve rebuilds it).
+    public var isPart: Bool { rebuilt != nil || needsRebuild == true }
 
     public init(summary: String, questions: [String] = [], bundlePath: String? = nil, plan: TransactionPlan? = nil,
-                planError: String? = nil, denials: [PermissionDenial] = [], skipped: [String] = []) {
+                planError: String? = nil, denials: [PermissionDenial] = [], skipped: [String] = [],
+                sources: [ReviewSource]? = nil, labels: ReviewLabels? = nil, unconfirmed: UnconfirmedPlan? = nil,
+                rebuilt: RebuiltPlan? = nil, needsRebuild: Bool? = nil) {
         self.summary = summary
         self.questions = questions
         self.bundlePath = bundlePath
@@ -285,6 +299,11 @@ public struct ApprovalRequest: Codable, Equatable, Sendable {
         self.planError = planError
         self.denials = denials
         self.skipped = skipped
+        self.sources = sources
+        self.labels = labels
+        self.unconfirmed = unconfirmed
+        self.rebuilt = rebuilt
+        self.needsRebuild = needsRebuild
     }
 
     public init(from decoder: Decoder) throws {
@@ -296,6 +315,11 @@ public struct ApprovalRequest: Codable, Equatable, Sendable {
         planError = c.lossy(String.self, .planError)
         denials = c.lossyArray(PermissionDenial.self, .denials)
         skipped = c.lossyArray(String.self, .skipped)
+        sources = c.lossy([Lossy<ReviewSource>].self, .sources).map { $0.compactMap(\.value) }
+        labels = c.lossy(ReviewLabels.self, .labels)
+        unconfirmed = c.lossy(UnconfirmedPlan.self, .unconfirmed).flatMap { $0.bundlePath.isEmpty ? nil : $0 }
+        rebuilt = c.lossy(RebuiltPlan.self, .rebuilt)
+        needsRebuild = c.lossy(Bool.self, .needsRebuild).flatMap { $0 ? true : nil }
     }
 }
 
@@ -340,7 +364,7 @@ public struct TurnRecord: Codable, Equatable, Sendable, Identifiable {
 public struct Job: Codable, Identifiable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, kind, vaultPath, files, sessionID, runnerID, model, effort, state, createdAt, updatedAt
-        case approval, turns, grantedTools, operationID, changedPaths, error, actionsFound, folders, sessionUnavailable
+        case approval, turns, grantedTools, operationID, changedPaths, error, actionsFound, folders, parts, pendingPart, sessionUnavailable
     }
 
     public var id: String
@@ -364,6 +388,10 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
     public var actionsFound: JobActionsSummary?
     /// v5: folder items in this batch (vault-relative, "inbox/2026-10-04/Tea tasting trip"); their files are in `files`. nil on older jobs.
     public var folders: [String]?
+    /// v6: parts of this batch already applied (approving only some sources); newest last. nil on older jobs.
+    public var parts: [JobPart]?
+    /// v6: the part being rebuilt in the batch's session, until its change comes back.
+    public var pendingPart: PendingPart?
     /// v6: the batch's AI session was found gone when a turn tried to resume it (session continuity).
     /// The app shows SessionReplaceConfirm from it; the next turn clears it. nil on older cores.
     public var sessionUnavailable: SessionUnavailable?
@@ -416,6 +444,8 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
         error = c.lossy(String.self, .error)
         actionsFound = c.lossy(JobActionsSummary.self, .actionsFound)
         folders = c.lossy([Lossy<String>].self, .folders).map { $0.compactMap(\.value) }
+        parts = c.lossy([Lossy<JobPart>].self, .parts).map { $0.compactMap(\.value) }
+        pendingPart = c.lossy(PendingPart.self, .pendingPart)
         sessionUnavailable = c.lossy(SessionUnavailable.self, .sessionUnavailable)
     }
 
@@ -440,6 +470,8 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
         try c.encodeIfPresent(error, forKey: .error)
         try c.encodeIfPresent(actionsFound, forKey: .actionsFound)
         try c.encodeIfPresent(folders, forKey: .folders)
+        try c.encodeIfPresent(parts, forKey: .parts)
+        try c.encodeIfPresent(pendingPart, forKey: .pendingPart)
         try c.encodeIfPresent(sessionUnavailable, forKey: .sessionUnavailable)
     }
 }
@@ -449,7 +481,7 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
 public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case path, name, modified, size, settled, readyAt, kind, problem, changing, members, note
-        case fileCount, folderCount, tree, treeTruncated, gdoc, waiting
+        case fileCount, folderCount, tree, treeTruncated, gdoc, waiting, labels, heldForLabels
     }
 
     /// note = written by addNote (complete when queued, skips the settle wait); folder = a folder in the
@@ -527,6 +559,10 @@ public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
     public var gdoc: GoogleDoc?
     /// v5: held out of every batch though nothing is wrong ("google-drive": a .gdoc).
     public var waiting: String?
+    /// v6, text files that are not notes: their labels, suggested in the background (nil = no label line).
+    public var labels: QueueLabels?
+    /// v6: the label gate: labels not in yet, so the file stays for the next batch.
+    public var heldForLabels: Bool
 
     public var id: String { path }
     public var url: URL { URL(fileURLWithPath: path) }
@@ -535,7 +571,7 @@ public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
                 readyAt: Date? = nil, kind: Kind = .file, problem: String? = nil,
                 changing: Bool = false, members: [String]? = nil, note: NoteSummary? = nil,
                 fileCount: Int? = nil, folderCount: Int? = nil, tree: [QueueTreeEntry]? = nil, treeTruncated: Bool = false,
-                gdoc: GoogleDoc? = nil, waiting: String? = nil) {
+                gdoc: GoogleDoc? = nil, waiting: String? = nil, labels: QueueLabels? = nil, heldForLabels: Bool = false) {
         self.path = path
         self.name = name ?? URL(fileURLWithPath: path).lastPathComponent
         self.modified = modified
@@ -553,6 +589,8 @@ public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
         self.treeTruncated = treeTruncated
         self.gdoc = gdoc
         self.waiting = waiting
+        self.labels = labels
+        self.heldForLabels = heldForLabels
     }
 
     public init(from decoder: Decoder) throws {
@@ -574,6 +612,8 @@ public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
         treeTruncated = c.lossy(Bool.self, .treeTruncated) ?? false
         gdoc = c.lossy(GoogleDoc.self, .gdoc)
         waiting = c.lossy(String.self, .waiting).flatMap { $0.isEmpty ? nil : $0 }
+        labels = c.lossy(QueueLabels.self, .labels)
+        heldForLabels = c.lossy(Bool.self, .heldForLabels) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -595,6 +635,8 @@ public struct QueueEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
         if treeTruncated { try c.encode(true, forKey: .treeTruncated) }
         try c.encodeIfPresent(gdoc, forKey: .gdoc)
         try c.encodeIfPresent(waiting, forKey: .waiting)
+        try c.encodeIfPresent(labels, forKey: .labels)
+        if heldForLabels { try c.encode(true, forKey: .heldForLabels) }
     }
 }
 

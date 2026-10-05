@@ -1,7 +1,7 @@
 ---
 title: Approval and review
 status: built
-updated: 2026-10-04
+updated: 2026-10-05
 ---
 
 # Approval and review
@@ -117,6 +117,108 @@ source. "Finding actions" (`onJobApplied`) runs only after a verified
 apply, and the `apply` progress finishes as "Applied" only then (otherwise
 "Not applied").
 
+## Labels in Review (built 2026-10-05)
+
+Canvas: Review, ReviewStates. Code: `core/src/engine/review-labels.ts`, the
+engine's "labels in Review" section.
+
+- When a batch's plan is valid, the core reads the bundle's **source pages**:
+  Markdown writes under `wiki/` with `labels_by` or `type: source`. Each
+  becomes an `approval.sources` entry: page, title, `source` (`source_path`),
+  labels, and `by` (`ai` = suggested, shown dashed; `user`; `none`). Concept
+  and entity tags are the agent's and are not label suggestions.
+- **Approving confirms the labels shown** (decision 2026-10-05). The bundle is
+  never rewritten at approve time. Instead the core writes a label revision
+  next to it:
+  - `labels-<n>/` holds new drafts for the source pages only, with
+    `labels_by: user` and no `labels_reviewed` / `labels_origin`;
+  - `bundle-labels-<n>.json` is the bundle with those writes repointed and
+    their `sha256` updated; everything else is copied as is.
+  - The revision is inspected. Only a clean inspect replaces
+    `approval.bundlePath` and `approval.plan`, so the approval hash always
+    matches what Review shows. The original bundle is never modified.
+  - `approval.labels.state` is `confirming` while this runs (Approve and
+    edits are refused with a clear message), then `confirmed`.
+  - A refused revision (for example `wiki/index.md` changed since the batch
+    was built) keeps the original bundle and plan: `unconfirmed`, with a
+    message saying why and that approving applies the labels as suggestions.
+- `approval.unconfirmed` is the twin with labels left unconfirmed (at first
+  the batch's own bundle). **Approve, review labels later** applies it.
+  - For a batch already in Review when the core starts, the twin is the
+    batch's own bundle **inspected again** at startup, so its approval hash is
+    fresh. When labels were suggested at startup (a batch from before labels),
+    it is a `suggest` revision of that bundle: those labels written as the
+    AI's (`labels_by: ai`, `labels_reviewed: false`). Approve is refused while
+    this runs. A twin the core refuses is dropped; Review then offers only
+    Approve.
+- **Edit in Review** (`editReviewLabels`, `POST /v1/jobs/:id/labels`): a new
+  revision with the edited pages' labels (confirmed), and a new twin carrying
+  the same edit. A refused inspect is a `conflict`; nothing changes.
+- A batch already in Review when a build with this starts (or interrupted
+  while confirming) gets the same treatment at startup. One from before labels
+  existed, whose text sources have no labels, gets them suggested 3 at a time
+  (`labels.state` `suggesting`, `done`/`total`, per-source `state`) and then
+  the confirm revision. The job stays in Review throughout.
+
+## Approving part of a batch (built 2026-10-05)
+
+Canvas: ReviewChoose. `approve(id, { labels?, pages? })`, `POST
+/v1/jobs/:id/approve` with `{labels, pages}`.
+
+- Sources can be **picked** (all are at first). Picking every source that is
+  not removed is a normal approval.
+- **Remove** (`removeReviewSource`, `POST /v1/jobs/:id/sources {page,
+  removed}`) marks a source removed on the job. It is never added to the
+  vault, its inbox file stays, and Undo (`removed: false`) works while the
+  batch is in Review.
+- A subset (or any removed source) makes the batch's **own** session
+  (`job.sessionID`, never another batch's) build a new bundle,
+  `bundle-part-<n>.json`, for exactly the picked sources:
+  - each picked source page reused byte for byte (the prompt gives its file
+    and sha256);
+  - unpicked and removed sources left out;
+  - bookkeeping (index, log, hot cache, overview, ledgers) and concept and
+    entity pages regenerated for just those sources.
+- `job.pendingPart` records what was approved. When the change comes back
+  the core checks it: every picked page has the sha256 the user saw, and no
+  unpicked or removed page is in it. A mismatch removes the plan and says so.
+- A matching change is shown with `approval.rebuilt` and approved **once
+  more**: the regenerated pages are text the user has not seen.
+- After it applies, `Job.parts` gains `{operationID, pages, labels, at}` and
+  the sources left are rebuilt in the same session (`rebuilt.reason
+  remaining`) for a later approval.
+- **Rejecting a rebuilt part discards only that part** (`reject(id)`, the
+  default; `POST /v1/jobs/:id/reject`). Nothing is applied and its sources
+  stay in the batch:
+  - picked sources (`partial`): the Review from before the pick comes back
+    (`pendingPart.before`), with every source pending, its labels as shown and
+    the same plan;
+  - what is left after a part applied (`remaining`) or a change rebuilt after
+    the vault changed (`stale`): the sources stay in Review without a plan
+    (`approval.needsRebuild`). Approve sends the same request to the batch's
+    session again, to a new `bundle-part-<n>.json`, and the result is checked
+    as before.
+  - Only **Reject batch** (`reject(id, { scope: 'batch' })`, body `{"scope":
+    "batch"}`) rejects the whole batch. Parts already applied stay applied.
+    The app shows "Discard this part" and "Reject batch" on a rebuilt part.
+- Exit 75 on a core apply of a batch with sources (not `LOCK_TIMEOUT` or
+  `OPERATION_ID_REUSED`) is rebuilt the same way (`stale`).
+- Only the approved plan's operation is recorded as applied, as before.
+
+### The session seam
+
+Every resume of a batch's AI session goes through session-continuity's
+`resumeBatchSession({ job, prompt, extraTools?, applyPlan?, action, snapshot?,
+text?, rules?, labels?, pages? })` ([Session continuity](session-continuity.md)):
+approve, approve-later (the unconfirmed bundle), the rebuild of a picked part,
+the apply of a rebuilt part, and a retry after a discarded rebuild. `snapshot`
+is the job before the user turn or progress, so Cancel leaves it unchanged.
+`labels`/`pages` are the approve options to send again: Continue
+(`approve(id, { newSession: true, … })`) applies the same plan and bundle, and
+rebuilds the same sources for a part. A part's rebuild the core starts itself
+leaves its sources in Review with `approval.needsRebuild` when the session is
+gone, with the job marker for the confirmation.
+
 ## Core applies (label jobs, runners without tool permissions)
 
 Some jobs have no agent that can be limited to one exact apply command (TS core):
@@ -165,10 +267,12 @@ Bundle shape (page rewrites only; a frontmatter edit keeps every other byte):
 
 ## Concurrency and recovery
 
-- One job per vault holds the vault while `running` or `awaitingApproval`; new
-  batches wait (`batchBlocker`), so a bundle is never built against hashes a
-  pending approval will change. Label jobs hold it too: `confirmLabels` and
-  `suggestLabelsForPages` return `busy` while another job holds the vault.
+- A running job blocks the next batch (`batchBlocker`). Since 2026-10-05 a
+  batch waiting in Review does not: several batches can wait, listed oldest
+  first, and a plan that goes stale because another batch applied first is
+  rebuilt in its own session (above). Label jobs still need a free vault:
+  `confirmLabels` and `suggestLabelsForPages` return `busy` while another job
+  holds it.
 - A job found `running` at launch becomes `awaitingApproval` with a note; the
   user can reply to resume the same session. A label job interrupted while
   applying keeps its reviewed plan so it can be approved again (an operation

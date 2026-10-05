@@ -23,18 +23,32 @@ struct QueueRowView: View {
     var hint: String? = nil
     /// The row just appeared through a scan: it flashes once.
     var flash = false
+    /// v6: a text file's labels (LabelLine under the name); `labelState` .none = no line.
+    var labels: [LabelSuggestion] = []
+    var labelState: LabelLineState = .none
+    /// After the chips ("tried 3 times").
+    var labelNote: String? = nil
+    /// Send without labels, after 3 failed tries.
+    var allowSkip = false
+    /// Confirms these labels (× on a suggested chip keeps the rest, Accept all, + Add, Edit → Done).
+    var onLabels: (([String]) -> Void)? = nil
+    var onRetryLabels: (() -> Void)? = nil
+    var onSkipLabels: (() -> Void)? = nil
     var onRemove: (() -> Void)? = nil
     var onReveal: (() -> Void)? = nil
     /// Google Doc rows: opens the doc's link.
     var onOpenLink: (() -> Void)? = nil
     @State private var toggled: Bool?
     @State private var flashOn = false
+    /// Edit on confirmed labels: the chips being edited, until Done or Cancel.
+    @State private var editDraft: [LabelSuggestion]?
 
     private var isOpen: Bool { kind == .folder && (toggled ?? expanded) && !tree.isEmpty }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             header
+            if labelState != .none && kind != .folder { labelLine.padding(.leading, 54).padding(.trailing, 44) }
             if let hint { hintLine(hint) }
             if isOpen { QueueTreeView(lines: tree).padding(.leading, 54).padding(.trailing, 44) }
         }
@@ -85,6 +99,32 @@ struct QueueRowView: View {
             } else {
                 Color.clear.frame(width: 30, height: 30) // keeps pills aligned on locked rows
             }
+        }
+    }
+
+    @ViewBuilder private var labelLine: some View {
+        if let draft = editDraft {
+            LabelLine(labels: draft, state: .editing,
+                      onRemove: { name in editDraft?.removeAll { $0.name == name } },
+                      onAdd: { name in if !draft.contains(where: { $0.name == name }) { editDraft?.append(LabelSuggestion(name: name, existing: true)) } },
+                      onDone: { onLabels?(draft.map(\.name)); editDraft = nil },
+                      onCancel: { editDraft = nil })
+        } else {
+            let names = labels.map(\.name)
+            LabelLine(labels: labels, state: labelState,
+                      lead: labelState == .confirmed && labels.isEmpty ? "No labels" : nil,
+                      note: labelNote, allowSkip: allowSkip,
+                      onRemove: { name in onLabels?(names.filter { $0 != name }) },
+                      onAdd: onLabels.map { confirm in { name in confirm(names.contains(name) ? names : names + [name]) } },
+                      onAction: {
+                          switch labelState {
+                          case .suggested: onLabels?(names)
+                          case .confirmed, .own: editDraft = labels
+                          case .failed: onRetryLabels?()
+                          default: break
+                          }
+                      },
+                      onSkip: onSkipLabels)
         }
     }
 

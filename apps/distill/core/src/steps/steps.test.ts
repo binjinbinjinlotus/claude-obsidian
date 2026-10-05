@@ -107,15 +107,17 @@ describe('job steps (live log)', () => {
         result: { structured: { status: 'needs_approval', summary: 'Adds pages.', bundle_path: path.join(jobDir, 'bundle.json') } },
       };
     }, { autoLabel: true });
-    fs.writeFileSync(path.join(h.queue, 'a.md'), 'about tea\n');
-    fs.writeFileSync(path.join(h.queue, 'Kettle comparison.md'), 'about kettles\n');
+    // Notes nobody labeled get their labels in the batch's pre-step (queue-folder files get theirs in
+    // the queue, before the batch, and the batch reuses them).
+    await h.core.addNote({ title: 'a', text: 'about tea', origin: 'cli', suggest: 'none' });
+    await h.core.addNote({ title: 'Kettle comparison', text: 'about kettles', origin: 'cli', suggest: 'none' });
     const job = (await h.core.processQueue({ force: true }))!;
     await idle(h.core);
 
     const page = await h.core.listJobSteps!(job.id);
     assert.equal(page.kept, true);
     const by = (verb: string) => page.steps.filter((s) => s.verb === verb);
-    assert.equal(by('move')[0]!.text, 'Moved 2 files from the queue to your inbox');
+    assert.equal(by('move')[0]!.text, 'Moved 4 files from the queue to your inbox'); // each note and its manifest
     const labels = page.steps.find((s) => s.id === 'labels')!;
     assert.equal(labels.state, 'done');
     assert.match(labels.text, /^Suggested labels for 2 files$/);

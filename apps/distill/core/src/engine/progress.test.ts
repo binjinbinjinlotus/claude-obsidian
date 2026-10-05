@@ -205,14 +205,18 @@ describe('batch progress', () => {
 
   test('the label pre-step adds "Suggesting labels" with done/total and the labeler model', async () => {
     h = setup([{ structured: { status: 'nothing_to_do', summary: 'ok' } }], { autoLabel: true });
-    fs.writeFileSync(path.join(h.queue, 'a.md'), 'about tea\n');
-    fs.writeFileSync(path.join(h.queue, 'b.txt'), 'about coffee\n');
+    // CLI notes nobody labeled get their AI labels in the batch (queue files get theirs before it).
+    await h.engine.addNote({ title: 'A', text: 'about tea', origin: 'cli', suggest: 'none' });
+    await h.engine.addNote({ title: 'B', text: 'about coffee', origin: 'cli', suggest: 'none' });
     const job = (await h.engine.processQueue({ force: true }))!;
     await h.engine.whenIdle();
     const list = progressOf(h.events, job.id);
     assert.deepEqual(list[0]!.steps, ['Moved to inbox', 'Suggesting labels', 'Read sources', 'Drafting page changes', 'Ready for review']);
+    // Each file that starts also names itself as `current` (same counts), so repeats are folded here.
+    const rows = list.map((p) => JSON.stringify([p.stepIndex, p.done ?? null, p.total ?? null, p.model ?? null, !!p.finished]));
+    assert.ok(list.some((p) => p.stepIndex === 1 && typeof p.current === 'string' && p.current.startsWith('inbox/')));
     assert.deepEqual(
-      list.map((p) => [p.stepIndex, p.done ?? null, p.total ?? null, p.model ?? null, !!p.finished]),
+      rows.filter((r, i) => r !== rows[i - 1]).map((r) => JSON.parse(r) as unknown[]),
       [
         [1, 0, 2, 'tiny', false],
         [1, 1, 2, 'tiny', false],
@@ -222,7 +226,7 @@ describe('batch progress', () => {
       ],
     );
     assert.equal(list[0]!.message, 'Suggesting labels for 2 sources');
-    assert.equal(list[3]!.message, 'Reading 2 sources into Research');
+    assert.match(list.find((p) => p.stepIndex === 2)!.message, /^Reading \d+ sources into Research$/); // the count includes the notes' manifests (pre-existing)
     assertOneFinished(list);
   });
 

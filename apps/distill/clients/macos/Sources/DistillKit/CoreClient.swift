@@ -132,6 +132,22 @@ public final class CoreClient: Sendable {
         try await send("POST", "/v1/queue/scan", body: ["trigger": trigger.rawValue])
     }
 
+    /// v6 `POST /v1/queue/labels` `{path, labels}`: confirm a queue text file's labels ([] = no labels).
+    public func labelQueueItem(path: String, labels: [String]) async throws -> [QueueEntry] {
+        try await send("POST", "/v1/queue/labels", body: JSONValue.object(["path": .string(path), "labels": .array(labels.map(JSONValue.string))]),
+                       as: Wrapped<[QueueEntry]>.self, key: "entries").value
+    }
+
+    /// v6 `POST /v1/queue/labels/retry` `{path}`: ask again for a file whose suggestion failed.
+    public func retryQueueLabels(path: String) async throws -> [QueueEntry] {
+        try await send("POST", "/v1/queue/labels/retry", body: ["path": path], as: Wrapped<[QueueEntry]>.self, key: "entries").value
+    }
+
+    /// v6 `POST /v1/queue/labels/skip` `{path}`: let a file whose labels failed go in the next batch without labels.
+    public func skipQueueLabels(path: String) async throws -> [QueueEntry] {
+        try await send("POST", "/v1/queue/labels/skip", body: ["path": path], as: Wrapped<[QueueEntry]>.self, key: "entries").value
+    }
+
     // MARK: Notes
 
     public func addNote(_ request: AddNoteRequest) async throws -> AddNoteResult {
@@ -168,6 +184,31 @@ public final class CoreClient: Sendable {
     @discardableResult public func approve(_ id: String, newSession: Bool = false) async throws -> Job? {
         try await jobAction(id, "approve", body: newSession ? ["newSession": .bool(true)] : [:])
     }
+    /// v6: approve with options (`labels` confirm | later, `pages` = the picked source pages). Empty options send `{}`.
+    /// 409 with a message when the core refuses (labels still being suggested or saved); `newSession` as above.
+    @discardableResult public func approve(_ id: String, options: ApproveOptions, newSession: Bool = false) async throws -> Job? {
+        var body = options.body
+        if newSession { body["newSession"] = .bool(true) }
+        return try await jobAction(id, "approve", body: body)
+    }
+
+    /// v6 `POST /v1/jobs/:id/labels` `{edits:[{page, labels}]}`: change source-page labels in a batch awaiting
+    /// approval. 409 with a message when the vault core refused the edit (nothing changed).
+    public func editReviewLabels(_ id: String, edits: [(page: String, labels: [String])]) async throws -> Job {
+        let body = JSONValue.object(["edits": .array(edits.map {
+            .object(["page": .string($0.page), "labels": .array($0.labels.map(JSONValue.string))])
+        })])
+        return try await send("POST", "/v1/jobs/\(Self.segment(id))/labels", body: body, as: Wrapped<Job>.self, key: "job").value
+    }
+
+    /// v6 `POST /v1/jobs/:id/sources` `{page, removed}`: take a source out of a pending batch, or put it back.
+    public func removeReviewSource(_ id: String, page: String, removed: Bool) async throws -> Job {
+        try await send("POST", "/v1/jobs/\(Self.segment(id))/sources", body: JSONValue.object(["page": .string(page), "removed": .bool(removed)]),
+                       as: Wrapped<Job>.self, key: "job").value
+    }
+    @discardableResult public func reply(_ id: String, text: String) async throws -> Job? {
+        try await jobAction(id, "reply", body: ["text": .string(text)])
+    }
     @discardableResult public func reply(_ id: String, text: String, newSession: Bool = false) async throws -> Job? {
         var body: [String: JSONValue] = ["text": .string(text)]
         if newSession { body["newSession"] = .bool(true) }
@@ -178,7 +219,10 @@ public final class CoreClient: Sendable {
         if newSession { body["newSession"] = .bool(true) }
         return try await jobAction(id, "allow", body: body)
     }
-    @discardableResult public func reject(_ id: String) async throws -> Job? { try await jobAction(id, "reject") }
+    /// A rebuilt part: `batch: false` (default) discards only that part; `batch: true` rejects the whole batch.
+    @discardableResult public func reject(_ id: String, batch: Bool = false) async throws -> Job? {
+        try await jobAction(id, "reject", body: batch ? ["scope": .string("batch")] : [:])
+    }
     @discardableResult public func cancel(_ id: String) async throws -> Job? { try await jobAction(id, "cancel") }
 
     /// `DELETE /v1/jobs/:id`: removes a finished job from the list (History → Clear).

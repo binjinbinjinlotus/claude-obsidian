@@ -58,18 +58,26 @@ public struct BatchInterval: Equatable, Sendable, CustomStringConvertible {
 /// `settleSeconds` split into minutes and seconds (0–59 each) for editing.
 /// Settings keep storing total seconds; the core applies the wait.
 public struct SettleWait: Equatable, Sendable {
-    public static let range: ClosedRange<Int> = 0...59
+    /// Settings → Batching → "Wait before picking up a file": hours (0–24) and minutes (0–59), up to 24 hours.
+    public static let hoursRange: ClosedRange<Int> = 0...24
+    public static let minutesRange: ClosedRange<Int> = 0...59
+    public static let maxSeconds = 24 * 3600
+    /// No wait / 1 min / 10 min / 1 hour / 4 hours / 24 hours (seconds).
+    public static let presets: [(String, Int)] = [("No wait", 0), ("1 min", 60), ("10 min", 600), ("1 hour", 3600),
+                                                  ("4 hours", 4 * 3600), ("24 hours", 24 * 3600)]
 
-    public var minutes: Int { didSet { minutes = Self.clamp(minutes) } }
-    public var seconds: Int { didSet { seconds = Self.clamp(seconds) } }
+    public var hours: Int { didSet { hours = min(max(hours, Self.hoursRange.lowerBound), Self.hoursRange.upperBound) } }
+    public var minutes: Int { didSet { minutes = min(max(minutes, Self.minutesRange.lowerBound), Self.minutesRange.upperBound) } }
 
+    /// Seconds a wait set elsewhere may carry (90 s) are rounded down to the minute only when the user edits a field.
     public init(totalSeconds: Int) {
-        let total = min(max(0, totalSeconds), 59 * 60 + 59)
-        minutes = total / 60
-        seconds = total % 60
+        let total = Self.clamp(totalSeconds)
+        hours = total / 3600
+        minutes = (total % 3600) / 60
     }
 
-    public var totalSeconds: Int { minutes * 60 + seconds }
+    /// 24 hours is the most: at 24 h the minutes are 0.
+    public var totalSeconds: Int { Self.clamp(hours * 3600 + (hours >= 24 ? 0 : minutes * 60)) }
 
-    private static func clamp(_ v: Int) -> Int { min(max(v, range.lowerBound), range.upperBound) }
+    public static func clamp(_ seconds: Int) -> Int { min(max(0, seconds), maxSeconds) }
 }

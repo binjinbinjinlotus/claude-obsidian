@@ -20,7 +20,7 @@ export function isTextInput(rel: string): boolean {
 
 const MAX_READ = 64 * 1024;
 
-function readText(abs: string): string | undefined {
+export function readText(abs: string): string | undefined {
   try {
     const fd = fs.openSync(abs, 'r');
     try {
@@ -63,6 +63,8 @@ export function draftBatchLabels(
   prefs: LabelingPreferences,
   /** Label state kept in Distill's state for notes in `inbox/` (note-labels.ts); wins over the manifest. */
   overlay?: (requestID: string | undefined) => NoteLabelOverlay | undefined,
+  /** Labels a queue file got before the batch (queue-labels.ts), by vault-relative input. */
+  fileLabels?: (rel: string) => NoteLabelOverlay | undefined,
 ): BatchLabelDraft {
   const plan: SourceLabels[] = [];
   const pending: PendingSuggestion[] = [];
@@ -102,14 +104,30 @@ export function draftBatchLabels(
     if (owned.has(rel)) continue;
     const entry: SourceLabels = { file: rel, labels: [], by: 'ai' };
     plan.push(entry);
-    if (!prefs.autoLabelQueueFolder || !isTextInput(rel)) continue;
+    if (!isTextInput(rel)) continue;
     const text = readText(path.join(vaultPath, rel));
     if (text === undefined || text.trim() === '') continue;
+    // Labels confirmed in the queue (queue-labels.ts) win, even over the file's own tags.
+    const known = fileLabels?.(rel);
+    if (known?.labels !== undefined) {
+      entry.labels = [...known.labels];
+      entry.by = 'user';
+      continue;
+    }
+    // Sent without labels by the user (the label gate let it through).
+    if (known?.skipLabels) continue;
+    if (!prefs.autoLabelQueueFolder) continue;
     const own = rel.toLowerCase().endsWith('.md') ? pageTags(text) : [];
     if (own.length > 0) {
       // Tags the user wrote in the file count as their choice: keep them, no AI call.
       entry.labels = own;
       entry.by = 'user';
+      continue;
+    }
+    // Suggested in the queue already: used as they are, no new AI call.
+    if (known?.suggestedLabels && known.suggestedLabels.length > 0) {
+      entry.labels = known.suggestedLabels.map((l) => l.name);
+      entry.origin = 'queue-folder';
       continue;
     }
     entry.origin = 'queue-folder';

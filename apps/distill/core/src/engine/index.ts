@@ -12,6 +12,10 @@ import {
   type AddNoteRequest,
   type AddNoteResult,
   type ApprovalRequest,
+  type ApproveOptions,
+  type RejectOptions,
+  type JobPart,
+  type PendingPart,
   type CoreEvent,
   type DistillCore,
   type Job,
@@ -23,6 +27,8 @@ import {
   type Progress,
   type QueueEntry,
   type QueueScanResult,
+  type ReviewLabels,
+  type ReviewSource,
   type SessionAction,
   type SessionOptions,
   type SessionUnavailable,
@@ -78,7 +84,20 @@ import { CoreError } from './errors.js';
 import { searchVaultPages } from './pages.js';
 import { noteFileFor, readManifest, validateNote, writeManifest, writeNote, type NoteLabelState } from './notes.js';
 import { NoteLabelStore } from './note-labels.js';
-import { draftBatchLabels } from '../labels/batch.js';
+import { DEFAULT_LABEL_CONCURRENCY, mapPool, QueueLabeler, suggestInputFor } from './queue-labels.js';
+import {
+  contentFileFor,
+  inspectReason,
+  needsRevision,
+  pageShas,
+  partPrompt,
+  readBundle,
+  reviewSources,
+  sourcePages,
+  verifyRebuilt,
+  writeRevision,
+} from './review-labels.js';
+import { draftBatchLabels, isTextInput } from '../labels/batch.js';
 import { bodyOf, parseFrontmatter, scalarValue, setLabelProperties } from '../labels/frontmatter.js';
 import { extractImageText } from './image-text.js';
 import { labelSuggestSelection, suggestLabels, type SuggestInput, type SuggestOutcome } from '../labels/suggest.js';
@@ -174,9 +193,11 @@ export interface ResumeBatchOptions {
    * turns out to be gone, before or at the resume, the job is put back to exactly this.
    */
   snapshot?: Job;
-  /** What to send again after Continue (reply text / allow rules). */
+  /** What to send again after Continue (reply text / allow rules; approve-later or the sources picked for a part). */
   text?: string;
   rules?: string[];
+  labels?: 'confirm' | 'later';
+  pages?: string[];
 }
 
 export type ResumeBatchOutcome = { kind: 'started' } | ({ kind: 'session_unavailable' } & SessionUnavailable);
@@ -233,6 +254,9 @@ function readVersion(): string {
 }
 
 const clone = <T>(v: T): T => structuredClone(v);
+
+/** "Wait before picking up a file": 0 (no wait) to 24 hours (decision 2026-10-05). */
+export const MAX_SETTLE_SECONDS = 24 * 60 * 60;
 
 /** "1 source", "3 sources". */
 export function plural(n: number, noun: string): string {
@@ -306,6 +330,31 @@ export function createEngine(opts: EngineOptions): Engine {
   const labelScratch = path.join(paths.dir, 'labels', 'scratch');
   /** Label state for notes in the vault's inbox/ (never written into inbox/; decision 2026-10-04). */
   const noteLabels = NoteLabelStore.at(paths.dir);
+  /** Labels for queue text files before the batch, 3 at a time (queue-labels.ts). */
+  const queueLabeler = new QueueLabeler({
+    store: noteLabels,
+    suggest: async (input, signal) => {
+      const vault = activeVault(settings);
+      if (!vault) throw new Error('No vault selected.');
+      const out = await suggestFor(vault, input, { signal });
+      return { labels: out.labels, costUSD: out.costUSD };
+    },
+    enabled: () => labelingPreferences(settings).autoLabelQueueFolder,
+    onChange: () => refreshQueue(),
+    started: (key, item) =>
+      startProgress({
+        key: `label:${key.slice(5)}`,
+        kind: 'labelSuggest',
+        message: `Suggesting labels for ${item}`,
+        item,
+        ...selectionFields(labelSuggestSelection(settings)),
+      }),
+    finished: (key, error) => finishProgress(`label:${key.slice(5)}`, error ? { error } : {}),
+    now,
+    track: (p) => track(p),
+  });
+  /** Jobs whose Review labels are being suggested or written into a revision (Approve is refused meanwhile). */
+  const revising = new Set<string>();
 
   // ───────────── events & persistence ─────────────
 
@@ -435,12 +484,9 @@ export function createEngine(opts: EngineOptions): Engine {
     if (p) return p.message;
     const vault = activeVault(settings);
     if (!vault) return 'No vault selected.';
-    const holder = jobs.find((j) => j.vaultPath === vault.path && holdsVault(j.state));
-    if (holder) {
-      return holder.state === 'running'
-        ? `Waiting for ${holder.id} to finish.`
-        : `Waiting for your decision on ${holder.id}.`;
-    }
+    // Batches waiting in Review don't block the next batch (decision 2026-10-05); a running one does.
+    const holder = jobs.find((j) => j.vaultPath === vault.path && j.state === 'running');
+    if (holder) return `Waiting for ${holder.id} to finish.`;
     return undefined;
   }
 
@@ -510,11 +556,17 @@ export function createEngine(opts: EngineOptions): Engine {
   }
 
   function queueEntries(): QueueEntry[] {
-    return queueList(queued, settings.settleSeconds, now(), {
+    const entries = queueList(queued, settings.settleSeconds, now(), {
       firstSeen,
       sourceLabel,
       labelsConfirmed: (id) => noteLabels.get(id)?.labels !== undefined,
     });
+    for (const e of entries) {
+      const labels = queueLabeler.describe(e);
+      if (labels) e.labels = labels;
+      if (QueueLabeler.held(labels)) e.heldForLabels = true;
+    }
+    return entries;
   }
 
   /**
@@ -621,6 +673,9 @@ export function createEngine(opts: EngineOptions): Engine {
 
   // ───────────── turns ─────────────
 
+  /** What a resume through resumeBatchSession restores, and sends again after Continue, when the session is gone. */
+  type ResumeOf = { target: ResumeTarget; snapshot?: Job; text?: string; rules?: string[]; labels?: 'confirm' | 'later'; pages?: string[] };
+
   function runTurn(
     id: string,
     prompt: string,
@@ -630,7 +685,7 @@ export function createEngine(opts: EngineOptions): Engine {
       /** Set only for the turn approve() starts to run this plan's apply. */
       applyPlan?: TransactionPlan;
       /** A resume through resumeBatchSession: what to restore when the runner says the session is gone. */
-      resumeOf?: { target: ResumeTarget; snapshot?: Job; text?: string; rules?: string[] };
+      resumeOf?: ResumeOf;
     } = {},
   ): void {
     const job = findJob(id);
@@ -702,6 +757,8 @@ export function createEngine(opts: EngineOptions): Engine {
             const marker: SessionUnavailable = { ...gone };
             if (extra.resumeOf.text !== undefined) marker.text = extra.resumeOf.text;
             if (extra.resumeOf.rules !== undefined) marker.rules = [...extra.resumeOf.rules];
+            if (extra.resumeOf.labels !== undefined) marker.labels = extra.resumeOf.labels;
+            if (extra.resumeOf.pages !== undefined) marker.pages = [...extra.resumeOf.pages];
             restoreJob(id, extra.resumeOf.snapshot, marker);
           } else {
             fail(id, err instanceof Error ? err.message : String(err));
@@ -735,13 +792,15 @@ export function createEngine(opts: EngineOptions): Engine {
         // The model's report is not evidence: an operation is recorded only when this was the
         // approved apply turn and it names the approved operation; the paths come from the
         // inspected plan, never from the model.
+        const applying = findJob(id)?.approval ? clone(findJob(id)!.approval!) : undefined;
         mutate(id, (j) => {
           j.state = 'completed';
           delete j.approval;
           if (status.status !== 'done') return;
           if (applyPlan && status.operation_id === applyPlan.operation_id) {
+            addPart(j, applyPlan.operation_id, applying);
             j.operationID = applyPlan.operation_id;
-            j.changedPaths = [...applyPlan.changed_paths];
+            j.changedPaths = mergedPaths(j, applyPlan.changed_paths);
             j.turns.push(newTurn('app', `Applied ${applyPlan.operation_id}:\n` + applyPlan.changed_paths.map((p) => `- ${p}`).join('\n'), now()));
           } else if (applyPlan) {
             j.turns.push(
@@ -757,6 +816,7 @@ export function createEngine(opts: EngineOptions): Engine {
             j.turns.push(newTurn('app', 'Nothing was applied: this turn had no approved plan to apply.', now()));
           }
         });
+        if (applyPlan && status.status === 'done' && status.operation_id === applyPlan.operation_id) continueAfterPart(id, applyPlan.operation_id);
         return;
       case 'needs_approval':
       case 'needs_input':
@@ -797,10 +857,273 @@ export function createEngine(opts: EngineOptions): Engine {
         request.planError = 'Claude asked for approval but returned no bundle_path.';
       }
     }
+    const part = findJob(id)?.pendingPart;
+    const confirm = part ? checkRebuiltPart(id, request, part) : request.plan?.valid && request.bundlePath ? attachReviewSources(id, request) : false;
     mutate(id, (j) => {
       j.state = 'awaitingApproval';
       j.approval = request;
     });
+    if (confirm) track(reviseReviewLabels(id, undefined, true).catch((err: unknown) => log('warn', `Review labels: ${(err as Error).message}`)));
+  }
+
+  // ───────────── labels in Review (review-labels.ts) ─────────────
+
+  /** Fills `sources` and `labels` of a batch's approval from its bundle; true when a confirm revision should run. */
+  function attachReviewSources(id: string, request: ApprovalRequest): boolean {
+    const job = findJob(id);
+    if (!job || job.kind !== queueConsumer().id || !request.bundlePath) return false;
+    const b = readBundle(request.bundlePath);
+    const pages = b ? sourcePages(b) : [];
+    if (pages.length === 0) return false;
+    request.sources = reviewSources(pages);
+    const confirm = needsRevision(pages);
+    request.labels = { state: confirm ? 'confirming' : 'confirmed' };
+    if (request.plan) request.unconfirmed = { bundlePath: request.bundlePath, plan: clone(request.plan) };
+    return confirm;
+  }
+
+  function setReviewLabels(id: string, labels: ReviewLabels, sources?: ReviewSource[]): void {
+    mutate(id, (j) => {
+      if (!j.approval) return;
+      j.approval.labels = labels;
+      if (sources) j.approval.sources = clone(sources);
+    });
+  }
+
+  /**
+   * Writes a label revision of the job's bundle (confirmed labels, plus `overrides` per page) and
+   * inspects it. Only a clean inspect replaces the bundle and plan. `auto` (the confirm revision
+   * the core makes itself): a refusal leaves the original bundle and says the labels stay
+   * unconfirmed. Otherwise (the user's edit): a refusal throws and nothing changes.
+   */
+  async function reviseReviewLabels(id: string, overrides: Map<string, string[]> | undefined, auto: boolean): Promise<void> {
+    const job = findJob(id);
+    const base = job?.approval?.bundlePath;
+    if (!job || job.state !== 'awaitingApproval' || !base || !job.approval?.plan?.valid) {
+      if (auto) return;
+      throw new CoreError('invalid_state', `Job ${id} has no plan to change.`);
+    }
+    const before = job.approval.labels ? clone(job.approval.labels) : null;
+    const b = readBundle(base);
+    if (!b) {
+      if (auto) {
+        setReviewLabels(id, { state: 'unconfirmed', message: "Labels stay unconfirmed: Distill could not read this batch's bundle. Approving applies them as suggestions." });
+        return;
+      }
+      throw new CoreError('invalid_state', "Distill could not read this batch's bundle.");
+    }
+    const pages = sourcePages(b);
+    if (!needsRevision(pages, overrides)) {
+      setReviewLabels(id, { ...(before ?? {}), state: 'confirmed' });
+      return;
+    }
+    revising.add(id);
+    setReviewLabels(id, { state: 'confirming', ...(before?.revision ? { revision: before.revision } : {}) });
+    try {
+      const rev = writeRevision(b, pages, overrides);
+      if (!rev) {
+        setReviewLabels(id, { ...(before ?? {}), state: 'confirmed' });
+        return;
+      }
+      const outcome = await inspect(rev.bundlePath, vaultProfileFor(job));
+      const current = findJob(id);
+      // A reply or a rejection meanwhile: this revision is for a bundle that is no longer the job's.
+      if (!current || current.state !== 'awaitingApproval' || current.approval?.bundlePath !== base) return;
+      if ('plan' in outcome && outcome.plan.valid) {
+        const plan = outcome.plan;
+        // The user's edits go into the unconfirmed version too (the AI's own startup suggestions don't: prepareReviewLabels wrote them there unconfirmed).
+        const twin = overrides && !auto ? await reviseTwin(current, overrides) : undefined;
+        mutate(id, (j) => {
+          if (!j.approval) return;
+          j.approval.bundlePath = rev.bundlePath;
+          j.approval.plan = plan;
+          delete j.approval.planError;
+          j.approval.labels = { state: 'confirmed', revision: rev.revision };
+          if (twin !== undefined) j.approval.unconfirmed = twin;
+          if (overrides && j.approval.sources) {
+            j.approval.sources = j.approval.sources.map((s) => {
+              const next = overrides.get(s.page);
+              return next ? { ...s, labels: [...next], by: next.length > 0 ? 'user' : 'none', state: null } : s;
+            });
+          }
+          j.turns.push(
+            newTurn(
+              'app',
+              auto
+                ? `Labels are in the change as confirmed (revision ${rev.revision}, checked by the vault core): approving confirms the labels shown.`
+                : `Changed labels on ${plural(rev.changed.length, 'page')} (revision ${rev.revision}, checked by the vault core).`,
+              now(),
+            ),
+          );
+        });
+        return;
+      }
+      const reason = inspectReason('error' in outcome ? outcome.error : 'the plan was not valid');
+      if (auto) {
+        setReviewLabels(id, {
+          state: 'unconfirmed',
+          message: `Labels stay unconfirmed: the vault core refused the change with confirmed labels (${reason}). Approving applies the batch with these labels as suggestions; confirm them later in Labels, or reply to Claude to rebuild the batch.`,
+        });
+        mutate(id, (j) => j.turns.push(newTurn('app', `Labels stay unconfirmed: ${reason}`, now())));
+        return;
+      }
+      setReviewLabels(id, before ?? { state: 'confirmed' });
+      throw new CoreError(
+        'conflict',
+        `Couldn't save your label edit: the vault core refused the edited change (${reason}). Your edit was not kept; the labels are as before.`,
+      );
+    } finally {
+      revising.delete(id);
+      // Never leave "confirming" behind (an error before the inspect, or the job moved on).
+      if (findJob(id)?.approval?.labels?.state === 'confirming') {
+        setReviewLabels(
+          id,
+          before && before.state !== 'confirming'
+            ? before
+            : { state: 'unconfirmed', message: 'Labels stay unconfirmed: the change with confirmed labels could not be prepared. Approving applies them as suggestions.' },
+        );
+      }
+    }
+  }
+
+  /** The unconfirmed twin with the user's edits applied (confirmed); null when it can't be made or checked. */
+  async function reviseTwin(job: Job, overrides: Map<string, string[]>): Promise<{ bundlePath: string; plan: TransactionPlan } | null> {
+    const base = job.approval?.unconfirmed?.bundlePath;
+    const b = base ? readBundle(base) : undefined;
+    if (!b) return null;
+    const rev = writeRevision(b, sourcePages(b), overrides, 'keep');
+    if (!rev) return job.approval?.unconfirmed ?? null;
+    const outcome = await inspect(rev.bundlePath, vaultProfileFor(job));
+    return 'plan' in outcome && outcome.plan.valid ? { bundlePath: rev.bundlePath, plan: outcome.plan } : null;
+  }
+
+  /**
+   * A batch already in Review when this build starts (or one interrupted while its labels were
+   * being written): fill its sources, suggest labels (3 at a time) for text sources that have none
+   * when it predates labels in Review, then make the confirm revision. The job stays in Review.
+   */
+  async function prepareReviewLabels(id: string): Promise<void> {
+    const job = findJob(id);
+    const bundle = job?.approval?.bundlePath;
+    if (!job || job.state !== 'awaitingApproval' || !bundle || !job.approval?.plan?.valid || job.kind !== queueConsumer().id) return;
+    const b = readBundle(bundle);
+    const pages = b ? sourcePages(b) : [];
+    if (pages.length === 0) return;
+    const firstTime = job.approval.labels == null;
+    const sources = clone(job.approval.sources ?? reviewSources(pages));
+    const vault = vaultProfileFor(job);
+    const overrides = new Map<string, string[]>();
+    const missing =
+      firstTime && labelingPreferences(settings).autoLabelQueueFolder
+        ? pages.filter((p) => p.by === 'none' && p.source && isTextInput(p.source) && suggestInputFor(path.join(vault.path, p.source)))
+        : [];
+    const source = (page: string) => sources.find((x) => x.page === page);
+    if (missing.length > 0) {
+      revising.add(id);
+      let done = 0;
+      const total = missing.length;
+      for (const p of missing) Object.assign(source(p.page) ?? {}, { state: 'waiting' });
+      setReviewLabels(id, { state: 'suggesting', done, total }, sources);
+      try {
+        const existing = await existingLabels(vault.path).catch(() => [] as string[]);
+        await mapPool(missing, DEFAULT_LABEL_CONCURRENCY, async (p) => {
+          const abs = path.join(vault.path, p.source!);
+          const known = queueLabeler.lookup(abs);
+          let labels = known?.labels ?? known?.suggestedLabels?.map((l) => l.name);
+          if (!labels) {
+            const key = `label:${id}:${p.source}`;
+            const item = path.posix.basename(p.source!);
+            Object.assign(source(p.page) ?? {}, { state: 'suggesting' });
+            setReviewLabels(id, { state: 'suggesting', done, total }, sources);
+            startProgress({
+              key,
+              kind: 'labelSuggest',
+              message: `Suggesting labels for ${item}`,
+              item,
+              group: id,
+              ...selectionFields(labelSuggestSelection(settings)),
+            });
+            try {
+              const out = await suggestFor(vault, suggestInputFor(abs)!.input, { existing });
+              labels = out.labels.map((l) => l.name);
+              queueLabeler.remember(abs, { labels: out.labels });
+              finishProgress(key);
+            } catch (err) {
+              finishProgress(key, { error: (err as Error).message });
+            }
+          }
+          done += 1;
+          const s = source(p.page);
+          if (s) {
+            if (labels && labels.length > 0) Object.assign(s, { labels: [...labels], by: 'ai', state: null });
+            else s.state = 'failed';
+          }
+          if (labels && labels.length > 0) overrides.set(p.page, labels);
+          setReviewLabels(id, { state: 'suggesting', done, total }, sources);
+        });
+      } finally {
+        revising.delete(id);
+      }
+      // Leave "suggesting"; the revision below sets confirming, then confirmed or unconfirmed.
+      setReviewLabels(id, { state: 'confirming' }, sources);
+    } else if (!job.approval.sources) {
+      setReviewLabels(id, job.approval.labels ?? { state: 'confirming' }, sources);
+    }
+    await refreshUnconfirmed(id, job.approval.unconfirmed?.bundlePath ?? bundle, overrides);
+    await reviseReviewLabels(id, overrides.size > 0 ? overrides : undefined, true);
+    if (overrides.size === 0) return;
+    const added = findJob(id)?.approval?.labels?.state === 'confirmed';
+    mutate(id, (j) => {
+      if (!j.approval?.sources) return;
+      j.approval.sources = j.approval.sources.map((s) => {
+        if (!overrides.has(s.page)) return s;
+        // In the change: shown as the AI's (dashed). Not in it: Review never shows labels the change lacks.
+        return added ? { ...s, by: 'ai' } : { ...s, labels: [], by: 'none', state: null };
+      });
+    });
+  }
+
+  /**
+   * "Approve, review labels later" for a batch already in Review when this build starts: its unconfirmed version is
+   * the bundle it was built with (or, when labels were suggested now, that bundle with them written as the AI's,
+   * left to review), inspected again now so its approval hash is fresh. Approve stays refused meanwhile.
+   */
+  async function refreshUnconfirmed(id: string, base: string, suggested: Map<string, string[]>): Promise<void> {
+    const job = findJob(id);
+    const b = readBundle(base);
+    if (!job || !b) return;
+    revising.add(id);
+    try {
+      const rev = suggested.size > 0 ? writeRevision(b, sourcePages(b), suggested, 'suggest') : undefined;
+      const target = rev?.bundlePath ?? base;
+      const outcome = await inspect(target, vaultProfileFor(job));
+      const ok = 'plan' in outcome && outcome.plan.valid;
+      mutate(id, (j) => {
+        if (!j.approval || j.state !== 'awaitingApproval') return;
+        if (ok) j.approval.unconfirmed = { bundlePath: target, plan: outcome.plan };
+        else delete j.approval.unconfirmed;
+      });
+      if (!ok) log('warn', `Review labels: ${id} has no version with unconfirmed labels (${inspectReason('error' in outcome ? outcome.error : 'the plan was not valid')}).`);
+    } finally {
+      revising.delete(id);
+    }
+  }
+
+  async function editReviewLabels(jobID: string, edits: { page: string; labels: string[] }[]): Promise<Job> {
+    if (!Array.isArray(edits) || edits.length === 0) throw new CoreError('invalid_request', 'No label edits given.');
+    const job = requireJob(jobID);
+    if (job.state !== 'awaitingApproval') throw new CoreError('invalid_state', `Job ${jobID} is not awaiting approval.`);
+    if (revising.has(jobID)) throw new CoreError('busy', 'Distill is still saving labels into this change. Try again when that finishes.');
+    const known = new Set((job.approval?.sources ?? []).map((s) => s.page));
+    const overrides = new Map<string, string[]>();
+    for (const e of edits) {
+      if (!e || typeof e.page !== 'string' || !known.has(e.page)) {
+        throw new CoreError('invalid_request', `Not a source page of this batch: ${String(e?.page)}`);
+      }
+      overrides.set(e.page, cleanLabels(e.labels));
+    }
+    await reviseReviewLabels(jobID, overrides, false);
+    return clone(requireJob(jobID));
   }
 
   /** The approval screen shows what the core says, not the agent's summary of it. */
@@ -823,6 +1146,245 @@ export function createEngine(opts: EngineOptions): Engine {
     }
   }
 
+  // ───────────── the label gate and parts of a batch ─────────────
+
+  /**
+   * Queue paths a batch must leave for later because their labels are not in yet (decision
+   * 2026-10-05). Process now (`force`) also starts labels for text files that are not settled
+   * yet and holds them until they are in.
+   */
+  function labelGate(force: boolean): Set<string> {
+    refreshQueue({ fresh: true });
+    const held = new Set<string>();
+    for (const e of queueEntries()) {
+      let l = e.labels;
+      if (force && !e.settled && (e.kind ?? 'file') === 'file' && !e.problem && !e.waiting && isTextInput(e.name)) {
+        l = queueLabeler.describe({ ...e, settled: true }) ?? null;
+      }
+      if (QueueLabeler.held(l)) held.add(e.path);
+    }
+    return held;
+  }
+
+  function nextPartBundle(dir: string): number {
+    let n = 1;
+    while (fs.existsSync(path.join(dir, `bundle-part-${n}.json`))) n += 1;
+    return n;
+  }
+
+  /**
+   * Asks the batch's own session for a change holding exactly some sources: the picked ones
+   * (`partial`), the same ones after the vault changed (`stale`). What the user saw is recorded
+   * (sha256 per source page) so the rebuilt change can be checked before it is shown.
+   */
+  function startPart(id: string, reason: 'partial' | 'stale', sel?: { picked: string[]; labels: 'confirm' | 'later' }, newSession = false): boolean {
+    const job = findJob(id);
+    const approval = job?.approval;
+    if (!job || !approval?.bundlePath) return false;
+    const sources = approval.sources ?? [];
+    const labels = sel?.labels ?? approval.rebuilt?.labels ?? applyingLabels.get(id) ?? 'confirm';
+    const variantPath = labels === 'later' && approval.unconfirmed && !approval.rebuilt ? approval.unconfirmed.bundlePath : approval.bundlePath;
+    const b = readBundle(variantPath);
+    const confirmB = variantPath === approval.bundlePath ? b : readBundle(approval.bundlePath);
+    if (!b || !confirmB) return false;
+    const shas = pageShas(b);
+    const cshas = pageShas(confirmB);
+    const active = sources.filter((s) => !s.removed);
+    const picked = sel?.picked ?? active.map((s) => s.page);
+    const keep = active.filter((s) => picked.includes(s.page));
+    const rest = active.filter((s) => !picked.includes(s.page));
+    const removed = sources.filter((s) => s.removed);
+    if (keep.some((s) => !shas.has(s.page)) || rest.some((s) => !cshas.has(s.page))) return false;
+    const dir = jobStateDirectory(job);
+    const n = nextPartBundle(dir);
+    const pagesDir = path.join(dir, `part-${n}-pages`);
+    const keepFiles = keep.map((s) => ({ page: s.page, source: s.source ?? null, contentFile: contentFileFor(b, s.page, pagesDir)!, sha256: shas.get(s.page)! }));
+    const restFiles = Object.fromEntries(rest.map((s) => [s.page, contentFileFor(confirmB, s.page, pagesDir)!]));
+    const part: PendingPart = {
+      reason,
+      expected: Object.fromEntries(keepFiles.map((k) => [k.page, k.sha256])),
+      excluded: [...rest, ...removed].map((s) => s.page),
+      labels,
+      rest: clone(rest),
+      restExpected: Object.fromEntries(rest.map((s) => [s.page, cshas.get(s.page)!])),
+      restFiles,
+      removed: clone(removed),
+      shown: clone(keep),
+    };
+    if (reason === 'partial') part.before = clone(approval);
+    part.bundlePath = path.join(dir, `bundle-part-${n}.json`);
+    const prompt = partPrompt({
+      reason,
+      bundlePath: part.bundlePath,
+      keep: keepFiles,
+      leaveOut: rest.map((s) => ({ page: s.page, source: s.source ?? null })),
+      removed: removed.map((s) => ({ page: s.page, source: s.source ?? null })),
+    });
+    const said =
+      reason === 'partial'
+        ? `Approve ${plural(keep.length, 'source')} of ${active.length}${labels === 'later' ? ', labels left to review' : ''}: rebuilding the change for ${keep.length === 1 ? 'it' : 'them'} in this batch's session.` +
+          (removed.length > 0 ? ` Removed: ${removed.map((s) => s.title).join(', ')}.` : '')
+        : "The vault changed after review, so this batch's change is rebuilt in its own session for the vault as it is now.";
+    part.prompt = prompt;
+    const progress = `Rebuilding the change for ${plural(keep.length, 'source')}`;
+    if (reason === 'stale') {
+      // From an apply in the background: nobody to ask right now, so a gone session leaves the sources waiting in Review.
+      sendPartInBackground(id, part, said, progress);
+      return true;
+    }
+    const again = { labels: labels, pages: keep.map((s) => s.page) };
+    if (newSession) {
+      mutate(id, (j) => {
+        j.pendingPart = part;
+      });
+      continueInNewSession(id, 'approve', { userTurn: said, prompt });
+      const current = findJob(id);
+      if (current) startTurnProgress(current, 'Drafting page changes', progress);
+      return true;
+    }
+    const gone = precheck(job, 'approve', again);
+    if (gone) throw sessionUnavailableError(gone);
+    const snapshot = clone(job);
+    mutate(id, (j) => {
+      j.pendingPart = part;
+      j.turns.push(newTurn('user', said, now()));
+    });
+    const current = findJob(id);
+    if (current) startTurnProgress(current, 'Drafting page changes', progress);
+    const out = resumeBatchSession({ job: current ?? job, prompt, action: 'approve', snapshot, ...again });
+    if (out.kind === 'session_unavailable') throw sessionUnavailableError(out);
+    return true;
+  }
+
+  /**
+   * A part's rebuild started by the core itself (what is left after a part applied; a change rebuilt after the vault
+   * changed). The sources first wait in Review with no plan (`needsRebuild`), so a session found gone leaves exactly
+   * that, with the marker for SessionReplaceConfirm (Continue = Approve in a new session); otherwise the request runs.
+   */
+  function sendPartInBackground(id: string, part: PendingPart, said: string, progress: string): void {
+    mutate(id, (j) => {
+      j.pendingPart = part;
+      j.state = 'awaitingApproval';
+      j.approval = {
+        summary: j.approval?.summary ?? '',
+        questions: [],
+        denials: [],
+        skipped: [],
+        sources: clone(part.shown ?? []),
+        labels: part.labels === 'later' ? { state: 'unconfirmed', message: 'Labels stay unconfirmed: you chose to review them later in Labels.' } : { state: 'confirmed' },
+        needsRebuild: true,
+      };
+    });
+    const waiting = findJob(id);
+    if (!waiting) return;
+    const snapshot = clone(waiting);
+    mutate(id, (j) => j.turns.push(newTurn('app', said, now())));
+    startTurnProgress(findJob(id) ?? waiting, 'Drafting page changes', progress);
+    const out = resumeBatchSession({ job: findJob(id) ?? waiting, prompt: part.prompt ?? '', action: 'approve', snapshot });
+    if (out.kind === 'session_unavailable') {
+      const { kind: _k, ...gone } = out;
+      mutate(id, (j) => {
+        j.sessionUnavailable = { ...gone, action: 'approve' };
+      });
+    }
+  }
+
+  /** After a part applied: the sources the user did not pick get their own rebuilt change, in the same session. */
+  function continueAfterPart(id: string, operationID: string): void {
+    const job = findJob(id);
+    const part = job?.pendingPart;
+    if (!job || !part) return;
+    const rest = part.rest ?? [];
+    const keep = rest
+      .map((s) => ({ page: s.page, source: s.source ?? null, contentFile: part.restFiles?.[s.page] ?? '', sha256: part.restExpected?.[s.page] ?? '' }))
+      .filter((k) => k.contentFile && k.sha256);
+    if (keep.length === 0) {
+      mutate(id, (j) => {
+        delete j.pendingPart;
+      });
+      return;
+    }
+    const next: PendingPart = {
+      reason: 'remaining',
+      expected: Object.fromEntries(keep.map((k) => [k.page, k.sha256])),
+      excluded: [...(job.parts ?? []).flatMap((p) => p.pages), ...(part.removed ?? []).map((s) => s.page)],
+      labels: 'confirm',
+      rest: [],
+      removed: part.removed ?? [],
+      shown: clone(rest),
+    };
+    const dir = jobStateDirectory(job);
+    next.bundlePath = path.join(dir, `bundle-part-${nextPartBundle(dir)}.json`);
+    const prompt = partPrompt({
+      reason: 'remaining',
+      bundlePath: next.bundlePath,
+      keep,
+      leaveOut: [],
+      removed: (part.removed ?? []).map((s) => ({ page: s.page, source: s.source ?? null })),
+      appliedOperation: operationID,
+    });
+    next.prompt = prompt;
+    sendPartInBackground(
+      id,
+      next,
+      `${plural(keep.length, 'source')} of this batch still ${keep.length === 1 ? 'waits' : 'wait'} for your OK; rebuilding ${keep.length === 1 ? 'its' : 'their'} change in this batch's session.`,
+      `Rebuilding the change for the ${plural(keep.length, 'source')} left`,
+    );
+  }
+
+  /** A change the session rebuilt for a part: checked against what the user approved before it is shown. Never starts a label revision. */
+  function checkRebuiltPart(id: string, request: ApprovalRequest, part: PendingPart): boolean {
+    if (!request.plan?.valid || !request.bundlePath) return false;
+    const b = readBundle(request.bundlePath);
+    const problems = b ? verifyRebuilt(b, part.expected, part.excluded) : ['its bundle could not be read'];
+    if (problems.length > 0) {
+      delete request.plan;
+      request.planError =
+        `The rebuilt change doesn't match what you approved (${problems.slice(0, 5).join('; ')}${problems.length > 5 ? '; …' : ''}). ` +
+        'Nothing was applied. Reply to Claude to try again, or reject.';
+      return false;
+    }
+    request.rebuilt = { reason: part.reason, pages: Object.keys(part.expected), labels: part.labels };
+    request.sources = clone(part.shown ?? []);
+    request.labels =
+      part.labels === 'confirm'
+        ? { state: 'confirmed' }
+        : { state: 'unconfirmed', message: 'Labels stay unconfirmed: you chose to review them later in Labels.' };
+    // The part's `rest` is kept on the job until this change applies (then what is left is rebuilt).
+    return false;
+  }
+
+  /** Record an applied set of sources on the job (History lists the parts). */
+  function addPart(j: Job, operationID: string, approval: ApprovalRequest | undefined): void {
+    const pages = approval?.rebuilt?.pages ?? (approval?.sources ?? []).filter((s) => !s.removed).map((s) => s.page);
+    const labels = approval?.rebuilt?.labels ?? applyingLabels.get(j.id) ?? 'confirm';
+    applyingLabels.delete(j.id);
+    if (pages.length === 0) return;
+    const part: JobPart = { operationID, pages, labels, at: isoDate(now()) };
+    j.parts = [...(j.parts ?? []), part];
+    if (!(j.pendingPart?.rest?.length)) delete j.pendingPart;
+  }
+
+  function mergedPaths(j: Job, changed: string[]): string[] {
+    return (j.parts?.length ?? 0) > 1 ? [...new Set([...j.changedPaths, ...changed])] : [...changed];
+  }
+
+  async function removeReviewSource(jobID: string, page: string, removed: boolean): Promise<Job> {
+    const job = requireJob(jobID);
+    if (job.state !== 'awaitingApproval') throw new CoreError('invalid_state', `Job ${jobID} is not awaiting approval.`);
+    if (typeof removed !== 'boolean') throw new CoreError('invalid_request', 'removed must be true or false.');
+    if (revising.has(jobID)) throw new CoreError('busy', 'Distill is still saving labels into this change. Try again when that finishes.');
+    const src = job.approval?.sources?.find((s) => s.page === page);
+    if (!src) throw new CoreError('not_found', `Not a source page of this batch: ${page}`);
+    mutate(jobID, (j) => {
+      const s = j.approval?.sources?.find((x) => x.page === page);
+      if (!s) return;
+      if (removed) s.removed = true;
+      else delete s.removed;
+    });
+    return clone(requireJob(jobID));
+  }
+
   // ───────────── public API ─────────────
 
   async function processQueue(o: { force?: boolean } = {}): Promise<Job | null> {
@@ -834,9 +1396,13 @@ export function createEngine(opts: EngineOptions): Engine {
     const vault = activeVault(settings);
     if (!vault) return null;
     const settle = o.force ? 0 : settings.settleSeconds;
+    // Failed label suggestions with tries left are asked again (they stay held meanwhile).
+    if (queueLabeler.autoRetry() > 0) refreshQueue();
     // Notes written by addNote skip the wait; files the core can't read stay behind.
     // Folders are walked again here (never from the cache), so the wait follows the newest change inside them.
-    const ready = readyFiles(scanActive(vault, true), settle, now());
+    const held = labelGate(o.force === true);
+    const ready = readyFiles(scanActive(vault, true), settle, now()).filter((e) => !held.has(e.path));
+    if (held.size > 0) log('info', `${plural(held.size, 'file')} still ${held.size === 1 ? 'waits' : 'wait'} for labels; ${held.size === 1 ? 'it goes' : 'they go'} in the next batch.`);
     if (ready.length === 0) return null;
     let files: string[];
     let folders: string[];
@@ -865,7 +1431,13 @@ export function createEngine(opts: EngineOptions): Engine {
     ];
     job.turns.push(newTurn('app', `Batched ${files.length} file(s):\n` + batched.join('\n'), now()));
     insert(job);
-    const draft = draftBatchLabels(vault.path, loose, labelingPreferences(settings), (rid) => noteLabels.get(rid));
+    const draft = draftBatchLabels(
+      vault.path,
+      loose,
+      labelingPreferences(settings),
+      (rid) => noteLabels.get(rid),
+      (rel) => queueLabeler.lookup(path.join(vault.path, rel)),
+    );
     jobSteps.set(job.id, batchSteps(draft.pending.length > 0));
     const reading = `Reading ${plural(itemCount, 'source')} into ${vaultName(vault.path)}`;
     const start = (plan: SourceLabels[]) => {
@@ -905,29 +1477,56 @@ export function createEngine(opts: EngineOptions): Engine {
           let done = 0;
           const failures: string[] = [];
           const existing = await existingLabels(vault.path).catch(() => [] as string[]);
-          for (const { entry, input } of draft.pending) {
-            if (controller.signal.aborted) break;
+          // What the queue did not label yet, at most 3 files at a time; each result is also kept in
+          // the queue's label state so a retry or a later batch reuses it.
+          await mapPool(draft.pending, DEFAULT_LABEL_CONCURRENCY, async ({ entry, input }) => {
+            if (controller.signal.aborted) return;
+            const abs = path.join(vault.path, entry.file);
+            const known = queueLabeler.lookup(abs);
             opts.steps?.labelFile(job.id, entry.file, 'running');
-            try {
-              const out = await suggestLabels(input, {
-                runners,
-                settings: clone(settings),
-                existing,
-                scratchDir: labelScratch,
-                signal: controller.signal,
-              });
-              cost += out.costUSD;
-              entry.labels = out.labels.map((l) => l.name);
+            // The progress line names the file that just started (up to 3 run at once).
+            updateProgress(job.id, { current: entry.file });
+            if (known?.suggestedLabels && known.suggestedLabels.length > 0) {
+              entry.labels = known.suggestedLabels.map((l) => l.name);
               opts.steps?.labelFile(job.id, entry.file, 'done', entry.labels.length);
-            } catch (err) {
-              if (controller.signal.aborted) break;
-              opts.steps?.labelFile(job.id, entry.file, 'failed');
-              failures.push(`${entry.file}: ${(err as Error).message}`);
+            } else {
+              const key = `label:${job.id}:${entry.file}`;
+              const item = path.posix.basename(entry.file);
+              startProgress({
+                key,
+                kind: 'labelSuggest',
+                message: `Suggesting labels for ${item}`,
+                item,
+                group: job.id,
+                ...selectionFields(labelSuggestSelection(settings)),
+              });
+              let error: string | undefined;
+              try {
+                const out = await suggestLabels(input, {
+                  runners,
+                  settings: clone(settings),
+                  existing,
+                  scratchDir: labelScratch,
+                  signal: controller.signal,
+                });
+                cost += out.costUSD;
+                entry.labels = out.labels.map((l) => l.name);
+                if (entry.origin === 'queue-folder') queueLabeler.remember(abs, { labels: out.labels });
+                opts.steps?.labelFile(job.id, entry.file, 'done', entry.labels.length);
+              } catch (err) {
+                error = controller.signal.aborted ? 'Stopped.' : (err as Error).message;
+                if (!controller.signal.aborted) {
+                  opts.steps?.labelFile(job.id, entry.file, 'failed');
+                  failures.push(`${entry.file}: ${error}`);
+                }
+              } finally {
+                finishProgress(key, error ? { error } : {});
+              }
             }
+            if (controller.signal.aborted) return;
             done += 1;
-            const next = draft.pending[done]?.entry.file;
-            updateProgress(job.id, { done, ...(next ? { current: next } : {}) });
-          }
+            updateProgress(job.id, { done });
+          });
           if (controllers.get(job.id) === controller) controllers.delete(job.id);
           if (controller.signal.aborted) {
             mutate(job.id, (j) => {
@@ -948,12 +1547,67 @@ export function createEngine(opts: EngineOptions): Engine {
     return clone(findJob(job.id) ?? job);
   }
 
-  async function approve(id: string, opts: SessionOptions = {}): Promise<void> {
+  /** Which labels each in-flight apply carries, for the part it records. */
+  const applyingLabels = new Map<string, 'confirm' | 'later'>();
+
+  /**
+   * Approve (approval-and-review.md): `labels` confirm (default) applies the plan with the labels
+   * confirmed as shown; later applies its twin with them unconfirmed. `pages` picks some sources:
+   * then the batch's own session rebuilds the change for just those, and the user approves that
+   * rebuilt change once more (it is never applied from here). Every path that needs the batch's
+   * session goes through resumeBatchSession; `newSession` (after SessionReplaceConfirm) continues
+   * the same approval in a new session, with the same plan and bundle.
+   */
+  async function approve(id: string, given: ApproveOptions & SessionOptions = {}): Promise<void> {
     const job = requireJob(id);
     if (job.state !== 'awaitingApproval') throw new CoreError('invalid_state', `Job ${id} is not awaiting approval.`);
-    const plan = job.approval?.plan;
-    const bundle = job.approval?.bundlePath;
-    if (!plan || !plan.valid || !bundle) throw new CoreError('invalid_state', `Job ${id} has no valid plan to approve.`);
+    // Continue after the runner refused mid-turn: the approval the refused call carried is on the job marker.
+    const marker = given.newSession ? job.sessionUnavailable : undefined;
+    const opts: ApproveOptions & SessionOptions = { ...given };
+    if (opts.labels === undefined && marker?.labels !== undefined) opts.labels = marker.labels;
+    if (opts.pages === undefined && marker?.pages !== undefined) opts.pages = [...marker.pages];
+    const approval = job.approval;
+    if (approval?.needsRebuild && job.pendingPart) {
+      retryPart(id, job.pendingPart, opts.newSession === true);
+      return;
+    }
+    if (!approval?.plan || !approval.plan.valid || !approval.bundlePath) throw new CoreError('invalid_state', `Job ${id} has no valid plan to approve.`);
+    const labelState = approval.labels?.state;
+    if (labelState === 'suggesting') {
+      throw new CoreError('invalid_state', 'Labels are still being suggested for this batch. Approve when they are in, so you approve the labels you see.');
+    }
+    if (revising.has(id) || labelState === 'confirming') {
+      throw new CoreError('invalid_state', 'Distill is still saving the labels into this change and checking it again. Approve when that finishes.');
+    }
+    if (opts.labels !== undefined && opts.labels !== 'confirm' && opts.labels !== 'later') {
+      throw new CoreError('invalid_request', 'labels must be "confirm" or "later".');
+    }
+    const mode = opts.labels === 'later' ? 'later' : 'confirm';
+    const sources = approval.sources ?? [];
+    const active = sources.filter((s) => !s.removed).map((s) => s.page);
+    let picked = active;
+    if (opts.pages !== undefined) {
+      if (!Array.isArray(opts.pages) || opts.pages.some((p) => typeof p !== 'string')) throw new CoreError('invalid_request', 'pages must be an array of page paths.');
+      const unknown = opts.pages.filter((p) => !active.includes(p));
+      if (unknown.length > 0) throw new CoreError('invalid_request', `Not a source of this batch (or removed): ${unknown.join(', ')}`);
+      picked = active.filter((p) => opts.pages!.includes(p));
+    }
+    if (sources.length > 0 && picked.length === 0) throw new CoreError('invalid_request', 'Pick at least one source to approve, or reject the batch.');
+    const partial = sources.length > 0 && (picked.length < active.length || sources.some((s) => s.removed));
+    if (partial) {
+      if (!startPart(id, 'partial', { picked, labels: mode }, opts.newSession === true)) {
+        throw new CoreError('invalid_state', "Distill couldn't prepare the rebuild for the sources you picked (the change's pages could not be read).");
+      }
+      return;
+    }
+    let plan: TransactionPlan = approval.plan;
+    let bundle: string = approval.bundlePath;
+    if (mode === 'later' && !approval.rebuilt) {
+      if (!approval.unconfirmed) throw new CoreError('invalid_state', 'This change has no version with unconfirmed labels; approve it with the labels shown.');
+      plan = approval.unconfirmed.plan;
+      bundle = approval.unconfirmed.bundlePath;
+    }
+    const carries = approval.rebuilt?.labels ?? mode;
     const applying = (agent: boolean) =>
       startProgress({
         key: id,
@@ -961,12 +1615,14 @@ export function createEngine(opts: EngineOptions): Engine {
         message: `Applying ${plural(plan.changed_paths.length, 'change')}`,
         ...(agent ? selectionFields({ runnerID: jobRunnerID(job), model: job.model }) : {}),
       });
+    const approvedTurn = `Approved ${plan.operation_id} (${plan.approval_sha256.slice(0, 12)}…)${mode === 'later' && !approval.rebuilt ? ', labels left to review' : ''}`;
     const applyByCore = () => {
+      applyingLabels.set(id, carries);
       mutate(id, (j) => {
         j.state = 'running';
         delete j.error;
         delete j.sessionUnavailable;
-        j.turns.push(newTurn('user', `Approved ${plan.operation_id} (${plan.approval_sha256.slice(0, 12)}…)`, now()));
+        j.turns.push(newTurn('user', approvedTurn, now()));
       });
       applying(false);
       track(applyInCore(id, plan, bundle));
@@ -975,7 +1631,8 @@ export function createEngine(opts: EngineOptions): Engine {
       applyByCore();
       return;
     }
-    const approvedTurn = `Approved ${plan.operation_id} (${plan.approval_sha256.slice(0, 12)}…)`;
+    // What a refused call carries, so Continue approves the same version (later) or part.
+    const again: { labels?: 'later' } = mode === 'later' ? { labels: 'later' } : {};
     if (opts.newSession) {
       // The batch's runner may be gone: when the runner that would continue can't be limited to the
       // exact apply command, the core applies the approved plan itself (no AI session needed).
@@ -986,16 +1643,18 @@ export function createEngine(opts: EngineOptions): Engine {
         applyByCore();
         return;
       }
+      applyingLabels.set(id, carries);
       continueInNewSession(id, 'approve', { userTurn: approvedTurn, plan, bundle });
       applying(true);
       return;
     }
-    const gone = precheck(job, 'approve');
+    const gone = precheck(job, 'approve', again);
     if (gone) throw sessionUnavailableError(gone);
     const snapshot = clone(job);
     const ctx = new JobContext(clone(job), vaultProfileFor(job), settings);
     // Only the exact approved command is permitted, and only for this turn.
     const applyRule = `Bash(${WorkerProtocol.applyCommand(ctx, plan, bundle)})`;
+    applyingLabels.set(id, carries);
     mutate(id, (j) => j.turns.push(newTurn('user', approvedTurn, now())));
     applying(true);
     const out = resumeBatchSession({
@@ -1005,8 +1664,12 @@ export function createEngine(opts: EngineOptions): Engine {
       applyPlan: clone(plan),
       action: 'approve',
       snapshot,
+      ...again,
     });
-    if (out.kind === 'session_unavailable') throw sessionUnavailableError(out);
+    if (out.kind === 'session_unavailable') {
+      applyingLabels.delete(id);
+      throw sessionUnavailableError(out);
+    }
   }
 
   async function reply(id: string, text: string, opts: SessionOptions = {}): Promise<void> {
@@ -1073,13 +1736,87 @@ export function createEngine(opts: EngineOptions): Engine {
     if (out.kind === 'session_unavailable') throw sessionUnavailableError(out);
   }
 
-  async function reject(id: string): Promise<void> {
+  async function reject(id: string, opts: RejectOptions = {}): Promise<void> {
     const job = requireJob(id);
     if (job.state !== 'awaitingApproval') throw new CoreError('invalid_state', `Job ${id} is not awaiting approval.`);
+    if (opts.scope !== undefined && opts.scope !== 'part' && opts.scope !== 'batch') throw new CoreError('invalid_request', 'scope must be "part" or "batch".');
+    const part = job.pendingPart;
+    if (opts.scope !== 'batch' && part && job.approval?.rebuilt && !job.approval.needsRebuild) {
+      discardPart(id, part);
+      return;
+    }
+    if (opts.scope === 'part') throw new CoreError('invalid_state', 'This batch has no rebuilt part to discard; reject the batch instead.');
     mutate(id, (j) => {
       j.state = 'rejected';
       j.turns.push(newTurn('user', 'Rejected. Inbox files are kept; nothing was applied.', now()));
     });
+  }
+
+  /**
+   * Rejecting a rebuilt part discards only that change: nothing is applied and its sources stay in this batch.
+   * Part of a batch the user picked: the Review as it was before the pick comes back (every source pending again,
+   * with its labels as shown). What is left after a part applied, or a change rebuilt after the vault changed: the
+   * sources stay in Review without a plan, and Approve asks the batch's session to rebuild their change again.
+   */
+  function discardPart(id: string, part: PendingPart): void {
+    const n = Object.keys(part.expected).length;
+    const what = `the rebuilt change for ${plural(n, 'source')}`;
+    mutate(id, (j) => {
+      if (part.reason === 'partial' && part.before) {
+        j.approval = clone(part.before);
+        delete j.pendingPart;
+        const total = (j.approval.sources ?? []).filter((s) => !s.removed).length;
+        j.turns.push(newTurn('user', `Discarded ${what}; nothing was applied. ${total === 1 ? 'The source is' : `All ${total} sources are`} back in this batch's Review.`, now()));
+        return;
+      }
+      const later = part.labels === 'later';
+      j.approval = {
+        summary: j.approval?.summary ?? '',
+        questions: [],
+        denials: [],
+        skipped: [],
+        sources: clone(part.shown ?? []),
+        labels: later ? { state: 'unconfirmed', message: 'Labels stay unconfirmed: you chose to review them later in Labels.' } : { state: 'confirmed' },
+        needsRebuild: true,
+      };
+      j.turns.push(
+        newTurn('user', `Discarded ${what}; nothing was applied. ${n === 1 ? 'It stays' : 'They stay'} in this batch: Approve rebuilds ${n === 1 ? 'its' : 'their'} change again, or reject the batch.`, now()),
+      );
+    });
+  }
+
+  /** Approve after a discarded rebuild: the same request goes to the batch's session again, to a new bundle path. */
+  function retryPart(id: string, part: PendingPart, newSession = false): void {
+    const job = findJob(id);
+    if (!job || !part.prompt) throw new CoreError('invalid_state', "Distill can't rebuild this part: its request was not kept. Reply to Claude, or reject the batch.");
+    const dir = jobStateDirectory(job);
+    const fresh = path.join(dir, `bundle-part-${nextPartBundle(dir)}.json`);
+    const prompt = part.bundlePath ? part.prompt.split(part.bundlePath).join(fresh) : part.prompt;
+    const n = Object.keys(part.expected).length;
+    const said = `Approve ${plural(n, 'source')}: rebuilding ${n === 1 ? 'its' : 'their'} change again in this batch's session.`;
+    const progress = `Rebuilding the change for ${plural(n, 'source')}`;
+    const update = (j: Job) => {
+      if (j.pendingPart) Object.assign(j.pendingPart, { prompt, bundlePath: fresh });
+      if (j.approval) delete j.approval.needsRebuild;
+    };
+    if (newSession) {
+      mutate(id, update);
+      continueInNewSession(id, 'approve', { userTurn: said, prompt });
+      const current = findJob(id);
+      if (current) startTurnProgress(current, 'Drafting page changes', progress);
+      return;
+    }
+    const gone = precheck(job, 'approve');
+    if (gone) throw sessionUnavailableError(gone);
+    const snapshot = clone(job);
+    mutate(id, (j) => {
+      update(j);
+      j.turns.push(newTurn('user', said, now()));
+    });
+    const current = findJob(id);
+    if (current) startTurnProgress(current, 'Drafting page changes', progress);
+    const out = resumeBatchSession({ job: current ?? job, prompt, action: 'approve', snapshot });
+    if (out.kind === 'session_unavailable') throw sessionUnavailableError(out);
   }
 
   /** Stops a running turn; the job becomes `cancelled` (reply resumes it). No-op otherwise. */
@@ -1148,13 +1885,15 @@ export function createEngine(opts: EngineOptions): Engine {
   function precheck(
     job: Job,
     action: SessionAction,
-    extra: { text?: string; rules?: string[] } = {},
+    extra: { text?: string; rules?: string[]; labels?: 'confirm' | 'later'; pages?: string[] } = {},
     place: 'batch' | 'terminal' = 'batch',
   ): SessionUnavailable | null {
     const gone = checkResume(resumeTarget(job, action, place));
     if (!gone) return null;
     if (extra.text !== undefined) gone.text = extra.text;
     if (extra.rules !== undefined) gone.rules = [...extra.rules];
+    if (extra.labels !== undefined) gone.labels = extra.labels;
+    if (extra.pages !== undefined) gone.pages = [...extra.pages];
     return gone;
   }
 
@@ -1184,13 +1923,17 @@ export function createEngine(opts: EngineOptions): Engine {
     if (gone) {
       if (o.text !== undefined) gone.text = o.text;
       if (o.rules !== undefined) gone.rules = [...o.rules];
+      if (o.labels !== undefined) gone.labels = o.labels;
+      if (o.pages !== undefined) gone.pages = [...o.pages];
       if (o.snapshot) restoreJob(o.job.id, o.snapshot); // the caller throws; nothing it changed stays
       return { kind: 'session_unavailable', ...gone };
     }
-    const resumeOf: { target: ResumeTarget; snapshot?: Job; text?: string; rules?: string[] } = { target };
+    const resumeOf: ResumeOf = { target };
     if (o.snapshot) resumeOf.snapshot = o.snapshot;
     if (o.text !== undefined) resumeOf.text = o.text;
     if (o.rules !== undefined) resumeOf.rules = o.rules;
+    if (o.labels !== undefined) resumeOf.labels = o.labels;
+    if (o.pages !== undefined) resumeOf.pages = o.pages;
     runTurn(o.job.id, o.prompt, {
       ...(o.extraTools ? { extraTools: o.extraTools } : {}),
       ...(o.applyPlan ? { applyPlan: o.applyPlan } : {}),
@@ -1206,7 +1949,15 @@ export function createEngine(opts: EngineOptions): Engine {
   function continueInNewSession(
     id: string,
     action: 'approve' | 'reply' | 'allow',
-    o: { userTurn: string; text?: string; rules?: string[]; plan?: TransactionPlan; bundle?: string },
+    o: {
+      userTurn: string;
+      text?: string;
+      rules?: string[];
+      plan?: TransactionPlan;
+      bundle?: string;
+      /** A part of a batch: the request that rebuilds its change (self-contained: files and sha256). */
+      prompt?: string;
+    },
   ): void {
     const job = requireJob(id);
     const kind = jobKind(job.kind);
@@ -1240,7 +1991,9 @@ export function createEngine(opts: EngineOptions): Engine {
     const ctx = new JobContext(clone(fresh), vault, settings, labelPlan);
     let pending: string;
     const extra: { extraTools?: string[]; applyPlan?: TransactionPlan; first: true } = { first: true };
-    if (action === 'approve' && o.plan && o.bundle) {
+    if (action === 'approve' && o.prompt) {
+      pending = o.prompt;
+    } else if (action === 'approve' && o.plan && o.bundle) {
       pending = WorkerProtocol.approvedPrompt(ctx, o.plan, o.bundle);
       extra.extraTools = [`Bash(${WorkerProtocol.applyCommand(ctx, o.plan, o.bundle)})`];
       extra.applyPlan = clone(o.plan);
@@ -1318,7 +2071,7 @@ export function createEngine(opts: EngineOptions): Engine {
     // A null optional (activeVaultPath, nodePath) clears it.
     const merged = decodeSettings({ ...encodeSettings(settings), ...(patch as Record<string, unknown>) });
     merged.batchIntervalMinutes = Math.max(1, merged.batchIntervalMinutes);
-    merged.settleSeconds = Math.max(0, merged.settleSeconds);
+    merged.settleSeconds = Math.min(MAX_SETTLE_SECONDS, Math.max(0, merged.settleSeconds));
     settings = merged;
     settingsStore.save(settings);
     if (
@@ -1532,6 +2285,16 @@ export function createEngine(opts: EngineOptions): Engine {
     }
     if (where.vault.path === activeVault(settings)?.path) refreshQueue();
     return { notePath, labels: clean };
+  }
+
+  /** A path that is a file listed in the active queue right now (labels are only kept for those). */
+  function queueFile(file: string): string {
+    if (typeof file !== 'string' || file.trim() === '') throw new CoreError('invalid_request', 'path is required.');
+    refreshQueue();
+    const abs = path.resolve(file);
+    const hit = queueEntries().find((e) => path.resolve(e.path) === abs);
+    if (!hit || (hit.kind ?? 'file') !== 'file') throw new CoreError('not_found', `${file} is not a file in the queue.`);
+    return hit.path;
   }
 
   // ───────────── labels: vault pages ─────────────
@@ -1779,13 +2542,16 @@ export function createEngine(opts: EngineOptions): Engine {
             ? result.changed_paths.filter((p): p is string => typeof p === 'string')
             : plan.changed_paths;
         const operationID = isObject(result) && typeof result.operation_id === 'string' ? result.operation_id : plan.operation_id;
+        const applying = findJob(id)?.approval ? clone(findJob(id)!.approval!) : undefined;
         mutate(id, (j) => {
+          addPart(j, operationID, applying);
           j.state = 'completed';
           delete j.approval;
           j.operationID = operationID;
-          j.changedPaths = changed;
+          j.changedPaths = mergedPaths(j, changed);
           j.turns.push(newTurn('app', `Applied ${operationID}:\n` + changed.map((p) => `- ${p}`).join('\n'), now()));
         });
+        continueAfterPart(id, operationID);
         return;
       }
       if (out.status === 75) {
@@ -1815,6 +2581,7 @@ export function createEngine(opts: EngineOptions): Engine {
           return;
         }
         const reused = code === 'OPERATION_ID_REUSED';
+        if (!reused && job.kind === queueConsumer().id && (job.approval?.sources?.length ?? 0) > 0 && startPart(id, 'stale', undefined)) return;
         mutate(id, (j) => {
           j.state = 'awaitingApproval';
           if (j.approval) {
@@ -1862,6 +2629,12 @@ export function createEngine(opts: EngineOptions): Engine {
 
     async start() {
       refreshQueue();
+      for (const j of jobs) {
+        const st = j.approval?.labels?.state;
+        if (j.state === 'awaitingApproval' && (st === undefined || st === 'confirming' || st === 'suggesting')) {
+          track(prepareReviewLabels(j.id).catch((err: unknown) => log('warn', `Review labels for ${j.id}: ${(err as Error).message}`)));
+        }
+      }
       scheduleNextBatch(now());
       scheduleNextScan(now());
       if (timer) clearInterval(timer);
@@ -1924,6 +2697,24 @@ export function createEngine(opts: EngineOptions): Engine {
     },
 
     labelNote,
+    async labelQueueItem(file: string, labels: string[]) {
+      const clean = cleanLabels(labels);
+      if (!queueLabeler.confirm(queueFile(file), clean)) throw new CoreError('not_found', `${file} is not a readable file in the queue.`);
+      refreshQueue();
+      return queueEntries();
+    },
+    async retryQueueLabels(file: string) {
+      if (!queueLabeler.retry(queueFile(file))) throw new CoreError('not_found', `${file} is not a readable file in the queue.`);
+      refreshQueue();
+      return queueEntries();
+    },
+    editReviewLabels,
+    removeReviewSource,
+    async skipQueueLabels(file: string) {
+      if (!queueLabeler.skip(queueFile(file))) throw new CoreError('not_found', `${file} is not a readable file in the queue.`);
+      refreshQueue();
+      return queueEntries();
+    },
     listLabels,
     labelReview,
     suggestLabelsForPages,

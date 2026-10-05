@@ -8,6 +8,10 @@ import type { NoteManifest } from './notes.js';
  * Distill's state instead of the note's files: claude-obsidian keeps `inbox/` outside its
  * transactions and Distill never edits a file already there (decision 2026-10-04). Keyed by the
  * note's requestID; readers merge it over the manifest (`withLabelOverlay`).
+ *
+ * Queue files that are not notes (a collector's or a dropped .md, .txt, ...) use the same store,
+ * keyed `file:<sha256 of the content>` (queue-labels.ts), so their labels follow the content when
+ * a batch moves the file into inbox/ and never touch the file itself (2026-10-05).
  */
 export interface NoteLabelOverlay {
   /** Present (even empty) = the user confirmed these labels. */
@@ -15,8 +19,15 @@ export interface NoteLabelOverlay {
   /** Present = the latest suggestion; it clears any earlier `suggestError`. */
   suggestedLabels?: LabelSuggestion[];
   suggestError?: string;
+  /** Queue files: failed suggestions so far (Distill retries by itself until 3). */
+  attempts?: number;
+  /** Queue files: the user sent it without labels (the label gate lets it through). */
+  skipLabels?: boolean;
   updatedAt: string;
 }
+
+/** Failed suggestions after which a queue file waits for the user (decision 2026-10-05). */
+export const MAX_LABEL_ATTEMPTS = 3;
 
 /** Oldest entries are dropped past this (a note's overlay matters only until its batch reads it). */
 const MAX_ENTRIES = 2000;
@@ -33,6 +44,8 @@ function decodeOverlay(raw: unknown): NoteLabelOverlay | undefined {
   }
   const err = str(raw.suggestError);
   if (err !== undefined) out.suggestError = err;
+  if (typeof raw.attempts === 'number' && Number.isFinite(raw.attempts)) out.attempts = Math.max(0, Math.trunc(raw.attempts));
+  if (raw.skipLabels === true) out.skipLabels = true;
   return out;
 }
 
@@ -70,12 +83,33 @@ export class NoteLabelStore {
   /** A suggestion finished: its labels, or why it failed. */
   setSuggestion(requestID: string, outcome: { labels: LabelSuggestion[] } | { error: string }, now: Date): void {
     const next: NoteLabelOverlay = { ...this.entries.get(requestID), updatedAt: isoDate(now) };
-    if ('error' in outcome) next.suggestError = outcome.error;
-    else {
+    if ('error' in outcome) {
+      next.suggestError = outcome.error;
+      next.attempts = (next.attempts ?? 0) + 1;
+    } else {
       next.suggestedLabels = outcome.labels;
       delete next.suggestError;
     }
     this.save(requestID, next);
+  }
+
+  /** Forget the last suggestion (and its error) so a new one runs; confirmed labels stay. `resetAttempts` for a retry the user asked for. */
+  clearSuggestion(id: string, now: Date, resetAttempts = false): void {
+    const current = this.entries.get(id);
+    if (!current) return;
+    const { suggestedLabels: _s, suggestError: _e, ...rest } = current;
+    if (resetAttempts) delete rest.attempts;
+    this.save(id, { ...rest, updatedAt: isoDate(now) });
+  }
+
+  /** The user sent a queue file without labels. */
+  setSkip(id: string, now: Date): void {
+    this.save(id, { ...this.entries.get(id), skipLabels: true, updatedAt: isoDate(now) });
+  }
+
+  /** Keys whose suggestion failed fewer than MAX_LABEL_ATTEMPTS times (queue files retried by themselves). */
+  retryable(prefix: string): string[] {
+    return [...this.entries].filter(([k, o]) => k.startsWith(prefix) && o.suggestError !== undefined && !o.skipLabels && (o.attempts ?? 1) < MAX_LABEL_ATTEMPTS).map(([k]) => k);
   }
 
   private save(requestID: string, value: NoteLabelOverlay): void {

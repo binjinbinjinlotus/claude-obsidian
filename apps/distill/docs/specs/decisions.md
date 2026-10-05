@@ -17,6 +17,99 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+Labels before the batch, labels in Review, and a Review that approves part of a
+batch. The owner: "I will never see the label suggestion in the queue … in
+review I don't see any label." Canvas: Review, ReviewStates, ReviewChoose,
+MainLabels, MainLabelGate, QueueLabelGate (v70–v71). Specs: [Labels and
+sources](labels-and-sources.md), [Approval and
+review](approval-and-review.md), [Queue and batching](queue-and-batching.md),
+[Vaults and settings](vaults-and-settings.md).
+
+- **Queue files get labels before the batch, 3 at a time.** Every text file
+  that is Ready in the queue and is not a Distill note gets labels suggested
+  in the background by a pool of at most 3, until every file is labeled.
+  - State lives in Distill's `labels/notes.json` overlay keyed
+    `file:<sha256 of the content>`, never in the file. One model for both
+    placements: a queue that is `<vault>/inbox` must not be edited, and the
+    key follows the content into `inbox/`.
+  - A restart finds the files without a result and queues them again.
+  - The batch reuses these labels and labels only what is left, also 3 at a
+    time, with per-file `labelSuggest` progress (`item`, `group`).
+- **The label gate (default, owner may veto).** A batch takes a text file only
+  once its labels are in: suggested, confirmed, or the file's own tags.
+  - A file still being labeled, or whose suggestion failed, stays for the next
+    batch. Files the AI can't label (PDFs, images) go as before, and so does
+    everything when `labeling.autoLabelQueueFolder` is off.
+  - A failed suggestion is retried by itself up to 3 times (once per batch
+    run), then waits for the user: Retry, + Add, or **Send without labels**.
+  - Process now applies the same gate and logs what waits; the app says "3
+    notes are still being labeled; they'll go in the next batch."
+- **Approving confirms the labels shown (default, owner may veto).** Pages are
+  written with `labels_by: user` and no `labels_reviewed`, so they don't come
+  back in Labels → To review.
+  - The bundle is never rewritten at approve time. When a batch reaches
+    Review the core writes a label revision (`bundle-labels-<n>.json`, new
+    draft files for the source pages only) and inspects it. Only a clean
+    inspect replaces the bundle and plan, so the approval hash always matches
+    what is shown. Approve is refused while that check runs.
+  - If the vault core refuses the revision (for example the index changed
+    since the batch was built), the original bundle and plan stay and Review
+    says the labels stay unconfirmed, and why.
+  - An edit in Review makes a new revision the same way; a refused edit
+    changes nothing (`conflict`).
+- **Approve, review labels later.** A second approve action applies the
+  unconfirmed twin: the bundle as the batch wrote it, with the user's own edits
+  kept confirmed. The pages then wait in Labels → To review.
+  - Also for a batch already in Review when the core starts, which is the
+    owner's 22-file job. Its twin is the original bundle, inspected again at
+    startup so the approval hash is fresh. Labels suggested at startup go into
+    the twin as the AI's, unconfirmed. (The first build left these jobs
+    without "later"; the owner asked for it precisely for this job.)
+- **Rejecting a rebuilt part discards only that part.** The owner: "For the
+  files that I haven't approved or removed, it should stay in the review tab."
+  Nothing is applied. Picked sources go back to the batch's Review as it was
+  before the pick. What is left after a part applied stays in Review without
+  a plan, and Approve rebuilds it again in the same session. Only an explicit
+  "Reject batch" ends the batch. Supersedes the first build, where rejecting a
+  rebuilt part rejected the rest of the batch.
+- **Approving part of a batch needs a rebuilt change and a second approval.**
+  The index, log, hot cache, overview and ledgers cover the whole batch, so a
+  subset can't be cut out of a bundle.
+  - The batch's **own** session (`job.sessionID`) rebuilds the change for just
+    the picked sources, reusing their source-page files byte for byte.
+  - Distill checks the result: every picked source page has the sha256 the
+    user saw, and no page of an unpicked or removed source is in it.
+  - Page equality is not enough to apply: the regenerated pages are text the
+    user has not seen, so they approve once more.
+  - After the part applies, the sources left are rebuilt in the same session
+    for a later approval. `Job.parts` records each applied part (History).
+  - Only the approved plan's operation is recorded as applied (unchanged).
+- **Remove takes a source out of the batch.** It is marked removed on the job,
+  never added to the vault, and its inbox file stays (Distill never deletes
+  inbox files). Undo works while the batch is in Review.
+- **Several batches can wait in Review; oldest first.** A batch waiting in
+  Review no longer blocks the next batch; only a running one does. Review
+  lists pending batches oldest first: the oldest was built against the oldest
+  vault and should go in first. A batch whose plan went stale (apply exit 75,
+  not a lock or a reused id) is rebuilt in its own session and checked the
+  same way.
+- **`resumeBatchSession` is the one path to a batch's AI session.** It is
+  session-continuity's helper (merged 2026-10-05): approve, approve-later,
+  the rebuild of a picked part and its apply all go through it. A gone
+  session puts the job back exactly as it was and the app shows
+  `SessionReplaceConfirm` (ReviewStates frame 9). Continue sends the same
+  approval with `newSession`: the same plan and bundle (the label revision,
+  approve-later's unconfirmed bundle, or the part's rebuilt bundle), and for a
+  pick the same sources. The refused call's approve options (`labels`,
+  `pages`) ride on the `session_unavailable` details and the job marker, so
+  Continue never widens a part into the whole batch.
+  - A part's rebuild the core starts itself (what is left after a part
+    applied, or after the vault changed) first leaves its sources waiting in
+    Review with no plan (`approval.needsRebuild`). A gone session leaves
+    exactly that, with the marker; Continue rebuilds in a new session.
+- **"Wait before picking up a file" is hours and minutes, 0 to 24 hours**
+  (was minutes and seconds, up to 59:59). 0 means no wait. The core clamps
+  `settleSeconds` to 0..86400.
 - **A lost AI session is never replaced silently (system-wide).** Spec:
   [Session continuity](session-continuity.md).
   - The owner's rule covers every place that resumes a session: batches

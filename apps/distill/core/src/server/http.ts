@@ -748,6 +748,56 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
       },
     },
     {
+      // v6: confirm a queue file's labels ([] = no labels); kept in Distill's state, never in the file.
+      method: 'POST',
+      pattern: /^\/v1\/queue\/labels$/,
+      untyped: { status: 400, code: 'invalid_request' },
+      handler: async ({ body }) => {
+        const o = asObject(await body(), false);
+        return { entries: await core.labelQueueItem(reqString(o, 'path'), labelList(o, 'labels', true)!) };
+      },
+    },
+    {
+      // v6: ask again for a queue file whose label suggestion failed.
+      method: 'POST',
+      pattern: /^\/v1\/queue\/labels\/retry$/,
+      untyped: { status: 400, code: 'invalid_request' },
+      handler: async ({ body }) => ({ entries: await core.retryQueueLabels(reqString(asObject(await body(), false), 'path')) }),
+    },
+    {
+      // v6: let a queue file whose labels failed go without labels.
+      method: 'POST',
+      pattern: /^\/v1\/queue\/labels\/skip$/,
+      untyped: { status: 400, code: 'invalid_request' },
+      handler: async ({ body }) => ({ entries: await core.skipQueueLabels(reqString(asObject(await body(), false), 'path')) }),
+    },
+    {
+      // v6: take a source out of a pending batch, or put it back.
+      method: 'POST',
+      pattern: /^\/v1\/jobs\/([^/]+)\/sources$/,
+      untyped: { status: 409, code: 'invalid_state' },
+      handler: async ({ params, body }) => {
+        const o = asObject(await body(), false);
+        if (typeof o.removed !== 'boolean') throw bad('"removed" must be a boolean');
+        return { job: apiJob(await core.removeReviewSource(params[0]!, reqString(o, 'page'), o.removed)) };
+      },
+    },
+    {
+      // v6: change source-page labels in a batch awaiting approval (a new label revision, inspected again).
+      method: 'POST',
+      pattern: /^\/v1\/jobs\/([^/]+)\/labels$/,
+      untyped: { status: 409, code: 'invalid_state' },
+      handler: async ({ params, body }) => {
+        const o = asObject(await body(), false);
+        if (!Array.isArray(o.edits) || o.edits.length === 0) throw bad('"edits" must be a non-empty array of { page, labels }');
+        const edits = o.edits.map((e) => {
+          const item = asObject(e, false);
+          return { page: reqString(item, 'page'), labels: labelList(item, 'labels', true)! };
+        });
+        return { job: apiJob(await core.editReviewLabels(params[0]!, edits)) };
+      },
+    },
+    {
       // v5: Refresh (trigger manual, the default) and the window-active scan (trigger window).
       method: 'POST',
       pattern: /^\/v1\/queue\/scan$/,
@@ -935,9 +985,13 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
         // Session continuity: the same call again with newSession after the user's OK.
         const session = optBoolean(o, 'newSession') === true ? { newSession: true } : {};
         switch (action) {
-          case 'approve':
-            await core.approve(id, session);
+          case 'approve': {
+            const labels = optEnum(o, 'labels', ['confirm', 'later'] as const);
+            const pages = optStringArray(o, 'pages');
+            if (o.pages !== undefined && !pages) throw bad('"pages" must be an array of strings');
+            await core.approve(id, { ...(labels ? { labels } : {}), ...(pages ? { pages } : {}), ...session });
             break;
+          }
           case 'reply':
             await core.reply(id, reqString(o, 'text'), session);
             break;
@@ -947,9 +1001,11 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
             await core.allow(id, rules, session);
             break;
           }
-          case 'reject':
-            await core.reject(id);
+          case 'reject': {
+            const scope = optEnum(o, 'scope', ['part', 'batch'] as const);
+            await (scope ? core.reject(id, { scope }) : core.reject(id));
             break;
+          }
           case 'cancel':
             await core.cancel(id);
             break;

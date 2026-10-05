@@ -417,21 +417,29 @@ describe('engine state machine', () => {
     await assert.rejects(h.engine.reject(created.id), /not awaiting approval/);
   });
 
-  test('one job per vault: a pending approval blocks the next batch', async () => {
-    h = setup([{ structured: { status: 'needs_input', summary: '?' } }, { structured: { status: 'done', summary: 'ok' } }]);
+  test('a batch waiting in Review does not block the next one (decision 2026-10-05)', async () => {
+    h = setup([{ structured: { status: 'needs_input', summary: '?' } }, { structured: { status: 'nothing_to_do', summary: 'ok' } }]);
     const created = await firstJob();
     await h.engine.whenIdle();
+    assert.equal(h.engine.getJob(created.id)!.state, 'awaitingApproval');
     fs.writeFileSync(path.join(h.queue, 'b.md'), '# B\n');
-    assert.equal(await h.engine.processQueue(), null);
-    assert.equal(await h.engine.processQueue({ force: true }), null);
-    const log = h.events.find((e) => e.type === 'log');
-    assert.ok(log && log.type === 'log' && log.message === `Waiting for your decision on ${created.id}.`);
-    assert.ok(fs.existsSync(path.join(h.queue, 'b.md')), 'blocked batches leave the queue alone');
-    assert.equal((await h.engine.status()).pendingApprovals, 1);
-    await h.engine.reject(created.id);
     const next = await h.engine.processQueue({ force: true });
     assert.ok(next);
     assert.deepEqual(next.files, ['inbox/b.md']);
+    await h.engine.whenIdle();
+    assert.equal(h.engine.getJob(created.id)!.state, 'awaitingApproval', 'the first batch still waits for its OK');
+  });
+
+  test('one running batch per vault: a running batch blocks the next one', async () => {
+    h = setup([{ hang: true }]);
+    const created = await firstJob();
+    await new Promise((r) => setTimeout(r, 10));
+    fs.writeFileSync(path.join(h.queue, 'b.md'), '# B\n');
+    assert.equal(await h.engine.processQueue({ force: true }), null);
+    const log = h.events.find((e) => e.type === 'log');
+    assert.ok(log && log.type === 'log' && log.message === `Waiting for ${created.id} to finish.`);
+    assert.ok(fs.existsSync(path.join(h.queue, 'b.md')), 'blocked batches leave the queue alone');
+    await h.engine.cancel(created.id);
     await h.engine.whenIdle();
   });
 

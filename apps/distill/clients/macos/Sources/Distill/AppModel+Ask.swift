@@ -72,6 +72,11 @@ extension AppModel {
             do {
                 let job = try await client.processQueue(force: true)
                 upsert(job)
+                // The label gate: say what waits. Read the queue now; its event may not have landed yet.
+                if let queue = try? await client.queue() {
+                    queued = queue
+                    showProcessToast(started: job, queue: queue)
+                }
             } catch {
                 report(error)
             }
@@ -80,19 +85,19 @@ extension AppModel {
     }
 
     /// Approve & apply, showing "Applying N changes…" until the job leaves Review.
-    func approveTracked(_ id: String) {
+    func approveTracked(_ id: String, options: ApproveOptions = ApproveOptions()) {
         guard let client else { lastError = "The Distill core is not connected."; return }
         let key = "approve:\(id)"
         pendingActions[key] = Date()
         Task {
             do {
-                let job = try await client.approve(id)
+                let job = options.isEmpty ? try await client.approve(id) : try await client.approve(id, options: options)
                 upsert(job)
                 if let job, job.state != .awaitingApproval { pendingActions[key] = nil }
                 else if job == nil { pendingActions[key] = nil }
             } catch let e as CoreClientError where e.sessionUnavailable != nil {
                 pendingActions[key] = nil
-                showSessionPrompt(e.sessionUnavailable!, jobID: id, action: "approve")
+                showSessionPrompt(e.sessionUnavailable!, jobID: id, action: "approve", approve: options)
             } catch {
                 pendingActions[key] = nil
                 report(error)

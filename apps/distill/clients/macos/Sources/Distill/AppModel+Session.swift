@@ -11,13 +11,17 @@ struct SessionPrompt: Equatable {
     var action: String
     var text: String?
     var rules: [String]?
+    /// Approve: the same version (labels later) and sources (part of a batch) again.
+    var approve: ApproveOptions
 
-    init(jobID: String, info: SessionUnavailable, action: String? = nil, text: String? = nil, rules: [String]? = nil) {
+    init(jobID: String, info: SessionUnavailable, action: String? = nil, text: String? = nil, rules: [String]? = nil,
+         approve: ApproveOptions? = nil) {
         self.jobID = jobID
         self.info = info
         self.action = action ?? info.action ?? "reply"
         self.text = text ?? info.text
         self.rules = rules ?? info.rules
+        self.approve = approve ?? ApproveOptions(labels: info.labels.flatMap(ApproveLabels.init(rawValue:)), pages: info.pages)
     }
 }
 
@@ -39,8 +43,9 @@ extension AppModel {
         return SessionPrompt(jobID: job.id, info: m)
     }
 
-    func showSessionPrompt(_ s: SessionUnavailable, jobID: String, action: String, text: String? = nil, rules: [String]? = nil) {
-        sessionPrompts[jobID] = SessionPrompt(jobID: jobID, info: s, action: action, text: text, rules: rules)
+    func showSessionPrompt(_ s: SessionUnavailable, jobID: String, action: String, text: String? = nil, rules: [String]? = nil,
+                           approve: ApproveOptions? = nil) {
+        sessionPrompts[jobID] = SessionPrompt(jobID: jobID, info: s, action: action, text: text, rules: rules, approve: approve)
     }
 
     /// A batch call that may resume the session: a refusal shows the confirmation instead of an error.
@@ -72,7 +77,9 @@ extension AppModel {
             do {
                 let updated: Job?
                 switch prompt.action {
-                case "approve": updated = try await client.approve(id, newSession: true)
+                case "approve":
+                    updated = prompt.approve.isEmpty ? try await client.approve(id, newSession: true)
+                        : try await client.approve(id, options: prompt.approve, newSession: true)
                 case "allow": updated = try await client.allow(id, rules: prompt.rules ?? [], newSession: true)
                 default: updated = try await client.reply(id, text: prompt.text ?? "", newSession: true)
                 }
