@@ -18,9 +18,9 @@ Build status: **built in the core, the API, the CLI and the macOS app**
 Collectors", boards Collectors and CollectorsScript, and the queue path on
 Main, MainLoading and MainEmpty). See "macOS app (built)" for where the app
 differs from the boards. **Script files, TypeScript and packages** (v6,
-2026-10-04) are built in the core, API and CLI and designed on the canvas
-(board CollectorsScriptFiles); the Mac UI for them is not built yet. See
-"Script files and packages (v6)". The contract is in
+2026-10-04) are built in the core, API, CLI and the Mac app (board
+CollectorsScriptFiles, canvas v67; see "Built in the Mac app: script files,
+packages, Test run, Run now (v6)"). See "Script files and packages (v6)". The contract is in
 `core/src/contracts.ts`; see "API and contract (built)" for where it differs
 from the proposal.
 
@@ -226,7 +226,7 @@ job.
   at most 2 at a time.
 - **Run now** starts a run at once. It does not move the schedule. Every
   collector has it, whatever its kind or state (off, failed, never run);
-  see "Run now everywhere (v6, designed)".
+  see "Run now everywhere (v6, built)".
 - Turning a collector off stops future runs. A run in progress finishes
   (Folder) or keeps running until Stop (script).
 
@@ -756,7 +756,7 @@ interpreter, packages, environment, timeout, Stop and output capture), but
 - New error code `installFailed`; `CollectorRun.installId`.
 - CLI: `distill collectors list` prints each script's file path.
 
-### Run now everywhere (v6, designed)
+### Run now everywhere (v6, built)
 
 What was wrong in the Mac app (the core already ran every kind in every
 state): Run now was a hover-only icon in the list; the detail hid it while
@@ -843,6 +843,66 @@ Where the app differs from the boards (also in [Decisions](decisions.md)):
   `CollectorText.runFileName`; `SubfoldersSwitch` in CollectorsComponents.swift.
   Snapshots: `collectors-add-folder`, `collectors-folder(-edit)(-900)`,
   `collectors-folder-history` (the fixtures now match the board).
+
+### Built in the Mac app: script files, packages, Test run, Run now (v6)
+
+Built 2026-10-04 from canvas v67 (board CollectorsScriptFiles, the changed
+Collectors and CollectorsScript boards, ScriptEditor, PackagesPanel,
+ScriptConsent and CollectorRow).
+
+- **Code:** DistillKit `CollectorScripts.swift` (CollectorScriptStatus,
+  CollectorManifestStatus, CollectorInstall, CollectorScriptFiles,
+  CollectorScriptUpdate with explicit nulls, the script / install /
+  install-stop / test routes), `Collectors.swift` (`managed`,
+  `allowedFiles`, `status.script`, `CollectorRun.installId/outputDir`,
+  `installFailed`, the `typescript` interpreter), three
+  `collector.install.*` events in `Models.swift`, wording in
+  `CollectorText.swift`. The app: `CollectorsStore+Scripts.swift` (Allow and
+  run, Test run, installs and live output, the shown result, Reveal, Open in
+  editor), `CollectorsScriptViews.swift` (ScriptEditor, PackagesPanel, a plain
+  code view), `CollectorsStatusCard.swift`, the v6 `ScriptEditForm` and Add
+  step 2 in `CollectorsSheets.swift`. Snapshots: `SnapshotCollectorScripts.swift`
+  (frames T–Z2 with their ids, 890 pt variants, the four add cards, the delete
+  card, an edit conflict, one collector with "Not now").
+- **Run now slot:** the title row holds Run now, Stop (running or
+  installing; Stop during an install also stops the run waiting for it) or
+  Allow and run (allows `status.currentSha256`, then runs). It stays while
+  editing. Scripts show a quiet Test run link before it. Run now is disabled
+  while the last install of this manifest failed (the board's X2). ⋯ starts
+  with Run now (Stop while active; nothing while a script needs the OK, since
+  that needs the code on screen). The selected list row always shows its play
+  button (not while running or needing the OK).
+- **Status card:** installing (elapsed, why, the live output; the run that
+  waits shows in Recent runs as "Run now · waits for packages"), install
+  failed (its output from `GET …/install`, Install again, Open package.json),
+  the result of a run started here (one sentence, the schedule, the last
+  output lines, Copy output and Hide; it gives way to any newer run), a Test
+  run (blue-grey: its files with sizes, Reveal in Finder, Show output,
+  "Schedule unchanged"), and Ready after the install on Allow.
+- **Editing:** a v6 script's form is Kept by Distill / Your own file, the
+  ScriptEditor (language picker; the file with Reveal and Open; code), the
+  PackagesPanel for a kept script (editable manifest, Install, ⋯ Clean
+  reinstall… and Open), and "Schedule and Advanced" folded to one line (it
+  also holds Into, the vault). Code and manifest save only through
+  `PUT …/script` with the hashes the editor loaded, never through PATCH; a
+  409 shows "Changed on disk since you opened it" with **Reload** (drop the
+  edits) and **Keep editing** (keep the text, save against the file as it is
+  now). PATCH carries language, timeout, schedule, vault and the switch
+  between kept and your own file (to kept: the code once as `inline`, which
+  the core writes to the new managed file).
+- **Add, step 2:** Kept by Distill (default) with the language picker, a
+  starting template per language and the manifest for JavaScript, TypeScript
+  and Python, or Your own file. The sheet scrolls in a short window.
+- **Consent:** the card names what changed (`changes`) and, for a new script
+  with packages, that allowing installs them. A changed manifest shows at
+  once under WHAT CHANGED; the code under Show script / Show changes.
+- **Open in editor:** a `.ts` file (often claimed by a video player) or a
+  script Terminal would run opens in the default plain-text editor.
+- **Code fields** are an NSTextView with smart quotes, dashes and
+  replacements off (they broke JSON and shell quoting) and no wrapping, so
+  line numbers stay aligned.
+- Where the app differs from the boards: see [Decisions](decisions.md),
+  2026-10-04, "Collectors v6 in the Mac app".
 
 ## Open questions
 

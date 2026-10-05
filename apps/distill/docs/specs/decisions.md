@@ -17,6 +17,48 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Collectors v6 in the Mac app (canvas v67, built straight from the
+  design as the owner approved).** Spec: [Collectors](collectors.md) →
+  "Built in the Mac app: script files, packages, Test run, Run now (v6)".
+  Choices and differences from the boards:
+  - **The editor saves code and manifest only through `PUT …/script`**,
+    with the hashes it loaded; PATCH never carries a kept script's code. A
+    409 keeps the draft and offers Reload or Keep editing, so a change made
+    in another editor is never overwritten silently.
+  - **A manual run's result stays until Hide or a newer run**, and only for
+    runs started in this app session (a CLI Run now shows as the normal last
+    run). Test run results have no Hide (as on the board); a newer run
+    replaces them.
+  - **Test run file sizes** come from a read-only stat of the run's
+    `outputDir` (the contract has no sizes); a missing file shows no size.
+  - **WHAT CHANGED shows the manifest as it is now, without "+" marks**:
+    the core doesn't keep the allowed manifest's text, so the app can't diff
+    it. The PackagesPanel still draws "+" lines when given them.
+  - **Run now is disabled while the manifest's last install failed** (board
+    X2); Test run stays available, as drawn, and records "Not run · packages
+    aren't installed".
+  - **⋯ has no Run now while a script needs the OK.** Allowing from a menu
+    would skip seeing the code; the title row's Allow and run sits next to
+    it.
+  - **Schedule and Advanced also holds Into (the vault)** in a script's form:
+    the board folds it away, but the vault must stay editable.
+  - **The Settings line for a kept script reads "collector.py · Python"**
+    on every board (frame T's "· in Distill's collectors folder" was
+    dropped for one calm form); W adds a Packages line.
+  - **Code fields are an NSTextView** with smart quotes, dashes and text
+    replacement off and no wrapping (SwiftUI's TextEditor substituted quotes
+    in package.json and shell code, and wrapped lines broke the line
+    numbers).
+  - **`.ts` opens in the default text editor** when the system's handler is
+    a media player or none (`.ts` is also MPEG-2 transport stream).
+  - **Found, not fixed here (core):** the core runs the login shell's
+    `node`/`npm`. On this Mac that is `/usr/local/bin/node` v14 with npm
+    6.14, not nvm's Node 22. npm 6 rewrites `package.json` while installing
+    (formatting), so the manifest hash changes after a successful install:
+    the collector reads `needsInstall`, and the consent hash moves. The live
+    test writes its manifest in npm's format to avoid it. TypeScript also
+    needs Node 22.6+, which that login shell doesn't give.
+
 - **Collectors v6 follow-up: install on add, Test run, venv and Keychain,
   one trash (core built; boards updated, unpublished).** Specs:
   [Collectors](collectors.md) → "Script files and packages (v6)",
