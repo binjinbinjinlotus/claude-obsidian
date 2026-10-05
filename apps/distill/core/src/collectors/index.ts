@@ -33,6 +33,7 @@ import {
 } from '../contracts.js';
 import type { CollectorsOwned } from '../engine/index.js';
 import { isoDate } from '../store/json.js';
+import { asScheduler } from '../activity/context.js';
 import { checkSchedule, CronError, nextRun, parseCron, presetOf } from './cron.js';
 import { runFolder } from './folder.js';
 import { backupFile, consentHash, hasDependencies, MANIFEST, packageCount, PACKAGES_DIR, ScriptFolders } from './files.js';
@@ -41,6 +42,7 @@ import { INLINE_EXTENSION, loginShellPath, scriptBytes, sha256Text, startScript,
 import {
   clampTimeout,
   CollectorStore,
+  decodeCollector,
   DEFAULT_CRON,
   INTERPRETERS,
   Ledger,
@@ -97,6 +99,11 @@ export type CollectorsService = Pick<DistillCore, CollectorsOwned> & {
   pump(): void;
   /** Resolves when no run is queued or running. */
   whenIdle(): Promise<void>;
+  /**
+   * v6: put a deleted collector back from Distill's trash (activity-log.md). It keeps its id unless
+   * that is taken, comes back off, and a script needs consent again.
+   */
+  restoreCollector(record: unknown): Promise<Collector>;
 };
 
 interface Active {
@@ -1012,15 +1019,16 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       } catch {
         // the trash is best effort
       }
-      tick();
-      timer = setInterval(() => {
+      // Scheduled runs are logged as the scheduler's (activity-log.md).
+      asScheduler(tick)();
+      timer = setInterval(asScheduler(() => {
         try {
           tick();
           pump();
         } catch {
           // a bad entry never stops the scheduler
         }
-      }, opts.tickMs ?? 15_000);
+      }), opts.tickMs ?? 15_000);
       timer.unref();
     },
     async stop() {
@@ -1169,6 +1177,22 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
         // the folder stays where it is
       }
       opts.emit({ type: 'collector.changed', collector: clone(c), deleted: true });
+    },
+    async restoreCollector(record: unknown) {
+      const decoded = decodeCollector(record, now());
+      if (!decoded) throw new CoreError('invalid_request', "The trash copy isn't a collector this build can read.");
+      const c: Collector = { ...decoded, enabled: false, updatedAt: isoDate(now()) };
+      if (find(c.id)) c.id = newCollectorID();
+      if (c.script) {
+        // A restored script is reviewed again before it can run.
+        delete c.script.allowedSha256;
+        delete c.script.allowedAt;
+      }
+      collectors.push(c);
+      store.ticks.set(c.id, isoDate(now()));
+      persist();
+      changed(c);
+      return view(c);
     },
     async runCollector(id) {
       const c = require(id);

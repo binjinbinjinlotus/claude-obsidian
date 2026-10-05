@@ -1,5 +1,8 @@
 import { CoreError } from '../contracts.js';
 import type {
+  ActivityApi,
+  ActivityEntry,
+  TrashItem,
   CollectedFile,
   Collector,
   CollectorRun,
@@ -29,7 +32,7 @@ import type { EngineExtras } from '../engine/index.js';
  * In-memory DistillCore for server/CLI tests and client development. Records
  * every call; `emit` pushes a CoreEvent to subscribers. Never touches disk.
  */
-export interface FakeCore extends DistillCore, EngineExtras {
+export interface FakeCore extends DistillCore, EngineExtras, ActivityApi {
   calls: { method: string; args: unknown[] }[];
   jobs: Job[];
   emit(event: CoreEvent): void;
@@ -54,6 +57,9 @@ export interface FakeCore extends DistillCore, EngineExtras {
   collectors: Collector[];
   collectorRuns: CollectorRun[];
   collected: CollectedFile[];
+  /** v6 activity entries (newest first) and trash items. */
+  activity: ActivityEntry[];
+  trash: TrashItem[];
 }
 
 export function sampleCollector(overrides: Partial<Collector> = {}): Collector {
@@ -217,6 +223,37 @@ export function sampleJob(overrides: Partial<Job> = {}): Job {
   };
 }
 
+export function sampleActivityEntry(over: Partial<ActivityEntry> = {}): ActivityEntry {
+  return {
+    id: '1791155040000-0001-a1b2c3',
+    at: '2026-10-04T23:04:00.000Z',
+    type: 'collector.deleted',
+    source: 'app',
+    object: { kind: 'collector', id: 'col-2', name: 'Meeting notes' },
+    summary: 'Deleted the script collector “Meeting notes”',
+    outcome: 'ok',
+    details: { kind: 'script', interpreter: 'python3', scriptBytes: 2140, scriptLines: 61 },
+    recovery: { kind: 'trash', trashId: 'trash-1791155040000-0a1b2c3d', expiresAt: '2026-11-03T23:04:00.000Z' },
+    pid: 4242,
+    ...over,
+  };
+}
+
+export function sampleTrashItem(over: Partial<TrashItem> = {}): TrashItem {
+  return {
+    id: 'trash-1791155040000-0a1b2c3d',
+    kind: 'collector',
+    objectID: 'col-2',
+    name: 'Meeting notes',
+    deletedAt: '2026-10-04T23:04:00.000Z',
+    expiresAt: '2026-11-03T23:04:00.000Z',
+    source: 'app',
+    sizeBytes: 2600,
+    details: { kind: 'script', interpreter: 'python3', scriptBytes: 2140, scriptLines: 61 },
+    ...over,
+  };
+}
+
 export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings> } = {}): FakeCore {
   const listeners = new Set<(e: CoreEvent) => void>();
   const failures = new Map<string, Error>();
@@ -249,6 +286,8 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
     actionTypes: sampleActionTypes(),
     collectors: [sampleCollector()],
     collectorRuns: [sampleCollectorRun()],
+    activity: [sampleActivityEntry()],
+    trash: [sampleTrashItem()],
     collected: [
       {
         sha256: 'a'.repeat(64),
@@ -723,6 +762,31 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
     searchPages: async (query: string, opts?: { vaultPath?: string; limit?: number }) => {
       record('searchPages', query, opts);
       return [{ path: 'wiki/sources/sencha.md', title: 'Sencha basics' }];
+    },
+    async listActivity(query = {}) {
+      record('listActivity', query);
+      const limit = query.limit ?? 50;
+      const list = fake.activity.filter(
+        (e) =>
+          (!query.cursor || e.id < query.cursor) &&
+          (!query.types?.length || query.types.some((t) => e.type === t || e.type.startsWith(`${t}.`))) &&
+          (!query.objectID || e.object.id === query.objectID) &&
+          (!query.sources?.length || query.sources.includes(e.source)) &&
+          (!query.text || `${e.summary} ${e.object.name ?? ''}`.toLowerCase().includes(query.text.toLowerCase())),
+      );
+      const entries = list.slice(0, limit);
+      return { entries, nextCursor: list.length > limit ? entries[entries.length - 1]!.id : null };
+    },
+    async listTrash() {
+      record('listTrash');
+      return fake.trash;
+    },
+    async restoreFromTrash(id) {
+      record('restoreFromTrash', id);
+      const item = fake.trash.find((t) => t.id === id);
+      if (!item) throw new CoreError('not_found', `No trash item ${id} (it may have expired).`);
+      fake.trash.splice(fake.trash.indexOf(item), 1);
+      return { item, objectID: item.objectID, ...(item.kind === 'collector' ? { note: 'The script collector is off; review and allow its script to turn it on.' } : {}) };
     },
     subscribe(listener) {
       record('subscribe');

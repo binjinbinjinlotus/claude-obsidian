@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import {
+  currentSource,
   createFakeCore,
   ensureToken,
   releaseLock,
@@ -16,7 +17,7 @@ import {
   type RunningServer,
 } from '@distill/core/server';
 import { describeScan, HELP, run, type CliIO } from './cli.js';
-import { loaderArgs, type ServerSpawner } from './client.js';
+import { clientName, loaderArgs, type ServerSpawner } from './client.js';
 
 interface Captured {
   code: number;
@@ -464,6 +465,76 @@ describe('distill CLI', () => {
       const help = await cli(['--help']);
       assert.ok(help.stdout.includes('distill collectors list'));
       assert.ok(help.stdout.includes('never allows (consents to) a collector script'));
+    });
+  });
+
+  describe('activity and trash', () => {
+    it('lists activity with filters turned into query parameters, and says who asked', async () => {
+      let seen = '';
+      const original = core.listActivity.bind(core);
+      core.listActivity = async (q) => {
+        seen = currentSource();
+        return original(q);
+      };
+      try {
+        const r = await cli(['activity', '--type', 'collector', '--type', 'chat.deleted', '--source', 'app', '--search', 'meeting', '--failed', '--limit', '5', '--object', 'col-2']);
+        assert.equal(r.code, 0, r.stderr);
+        const q = lastCall('listActivity')?.args[0] as Record<string, unknown>;
+        assert.deepEqual(q.types, ['collector', 'chat.deleted']);
+        assert.deepEqual(q.sources, ['app']);
+        assert.equal(q.text, 'meeting');
+        assert.equal(q.outcome, 'failed');
+        assert.equal(q.limit, 5);
+        assert.equal(q.objectID, 'col-2');
+        assert.equal(seen, 'cli');
+        const agent = await cli(['activity'], { env: { HOME: path.join(tmp, 'home'), DISTILL_STATE_DIR: stateDir, CLAUDECODE: '1' } });
+        assert.equal(agent.code, 0);
+        assert.equal(seen, 'agent');
+      } finally {
+        core.listActivity = original;
+      }
+    });
+
+    it('prints entries with their recovery path, and JSON', async () => {
+      const r = await cli(['activity']);
+      assert.equal(r.code, 0);
+      assert.match(r.stdout, /Deleted the script collector “Meeting notes”  \[collector\.deleted\]/);
+      assert.match(r.stdout, /kept in Distill's trash until 2026-11-0\d: distill trash restore trash-1791155040000-0a1b2c3d/);
+      const j = await cli(['activity', '--json']);
+      const page = JSON.parse(j.stdout);
+      assert.equal(page.entries[0].type, 'collector.deleted');
+      assert.equal(page.nextCursor, null);
+    });
+
+    it('--since takes an age or a date; bad values are usage errors', async () => {
+      await cli(['activity', '--since', '24h']);
+      const since = (lastCall('listActivity')?.args[0] as { since: string }).since;
+      assert.ok(Math.abs(Date.parse(since) - (Date.now() - 86_400_000)) < 60_000);
+      assert.equal((await cli(['activity', '--since', 'soonish'])).code, 2);
+      assert.equal((await cli(['activity', '--limit', '0'])).code, 2);
+    });
+
+    it('trash lists items; restore refuses collectors (the app restores those) and restores chats', async () => {
+      const list = await cli(['trash']);
+      assert.equal(list.code, 0);
+      assert.match(list.stdout, /trash-1791155040000-0a1b2c3d  collector  “Meeting notes”/);
+      const refused = await cli(['trash', 'restore', 'trash-1791155040000-0a1b2c3d', '--json']);
+      assert.equal(refused.code, 1);
+      assert.equal(JSON.parse(refused.stdout).error.code, 'use_app');
+      assert.equal(lastCall('restoreFromTrash'), undefined);
+      core.trash.push({ ...core.trash[0]!, id: 'trash-1791155040001-0a1b2c3e', kind: 'chat', objectID: 'chat-1', name: 'Sencha' });
+      const ok = await cli(['trash', 'restore', 'trash-1791155040001-0a1b2c3e']);
+      assert.equal(ok.code, 0, ok.stderr);
+      assert.match(ok.stdout, /Restored the chat “Sencha”/);
+      assert.equal((await cli(['trash', 'restore', 'trash-0000000000000-00000000'])).code, 1);
+    });
+
+    it('clientName: DISTILL_CLIENT wins, agents are detected, else cli', () => {
+      assert.equal(clientName({}), 'cli');
+      assert.equal(clientName({ CLAUDECODE: '1' }), 'agent');
+      assert.equal(clientName({ CODEX_SANDBOX: 'seatbelt' }), 'agent');
+      assert.equal(clientName({ CLAUDECODE: '1', DISTILL_CLIENT: 'cli' }), 'cli');
+      assert.equal(clientName({ DISTILL_CLIENT: 'plugin' }), 'agent');
     });
   });
 

@@ -1,6 +1,10 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 import type {
+  ActivityApi,
+  ActivityObjectKind,
+  ActivityQuery,
+  ActivitySource,
   CollectedFile,
   CollectorInterpreter,
   CollectorKind,
@@ -30,9 +34,10 @@ import type {
 import { ACTION_STATUSES } from '../actions/store.js';
 import type { EngineExtras } from '../engine/index.js';
 import { suggestedRule } from '../runners/permissions.js';
+import { runWithSource, sourceFromHeaders } from '../activity/context.js';
 
 /** The core the server exposes: the contract plus the proposed extras (501 when a core lacks them). */
-export type ServerCore = DistillCore & Partial<EngineExtras>;
+export type ServerCore = DistillCore & Partial<EngineExtras> & Partial<ActivityApi>;
 
 /** A permission denial as the API returns it: with the exact rule that would allow it (null = none). */
 export type ApiPermissionDenial = PermissionDenial & { suggestedRule: string | null };
@@ -413,6 +418,61 @@ function parseActionQuery(query: URLSearchParams): ActionQuery {
   return q;
 }
 
+// ───────────────────────────── activity ─────────────────────────────
+
+const ACTIVITY_SOURCES: ActivitySource[] = ['app', 'cli', 'agent', 'scheduler', 'api', 'core'];
+const OBJECT_KINDS: ActivityObjectKind[] = ['chat', 'collector', 'action', 'batch', 'queue', 'note', 'connection', 'settings', 'runner', 'labels', 'core'];
+
+function isoParam(query: URLSearchParams, key: string): string | undefined {
+  const raw = query.get(key);
+  if (raw === null || raw.trim() === '') return undefined;
+  const t = Date.parse(raw);
+  if (Number.isNaN(t)) throw bad(`"${key}" must be an ISO-8601 date or time`);
+  return new Date(t).toISOString();
+}
+
+/** GET /v1/activity?type=collector,chat.deleted&object=ID&kind=chat&source=app,cli&since=…&until=…&q=…&outcome=failed&limit=50&cursor=… */
+function parseActivityQuery(query: URLSearchParams): ActivityQuery {
+  const q: ActivityQuery = {};
+  const list = (key: string) =>
+    (query.get(key) ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  const types = list('type');
+  if (types.length) q.types = types;
+  const sources = list('source');
+  for (const s of sources) if (!(ACTIVITY_SOURCES as string[]).includes(s)) throw bad(`unknown source "${s}"`);
+  if (sources.length) q.sources = sources as ActivitySource[];
+  const kind = query.get('kind');
+  if (kind) {
+    if (!(OBJECT_KINDS as string[]).includes(kind)) throw bad(`unknown object kind "${kind}"`);
+    q.objectKind = kind as ActivityObjectKind;
+  }
+  const object = query.get('object');
+  if (object && object.trim()) q.objectID = object.trim();
+  const since = isoParam(query, 'since');
+  const until = isoParam(query, 'until');
+  if (since) q.since = since;
+  if (until) q.until = until;
+  const text = query.get('q');
+  if (text && text.trim()) q.text = text.trim();
+  const outcome = query.get('outcome');
+  if (outcome) {
+    if (outcome !== 'ok' && outcome !== 'failed') throw bad('"outcome" must be "ok" or "failed"');
+    q.outcome = outcome;
+  }
+  const limit = query.get('limit');
+  if (limit !== null && limit.trim() !== '') {
+    const n = Number(limit);
+    if (!Number.isInteger(n) || n < 1 || n > 500) throw bad('limit must be an integer from 1 to 500');
+    q.limit = n;
+  }
+  const cursor = query.get('cursor');
+  if (cursor && cursor.trim()) q.cursor = cursor.trim();
+  return q;
+}
+
 // ───────────────────────────── collectors ─────────────────────────────
 
 const SCHEDULE_PRESETS = ['every15', 'hourly', 'daily', 'weekdays', 'custom'] as const;
@@ -628,6 +688,11 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
     const fn = core[name];
     if (typeof fn !== 'function') throw new HttpError(501, 'not_implemented', `${name}: not implemented by this core`);
     return fn.bind(core) as NonNullable<EngineExtras[K]>;
+  };
+  const activityApi = <K extends keyof ActivityApi>(name: K): ActivityApi[K] => {
+    const fn = core[name];
+    if (typeof fn !== 'function') throw new HttpError(501, 'not_implemented', `${name}: not implemented by this core`);
+    return fn.bind(core) as ActivityApi[K];
   };
   const vaultParam = (query: URLSearchParams) => {
     const v = query.get('vault');
@@ -1074,6 +1139,10 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
     { method: 'POST', pattern: /^\/v1\/collectors\/([^/]+)\/install\/stop$/, handler: async ({ params }) => ({ install: await core.stopCollectorInstall(params[0]!) }) },
     { method: 'POST', pattern: /^\/v1\/collectors\/([^/]+)\/test$/, handler: async ({ params }) => ({ run: await core.testCollector(params[0]!) }) },
     { method: 'GET', pattern: /^\/v1\/collectors\/([^/]+)\/install$/, handler: async ({ params }) => ({ install: await core.getCollectorInstall(params[0]!) }) },
+    // ── v6: activity log and trash (docs/specs/activity-log.md → API) ──
+    { method: 'GET', pattern: /^\/v1\/activity$/, handler: async ({ query }) => activityApi('listActivity')(parseActivityQuery(query)) },
+    { method: 'GET', pattern: /^\/v1\/trash$/, handler: async () => ({ items: await activityApi('listTrash')() }) },
+    { method: 'POST', pattern: /^\/v1\/trash\/([^/]+)\/restore$/, handler: async ({ params }) => activityApi('restoreFromTrash')(params[0]!) },
     {
       method: 'GET',
       pattern: /^\/v1\/events$/,
@@ -1162,7 +1231,11 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       } catch {
         throw bad('malformed path');
       }
-      const result = await hit.r.handler({ req, res, params, query: url.searchParams, secrets, body: () => readBody(req, maxBody) });
+      // Who asked (X-Distill-Client, else the Mac app's User-Agent, else "api"): the activity log reads it.
+      const handler = hit.r.handler;
+      const result = await runWithSource(sourceFromHeaders(req.headers), () =>
+        handler({ req, res, params, query: url.searchParams, secrets, body: () => readBody(req, maxBody) }),
+      );
       if (hit.r.stream) return;
       sendJSON(res, hit.r.status ?? 200, result ?? null);
     } catch (err) {

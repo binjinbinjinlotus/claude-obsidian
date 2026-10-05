@@ -30,6 +30,8 @@ Nothing goes into the vault except approved notes and pages.
 | Collectors (settings, consent hashes, last scheduled tick) | `collectors.json` (v4) |
 | What Folder collectors already collected (per vault; name, size, mtime, sha256, never content) | `collectors/ledger-<vault-id>.jsonl` (v4, append-only) |
 | Collector run history (30 days or the newest 200 runs per collector) | `collectors/runs/<collector-id>.jsonl` (v4) |
+| Activity log: what changed, when, from where (never secrets or content; 2 MB files, 10 rotated, 180 days) | `activity/activity.jsonl` + `activity/activity-<time>-<pid>-<rand>.jsonl` (v6, append-only, 0600) |
+| Distill's trash: deleted Ask chats and collectors, 30 days (at most 200 items, 50 MB) | `trash/<trash-id>.json` (v6, dir 0700, files 0600; holds inline scripts) |
 | API keys and connection tokens | macOS Keychain, never a file |
 | Backups | `backups/<time>[-tag]/` |
 | Runtime only | `server.json`, `server.log`, `token`, `ask/workspace/` |
@@ -74,6 +76,9 @@ Retention is the user's choice: Ask chats older than `askPreferences.historyDays
   copies) and any `*.unreadable-*` files
   (Keychain secrets stay in the Keychain). The newest 10 backups are kept; names sort by time
   (a same-second counter is zero-padded).
+- `activity/` and `trash/` are not backed up and a restore never touches
+  them: the log is append-only history and must not be rewound
+  ([Activity log and trash](activity-log.md)).
 - `backups` lists them, newest first.
 - `restore NAME` refuses while the app or the core runs, backs up the current
   data (`before-restore`), then copies the backup back.
