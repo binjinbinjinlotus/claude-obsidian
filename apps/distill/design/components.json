@@ -6364,6 +6364,12 @@
           "default": "wiki/concepts"
         },
         {
+          "name": "openable",
+          "type": "boolean",
+          "default": false,
+          "swiftPending": "Review after Approve (2026-10-05): once the change is in the vault, a new page opens from its row"
+        },
+        {
           "name": "hover",
           "type": "boolean",
           "default": false
@@ -6436,6 +6442,22 @@
             "36px"
           ],
           "caption": "Click opens the page as it will be."
+        },
+        {
+          "name": "Added: opens the page",
+          "props": {
+            "title": "Wazuka Tea Farm",
+            "kind": "entity",
+            "note": "from 6 sources",
+            "directory": "wiki/entities",
+            "openable": true,
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "36px"
+          ],
+          "caption": "After Approve, once the page is in your vault: Open shows it in Obsidian (or the app that opens .md files)."
         }
       ]
     },
@@ -6808,6 +6830,294 @@
             "190px"
           ],
           "caption": "Open new session opens Terminal with a fresh session primed with the batch. The batch in Distill keeps its own session record."
+        }
+      ]
+    },
+    {
+      "name": "ApplyProgress",
+      "title": "Apply progress",
+      "swift": null,
+      "preview": [
+        640,
+        214
+      ],
+      "props": [
+        {
+          "name": "stage",
+          "type": "enum",
+          "default": "starting",
+          "options": [
+            "approved",
+            "starting",
+            "applying",
+            "applied",
+            "finding",
+            "done"
+          ]
+        },
+        {
+          "name": "failedAt",
+          "type": "enum",
+          "default": "none",
+          "options": [
+            "none",
+            "starting",
+            "applying",
+            "finding"
+          ]
+        },
+        {
+          "name": "core",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "folded",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "runner",
+          "type": "text",
+          "default": "Claude"
+        },
+        {
+          "name": "vault",
+          "type": "text",
+          "default": "Research"
+        },
+        {
+          "name": "sources",
+          "type": "text",
+          "default": "22 sources"
+        },
+        {
+          "name": "changes",
+          "type": "text",
+          "default": "31 changes"
+        },
+        {
+          "name": "added",
+          "type": "text",
+          "default": "22 source pages, 3 concepts, 1 entity added · 6 pages updated"
+        },
+        {
+          "name": "operation",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "actions",
+          "type": "text",
+          "default": "Found 5 actions to confirm"
+        },
+        {
+          "name": "error",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "help",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "heading",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "part",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "times",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "ApplyProgressStates.dc.html",
+        "title": "Apply progress states",
+        "heading": "ApplyProgress",
+        "intro": "What Review shows after you approve, until every approved file is in your knowledge base (designed 2026-10-05). Five steps, with the live log’s marks: <b>You approved</b>; the AI <b>starting</b> (resuming this batch’s own session); <b>applying through the vault core</b>; <b>Added</b>, with counts taken from the checked plan, never from the AI (“22 source pages, 3 concepts, 1 entity added · 6 pages updated”); and the follow-up, <b>finding actions</b>. These are the batch’s live-log steps (<code>job.step</code>), so <b>Show steps</b> opens the same log in full. A failed step turns peach and says what to do, in the words Review already uses (the vault changed after review, the vault was busy, the session is gone). Finding actions is a follow-up: if it fails, the batch is still added, so it stays a quiet line. A batch the core applies itself (labels, runners without tool permissions) has no AI step. Swift: none yet. Props: stage (approved | starting | applying | applied | finding | done), failedAt (none | starting | applying | finding), core, runner, vault, sources, changes, added, operation, actions, error, help, heading, part, times (one per row, split by “|”), width.",
+        "width": 1440,
+        "cols": 2,
+        "wrap": "<div style=\"width: 680px; padding: 10px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
+      },
+      "states": [
+        {
+          "name": "Starting: the AI resumes this batch’s session",
+          "props": {
+            "stage": "starting",
+            "times": "11:52 PM|11:52 PM",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "214px"
+          ],
+          "caption": "Right after Approve. Approve and Reject are gone; nothing else needs you."
+        },
+        {
+          "name": "Applying through the vault core",
+          "props": {
+            "stage": "applying",
+            "times": "11:52 PM|11:52 PM|11:53 PM",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "214px"
+          ],
+          "caption": "The AI runs the one apply command you approved (the plan’s exact hash)."
+        },
+        {
+          "name": "Added; finding actions",
+          "props": {
+            "stage": "finding",
+            "operation": "ingest-20261004-tea-club",
+            "times": "11:52 PM|11:52 PM|11:53 PM|11:53 PM|11:53 PM",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "214px"
+          ],
+          "caption": "The counts come from the checked plan: new and updated pages under wiki/."
+        },
+        {
+          "name": "Done",
+          "props": {
+            "stage": "done",
+            "operation": "ingest-20261004-tea-club",
+            "times": "11:52 PM|11:52 PM|11:53 PM|11:53 PM|11:54 PM",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "214px"
+          ],
+          "caption": "Every approved file is in your knowledge base."
+        },
+        {
+          "name": "Done, folded",
+          "props": {
+            "stage": "done",
+            "folded": true,
+            "operation": "ingest-20261004-tea-club",
+            "times": "11:52 PM|11:52 PM|11:53 PM|11:53 PM|11:54 PM",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "48px"
+          ],
+          "caption": "Once everything is done the card folds to one line, so the new pages fit under it; Show steps still opens every step."
+        },
+        {
+          "name": "The vault changed after review (exit 75)",
+          "props": {
+            "stage": "applying",
+            "failedAt": "applying",
+            "error": "Not added: the vault changed after you reviewed this batch",
+            "help": "Nothing was changed. This batch’s own session is rebuilding the change for the vault as it is now; it comes back here for your OK.",
+            "times": "11:52 PM|11:52 PM|11:53 PM",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "240px"
+          ],
+          "caption": "The vault core refused the stale plan (transaction apply exited 75). It is rebuilt in the same session and you approve again."
+        },
+        {
+          "name": "The vault was busy (LOCK_TIMEOUT)",
+          "props": {
+            "stage": "applying",
+            "failedAt": "applying",
+            "error": "Not added: another app was changing your vault",
+            "help": "Nothing was changed. Approve again to try again.",
+            "times": "11:52 PM|11:52 PM|11:53 PM",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "240px"
+          ],
+          "caption": "Approve and Reject come back with the same plan."
+        },
+        {
+          "name": "The AI didn’t report the approved change",
+          "props": {
+            "stage": "applying",
+            "failedAt": "applying",
+            "error": "Nothing recorded as applied: Claude didn’t report the approved change",
+            "help": "Open Show steps to see what happened, or reply to Claude. Nothing is listed as added until the vault core confirms it.",
+            "times": "11:52 PM|11:52 PM|11:54 PM",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "240px"
+          ],
+          "caption": "Only the plan’s own operation counts as applied (decision 2026-10-04)."
+        },
+        {
+          "name": "The AI couldn’t start",
+          "props": {
+            "stage": "starting",
+            "failedAt": "starting",
+            "error": "Claude couldn’t start: claude exited 1",
+            "help": "Nothing was changed. Approve again to try again, or open the conversation in Terminal.",
+            "times": "11:52 PM|11:52 PM",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "240px"
+          ],
+          "caption": "Any other runner error. A gone session is not this: Review asks first (SessionReplaceConfirm)."
+        },
+        {
+          "name": "A batch the core applies (no AI step)",
+          "props": {
+            "stage": "done",
+            "core": true,
+            "sources": "3 pages",
+            "changes": "3 changes",
+            "added": "labels confirmed on 3 pages",
+            "actions": "Didn’t look for actions",
+            "times": "9:10 AM|9:10 AM|9:10 AM|9:10 AM",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "182px"
+          ],
+          "caption": "Label jobs and runners without tool permissions: Distill runs the apply itself."
+        },
+        {
+          "name": "Finding actions failed: still added",
+          "props": {
+            "stage": "finding",
+            "failedAt": "finding",
+            "error": "Couldn’t look for actions this time · try again from Actions",
+            "operation": "ingest-20261004-tea-club",
+            "times": "11:52 PM|11:52 PM|11:53 PM|11:53 PM|11:54 PM",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "214px"
+          ],
+          "caption": "A follow-up, not a failure: the heading stays “Added”."
         }
       ]
     }
