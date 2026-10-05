@@ -1539,23 +1539,41 @@ export function createEngine(opts: EngineOptions): Engine {
         return;
       }
       if (out.status === 75) {
+        // Exit 75 is any TransactionConflict: stale hashes, but also a held lock or a reused
+        // operation id. The core prints `ERR <CODE>: <message>` on stderr.
+        const code = /^ERR ([A-Z_]+):/m.exec(out.stderr.toString('utf8'))?.[1];
+        if (code === 'LOCK_TIMEOUT') {
+          // Nothing changed and the plan is still valid: Approve again retries it.
+          mutate(id, (j) => {
+            j.state = 'awaitingApproval';
+            if (j.approval) delete j.approval.planError;
+            j.turns.push(
+              newTurn('app', 'Not applied: another process held the vault lock (LOCK_TIMEOUT). Nothing changed; approve again to try again.', now()),
+            );
+          });
+          return;
+        }
         const request =
           jobKind(job.kind) === LabelsJobKind ? readLabelRequest(path.join(jobStateDirectory(job), 'request.json')) : undefined;
         if (request) {
-          mutate(id, (j) =>
-            j.turns.push(newTurn('app', 'The pages changed after you reviewed them; the plan was rebuilt. Review it again.', now())),
-          );
+          const why =
+            code === 'OPERATION_ID_REUSED'
+              ? 'This operation ID was already used in the vault; the plan was rebuilt with a new one. Review it again.'
+              : 'The pages changed after you reviewed them; the plan was rebuilt. Review it again.';
+          mutate(id, (j) => j.turns.push(newTurn('app', why, now())));
           await planLabelJob(id, request);
           return;
         }
+        const reused = code === 'OPERATION_ID_REUSED';
         mutate(id, (j) => {
           j.state = 'awaitingApproval';
           if (j.approval) {
             delete j.approval.plan;
-            j.approval.planError =
-              'The vault changed after this plan was reviewed (transaction apply exited 75). Reply to have it rebuilt, or reject.';
+            j.approval.planError = reused
+              ? 'The vault already has an operation with this ID (transaction apply exited 75, OPERATION_ID_REUSED); it may already be applied. Check the vault log, then reply to have the bundle rebuilt with a new ID, or reject.'
+              : `The vault changed after this plan was reviewed (transaction apply exited 75${code ? `, ${code}` : ''}). Reply to have it rebuilt, or reject.`;
           }
-          j.turns.push(newTurn('app', 'Not applied: the vault changed after review.', now()));
+          j.turns.push(newTurn('app', reused ? 'Not applied: this operation ID was already used in the vault.' : 'Not applied: the vault changed after review.', now()));
         });
         return;
       }

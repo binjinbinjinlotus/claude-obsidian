@@ -93,6 +93,8 @@ cannot be deleted either: its files would go back into the next batch.
 in a terminal (the runner's `resumeCommand`; none for label jobs).
 
 On exit 75 (stale hashes) Claude is told to rebuild, re-inspect, and ask again.
+On `ERR LOCK_TIMEOUT` it is told not to rebuild, only to inspect the same
+bundle again and ask again.
 
 **What Distill records after an agent apply** (decision 2026-10-04). When
 Approve starts the agent's apply turn, the core remembers the approved plan
@@ -128,10 +130,22 @@ Some jobs have no agent that can be limited to one exact apply command (TS core)
 On **Approve** the core runs
 `python3 <core> transaction apply <bundle> --vault <vault> --approved-plan-sha256 <sha>`
 itself (never an agent) and completes the job with the core's
-`changed_paths` and `operation_id`. Exit 75 (a page changed after review): a
-label job rebuilds its bundle from `request.json` with a **new** operation id
-(the core treats a reused id as a replay), re-inspects and asks again; other
-jobs go back to awaiting approval with the plan cleared. Reply and Allow are
+`changed_paths` and `operation_id`. Exit 75 is any `TransactionConflict`,
+so the core reads the code from `ERR <CODE>:` on stderr (decision
+2026-10-04):
+
+- `LOCK_TIMEOUT`: another process held the vault lock. Nothing changed, so
+  the job goes back to awaiting approval with its plan kept, and the app turn
+  says to approve again to try again.
+- `OPERATION_ID_REUSED`: a label job rebuilds with a new id ("This operation
+  ID was already used…"). Other jobs clear the plan, and the plan error says
+  the operation may already be applied: check the vault log, then reply to
+  rebuild with a new ID, or reject.
+- Anything else (a page changed after review): a label job rebuilds its
+  bundle from `request.json` with a **new** operation id (the core treats a
+  reused id as a replay), re-inspects and asks again. Other jobs go back to
+  awaiting approval with the plan cleared ("The vault changed after this
+  plan was reviewed (transaction apply exited 75, <CODE>)"). Reply and Allow are
 refused (`invalid_state`) for label jobs; Reject works as for ingest. Cancel
 does not interrupt a running apply.
 

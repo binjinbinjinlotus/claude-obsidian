@@ -149,8 +149,10 @@ approval_sha256 ${plan.approval_sha256}. Run exactly this command once:
 ${WorkerProtocol.applyCommand(ctx, plan, bundlePath)}
 
 If it succeeds, finish with status \`done\`, the operation_id, and the exact \
-changed_paths it reported. If it exits 75 or reports stale hashes, re-read \
-the targets, rebuild the bundle at the same path, inspect it, and finish \
+changed_paths it reported. If it exits 75 with \`ERR LOCK_TIMEOUT\`, another \
+process held the vault lock: do not rebuild; inspect the same bundle again and \
+finish with \`needs_approval\`. If it exits 75 otherwise or reports stale hashes, \
+re-read the targets, rebuild the bundle at the same path, inspect it, and finish \
 with \`needs_approval\` again. On any other failure finish with \`failed\`.`;
   },
 

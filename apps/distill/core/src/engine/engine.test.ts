@@ -80,7 +80,12 @@ let tmp: string;
 
 function setup(
   steps: Step[],
-  o: { runner?: FakeRunner; jobs?: unknown; queueIsInbox?: boolean; tickMs?: number; now?: () => Date; settings?: Record<string, unknown>; onJobApplied?: (job: Job) => void } = {},
+  o: {
+    runner?: FakeRunner; jobs?: unknown; queueIsInbox?: boolean; tickMs?: number; now?: () => Date; settings?: Record<string, unknown>;
+    onJobApplied?: (job: Job) => void;
+    /** What `transaction apply` returns (core-applies path); inspect always returns PLAN. */
+    apply?: () => ProcessOutput;
+  } = {},
 ): Harness {
   const root = tmp;
   const vault = path.join(root, 'vault');
@@ -112,6 +117,7 @@ function setup(
   const inspectCalls: string[][] = [];
   const launch = async (opts: RunProcessOptions): Promise<ProcessOutput> => {
     inspectCalls.push([opts.executable, ...opts.args]);
+    if (opts.args.includes('apply') && o.apply) return o.apply();
     return { status: 0, stdout: Buffer.from(JSON.stringify(PLAN)), stderr: Buffer.alloc(0) };
   };
   const engine = createEngine({
@@ -662,5 +668,44 @@ describe('engine state machine', () => {
     assert.ok(fs.existsSync(src));
     const again = await h.engine.addQueueFiles([src]);
     assert.equal(again[0]!.name, 'outside 2.md');
+  });
+});
+
+describe('exit 75 from a core apply is worded by its error code', () => {
+  const sandboxed = () => new FakeRunner([], new Set<RunnerCapability>(['agentTools', 'sandboxedWrites', 'sessionResume', 'structuredOutput']));
+  const conflict = (code: string): ProcessOutput => ({ status: 75, stdout: Buffer.alloc(0), stderr: Buffer.from(`ERR ${code}: details\n`) });
+
+  async function approveWith(code: string): Promise<Job> {
+    const runner = sandboxed();
+    h = setup([], { runner, apply: () => conflict(code) });
+    const created = await firstJob();
+    runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    assert.equal(h.engine.getJob(created.id)!.state, 'awaitingApproval');
+    await h.engine.approve(created.id);
+    await h.engine.whenIdle();
+    return h.engine.getJob(created.id)!;
+  }
+
+  test('LOCK_TIMEOUT: another process held the lock; the plan is kept so Approve retries', async () => {
+    const job = await approveWith('LOCK_TIMEOUT');
+    assert.equal(job.state, 'awaitingApproval');
+    assert.ok(job.approval?.plan, 'plan kept');
+    assert.equal(job.approval?.planError, undefined);
+    assert.match(job.turns.at(-1)!.text, /another process held the vault lock .*approve again/);
+    assert.ok(!job.turns.some((t) => t.text.includes('vault changed')));
+  });
+
+  test('OPERATION_ID_REUSED: says the id was used, not that the vault changed', async () => {
+    const job = await approveWith('OPERATION_ID_REUSED');
+    assert.equal(job.approval?.plan, undefined);
+    assert.match(job.approval?.planError ?? '', /already has an operation with this ID .*may already be applied/);
+    assert.equal(job.turns.at(-1)!.text, 'Not applied: this operation ID was already used in the vault.');
+  });
+
+  test('stale hashes keep the "vault changed" wording, with the code', async () => {
+    const job = await approveWith('EXPECTED_HASH_MISMATCH');
+    assert.match(job.approval?.planError ?? '', /^The vault changed after this plan was reviewed \(transaction apply exited 75, EXPECTED_HASH_MISMATCH\)/);
+    assert.equal(job.turns.at(-1)!.text, 'Not applied: the vault changed after review.');
   });
 });

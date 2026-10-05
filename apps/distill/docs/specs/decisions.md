@@ -17,6 +17,22 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Exit 75 from `transaction apply` is worded by its error code.** Spec:
+  [Approval and review](approval-and-review.md) → Core applies. Audit item
+  B5.
+  - Before, every exit 75 said "The vault changed after this plan was
+    reviewed". But exit 75 is any `TransactionConflict`, including
+    `LOCK_TIMEOUT` and `OPERATION_ID_REUSED`.
+  - **Decision:** the core reads `ERR <CODE>:` from stderr.
+    - `LOCK_TIMEOUT` keeps the plan and says another process held the vault
+      lock; approve again to try again. Nothing changed, so the reviewed plan
+      still holds.
+    - `OPERATION_ID_REUSED` says the ID was already used and the operation
+      may already be applied. Label jobs still rebuild with a fresh ID.
+    - Every other code keeps the "vault changed" wording and adds the code.
+  - The agent's approved-apply prompt also says not to rebuild on
+    `LOCK_TIMEOUT`.
+
 - **The ingest prompt names the wiki-ingest skill's absolute path for every
   runner.** Spec: [Job kinds](job-kinds.md) → Ingest. Audit item B4.
   - The prompt named only `claude-obsidian:wiki-ingest`. Codex gets no
