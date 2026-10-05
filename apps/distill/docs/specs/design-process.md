@@ -3,7 +3,7 @@ type: spec
 title: Design process and design system
 status: developing
 created: 2026-10-02
-updated: 2026-10-04
+updated: 2026-10-05
 tags:
   - distill
   - design

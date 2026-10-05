@@ -3,7 +3,7 @@ type: spec
 title: Activity log and trash
 status: built
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-05
 tags:
   - distill
   - activity
@@ -53,8 +53,8 @@ app, the CLI, the agent plugin, curl) is covered the same way.
 | Ask chats | `chat.created`, `chat.updated` (a follow-up), `chat.pinned`, `chat.unpinned`, `chat.deleted`, `chat.expired`, `chat.restored` | Title, turn count, size and dates only. Questions and answers are never logged. |
 | Collectors | `collector.created`, `.updated`, `.enabled`, `.disabled`, `.consented`, `.consent_revoked`, `.deleted`, `.restored`, `.stopped`, `.forgot`, `.forget_undone`, `.folder_created`, `.run`; v6: `.script_saved`, `.script_changed_outside` (see "Edits outside Distill"), `.install` (from `collector.install.finished`), `.install_stopped`, `.test_run` | Script: interpreter, file path (`scriptFile`), `scriptManaged: true` for a script written in Distill (shown as "N lines · size, written in Distill"; the path stays for Show in Finder), **size and line count** (a final newline is not a line), schedule, vault, and a 12-character consent hash prefix. Script saves: which parts changed (script, manifest), sizes and 12-character hash prefixes, plus the interpreter and `scriptManaged: true` when the script was saved. Installs: result, trigger, manifest name, command, duration, exit code. Never the script, the manifest or install output (they can hold credentials). |
 | Actions | `action.created`, `.updated` (which fields changed, not what they say), `.confirmed`, `.dismissed`, `.drafted`, `.improved`, `.improve_undone`, `.performed`, `.sent`, `.removed`, `.restored`, `.deleted`, `.expired`, `.found` | Title, type and status. |
-| Batches (jobs) | `batch.started`, `.ready`, `.approved`, `.replied` (length only), `.allowed` (tool rules), `.rejected`, `.cancelled`, `.applied` (changed paths, operation id), `.failed`, `.deleted`; `labels.suggest_started`, `labels.confirm_started` | Ingest results are `batch.applied` and `batch.failed`. |
-| Queue and notes | `queue.added`, `queue.removed` (with the macOS Trash as its recovery), `queue.scanned` (only when files appeared or went outside Distill), `note.added` (title, labels, file count; never the text), `note.labeled` | |
+| Batches (jobs) | `batch.started`, `.ready`, `.approved`, `.replied` (length only), `.allowed` (tool rules), `.rejected`, `.cancelled`, `.applied` (changed paths, operation id), `.failed`, `.deleted`; `labels.suggest_started`, `labels.confirm_started`; 2026-10-05 Review: `batch.source_removed`, `.source_restored` (the page), `.labels_edited` (pages and their labels), `.part_discarded` (Discard this part: the batch stays in Review); `session.replaced` (the place and the reason, [Session continuity](session-continuity.md)) | Ingest results are `batch.applied` and `batch.failed`. |
+| Queue and notes | `queue.added`, `queue.removed` (with the macOS Trash as its recovery), `queue.scanned` (only when files appeared or went outside Distill), `note.added` (title, labels, file count; never the text), `note.labeled`, `queue.labeled` (2026-10-05: labels confirmed on a queue row, or Send without labels; Retry is not logged) | |
 | Connections | `connection.connected`, `connection.disconnected` | Site and status. Never the token or the email. |
 | Settings and keys | `settings.changed` (summary in Settings' words: "Changed settings: Ask history (Keep history off)"; `changes` keeps the raw `key: old → new` for short values and `key: changed` for lists and secret-looking keys; `readableChanges` has one "Label: Old → New" line per setting; no entry when nothing changed), `runner.secret_saved`, `runner.secret_cleared` | For keys, only which runner and which key name. The value is never read. Names: see "Settings in Settings' words". |
 

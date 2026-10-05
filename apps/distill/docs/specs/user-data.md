@@ -3,7 +3,7 @@ type: spec
 title: User data
 status: built
 created: 2026-10-02
-updated: 2026-10-04
+updated: 2026-10-05
 tags:
   - distill
   - data
@@ -27,12 +27,17 @@ Nothing goes into the vault except approved notes and pages.
 | Ask history | `ask/<chat-id>.json`, one file per chat |
 | Actions (to-dos, drafts, History) | `actions.json` (v3) |
 | Connection details without secrets (Atlassian site, display name) | `connections.json` (v3, mode 0600) |
-| Label state for notes waiting in the vault's `inbox/` (labels confirmed or suggested after the note was written; never written into `inbox/`) | `labels/notes.json` (keyed by requestID, newest 2000) |
+| Label state for notes waiting in the vault's `inbox/` (labels confirmed or suggested after the note was written; never written into `inbox/`), and since 2026-10-05 for other queue text files (suggested, confirmed, failed attempts, sent without labels) | `labels/notes.json` (notes keyed by requestID, queue files by `file:<sha256 of the content>`; newest 2000) |
 | Collectors (settings, consent hashes, last scheduled tick) | `collectors.json` (v4) |
 | What Folder collectors already collected (per vault; name, size, mtime, sha256, never content) | `collectors/ledger-<vault-id>.jsonl` (v4, append-only) |
 | Collector run history (30 days or the newest 200 runs per collector) | `collectors/runs/<collector-id>.jsonl` (v4) |
+| Scripts Distill keeps, with their `package.json` / `requirements.txt` and installed packages | `collectors/scripts/<collector-id>/` (v6; files 0600, folders 0700; `node_modules/`, `.venv/` inside) |
+| The newest package install per collector (output tail, manifest hash of the last success) | `collectors/installs/<collector-id>.json` (v6) |
+| Test run output, kept until the next Test run, pruned after 7 days | `collectors/test-runs/<collector-id>/` (v6) |
+| The copy of `collectors.json` taken before inline scripts moved to files | `collectors.json.pre-script-files-<time>` (v6, once) |
+| A batch's live log: its steps in plain words, never contents (2,000 steps / 512 KB per job; removed with the job) | `steps/<job-id>.jsonl` (v7, 0600) |
 | Activity log: what changed, when, from where (never secrets or content; 2 MB files, 10 rotated, 180 days) | `activity/activity.jsonl` + `activity/activity-<time>-<pid>-<rand>.jsonl` (v6, append-only, 0600) |
-| Distill's trash: deleted Ask chats and collectors, 30 days (at most 200 items, 50 MB) | `trash/<trash-id>.json` (v6, dir 0700, files 0600; holds inline scripts) |
+| Distill's trash: deleted Ask chats and collectors, 30 days (at most 200 items, 50 MB) | `trash/<trash-id>.json` (v6, dir 0700, files 0600; holds inline scripts), plus `trash/<trash-id>.files/` for a kept script's folder without `node_modules`/`.venv` |
 | API keys and connection tokens | macOS Keychain, never a file |
 | Backups | `backups/<time>[-tag]/` |
 | Runtime only | `server.json`, `server.log`, `token`, `ask/workspace/` |
@@ -81,6 +86,10 @@ Retention is the user's choice: Ask chats older than `askPreferences.historyDays
 - `activity/` and `trash/` are not backed up and a restore never touches
   them: the log is append-only history and must not be rewound
   ([Activity log and trash](activity-log.md)).
+- Collector script files (`collectors/scripts/`, without `node_modules` and
+  `.venv`) and the live log's `steps/` are backed up and restored (since
+  2026-10-05). `collectors/installs/` (install logs) and
+  `collectors/test-runs/` (Test run output) are scratch and are not.
 - `backups` lists them, newest first.
 - `restore NAME` refuses while the app or the core runs, backs up the current
   data (`before-restore`), then copies the backup back.

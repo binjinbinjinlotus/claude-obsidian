@@ -24,8 +24,8 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Architecture](docs/specs/architecture.md) | built |
 | [AI runners](docs/specs/ai-runners.md) | built (Codex sandbox unverified) |
 | [Claude runner](docs/specs/claude-runner.md) | built |
-| [Approval and review](docs/specs/approval-and-review.md) | built |
-| [Queue and batching](docs/specs/queue-and-batching.md) | built (folder items, .gdoc waiting, queue scan: core, API, CLI and Mac UI) |
+| [Approval and review](docs/specs/approval-and-review.md) | built (labels in Review, pick/remove, approve-later, parts of a batch: core, API, macOS UI) |
+| [Queue and batching](docs/specs/queue-and-batching.md) | built (folder items, .gdoc waiting, queue scan: core, API, CLI and Mac UI; label gate and 0–24 h wait) |
 | [Intake: paste and drop](docs/specs/intake-paste-drop.md) | built |
 | [Vaults and settings](docs/specs/vaults-and-settings.md) | built |
 | [Job kinds](docs/specs/job-kinds.md) | built |
@@ -36,7 +36,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Ask](docs/specs/ask.md) | built |
 | [Write a note](docs/specs/notes-composer.md) | built |
 | [Markdown editing](docs/specs/markdown-editing.md) | built |
-| [Labels and sources](docs/specs/labels-and-sources.md) | built |
+| [Labels and sources](docs/specs/labels-and-sources.md) | built (queue-file labels and the label gate: core, API, macOS UI) |
 | [Quick actions and shortcuts](docs/specs/quick-actions.md) | built |
 | [App icon](docs/specs/app-icon.md) | built |
 | [Actions](docs/specs/actions.md) | built (core, API, CLI, macOS UI; answer selection bar not yet) |
@@ -57,11 +57,18 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 - `core/src/activity/`: the activity log (who changed what, logged at the
   core facade and from events; `activity/activity.jsonl`) and Distill's trash
   for deleted chats and collectors (`trash/`).
+- `core/src/steps/`: the live log (a job's steps as they happen, saved to
+  `steps/<job>.jsonl`, and the plain words for each step).
+- `core/src/engine/queue-labels.ts` (labels on queue files, 3 at a time, and
+  the label gate) and `engine/review-labels.ts` (labels, picks, removals and
+  parts in Review); `engine/session-seed.ts` and `runners/session.ts`: session
+  continuity (detecting a gone AI session and seeding a new one).
 - `core/src/runners/`: AI backends behind `AgentRunner` (Claude Code, Codex,
-  OpenAI, OpenRouter, Vercel AI SDK) and Keychain secrets.
+  OpenAI, OpenRouter, Vercel AI SDK), the steps they stream, and Keychain
+  secrets.
 - `core/src/store/`: settings.json / jobs.json; `core/src/server/`: the local
   HTTP API, token and lock file.
-- `cli/`: the `distill` CLI (ask, note add/label, history, status, queue scan, actions,
+- `cli/`: the `distill` CLI (ask, with `--new-session` when a chat's AI session is gone; note add/label, history, status, queue scan, actions,
   collectors list/run/history, activity, trash list/restore, serve, plugin install). It never approves and
   never consents to a collector script.
 - `plugin/`: agent skills (`distill-ask`, `distill-note`) for Claude Code and Codex.

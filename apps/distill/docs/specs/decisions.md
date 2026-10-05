@@ -17,6 +17,15 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+- **Backups include collector scripts and batch step logs.** Since script
+  files (2026-10-04), a kept script's code lives only in
+  `collectors/scripts/<id>/`. `distill.sh backup` copied `collectors.json` but
+  not the scripts, so a restore could bring back collectors pointing at code
+  the backup didn't hold, against "user data is permanent". Backups now copy
+  `collectors/scripts/` (without `node_modules` and `.venv`, which an install
+  recreates) and `steps/`. Restore copies them back next to what's there.
+  Test-run output and install logs stay out, because they are scratch.
+  Found by the specs audit.
 Labels before the batch, labels in Review, and a Review that approves part of a
 batch. The owner: "I will never see the label suggestion in the queue … in
 review I don't see any label." Canvas: Review, ReviewStates, ReviewChoose,

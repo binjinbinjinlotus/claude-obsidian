@@ -3,7 +3,7 @@ type: spec
 title: Actions
 status: built
 created: 2026-10-02
-updated: 2026-10-03
+updated: 2026-10-04
 tags:
   - distill
   - actions

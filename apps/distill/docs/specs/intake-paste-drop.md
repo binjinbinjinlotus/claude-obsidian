@@ -1,7 +1,7 @@
 ---
 title: "Intake: paste and drop"
 status: built
-updated: 2026-10-02
+updated: 2026-10-05
 ---
 
 # Intake: paste and drop
@@ -12,7 +12,12 @@ Code: `clients/macos/Sources/Distill/Intake.swift` (`PasteboardIntake`, `DropTar
 
 - **Drop** files on the Queue drop panel or the floating icon. The app sends
   their paths to the core, which copies them into the active vault's queue with
-  collision-safe names. Originals stay where they were. Folders are skipped.
+  collision-safe names (an exclusive copy, so a file already there is never
+  replaced). Originals stay where they were. Dropped folders are skipped; a
+  folder put into the queue folder another way (Finder, a collector) becomes
+  a folder item ([Queue and batching](queue-and-batching.md)). A drop is
+  refused (`invalid_state`) while the queue folder is inside the vault
+  anywhere but exactly `<vault>/inbox` (decision 2026-10-04).
 - **Paste**: ⌘V in the main window (when no text field is editing), ⇧⌘V from the
   Queue menu, or right-click on the floating icon → Paste into Queue.
   - File URLs on the clipboard are handled like a drop.

@@ -3,7 +3,7 @@ type: spec
 title: Collectors
 status: built
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-05
 tags:
   - distill
   - collectors
@@ -297,13 +297,16 @@ queue folder go into batches.
   leniently, like `jobs.json`.
 - **History** (sidebar) does not get a Collectors tab. Collector runs are
   operational logs and live in the collector's detail. What History → Jobs
-  already shows is enough: the batch that processed collected files. Queue
-  rows and the job's source list name the collector ("Collected by Distill
-  Inbox at 9:00 AM").
+  already shows is enough: the batch that processed collected files.
+  Collector changes, installs, Test runs and runs (except scheduled runs
+  that found nothing or were skipped) are also logged in History → Activity ([Activity log and trash](activity-log.md)). Designed, not
+  built: queue rows and the job's source list naming the collector
+  ("Collected by Distill Inbox at 9:00 AM"; `QueueEntry` has no collector
+  field, see "macOS app (built)").
 - **Notifications:** none for success. A failed run, or a script that needs
-  consent again, raises the sidebar count. A macOS notification is sent only
-  on the first failure after a success, so a broken collector doesn't keep
-  notifying every hour.
+  consent again, raises the sidebar count. Designed, not built: a macOS
+  notification only on the first failure after a success, so a broken
+  collector doesn't keep notifying every hour.
 
 ## Queue folder path (Queue screen)
 
@@ -566,7 +569,9 @@ support package install for js and typescript; all collectors should support
 run now." Built in the core, API and CLI on 2026-10-04 (`core/src/collectors/files.ts`,
 `packages.ts`, hooks in `index.ts`; tests in `files.test.ts` and
 `server/http-collectors.test.ts`). Designed on canvas board
-CollectorsScriptFiles (frames T–Z2); Mac UI not built.
+CollectorsScriptFiles (frames T–Z2); the Mac UI was built the same day
+from canvas v67 (see "Built in the Mac app: script files, packages, Test
+run, Run now (v6)").
 
 ### Where scripts live
 
@@ -645,7 +650,8 @@ native addons match the Node that runs them.
   details: `runtime` on `collector.run` and `collector.test_run`. An npm
   install records the Node whose npm ran it in `install.runtime`; the
   Activity details of `collector.install` include its label. The Mac app
-  doesn't show the runtime yet; that needs a canvas pass.
+  shows it in the live log's header and next to an opened run's output
+  (2026-10-05, [Live log](live-log.md)).
 - The core option `nodePath` (`CollectorsOptions`) overrides
   `process.execPath`. Only tests use it.
 
@@ -965,7 +971,11 @@ ScriptConsent and CollectorRow).
   script Terminal would run opens in the default plain-text editor.
 - **Code fields** are an NSTextView with smart quotes, dashes and
   replacements off (they broke JSON and shell quoting) and no wrapping, so
-  line numbers stay aligned.
+  line numbers stay aligned. When the text is replaced from outside (a
+  reload) with shorter text, the old selection is clamped to the new length
+  and is never empty: the caret goes to the end when nothing is left
+  (`PlainCodeView.clampedSelection`; an empty list crashed the app,
+  2026-10-04).
 - Where the app differs from the boards: see [Decisions](decisions.md),
   2026-10-04, "Collectors v6 in the Mac app".
 
