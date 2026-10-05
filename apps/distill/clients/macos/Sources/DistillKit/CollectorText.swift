@@ -182,6 +182,7 @@ public struct CollectorText: Sendable {
     /// The list row's short form: "Every hour", "Daily at 7:00 AM", "Weekdays at 9:00 AM".
     public func shortSchedule(_ cron: String) -> String {
         if let s = Self.shape(cron), s.preset == .daily { return "Daily at \(time(s.hour, s.minute))" }
+        if let s = Self.shape(cron), s.preset == .every15 { return "Every 15 min" }
         return schedule(cron)
     }
 
@@ -199,7 +200,7 @@ public struct CollectorText: Sendable {
     public enum StatusKind: String, Sendable { case on, off, running, error, consent }
 
     public func statusKind(_ c: Collector) -> StatusKind {
-        if c.isRunning { return .running }
+        if c.isRunning || c.isInstalling { return .running }
         if c.needsConsent { return .consent }
         if c.needsAttention { return .error }
         return c.enabled ? .on : .off
@@ -222,19 +223,43 @@ public struct CollectorText: Sendable {
 
     /// "Copying…" / "Running · 0:12".
     public func runningLine(_ c: Collector, run: CollectorRun?, now: Date) -> String {
-        if run?.result == .queued { return run?.waiting == "batch" ? "Waiting for a batch to apply" : "Waiting to start" }
-        if c.isScript { return "Running · " + Self.elapsed(now.timeIntervalSince(run?.startedAt ?? now)) }
+        if run?.result == .queued { return Self.waitingLine(run?.waiting) }
+        if c.isScript { return (run?.isTest == true ? "Test run · " : "Running · ") + Self.elapsed(now.timeIntervalSince(run?.startedAt ?? now)) }
         return (c.folder?.moves ?? false) ? "Moving…" : "Copying…"
     }
 
-    /// The one status line under a row's name.
-    public func rowSummary(_ c: Collector, now: Date, run: CollectorRun? = nil) -> String {
+    /// A queued run: what it waits for.
+    public static func waitingLine(_ waiting: String?) -> String {
+        switch waiting {
+        case "batch": return "Waiting for a batch to apply"
+        case "install": return "Waiting for packages to install"
+        default: return "Waiting to start"
+        }
+    }
+
+    /// v6: the manifest changed since the OK and the script didn't.
+    public func manifestOnlyChanged(_ c: Collector) -> Bool {
+        let ch = c.status?.script?.changes ?? []
+        return c.needsConsent && ch.contains("manifest") && !ch.contains("script")
+    }
+
+    /// v6: the last install of this manifest failed (runs wait until Install again).
+    public func installFailed(_ c: Collector) -> Bool { c.manifest?.state == "failed" }
+
+    /// The one status line under a row's name. `latest` is the newest run the app knows (a Test run
+    /// never becomes `status.lastRun`, so the list says so from the run history).
+    public func rowSummary(_ c: Collector, now: Date, run: CollectorRun? = nil, latest: CollectorRun? = nil) -> String {
         switch statusKind(c) {
-        case .running: return runningLine(c, run: run ?? c.lastRun, now: now)
+        case .running:
+            // An install and a run never go at once (a run started meanwhile waits), so installing wins.
+            if c.isInstalling { return "Installing packages…" }
+            return runningLine(c, run: run ?? c.lastRun, now: now)
         case .consent:
+            if manifestOnlyChanged(c) { return "\(c.manifest?.name ?? "Packages") changed" }
             if scriptChanged(c) { return "Script changed · paused" }
             return c.lastRun == nil || c.lastRun?.result == .notTrusted ? "Never run" : "Waiting for your OK"
         case .error:
+            if installFailed(c) { return "Couldn’t install packages" }
             guard let r = c.lastRun else { return "Failed" }
             switch r.error?.code {
             case .sourceMissing?: return "Folder missing"
@@ -247,8 +272,15 @@ public struct CollectorText: Sendable {
             return "Failed \(at(r.startedAt, now: now))"
         case .off: return "Off"
         case .on:
+            if let t = latest, t.isTest, !t.result.isActive, t.startedAt >= (c.lastRun?.startedAt ?? .distantPast) {
+                if t.result == .success || t.result == .nothing {
+                    return t.filesAdded.isEmpty ? "Test run · nothing made" : "Test run · \(Self.files(t.filesAdded.count)), not queued"
+                }
+                return "Test run · failed"
+            }
             let sched = shortSchedule(c.schedule.cron)
             guard let r = c.lastRun else { return "\(sched) · never run" }
+            if r.trigger == "now", r.result == .success || r.result == .nothing { return "Run now · \(lastRunPhrase(c, r, now: now))" }
             return "\(sched) · \(lastRunPhrase(c, r, now: now))"
         }
     }
@@ -271,8 +303,12 @@ public struct CollectorText: Sendable {
     /// The quiet line under the detail title: "Folder · every hour · next at 10:00 AM".
     public func titleLine(_ c: Collector, now: Date) -> String {
         var parts = [c.isScript ? "Script" : (c.isFolder ? "Folder" : c.kind.rawValue.capitalized)]
-        if scriptChanged(c) { return parts[0] + " · paused" }
+        // v6 cores (status.script) name the language: "Script · Python · every day at 7:00 AM".
+        if c.isScript, c.status?.script != nil, let lang = c.script?.interpreter.language { parts.append(lang) }
+        if scriptChanged(c) { return (parts + [c.status?.script != nil ? "paused until you allow it" : "paused"]).joined(separator: " · ") }
+        if installFailed(c), !c.isInstalling { return (parts + ["waits for its packages"]).joined(separator: " · ") }
         parts.append(lowerSchedule(c.schedule.cron))
+        if c.isInstalling { return parts.joined(separator: " · ") }
         if c.folder?.moves == true, statusKind(c) == .error { parts.append("moves files") }
         if c.needsConsent { parts.append("waits for your OK") } else if !c.enabled { parts.append("off") } else if !c.isRunning,
                   statusKind(c) != .error, let n = c.status?.nextRunAt {
@@ -300,10 +336,27 @@ public struct CollectorText: Sendable {
 
     /// "Copied 3 files · skipped 2 already collected", "Added 4 files", "Folder missing", …
     public func runSummary(_ r: CollectorRun, now: Date = Date()) -> String {
+        let base = runSummaryBody(r, now: now)
+        // v6: Test runs and Run now say so, as on the board ("Run now · added 2 files", "Test run · 2 files in the test folder").
+        if r.isTest {
+            switch r.result {
+            case .success, .nothing: return r.filesAdded.isEmpty ? "Test run · nothing in the test folder" : "Test run · \(Self.files(r.filesAdded.count)) in the test folder"
+            case .queued, .running, .notTrusted: return base
+            default: return "Test run · " + base.prefix(1).lowercased() + base.dropFirst()
+            }
+        }
+        if r.trigger == "now", r.result == .queued, r.waiting == "install" { return "Run now · waits for packages" }
+        if r.trigger == "now", [.success, .nothing, .failed, .timedout, .stopped].contains(r.result), r.error?.code != .installFailed {
+            return "Run now · " + base.prefix(1).lowercased() + base.dropFirst()
+        }
+        return base
+    }
+
+    private func runSummaryBody(_ r: CollectorRun, now: Date) -> String {
         let n = r.counts
         func added() -> String { n.added == 0 ? "added nothing" : "added \(Self.files(n.added))" }
         switch r.result {
-        case .queued: return r.waiting == "batch" ? "Waiting for a batch to apply" : "Waiting to start"
+        case .queued: return Self.waitingLine(r.waiting)
         case .running: return "Running · " + Self.elapsed(now.timeIntervalSince(r.startedAt))
         case .nothing: return "Nothing new"
         case .success:
@@ -331,6 +384,7 @@ public struct CollectorText: Sendable {
             case .scriptMissing?: return "Script missing"
             case .interpreterMissing?: return "Interpreter not found"
             case .interrupted?: return "Interrupted · Distill quit during the run"
+            case .installFailed?: return "Not run · packages aren’t installed"
             default: break
             }
             if r.kind == .script { return "Failed · \(added())" }
@@ -341,6 +395,7 @@ public struct CollectorText: Sendable {
     /// RunLogEntry's `meta`: "0.4 s", "exit 0 · 2.4 s", "exit 1", "timeout".
     public func runMeta(_ r: CollectorRun) -> String {
         if r.result == .timedout { return "timeout" }
+        if r.error?.code == .installFailed { return "Install again first" }
         if r.result.isActive || r.result == .skipped || r.result == .notTrusted { return "" }
         let d = Self.duration(r.durationMs)
         if r.kind == .script, let code = r.exitCode {
@@ -398,6 +453,62 @@ public struct CollectorText: Sendable {
             return "\(f.name) (waits in the queue: needs Google Drive access)"
         }
         return f.name
+    }
+
+    // MARK: v6: script files and packages
+
+    /// "Oct 3" (or "today") for a short date in running text.
+    public func shortDay(_ date: Date, now: Date) -> String {
+        calendar.isDate(date, inSameDayAs: now) ? "today" : dayName(date, template: "MMMd")
+    }
+
+    /// The Settings "Packages" line as (value, quiet suffix): "requirements.txt", " · 3 installed Oct 3".
+    public func packagesLine(_ m: CollectorManifestStatus, now: Date) -> (String, String) {
+        let count = m.packageCount == 1 ? "1 package" : "\(m.packageCount) packages"
+        switch m.state {
+        case "installing": return (m.name, " · installing…")
+        case "failed": return (m.name, " · \(count) · couldn’t install")
+        case "needsInstall": return (m.name, " · \(count) · not installed yet")
+        case "ready":
+            let when = m.lastInstall?.endedAt ?? m.lastInstall?.startedAt
+            return (m.name, " · \(m.packageCount) installed" + (when.map { " " + shortDay($0, now: now) } ?? ""))
+        default:
+            return m.exists ? (m.name, " · no packages") : ("None", " · add \(m.name) in Edit")
+        }
+    }
+
+    /// The PackagesPanel status line for a state.
+    public func packagesStatus(_ m: CollectorManifestStatus?, state: String, now: Date) -> String {
+        let n = m?.packageCount ?? 0
+        switch state {
+        case "none": return "No packages. Add one to install it into this folder."
+        case "ready":
+            let when = (m?.lastInstall?.endedAt).map { " · " + at($0, now: now).replacingOccurrences(of: "at ", with: "", options: .anchored) } ?? ""
+            return "\(n) installed · ready" + when
+        case "needsInstall": return "Not installed yet · Install now, or it installs before the next run"
+        case "installing": return "Installing…"
+        case "failed": return "Couldn’t install" + ((m?.lastInstall?.exitCode).map { " · exit \($0)" } ?? "") + " · runs wait until it installs"
+        case "needsOK": return "Changed · installs when you allow it"
+        default: return ""
+        }
+    }
+
+    /// What runs the script, for Advanced: "python3 from your PATH, with the collector’s .venv".
+    public func runsWith(_ c: Collector) -> String {
+        guard let s = c.script else { return "" }
+        switch s.interpreter.rawValue {
+        case "python3":
+            return c.isManaged && c.manifest?.installedSha256 != nil ? "python3 from your PATH, with the collector’s .venv" : "python3 from your PATH"
+        case "node": return "node from your PATH"
+        case "typescript": return "node from your PATH, types stripped"
+        default: return s.interpreter.rawValue
+        }
+    }
+
+    /// What the consent covers, for the Allowed line: "script and requirements.txt".
+    public func allowedCovers(_ c: Collector) -> String? {
+        guard let m = c.manifest, m.exists || c.script?.allowedFiles?.manifest != nil else { return nil }
+        return "script and \(m.name)"
     }
 
     /// The whole run list with long stretches of quiet runs collapsed:

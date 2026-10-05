@@ -220,6 +220,12 @@ final class AppModel: ObservableObject {
             collectors.runOutput(collectorId: collectorId, runId: runId, stream: stream, text: text)
         case .collectorRunFinished(let run):
             collectors.runFinished(run)
+        case .collectorInstallStarted(let install):
+            collectors.installStarted(install)
+        case .collectorInstallOutput(let collectorId, let installId, let text):
+            collectors.installOutput(collectorId: collectorId, installId: installId, text: text)
+        case .collectorInstallFinished(let install):
+            collectors.installFinished(install)
         case .queueScanned(let result):
             applyScan(result)
         case .activity(let entry):

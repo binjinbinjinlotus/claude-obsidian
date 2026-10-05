@@ -39,7 +39,8 @@ extension EnvironmentValues {
 // MARK: - CollectorRow
 
 /// One collector in the list: kind tile, name, one status line, and a pill only
-/// for Running, Failed and Needs your OK. Off rows are dimmed. Hover shows Run now and ⋯.
+/// for Running, Failed and Needs your OK. Off rows are dimmed. Hover shows Run now and ⋯;
+/// the selected row always shows its Run now (not while running or waiting for the OK).
 struct CollectorRow<MenuItems: View>: View {
     /// "folder" or "script".
     var kind: String
@@ -70,9 +71,12 @@ struct CollectorRow<MenuItems: View>: View {
         }
     }
 
+    /// Run now can show: not while running, not while a script waits for the OK (its detail has Allow and run).
+    private var canRun: Bool { runEnabled && statusKind != "running" && statusKind != "consent" }
+
     var body: some View {
         let k = CollectorsTheme.kind(kind)
-        let showHover = (hover || hovered) && !selected
+        let isHover = hover || hovered
         HStack(spacing: 10) {
             Image(systemName: k.2).font(.system(size: 12, weight: .semibold)).foregroundStyle(k.1)
                 .frame(width: 28, height: 28).background(RoundedRectangle(cornerRadius: 8).fill(k.0))
@@ -81,9 +85,9 @@ struct CollectorRow<MenuItems: View>: View {
                 Text(summary).font(Theme.body(11)).foregroundStyle(bad ? statusColors.1 : Theme.muted).lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            if showHover, onRun != nil || MenuItems.self != EmptyView.self {
+            if isHover, onRun != nil || MenuItems.self != EmptyView.self {
                 HStack(spacing: 2) {
-                    if let onRun, runEnabled {
+                    if let onRun, canRun {
                         IconButton(systemImage: "play.fill", tint: Theme.primary, iconSize: 10, help: "Run now", action: onRun)
                     }
                     Menu { menu } label: {
@@ -93,14 +97,19 @@ struct CollectorRow<MenuItems: View>: View {
                     .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
                     .help("More")
                 }
-            } else if !status.isEmpty, statusKind == "running" || bad {
-                Pill(text: status, fill: statusColors.0, ink: statusColors.1, size: .small, busy: statusKind == "running")
+            } else {
+                if selected, let onRun, canRun {
+                    IconButton(systemImage: "play.fill", tint: Theme.primary, fill: .white, iconSize: 10, help: "Run now", action: onRun)
+                }
+                if !status.isEmpty, statusKind == "running" || bad {
+                    Pill(text: status, fill: statusColors.0, ink: statusColors.1, size: .small, busy: statusKind == "running")
+                }
             }
         }
         .padding(.leading, 12).padding(.trailing, 10).padding(.vertical, 10)
         .frame(width: width)
         .frame(maxWidth: width == nil ? .infinity : nil)
-        .background(RoundedRectangle(cornerRadius: 12).fill(selected ? CollectorsTheme.selectedFill : showHover ? Theme.panel : .clear))
+        .background(RoundedRectangle(cornerRadius: 12).fill(selected ? CollectorsTheme.selectedFill : isHover ? Theme.panel : .clear))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(CollectorsTheme.selectedStroke, lineWidth: selected ? 1.5 : 0))
         .opacity(statusKind == "off" && !selected ? 0.6 : 1)
         .contentShape(RoundedRectangle(cornerRadius: 12))
@@ -416,6 +425,10 @@ struct ScriptConsent: View {
     var interpreter: String = "python3"
     var source: String = ""
     var hash: String = ""
+    /// v6: what changed since the OK ("package.json", "the script and requirements.txt"); empty = the script.
+    var changes: String = ""
+    /// v6: a new script's manifest ("package.json · 3 packages"): allowing also installs them.
+    var packages: String = ""
     var allowedText: String = ""
     var width: CGFloat? = nil
     /// Why Allow is off (the script can't be read), or nil.
@@ -426,6 +439,24 @@ struct ScriptConsent: View {
     var onRevoke: () -> Void = {}
 
     private var changed: Bool { state == "changed" }
+    private var manifestOnly: Bool { changes == "package.json" || changes == "requirements.txt" }
+
+    private var heading: String {
+        guard changed else { return "Allow Distill to run this script?" }
+        if changes.isEmpty { return "The script changed since you allowed it" }
+        let what = changes.hasPrefix("the ") ? "T" + changes.dropFirst() : changes
+        return what + " changed since you allowed it"
+    }
+
+    private var message: String {
+        if changed {
+            return manifestOnly
+                ? "Its packages changed, and installing them runs code from their authors. Distill paused this collector; check the change, then allow this version: it installs them at once. Nothing installs or runs until then."
+                : "Distill paused this collector. Check the change, then allow this version. Until then it does not run, on schedule or with Run now."
+        }
+        return "Distill will run this code on your Mac as you. It can read and change anything you can and use the network. It runs only on this schedule or with Run now, never while your notes are processed."
+            + (packages.isEmpty ? "" : " Allowing also installs its packages (\(packages)) right away; installing runs code from their authors.")
+    }
 
     var body: some View {
         Group {
@@ -460,11 +491,9 @@ struct ScriptConsent: View {
                 Image(systemName: "exclamationmark.shield").font(.system(size: 16, weight: .semibold)).foregroundStyle(CollectorsTheme.amberInk)
                     .frame(width: 18)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(changed ? "The script changed since you allowed it" : "Allow Distill to run this script?")
+                    Text(heading)
                         .font(Theme.body(14, .bold)).foregroundStyle(Theme.ink)
-                    Text(changed
-                         ? "Distill paused this collector. Check the change, then allow this version. Until then it does not run, on schedule or with Run now."
-                         : "Distill will run this code on your Mac as you. It can read and change anything you can and use the network. It runs only on this schedule or with Run now, never while your notes are processed.")
+                    Text(message)
                         .font(Theme.body(12.5)).foregroundStyle(CollectorsTheme.body).lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -493,7 +522,8 @@ struct ScriptConsent: View {
                 PrimaryButton(title: changed ? "Allow this version" : "Allow and turn on", systemImage: "checkmark", size: .small,
                               enabled: problem == nil && !busy, action: onAllow)
                     .fixedSize()
-                SoftButton(title: changed ? "Show script" : "Not now", fill: .white, size: .small, stroke: true, action: onSecond).fixedSize()
+                SoftButton(title: changed ? (changes.isEmpty ? "Show script" : "Show changes") : "Not now", fill: .white, size: .small, stroke: true,
+                           action: onSecond).fixedSize()
             }
             .padding(.leading, 28)
         }

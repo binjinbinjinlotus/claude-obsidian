@@ -2,8 +2,8 @@ import AppKit
 import SwiftUI
 import DistillKit
 
-/// Sidebar section Collectors (canvas row 7, boards Collectors and
-/// CollectorsScript): the header, the list plus the detail, the empty state and
+/// Sidebar section Collectors (canvas row 7, boards Collectors, CollectorsScript and
+/// CollectorsScriptFiles): the header, the list plus the detail, the empty state and
 /// the calm "Update the Distill core" state. Sheets are in CollectorsSheets.swift.
 struct CollectorsScreen: View {
     @EnvironmentObject var engine: AppModel
@@ -47,7 +47,7 @@ private struct CollectorsScreenContent: View {
                     VStack(spacing: 0) {
                         header(add: true)
                         GeometryReader { geo in
-                            // The list narrows in a small window so the detail keeps room (900 pt).
+                            // The list narrows in a small window so the detail keeps room (890–900 pt).
                             let listWidth: CGFloat = geo.size.width < 760 ? 240 : 300
                             HStack(alignment: .top, spacing: 24) {
                                 CollectorList(store: store).frame(width: listWidth)
@@ -98,10 +98,10 @@ private struct CollectorList: View {
                 ForEach(store.collectors) { c in
                     let kind = store.text.statusKind(c)
                     CollectorRow(kind: c.kind.rawValue, title: c.name,
-                                 summary: store.text.rowSummary(c, now: store.now, run: store.activeRun(c)),
+                                 summary: store.text.rowSummary(c, now: store.now, run: store.activeRun(c), latest: store.latestRun(c)),
                                  status: store.text.pill(c) ?? "", statusKind: kind.rawValue,
                                  selected: c.id == store.current?.id,
-                                 runEnabled: !c.needsConsent && !c.isRunning,
+                                 runEnabled: !c.needsConsent && !c.isRunning && !c.isInstalling && !store.text.installFailed(c),
                                  onSelect: { store.select(c.id) },
                                  onRun: { store.runNow(c) }) {
                         CollectorMenuItems(store: store, collector: c)
@@ -113,13 +113,34 @@ private struct CollectorList: View {
     }
 }
 
-/// ⋯: Edit, Rename, Duplicate, Show all runs, Turn on/off, Revoke (scripts), Delete.
+/// ⋯: Run now first (Stop while it runs or installs), Test run (scripts), Edit, the script's file and
+/// packages (scripts Distill keeps), Rename, Duplicate, Show all runs, Turn on/off, Revoke, Delete.
 struct CollectorMenuItems: View {
     @ObservedObject var store: CollectorsStore
     let collector: Collector
 
     var body: some View {
-        Button("Edit settings") { store.startEdit(collector) }
+        let c = collector
+        if c.isRunning || c.isInstalling {
+            Button("Stop") { store.stop(c) }
+        } else if !c.needsConsent {
+            Button("Run now") { store.select(c.id); store.runNow(c) }
+                .disabled(store.text.installFailed(c))
+            if c.isScript { Button("Test run") { store.select(c.id); store.testRun(c) } }
+        }
+        Divider()
+        Button("Edit settings") { store.startEdit(c) }
+        if c.isScript, let path = c.scriptPath, !path.isEmpty {
+            Button("Open script in editor") { store.openInEditor(path) }
+            Button("Reveal in Finder") { store.reveal(path) }
+        }
+        if c.isScript, c.isManaged, let m = c.manifest, m.hasDependencies {
+            Button("Install packages") { store.select(c.id); store.install(c) }
+                .disabled(c.needsConsent || c.isRunning || c.isInstalling)
+            Button("Clean reinstall…") { store.select(c.id); store.confirmCleanInstall(c) }
+                .disabled(c.needsConsent || c.isRunning || c.isInstalling)
+        }
+        Divider()
         Button("Rename…") { store.select(collector.id); store.renaming = collector.name }
         Button("Duplicate") { store.duplicate(collector) }
         Button("Show all runs") { store.select(collector.id); store.page = .allRuns }
@@ -131,7 +152,7 @@ struct CollectorMenuItems: View {
         }
         Divider()
         Button("Delete collector…", role: .destructive) { store.select(collector.id); store.confirmDelete = collector.id }
-            .disabled(collector.isRunning)
+            .disabled(collector.isRunning || collector.isInstalling)
     }
 }
 
@@ -164,11 +185,15 @@ struct CollectorDetail: View {
     let collector: Collector
     @State private var showCode = false
     @State private var newName = ""
+    @State private var width: CGFloat = 600
 
     private var c: Collector { collector }
     private var text: CollectorText { store.text }
     private var editing: Bool { store.editing != nil && store.current?.id == c.id }
     private var consentAsk: Bool { c.needsConsent && !text.scriptChanged(c) && !store.consentDeferred.contains(c.id) }
+    /// A narrow pane (an 890 pt window): labels above values, short link titles.
+    private var narrow: Bool { width < 470 }
+    private var v6: Bool { c.status?.script != nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -187,25 +212,28 @@ struct CollectorDetail: View {
             } else if editing {
                 CollectorEditForm(store: store, collector: c)
             } else {
-                if text.scriptChanged(c), showCode { codeBlock(title: "WHAT WILL RUN") }
+                if text.scriptChanged(c) { whatChanged }
                 settingsBlock
                 if c.isScript { advanced }
                 recentRuns
             }
         }
+        .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width = $0 }
     }
 
     // MARK: Title row
 
     /// Name and controls on one row; in a narrow pane the controls move under the name instead of cutting it.
-    private var titleRow: some View {
-        ViewThatFits(in: .horizontal) {
+    @ViewBuilder private var titleRow: some View {
+        // One row while the pane has room (the title line truncates, as on the boards); under the
+        // name in a narrow pane (an 890 pt window) so the name is never cut.
+        if width >= 520 {
             HStack(spacing: 12) {
                 tile
-                nameBlock.fixedSize(horizontal: true, vertical: false)
-                Spacer(minLength: 0)
+                nameBlock.frame(maxWidth: .infinity, alignment: .leading)
                 controls
             }
+        } else {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 12) {
                     tile
@@ -228,30 +256,53 @@ struct CollectorDetail: View {
     private var nameBlock: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(c.name).font(Theme.display(22)).lineLimit(1).truncationMode(.tail)
-            Text(text.titleLine(c, now: store.now)).font(Theme.body(12.5)).foregroundStyle(Theme.muted).lineLimit(1)
+            Text(titleLine).font(Theme.body(12.5)).foregroundStyle(Theme.muted).lineLimit(1)
         }
     }
 
+    private var titleLine: String {
+        if editing, v6, c.isScript {
+            let lang = c.script?.interpreter.language ?? ""
+            return "Script · \(lang)\(c.isManaged ? "" : " · your own file") · editing"
+        }
+        return text.titleLine(c, now: store.now)
+    }
+
+    /// One slot for every kind and state: Run now; Stop while it runs or installs; Allow and run while a
+    /// script waits for the OK. It stays while editing (it runs the saved version). Scripts add Test run.
     @ViewBuilder private var controls: some View {
+        let active = c.isRunning || c.isInstalling
         PillSwitch(isOn: Binding(get: { c.enabled && !c.needsConsent }, set: { store.setEnabled(c, $0) }), label: "Collector on", width: 36, height: 22)
             .disabled(c.needsConsent)
             .help(c.needsConsent ? "Allow the script first" : c.enabled ? "Turn off" : "Turn on")
-        if !c.needsConsent && !editing {
-            if c.isRunning {
-                SoftButton(title: "Stop", fill: .white, size: .small, stroke: true, systemImage: "xmark") { store.stop(c) }
-                    .fixedSize()
-            } else {
-                SoftButton(title: "Run now", fill: .white, size: .small, stroke: true, systemImage: "play") { store.runNow(c) }
-                    .fixedSize()
-                    .disabled(store.busy[c.id] == "run")
-            }
+        if c.isScript, !c.needsConsent, !active {
+            LinkButton(title: "Test run") { store.testRun(c) }
+                .disabled(store.busy[c.id] != nil)
+                .help("Run it into Distill’s test folder: nothing reaches the queue")
+        }
+        if active {
+            SoftButton(title: "Stop", fill: .white, size: .small, stroke: true, systemImage: "xmark") { store.stop(c) }
+                .fixedSize()
+                .disabled(store.busy[c.id] == "stop")
+        } else if c.needsConsent {
+            let can = c.status?.currentSha256 != nil && store.busy[c.id] != "allow"
+            SoftButton(title: "Allow and run", fill: .white, size: .small, stroke: true, systemImage: "play") { store.allowAndRun(c) }
+                .fixedSize()
+                .disabled(!can).opacity(can ? 1 : 0.45)
+                .help("Allow the version shown, install its packages if needed, then run it once")
+        } else {
+            let blocked = text.installFailed(c)
+            SoftButton(title: "Run now", fill: .white, size: .small, stroke: true, systemImage: "play") { store.runNow(c) }
+                .fixedSize()
+                .disabled(store.busy[c.id] == "run" || blocked).opacity(blocked ? 0.45 : 1)
+                .help(blocked ? "Runs wait until the packages install" : "Run it now; the schedule doesn’t move")
         }
         Menu { CollectorMenuItems(store: store, collector: c) } label: {
             Image(systemName: "ellipsis").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
                 .frame(width: 28, height: 28).contentShape(Circle())
         }
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-        .help("More: Edit, Rename, Duplicate, Delete")
+        .help(c.needsConsent ? "More: Edit, Rename, Duplicate, Delete" : "More: Run now, Edit, Rename, Duplicate, Delete")
     }
 
     private var renameRow: some View {
@@ -271,8 +322,7 @@ struct CollectorDetail: View {
     private var deleteRow: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Delete \(c.name)?").font(Theme.body(14, .bold))
-            Text(c.isFolder ? "The files it collected stay in the queue, and Distill keeps remembering what it took." : "Files it added stay in the queue.")
-                .font(Theme.body(12.5)).foregroundStyle(CollectorsTheme.body)
+            Text(deleteMessage).font(Theme.body(12.5)).foregroundStyle(CollectorsTheme.body).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 SoftButton(title: "Cancel", fill: .white, size: .small, stroke: true) { store.confirmDelete = nil }.fixedSize()
                     .keyboardShortcut(.cancelAction)
@@ -285,6 +335,14 @@ struct CollectorDetail: View {
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(CollectorsTheme.errorStroke))
     }
 
+    private var deleteMessage: String {
+        if c.isFolder { return "The files it collected stay in the queue, and Distill keeps remembering what it took." }
+        if c.isManaged {
+            return "Files it added stay in the queue. The collector and its script folder go to Distill’s trash for 30 days (without installed packages); restore it from History → Activity."
+        }
+        return "Files it added stay in the queue. Your script file stays where it is."
+    }
+
     // MARK: Consent
 
     private var consent: some View {
@@ -292,17 +350,32 @@ struct CollectorDetail: View {
         let sha = c.status?.currentSha256
         let short = sha.map { "sha256 " + Self.abbrev($0) } ?? ""
         let was = s?.allowedSha256.map { " (was " + Self.abbrev($0) + ")" } ?? ""
+        let changed = text.scriptChanged(c)
+        let manifestOnly = text.manifestOnlyChanged(c)
+        let m = c.manifest
         let source: String = {
+            if manifestOnly { return m?.name ?? "package.json" }
             if let code = s?.source.inlineCode { return "(inline, \(code.trimmingCharacters(in: .newlines).split(separator: "\n", omittingEmptySubsequences: false).count) lines)" }
+            if c.isManaged, let p = c.scriptPath { return (p as NSString).lastPathComponent }
             return text.tilde(s?.source.filePath ?? "")
         }()
-        return ScriptConsent(state: text.scriptChanged(c) ? "changed" : "ask", interpreter: s?.interpreter.rawValue ?? "zsh",
-                             source: source, hash: short + (text.scriptChanged(c) ? was : ""),
+        let interpreter = manifestOnly ? (m?.name == "requirements.txt" ? "pip install ·" : "npm install ·") : (s?.interpreter.command ?? "zsh")
+        let changes: String = {
+            let ch = c.status?.script?.changes ?? []
+            guard changed, ch.contains("manifest"), let name = m?.name else { return "" }
+            return ch.contains("script") ? "the script and \(name)" : name
+        }()
+        let packages: String = {
+            guard !changed, c.isManaged, let m, m.hasDependencies else { return "" }
+            return "\(m.name) · \(m.packageCount == 1 ? "1 package" : "\(m.packageCount) packages")"
+        }()
+        return ScriptConsent(state: changed ? "changed" : "ask", interpreter: interpreter,
+                             source: source, hash: short + (changed ? was : ""), changes: changes, packages: packages,
                              problem: sha == nil ? (c.status?.scriptProblem ?? "Distill can't read the script.") : nil,
                              busy: store.busy[c.id] == "allow",
                              onAllow: { store.allow(c) },
                              onSecond: {
-                                 if text.scriptChanged(c) { showCode.toggle() } else { store.consentDeferred.insert(c.id) }
+                                 if changed { showCode.toggle() } else { store.consentDeferred.insert(c.id) }
                              })
     }
 
@@ -311,7 +384,8 @@ struct CollectorDetail: View {
         HStack(spacing: 8) {
             Image(systemName: "pause.circle").foregroundStyle(Theme.muted)
             Text("Not allowed yet · it stays off until you allow it.").font(Theme.body(13)).foregroundStyle(Theme.muted)
-            Spacer(minLength: 8)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             LinkButton(title: "Review and allow") { store.consentDeferred.remove(c.id) }
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
@@ -320,10 +394,33 @@ struct CollectorDetail: View {
 
     static func abbrev(_ sha: String) -> String { String(sha.prefix(4)) + "…" + String(sha.suffix(4)) }
 
-    private var whatWillRun: some View { codeBlock(title: "WHAT WILL RUN", edit: true) }
+    /// A first OK: the code, and a kept script's package manifest (both are covered by the OK).
+    @ViewBuilder private var whatWillRun: some View {
+        codeBlock(title: "WHAT WILL RUN", edit: true)
+        if let m = c.manifest, c.isManaged, let files = store.consentScript(c), let mtext = files.manifest?.text, !mtext.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                SectionLabel("PACKAGES")
+                PackagesPanel(manifest: m.name, state: "needsOK", lines: mtext,
+                              summary: "\(m.packageCount == 1 ? "1 package" : "\(m.packageCount) packages") · install when you allow the script")
+            }
+        }
+    }
+
+    /// A changed script: a changed manifest shows at once (WHAT CHANGED); the code with Show script / Show changes.
+    @ViewBuilder private var whatChanged: some View {
+        let ch = c.status?.script?.changes ?? []
+        if ch.contains("manifest"), let m = c.manifest {
+            VStack(alignment: .leading, spacing: 6) {
+                SectionLabel("WHAT CHANGED")
+                PackagesPanel(manifest: m.name, state: "needsOK", lines: store.consentScript(c)?.manifest?.text ?? "")
+            }
+        }
+        if showCode { codeBlock(title: "WHAT WILL RUN") }
+    }
 
     private func codeBlock(title: String, edit: Bool = false) -> some View {
-        let lines = (store.code(c) ?? "").components(separatedBy: "\n")
+        let code = store.consentScript(c)?.code ?? store.code(c) ?? ""
+        let lines = code.components(separatedBy: "\n")
         let trimmed = lines.last == "" ? Array(lines.dropLast()) : lines
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -331,11 +428,18 @@ struct CollectorDetail: View {
                 Spacer()
                 if edit { LinkButton(title: "Edit") { store.startEdit(c) } }
             }
-            CodeLines(lines: trimmed.isEmpty ? ["(the script can't be read)"] : trimmed)
+            CodeLines(lines: trimmed.isEmpty || code.isEmpty ? ["(the script can't be read)"] : trimmed)
         }
     }
 
     // MARK: Settings
+
+    private struct SettingRow {
+        var label: String
+        var value: String
+        var quiet: String = ""
+        var links: [(String, () -> Void)] = []
+    }
 
     private var settingsBlock: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -346,36 +450,84 @@ struct CollectorDetail: View {
             }
             VStack(spacing: 0) {
                 ForEach(Array(settingRows.enumerated()), id: \.offset) { i, row in
-                    HStack(spacing: 14) {
-                        Text(row.0).font(Theme.body(12.5)).foregroundStyle(Theme.muted).frame(width: 120, alignment: .leading)
-                        (Text(row.1).foregroundColor(Theme.ink) + Text(row.2).foregroundColor(Theme.faint))
-                            .font(Theme.body(13)).lineLimit(1).truncationMode(.tail)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .help(row.1 + row.2)
-                    }
-                    .padding(.vertical, 9)
-                    .overlay(alignment: .top) { if i > 0 { Rectangle().fill(Theme.border).frame(height: 1) } }
+                    settingRow(row)
+                        .padding(.vertical, 9)
+                        .overlay(alignment: .top) { if i > 0 { Rectangle().fill(Theme.border).frame(height: 1) } }
                 }
             }
         }
     }
 
-    private var settingRows: [(String, String, String)] {
+    @ViewBuilder private func settingRow(_ row: SettingRow) -> some View {
+        let value = (Text(row.value).foregroundColor(Theme.ink) + Text(row.quiet).foregroundColor(Theme.faint))
+            .font(Theme.body(13)).lineLimit(1).truncationMode(.tail)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .help(row.value + row.quiet)
+        let links = HStack(spacing: 10) {
+            ForEach(Array(row.links.enumerated()), id: \.offset) { _, l in
+                Button(action: l.1) { Text(l.0).font(Theme.body(11.5, .semibold)).foregroundStyle(Theme.primary).fixedSize() }
+                    .buttonStyle(.plain)
+            }
+        }
+        if narrow {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(row.label).font(Theme.body(12)).foregroundStyle(Theme.muted)
+                HStack(spacing: 10) { value; links }
+            }
+        } else {
+            HStack(spacing: 14) {
+                Text(row.label).font(Theme.body(12.5)).foregroundStyle(Theme.muted).frame(width: 120, alignment: .leading)
+                value
+                links
+            }
+        }
+    }
+
+    private var settingRows: [SettingRow] {
         let sched = text.schedule(c.schedule.cron)
         if let f = c.folder {
             let queue = store.queuePath(c.vaultPath).map { " · queue " + text.tilde($0) } ?? ""
-            return [("From", text.tilde(f.source), ""),
-                    ("Subfolders", f.subfolders ? "Collected as folder items" : "Left alone", ""),
-                    ("After collecting", f.moves ? "Move it to the queue" : "Keep the original (copy)", ""),
-                    ("Into", store.vaultName(c.vaultPath), queue),
-                    ("Schedule", sched, "")]
+            return [SettingRow(label: "From", value: text.tilde(f.source)),
+                    SettingRow(label: "Subfolders", value: f.subfolders ? "Collected as folder items" : "Left alone"),
+                    SettingRow(label: "After collecting", value: f.moves ? "Move it to the queue" : "Keep the original (copy)"),
+                    SettingRow(label: "Into", value: store.vaultName(c.vaultPath), quiet: queue),
+                    SettingRow(label: "Schedule", value: sched)]
         }
-        guard let s = c.script else { return [("Schedule", sched, "")] }
-        let script: String = s.source.inlineCode.map { "Inline code (\($0.split(separator: "\n").count) lines)" } ?? text.tilde(s.source.filePath ?? "")
-        if text.scriptChanged(c) { return [("Script", script, ""), ("Schedule", sched, " · paused until you allow it")] }
-        let allowed: (String, String) = s.allowedAt.map { ("this exact version", " · " + HistoryTime.phrase($0, now: store.now)) }
-            ?? ("this exact version", "")
-        return [("Script", script, ""), ("Schedule", sched, ""), ("Allowed", allowed.0, allowed.1)]
+        guard let s = c.script else { return [SettingRow(label: "Schedule", value: sched)] }
+        let changed = text.scriptChanged(c)
+        guard v6 else {
+            // An older core: no script files.
+            let script: String = s.source.inlineCode.map { "Inline code (\($0.split(separator: "\n").count) lines)" } ?? text.tilde(s.source.filePath ?? "")
+            if changed { return [SettingRow(label: "Script", value: script), SettingRow(label: "Schedule", value: sched, quiet: " · paused until you allow it")] }
+            return [SettingRow(label: "Script", value: script), SettingRow(label: "Schedule", value: sched),
+                    SettingRow(label: "Allowed", value: "this exact version", quiet: s.allowedAt.map { " · " + HistoryTime.phrase($0, now: store.now) } ?? "")]
+        }
+        let path = c.scriptPath ?? ""
+        let fileLinks: [(String, () -> Void)] = path.isEmpty ? [] : [(narrow ? "Reveal" : "Reveal in Finder", { store.reveal(path) }),
+                                                                      (narrow ? "Open" : "Open in editor", { store.openInEditor(path) })]
+        var rows: [SettingRow] = []
+        let lang = s.interpreter.language
+        if c.isManaged {
+            let unchanged = changed && !(c.status?.script?.changes ?? []).contains("script") && !(c.status?.script?.changes ?? []).isEmpty
+            rows.append(SettingRow(label: "Script", value: (path as NSString).lastPathComponent, quiet: " · \(lang)" + (unchanged ? " · unchanged" : ""),
+                                   links: fileLinks))
+            if let m = c.manifest, !changed || m.exists {
+                let line = text.packagesLine(m, now: store.now)
+                rows.append(SettingRow(label: "Packages", value: line.0, quiet: line.1))
+            }
+        } else {
+            rows.append(SettingRow(label: "Script", value: text.tilde(path), quiet: " · your own file", links: fileLinks))
+            rows.append(SettingRow(label: "Language", value: lang))
+            rows.append(SettingRow(label: "Packages", value: "Yours to install: Distill installs packages only for scripts it keeps."))
+        }
+        let quiet = changed ? " · paused until you allow it" : text.installFailed(c) ? " · runs wait for the packages" : ""
+        rows.append(SettingRow(label: "Schedule", value: sched, quiet: quiet))
+        if !c.needsConsent, s.allowedSha256 != nil {
+            let covers = text.allowedCovers(c).map { " · " + $0 } ?? ""
+            let when = s.allowedAt.map { " · " + HistoryTime.phrase($0, now: store.now) } ?? ""
+            rows.append(SettingRow(label: "Allowed", value: "this exact version", quiet: covers + when))
+        }
+        return rows
     }
 
     // MARK: Advanced (scripts)
@@ -388,7 +540,7 @@ struct CollectorDetail: View {
                         .frame(width: 12)
                     Text("Advanced").font(Theme.body(12.5, .semibold)).foregroundStyle(Theme.ink)
                     if !store.advancedOpen {
-                        Text("\(c.script?.interpreter.rawValue ?? "") · timeout \(CollectorText.timeout(c.script?.timeoutSeconds ?? 300)) · what the script gets")
+                        Text("\(v6 ? text.runsWith(c) : c.script?.interpreter.rawValue ?? "") · timeout \(CollectorText.timeout(c.script?.timeoutSeconds ?? 300)) · what the script gets")
                             .font(Theme.body(12.5)).foregroundStyle(Theme.faint).lineLimit(1)
                     }
                     Spacer(minLength: 0)
@@ -400,10 +552,10 @@ struct CollectorDetail: View {
             .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
             if store.advancedOpen {
                 VStack(alignment: .leading, spacing: 10) {
-                    AdvancedRow(label: "Run with") { Text(c.script?.interpreter.rawValue ?? "").font(Theme.body(13)) }
-                    AdvancedRow(label: "Timeout") { Text(CollectorText.timeout(c.script?.timeoutSeconds ?? 300)).font(Theme.body(13)) }
-                    AdvancedRow(label: "Cron") { Text(c.schedule.cron).font(.system(size: 12, design: .monospaced)) }
-                    AdvancedRow(label: "It gets") { ScriptGets(vault: c.vaultPath, queue: store.queuePath(c.vaultPath) ?? "") }
+                    AdvancedRow(label: "Run with", stacked: narrow) { Text(v6 ? text.runsWith(c) : c.script?.interpreter.rawValue ?? "").font(Theme.body(13)) }
+                    AdvancedRow(label: "Timeout", stacked: narrow) { Text(CollectorText.timeout(c.script?.timeoutSeconds ?? 300)).font(Theme.body(13)) }
+                    AdvancedRow(label: "Cron", stacked: narrow) { Text(c.schedule.cron).font(.system(size: 12, design: .monospaced)) }
+                    AdvancedRow(label: "It gets", stacked: narrow) { ScriptGets(vault: c.vaultPath, queue: store.queuePath(c.vaultPath) ?? "") }
                 }
             }
         }
@@ -413,23 +565,37 @@ struct CollectorDetail: View {
 
     private var recentRuns: some View {
         let runs = Array(store.recentRuns(c).prefix(3))
+        let waiting = store.activeRun(c).flatMap { $0.result == .queued && $0.waiting == "install" ? $0 : nil }
         return VStack(alignment: .leading, spacing: 4) {
             HStack {
                 SectionLabel("RECENT RUNS")
                 Spacer()
                 LinkButton(title: "Show all runs") { store.page = .allRuns; store.loadRuns(c.id) }
             }
-            if runs.isEmpty {
+            if runs.isEmpty && waiting == nil {
                 Text("No runs yet.").font(Theme.body(12)).foregroundStyle(Theme.faint).padding(.vertical, 6)
             } else {
                 VStack(spacing: 2) {
+                    if let waiting {
+                        // The run Allow and run (or Run now) started during an install waits for it.
+                        RunLogEntry(result: "running", time: text.runTime(waiting.startedAt, previous: nil, now: store.now),
+                                    summary: text.runSummary(waiting, now: store.now), meta: "Stop")
+                    }
                     ForEach(Array(runs.enumerated()), id: \.element.id) { i, run in
-                        RunLine(store: store, collector: c, run: run, previous: i > 0 ? runs[i - 1].startedAt : nil)
+                        RunLine(store: store, collector: c, run: run, previous: i > 0 ? runs[i - 1].startedAt : (waiting?.startedAt))
                     }
                 }
             }
         }
     }
+}
+
+/// The command a script run line starts with: "python3 collector.py" (kept) or the user's path.
+func collectorCommand(_ c: Collector, text: CollectorText) -> String? {
+    guard let s = c.script else { return nil }
+    if c.isManaged, let p = c.scriptPath { return "\(s.interpreter.command) " + (p as NSString).lastPathComponent }
+    if let p = s.source.filePath { return "\(s.interpreter.command) " + text.tilde(p) }
+    return "\(s.interpreter.command) collector.\(s.interpreter == .python3 ? "py" : s.interpreter == .node ? "mjs" : s.interpreter.fileExtension)"
 }
 
 /// One RunLogEntry for a run, opened and closed in the store.
@@ -441,10 +607,7 @@ struct RunLine: View {
 
     var body: some View {
         let text = store.text
-        let command = collector.script.map { s in
-            "\(s.interpreter.rawValue) " + (s.source.filePath.map(text.tilde) ?? "collector.\(s.interpreter == .python3 ? "py" : s.interpreter == .node ? "mjs" : "zsh")")
-        }
-        let (kind, lines) = text.runLines(run, command: command)
+        let (kind, lines) = text.runLines(run, command: collectorCommand(collector, text: text))
         RunLogEntry(result: CollectorText.runKind(run.result).rawValue,
                     time: text.runTime(run.startedAt, previous: previous, now: store.now),
                     summary: text.runSummary(run, now: store.now), meta: text.runMeta(run),
@@ -494,174 +657,6 @@ struct CollectorAllRuns: View {
         case .run(let r): return r.startedAt
         case .quiet(_, let d): return d
         }
-    }
-}
-
-// MARK: - Status card
-
-struct CollectorStatusCard: View {
-    @ObservedObject var store: CollectorsStore
-    let collector: Collector
-
-    private enum Tone { case calm, running, error }
-
-    var body: some View {
-        let c = collector
-        let content = describe(c)
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                if content.tone == .running { Spinner(size: 13) }
-                if content.tone == .error { Image(systemName: "exclamationmark.triangle").font(.system(size: 13, weight: .bold)) }
-                Text(content.title).font(Theme.body(15, .bold)).lineLimit(2)
-            }
-            .foregroundStyle(content.tone == .error ? Theme.peachInk : Theme.ink)
-            ForEach(content.lines, id: \.self) { line in
-                Text(line).font(Theme.body(12.5)).foregroundStyle(CollectorsTheme.body).lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if !content.terminal.isEmpty {
-                TerminalLines(lines: content.terminal, stderr: content.stderr).padding(.top, 6)
-            }
-            actions(c)
-            if c.isFolder, let n = c.status?.collectedCount, n > 0 {
-                HStack(spacing: 0) {
-                    Text("Already collected: ").font(Theme.body(12.5)).foregroundStyle(Theme.muted)
-                    Button { store.openCollected(c) } label: {
-                        Text(CollectorText.files(n)).font(Theme.body(12.5, .semibold)).foregroundStyle(Theme.primary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(.horizontal, 16).padding(.vertical, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 14).fill(content.tone == .error ? CollectorsTheme.errorFill : content.tone == .running ? CollectorsTheme.runningFill : Theme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(content.tone == .error ? CollectorsTheme.errorStroke : .clear))
-    }
-
-    @ViewBuilder private func actions(_ c: Collector) -> some View {
-        let code = c.isRunning ? nil : c.lastRun?.error?.code
-        let buttons: [(String, () -> Void)] = {
-            switch code {
-            case .sourceMissing?: return [("Choose folder…", { store.chooseSource(c) }), ("Create it", { store.createFolder(c, which: "source") })]
-            case .noPermission?: return [("Choose again…", { store.chooseSource(c) })]
-            case .queueMissing?: return [("Create folder", { store.createFolder(c, which: "queue") })]
-            default: return []
-            }
-        }()
-        if !buttons.isEmpty {
-            HStack(spacing: 8) {
-                ForEach(buttons, id: \.0) { b in
-                    SoftButton(title: b.0, fill: .white, size: .small, stroke: true, action: b.1).fixedSize()
-                }
-                if code == .noPermission {
-                    LinkButton(title: "Open Privacy settings") {
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders") { NSWorkspace.shared.open(url) }
-                    }
-                }
-            }
-            .padding(.top, 6)
-        }
-    }
-
-    private struct Content {
-        var tone: Tone = .calm
-        var title = ""
-        var lines: [String] = []
-        var terminal: [String] = []
-        var stderr = false
-    }
-
-    private func describe(_ c: Collector) -> Content {
-        let text = store.text, now = store.now
-        if c.isRunning {
-            let run = store.activeRun(c)
-            var lines: [String] = []
-            if let run {
-                if run.result == .queued {
-                    lines.append(run.waiting == "batch" ? "It starts when the batch applying to this vault finishes." : "It starts when a slot is free (two collectors run at once).")
-                } else if c.isScript {
-                    let how = run.trigger == "now" ? "Started with Run now" : run.trigger == "catchup" ? "Started to catch up" : "Started"
-                    let stop = run.startedAt.addingTimeInterval(TimeInterval(c.script?.timeoutSeconds ?? 300))
-                    lines.append("\(how) at \(text.clock(run.startedAt)) · stops at \(text.clock(stop))")
-                } else {
-                    lines.append("Started at \(text.clock(run.startedAt))")
-                }
-            }
-            var terminal: [String] = []
-            if c.isScript, let run, let out = store.output[run.id] {
-                terminal = (out.stdout + out.stderr).split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-                while terminal.last == "" { terminal.removeLast() }
-                terminal = Array(terminal.suffix(8))
-            }
-            return Content(tone: .running, title: text.runningLine(c, run: run, now: now), lines: lines, terminal: terminal)
-        }
-        guard let r = c.lastRun else {
-            let next = c.status?.nextRunAt.map { text.next($0, now: now) }
-            return Content(title: "Not run yet", lines: [c.enabled ? (next.map { "First run: " + $0.replacingOccurrences(of: "next ", with: "") + "." } ?? "Run now runs it at once.") : "It's off. Run now still works."])
-        }
-        let when = text.at(r.startedAt, now: now)
-        let nextLine = c.status?.nextRunAt.map { "It stays on schedule and tries again " + text.next($0, now: now).replacingOccurrences(of: "next ", with: "") + "." }
-        switch r.result {
-        case .success, .nothing:
-            var lines: [String] = []
-            let title: String
-            if c.isScript {
-                title = r.counts.added == 0 ? "Nothing new \(when)" : "Added \(CollectorText.files(r.counts.added)) \(when)"
-                lines.append("Exit 0" + (CollectorText.duration(r.durationMs).map { " after \($0)" } ?? "") + ".")
-            } else if r.result == .nothing {
-                title = "Nothing new \(when)"
-                if r.counts.skipped > 0 { lines.append("Skipped \(r.counts.skipped) that \(r.counts.skipped == 1 ? "was" : "were") already collected.") }
-            } else {
-                let moved = r.counts.moved > 0
-                title = "\(moved ? "Moved" : "Copied") \(((r.files ?? []).contains(where: \.isFolder) ? CollectorText.items : CollectorText.files)(moved ? r.counts.moved : r.counts.copied)) \(when)"
-                var bits: [String] = []
-                if r.counts.skipped > 0 { bits.append("Skipped \(r.counts.skipped) that \(r.counts.skipped == 1 ? "was" : "were") already collected.") }
-                if r.counts.waiting > 0 { bits.append("\(r.counts.waiting) still changing; the next run takes \(r.counts.waiting == 1 ? "it" : "them").") }
-                if r.counts.errors > 0 { bits.append("\(r.counts.errors) couldn't be \(moved ? "moved" : "copied"); open the run to see why.") }
-                if !bits.isEmpty { lines.append(bits.joined(separator: " ")) }
-            }
-            if !c.enabled { lines.append("It's off. Run now still works.") }
-            return Content(title: title, lines: lines)
-        case .stopped:
-            return Content(title: "Stopped \(when)", lines: [r.counts.added > 0 ? "It added \(CollectorText.files(r.counts.added)) before you stopped it." : "You stopped it. It runs again on schedule."])
-        case .skipped:
-            return Content(title: "Skipped \(when)", lines: [r.skipReason.map { "The \($0)." } ?? ""].filter { !$0.isEmpty })
-        case .timedout:
-            let after = CollectorText.timeout(c.script?.timeoutSeconds ?? 300)
-            return Content(tone: .error, title: "Stopped after \(after) \(when)",
-                           lines: [(r.counts.added > 0 ? "It added \(CollectorText.files(r.counts.added)); they stay in the queue." : "Added nothing.") + (nextLine.map { " " + $0 } ?? "")],
-                           terminal: tail(r.stderrTail ?? r.stdoutTail), stderr: r.stderrTail != nil)
-        default:
-            switch r.error?.code {
-            case .sourceMissing?:
-                return Content(tone: .error, title: "\(text.tilde(c.folder?.source ?? "The folder")) is missing",
-                               lines: ["It was moved, renamed or deleted, so the \(text.clock(r.startedAt)) run collected nothing."])
-            case .noPermission?:
-                return Content(tone: .error, title: "Distill can’t open \(text.tilde(c.folder?.source ?? "the folder"))",
-                               lines: ["macOS hasn’t given Distill access to this folder. Choose it again so macOS asks you."])
-            case .queueMissing?:
-                return Content(tone: .error, title: "The queue folder is missing",
-                               lines: ["\(store.queuePath(c.vaultPath).map(text.tilde) ?? "It") was moved or deleted, so the \(text.clock(r.startedAt)) run collected nothing."])
-            case .interrupted?:
-                return Content(tone: .error, title: "Interrupted \(when)", lines: ["Distill quit while it ran. It runs again on schedule."])
-            default:
-                let exit = r.exitCode.map { " · exit \($0)" } ?? ""
-                var lines: [String] = []
-                if c.isScript {
-                    lines.append((r.counts.added > 0 ? "Added \(CollectorText.files(r.counts.added)); they stay in the queue." : "Added nothing.") + (nextLine.map { " " + $0 } ?? ""))
-                }
-                if let m = r.error?.message, !m.isEmpty, r.error?.code != .scriptFailed { lines.append(m) }
-                return Content(tone: .error, title: "Failed \(when)\(exit)", lines: lines, terminal: tail(r.stderrTail), stderr: true)
-            }
-        }
-    }
-
-    private func tail(_ s: String?) -> [String] {
-        guard let s, !s.isEmpty else { return [] }
-        var lines = s.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        while lines.last == "" { lines.removeLast() }
-        return Array(lines.suffix(6))
     }
 }
 

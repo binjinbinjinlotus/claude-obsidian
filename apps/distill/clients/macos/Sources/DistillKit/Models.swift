@@ -1134,6 +1134,10 @@ public enum CoreEvent: Equatable, Sendable {
     /// Live output of a script run: the text added since the last event.
     case collectorRunOutput(collectorId: String, runId: String, stream: String, text: String)
     case collectorRunFinished(CollectorRun)
+    /// v6: a package install of a managed script started / printed output / finished.
+    case collectorInstallStarted(CollectorInstall)
+    case collectorInstallOutput(collectorId: String, installId: String, text: String)
+    case collectorInstallFinished(CollectorInstall)
     /// v5: a full queue scan finished (Refresh, the window-active scan or the queue check).
     case queueScanned(QueueScanResult)
     /// v6: a line was added to the activity log.
@@ -1143,6 +1147,7 @@ public enum CoreEvent: Equatable, Sendable {
     private enum Keys: String, CodingKey {
         case type, entries, job, settings, level, message, requestID, notePath, labels, error, conversation, deleted, progress, action, connection
         case collector, run, collectorId, runId, stream, text, result, entry
+        case install, installId
     }
 
     /// Decodes the JSON of one `data:` line.
@@ -1179,6 +1184,11 @@ public enum CoreEvent: Equatable, Sendable {
             case "collector.run.output":
                 event = .collectorRunOutput(collectorId: c.lossy(String.self, .collectorId) ?? "", runId: c.lossy(String.self, .runId) ?? "",
                                             stream: c.lossy(String.self, .stream) ?? "stdout", text: c.lossy(String.self, .text) ?? "")
+            case "collector.install.started": event = .collectorInstallStarted(try c.decode(CollectorInstall.self, forKey: .install))
+            case "collector.install.finished": event = .collectorInstallFinished(try c.decode(CollectorInstall.self, forKey: .install))
+            case "collector.install.output":
+                event = .collectorInstallOutput(collectorId: c.lossy(String.self, .collectorId) ?? "", installId: c.lossy(String.self, .installId) ?? "",
+                                                text: c.lossy(String.self, .text) ?? "")
             case "queue.scanned": event = .queueScanned(try c.decode(QueueScanResult.self, forKey: .result))
             // An entry this build can't read is a line it doesn't show, not a broken stream.
             case "activity": event = (try? c.decode(ActivityEntry.self, forKey: .entry)).map(CoreEvent.activity) ?? .unknown(type: type)

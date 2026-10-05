@@ -307,5 +307,8 @@ extension StatesSnapshot {
         s = F.load(e, [])
         s.phase = .unavailable
         shot("collectors-old-core", "Older core", "The core has no collectors routes: calm “Update the Distill core”.", e)
+
+        // v6: script files, packages, Test run and Run now everywhere (board CollectorsScriptFiles).
+        collectorScriptStates()
     }
 }

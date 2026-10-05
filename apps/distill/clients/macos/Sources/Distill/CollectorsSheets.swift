@@ -45,6 +45,14 @@ struct CollectorEditForm: View {
     }
 
     var body: some View {
+        if collector.isScript, (store.editing ?? CollectorDraft()).v6 {
+            ScriptEditForm(store: store, collector: collector)
+        } else {
+            classic
+        }
+    }
+
+    @ViewBuilder private var classic: some View {
         let c = collector
         let d = store.editing ?? CollectorDraft()
         let valid = store.scheduleValid(d.schedule)
@@ -130,8 +138,7 @@ struct CollectorEditForm: View {
                         ScriptGets(vault: c.vaultPath, queue: store.queuePath(c.vaultPath) ?? "")
                     }
                 }
-                if d.scriptInline != (c.script?.source.inlineCode != nil) || (d.scriptInline && d.code != c.script?.source.inlineCode)
-                    || (!d.scriptInline && store.text.expand(d.scriptFile) != c.script?.source.filePath) || d.interpreter != c.script?.interpreter {
+                if d.asksAgain(from: c, text: store.text) {
                     Hint("Saving a new script asks for your OK again before it runs.")
                 }
             }
@@ -171,6 +178,215 @@ struct CollectorEditForm: View {
         case 3600: return "1 hour"
         default: return s % 60 == 0 ? "\(s / 60) minutes" : "\(s) seconds"
         }
+    }
+}
+
+// MARK: - Script edit form (v6)
+
+/// A custom script's Edit form on a core with script files (board CollectorsScriptFiles, frames U and
+/// Z2): kept by Distill or your own file, the ScriptEditor, the PackagesPanel for a kept script, and
+/// "Schedule and Advanced" folded to one line. Code and manifest save through PUT …/script against the
+/// hashes the editor loaded; a file changed on disk since then is not overwritten.
+struct ScriptEditForm: View {
+    @EnvironmentObject var engine: AppModel
+    @ObservedObject var store: CollectorsStore
+    let collector: Collector
+    @State private var width: CGFloat = 600
+
+    private var draft: Binding<CollectorDraft> {
+        Binding(get: { store.editing ?? CollectorDraft() }, set: { store.editing = $0 })
+    }
+    private var stacked: Bool { width < 470 }
+
+    var body: some View {
+        let c = collector
+        let d = store.editing ?? CollectorDraft()
+        let valid = store.scheduleValid(d.schedule)
+        VStack(alignment: .leading, spacing: 13) {
+            SectionLabel("EDIT SETTINGS", color: Theme.primary)
+            AdvancedRow(label: "Script", labelWidth: 100, stacked: stacked) {
+                SegmentedPills(options: [(true, "Kept by Distill"), (false, "Your own file")],
+                               selection: Binding(get: { d.managed }, set: { m in
+                                   store.editing?.managed = m
+                                   // Switching to kept by Distill starts from the loaded code, or a template.
+                                   if m, store.editing?.code.isEmpty ?? true { store.editing?.code = d.loaded?.code ?? ScriptTemplates.code(d.interpreter) }
+                               }), height: 28)
+                if d.managed, c.isManaged, d.loaded == nil {
+                    HStack(spacing: 8) { Spinner(size: 12); Text("Reading the script…").font(Theme.body(12)).foregroundStyle(Theme.muted) }
+                        .frame(height: 60)
+                } else {
+                    editor(c, d)
+                }
+            }
+            if d.managed, let name = d.interpreter.manifestName {
+                AdvancedRow(label: "Packages", labelWidth: 100, stacked: stacked) { packages(c, d, name: name) }
+            }
+            if let message = store.conflict[c.id] { conflictBanner(c, message) }
+            scheduleAndAdvanced(c, d, valid: valid)
+            footer(c, d, valid: valid)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width = $0 }
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(CollectorsTheme.selectedStroke))
+    }
+
+    private func editor(_ c: Collector, _ d: CollectorDraft) -> some View {
+        let managedPath: String = {
+            if c.isManaged, let p = d.loaded?.path ?? c.scriptPath, !p.isEmpty {
+                return ((p as NSString).deletingPathExtension as NSString).appendingPathExtension(
+                    d.interpreter == c.script?.interpreter ? (p as NSString).pathExtension : d.interpreter.fileExtension) ?? p
+            }
+            let state = store.stateDir ?? StatePaths.resolve().dir.path
+            return state + "/collectors/scripts/\(c.id)/collector.\(d.interpreter.fileExtension)"
+        }()
+        let path = d.managed ? managedPath : store.text.expand(d.scriptFile)
+        let exists = d.managed ? (c.isManaged && d.interpreter == c.script?.interpreter) : !d.scriptFile.isEmpty
+        return ScriptEditor(language: ScriptLanguage.of(d.interpreter), source: d.managed ? "managed" : "external", path: path,
+                            code: draft.code, compact: stacked, fileExists: exists,
+                            onLanguage: { store.editing?.setLanguage(ScriptLanguage.interpreter($0)) },
+                            onReveal: { store.reveal(path) }, onOpen: { store.openInEditor(path) },
+                            onChoose: { store.chooseFile { store.editing?.scriptFile = $0 } })
+    }
+
+    private func packages(_ c: Collector, _ d: CollectorDraft, name: String) -> some View {
+        let m = c.manifest
+        let sameKind = m?.name == name && c.isManaged
+        let empty = d.manifest.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let state: String = {
+            if !sameKind { return empty ? "none" : "needsOK" }
+            if c.needsConsent && (c.status?.script?.changes ?? []).contains("manifest") { return "needsOK" }
+            if empty && !(m?.hasDependencies ?? false) { return "none" }
+            return m?.state == "none" && !empty ? "needsInstall" : (m?.state ?? "none")
+        }()
+        let summary: String = {
+            if d.manifestChanged || !sameKind {
+                if empty { return "" }
+                let n = ManifestCount.count(name, d.manifest)
+                return (sameKind && (m?.packageCount ?? 0) > 0 ? "\(m?.packageCount ?? 0) installed · " : "")
+                    + "the change installs after you allow it" + (sameKind ? "" : " (\(n == 1 ? "1 package" : "\(n) packages"))")
+            }
+            return store.text.packagesStatus(m, state: state, now: store.now)
+        }()
+        let path = m?.path ?? ""
+        return PackagesPanel(manifest: name, state: state, output: state == "installing" || state == "failed" ? store.installLines(c) : [],
+                             summary: summary, text: draft.manifest,
+                             onInstall: sameKind ? { store.install(c) } : nil,
+                             installEnabled: !d.manifestChanged && !c.needsConsent && !c.isRunning && store.busy[c.id] == nil,
+                             onStop: { store.stop(c) },
+                             onCleanInstall: sameKind && (m?.hasDependencies ?? false) ? { store.confirmCleanInstall(c) } : nil,
+                             onOpen: sameKind && (m?.exists ?? false) ? { store.openInEditor(path) } : nil)
+    }
+
+    private func conflictBanner(_ c: Collector, _ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle").font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.peachInk)
+                Text("Changed on disk since you opened it").font(Theme.body(13, .bold)).foregroundStyle(Theme.peachInk)
+            }
+            Text("\(message) Reload shows the file as it is now (your edits here are dropped). Keep editing keeps your text; Save then replaces the file.")
+                .font(Theme.body(12)).foregroundStyle(CollectorsTheme.body).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                SoftButton(title: "Reload", fill: .white, size: .small, stroke: true, systemImage: "arrow.clockwise") {
+                    store.conflict[c.id] = nil
+                    store.loadEditorFiles(c)
+                }.fixedSize()
+                SoftButton(title: "Keep editing", fill: .white, size: .small, stroke: true) {
+                    store.conflict[c.id] = nil
+                    store.loadEditorFiles(c, keepText: true)
+                }.fixedSize()
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(CollectorsTheme.errorFill))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(CollectorsTheme.errorStroke))
+    }
+
+    @ViewBuilder private func scheduleAndAdvanced(_ c: Collector, _ d: CollectorDraft, valid: Bool?) -> some View {
+        Button { store.editing?.scheduleOpen.toggle() } label: {
+            HStack(spacing: 8) {
+                Image(systemName: d.scheduleOpen ? "chevron.down" : "chevron.right").font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.faint).frame(width: 12)
+                Text("Schedule and Advanced").font(Theme.body(12.5, .semibold)).foregroundStyle(Theme.ink).fixedSize()
+                if !d.scheduleOpen {
+                    Text("\(store.text.lowerSchedule(d.schedule.cron)) · timeout \(CollectorText.timeout(d.timeoutSeconds))")
+                        .font(Theme.body(12.5)).foregroundStyle(Theme.faint).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.top, 10).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
+        if d.scheduleOpen {
+            AdvancedRow(label: "Schedule", labelWidth: 100, stacked: stacked) {
+                ScheduleField(draft: draft.schedule, preview: valid == false ? "Not a schedule" : (store.text.preview(d.schedule.cron) ?? (store.checks[d.schedule.cron] != nil ? "Custom schedule" : "Checking…")),
+                              next: valid == false ? (store.checks[d.schedule.cron]?.error ?? "use 5 fields: minute hour day month weekday") : store.nextPhrase(d.schedule),
+                              invalid: valid == false)
+            }
+            AdvancedRow(label: "Into", labelWidth: 100, stacked: stacked) {
+                VaultDropdown(vaults: engine.settings.vaults, selection: draft.vaultPath)
+            }
+            AdvancedRow(label: "Timeout", labelWidth: 100, stacked: stacked) {
+                DropdownButton(title: CollectorEditForm.timeoutTitle(d.timeoutSeconds), width: 130, height: 30) {
+                    ForEach(CollectorEditForm.timeouts, id: \.self) { s in Button(CollectorEditForm.timeoutTitle(s)) { store.editing?.timeoutSeconds = s } }
+                }
+                Hint("Stopped after this. Files it wrote stay in the queue.")
+            }
+            AdvancedRow(label: "Cron", labelWidth: 100, stacked: stacked) {
+                TextField("m h dom mon dow", text: Binding(get: { d.schedule.cron }, set: { store.editing?.schedule.setCron($0) }))
+                    .textFieldStyle(.plain).font(.system(size: 12, design: .monospaced))
+                    .padding(.horizontal, 10).frame(width: 140, height: 30)
+                    .background(RoundedRectangle(cornerRadius: 9).fill(Color.white))
+                    .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(valid == false ? Color(hex: 0xFF9A6B) : Theme.border))
+                Hint("The schedule above as cron. Editing it switches the schedule to Custom.")
+            }
+            AdvancedRow(label: "It gets", labelWidth: 100, stacked: stacked) {
+                ScriptGets(vault: c.vaultPath, queue: store.queuePath(c.vaultPath) ?? "")
+            }
+        }
+    }
+
+    private func footer(_ c: Collector, _ d: CollectorDraft, valid: Bool?) -> some View {
+        let canSave: Bool = {
+            if d.managed { return !d.code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (d.loaded != nil || !c.isManaged) }
+            return !d.scriptFile.isEmpty
+        }()
+        let enabled = valid == true && store.busy[c.id] != "save" && canSave && store.conflict[c.id] == nil
+        let manifest = d.interpreter.manifestName.map { " or \($0)" } ?? ""
+        let hint = d.asksAgain(from: c, text: store.text)
+            ? "Saving a change to the script\(d.managed ? manifest : "") asks for your OK again; Allow and run then tries it at once."
+            : "Saving a change to the script\(d.managed ? manifest : "") asks for your OK again."
+        let buttons = HStack(spacing: 8) {
+            SoftButton(title: "Cancel", fill: .white, size: .small, stroke: true) { store.editing = nil; store.conflict[c.id] = nil }.fixedSize()
+                .keyboardShortcut(.cancelAction)
+            PrimaryButton(title: "Save", size: .small, enabled: enabled) { store.save(c) }.fixedSize()
+        }
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                Hint(hint).frame(minWidth: 160, maxWidth: .infinity, alignment: .leading)
+                buttons
+            }
+            VStack(alignment: .trailing, spacing: 8) {
+                Hint(hint).frame(maxWidth: .infinity, alignment: .leading)
+                buttons
+            }
+        }
+    }
+}
+
+/// How many packages a manifest lists (for the panel's line before the core has read it).
+enum ManifestCount {
+    static func count(_ name: String, _ text: String) -> Int {
+        if name == "requirements.txt" {
+            return text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty && !$0.hasPrefix("#") && !$0.hasPrefix("-") }.count
+        }
+        guard let data = text.data(using: .utf8),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return 0 }
+        return ["dependencies", "devDependencies", "optionalDependencies"].reduce(0) { $0 + ((obj[$1] as? [String: Any])?.count ?? 0) }
     }
 }
 
@@ -229,6 +445,11 @@ struct CodeEditor: View {
     @Binding var text: String
     var minLines = 5
     var maxHeight: CGFloat = 320
+    /// The ring: blue for the script, grey for a manifest, amber for a manifest waiting for the OK.
+    var stroke: Color = CollectorsTheme.selectedStroke
+    var strokeWidth: CGFloat = 1.5
+    /// Shown faint while the text is empty ("# one package per line, e.g. requests>=2.32").
+    var placeholder = ""
 
     private static let font = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)
     private static var lineHeight: CGFloat { NSLayoutManager().defaultLineHeight(for: font) }
@@ -245,15 +466,18 @@ struct CodeEditor: View {
             }
             .frame(height: height, alignment: .top)
             .clipped()
-            TextEditor(text: $text)
-                .font(Font(Self.font))
-                .scrollContentBackground(.hidden)
-                .autocorrectionDisabled()
-                .frame(height: height)
+            ZStack(alignment: .topLeading) {
+                if text.isEmpty && !placeholder.isEmpty {
+                    Text(placeholder).font(Font(Self.font)).foregroundStyle(Theme.faint).padding(.leading, 5).allowsHitTesting(false)
+                }
+                // Plain code: no smart quotes or dashes (they would break package.json and shell quoting).
+                PlainCodeView(text: $text, font: Self.font)
+                    .frame(height: height)
+            }
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color.white))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(CollectorsTheme.selectedStroke, lineWidth: 1.5))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(stroke, lineWidth: strokeWidth))
     }
 }
 
@@ -270,7 +494,12 @@ struct CollectorsOverlay: View {
                     .contentShape(Rectangle())
                     .onTapGesture {}
                 if store.adding != nil {
-                    AddCollectorSheet(store: store).padding(.top, 110)
+                    // Scrolls when a script with packages is taller than the window (an 890 × 700 window).
+                    ScrollView(.vertical, showsIndicators: false) {
+                        AddCollectorSheet(store: store).padding(.top, (store.adding?.step == 2 && store.adding?.kind == .script) ? 60 : 110)
+                            .padding(.bottom, 40)
+                            .frame(maxWidth: .infinity)
+                    }
                 } else {
                     CollectedSheetView(store: store).padding(.top, 90)
                 }
@@ -354,7 +583,7 @@ struct AddCollectorSheet: View {
             title("Add a collector")
             VStack(spacing: 8) {
                 choice(.folder, "Folder", "Collect files from a folder you choose. Built in, no code.", d)
-                choice(.script, "Custom script", "Run your own zsh, Python or Node script on a schedule.", d)
+                choice(.script, "Custom script", "Run your own zsh, Python, JavaScript or TypeScript script on a schedule.", d)
             }
             footer(back: false, next: "Continue") { store.adding?.step = 2 }
         }
@@ -416,22 +645,25 @@ struct AddCollectorSheet: View {
         }
     }
 
+    /// Step 2 for a script: kept by Distill (a real file in the collector's folder, written from this
+    /// code, with its package manifest) or your own file. Packages install when the user allows it.
     private func scriptStep(_ d: AddDraft) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+        let path = d.managed ? store.newScriptPath(d.interpreter) : d.scriptFile
+        let manifestText = d.manifest.trimmingCharacters(in: .whitespacesAndNewlines)
+        return VStack(alignment: .leading, spacing: 14) {
             title("Your script")
-            HStack(spacing: 8) {
-                SegmentedPills(options: [(false, "File"), (true, "Inline code")], selection: draft.scriptInline, height: 28)
-                Spacer()
-                Text("Run with").font(Theme.body(12)).foregroundStyle(Theme.muted)
-                InterpreterDropdown(selection: draft.interpreter, width: 110)
-            }
-            if d.scriptInline {
-                CodeEditor(text: draft.code)
-            } else {
-                HStack(spacing: 8) {
-                    CollectorPathField(text: draft.scriptFile, systemImage: "doc", width: 360, placeholder: "~/Scripts/collect.sh")
-                    SoftButton(title: "Choose…", fill: .white, size: .small, stroke: true) { store.chooseFile { store.adding?.scriptFile = $0 } }.fixedSize()
-                }
+            SegmentedPills(options: [(true, "Kept by Distill"), (false, "Your own file")], selection: draft.managed, height: 28)
+            ScriptEditor(language: ScriptLanguage.of(d.interpreter), source: d.managed ? "managed" : "external", path: path,
+                         code: draft.code, fileExists: !d.managed && !d.scriptFile.isEmpty,
+                         onLanguage: { store.adding?.setLanguage(ScriptLanguage.interpreter($0)) },
+                         onReveal: { store.reveal(store.text.expand(d.scriptFile)) },
+                         onOpen: { store.openInEditor(store.text.expand(d.scriptFile)) },
+                         onChoose: { store.chooseFile { store.adding?.scriptFile = $0 } })
+            if d.managed, let name = d.interpreter.manifestName {
+                let n = ManifestCount.count(name, d.manifest)
+                PackagesPanel(manifest: name, state: manifestText.isEmpty ? "none" : "needsOK",
+                              summary: manifestText.isEmpty ? "" : "\(n == 1 ? "1 package" : "\(n) packages") · install when you allow the script",
+                              text: draft.manifest)
             }
             Hint("It gets the vault and queue folder paths as $1 and $2 (and DISTILL_VAULT, DISTILL_QUEUE_DIR). Nothing runs until you allow it.")
             footer(back: true, next: "Continue",
