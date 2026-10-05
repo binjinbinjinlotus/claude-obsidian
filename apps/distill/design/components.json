@@ -2162,6 +2162,11 @@
           "default": false
         },
         {
+          "name": "allowSkip",
+          "type": "boolean",
+          "default": false
+        },
+        {
           "name": "width",
           "type": "text",
           "default": ""
@@ -2171,7 +2176,7 @@
         "file": "LabelLineStates.dc.html",
         "title": "Label line states",
         "heading": "LabelLine",
-        "intro": "One line of labels for one source, used by a Queue row and by a source in Review (no Swift view yet: <b>LabelLine</b>). Every text file that becomes Ready in the queue, from a collector, a drop or the app, gets labels suggested in the background, <b>at most 3 files at a time</b>; the rest show <b>Labels next</b> until a slot frees. Suggested labels are dashed chips (green = already in the vault, peach = new): click × to drop one, <b>+ Add</b> to type one, <b>Accept all</b> to confirm. A .md that has its own <code>tags</code> keeps them (<b>from the file</b>, no AI call). A failed suggestion says so with <b>Retry</b>. PDFs and images get no line. Props: labels (names separated by |, “:new” marks a label not yet in the vault), state, lead (“-” hides it), action (“-” hides it), note, quiet (no × or + Add until hover, as in Review), width.",
+        "intro": "One line of labels for one source, used by a Queue row and by a source in Review (no Swift view yet: <b>LabelLine</b>). Every text file that becomes Ready in the queue, from a collector, a drop or the app, gets labels suggested in the background, <b>at most 3 files at a time</b>; the rest show <b>Labels next</b> until a slot frees. Suggested labels are dashed chips (green = already in the vault, peach = new): click × to drop one, <b>+ Add</b> to type one, <b>Accept all</b> to confirm. A .md that has its own <code>tags</code> keeps them (<b>from the file</b>, no AI call). A failed suggestion says so with <b>Retry</b>; it retries by itself up to 3 times, then waits for you (<b>Retry</b>, <b>+ Add</b>, or <b>Send without labels</b>). A file without labels yet stays out of the batch. PDFs and images get no line. Props: labels (names separated by |, “:new” marks a label not yet in the vault), state, lead (“-” hides it), action (“-” hides it), note, quiet (no × or + Add until hover, as in Review), allowSkip (Send without labels, after 3 failed tries), width.",
         "width": 1680,
         "cols": 2,
         "wrap": "<div style=\"width: 600px; padding: 12px 16px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
@@ -2280,6 +2285,21 @@
             "26px"
           ],
           "caption": "You removed them all, or labeling is off for the queue folder."
+        },
+        {
+          "name": "Couldn’t suggest, 3 tries",
+          "props": {
+            "labels": "",
+            "state": "failed",
+            "note": "tried 3 times",
+            "allowSkip": true,
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "26px"
+          ],
+          "caption": "It waits in the queue until you Retry, add labels, or send it without labels."
         }
       ]
     },
@@ -5420,7 +5440,8 @@
             "inBatch",
             "nextBatch",
             "problem",
-            "waiting"
+            "waiting",
+            "labeling"
           ]
         },
         {
@@ -5487,6 +5508,18 @@
           "swiftPending": "queue and Review labels, 2026-10-05"
         },
         {
+          "name": "labelNote",
+          "type": "text",
+          "default": "",
+          "swiftPending": "queue and Review labels, 2026-10-05"
+        },
+        {
+          "name": "allowSkip",
+          "type": "boolean",
+          "default": false,
+          "swiftPending": "queue and Review labels, 2026-10-05"
+        },
+        {
           "name": "width",
           "type": "text",
           "default": "",
@@ -5498,7 +5531,7 @@
         "file": "QueueRowViewStates.dc.html",
         "title": "Queue row states",
         "heading": "QueueRowView",
-        "intro": "QueueRowViews.swift → <b>QueueRowView</b>. One row per queue item: a file, a <b>folder</b> (one item, not N files: folder icon, name, “12 files · 3 folders · 18.4 MB”; the chevron expands its tree, read-only) or a <b>Google Doc</b> (a .gdoc is only a pointer, so its content can’t be read here: the doc’s title, “Google Doc · needs Google Drive access”, a <b>Waiting</b> pill, Open in Google Docs, and a short hint; it is not processed). Pill and × as for files; in a batch the row is locked. Props: title, meta, tileName, status, statusText, help, noteTile, kind (file | folder | gdoc), expanded, tree (“name · size” items separated by |, two spaces per level, folders end with /; Swift: QueueTree.lines from the core’s flat tree), hint. Status <b>waiting</b> (Google Docs) is QueueRowStatus.waiting. <b>Labels</b> (2026-10-05): a ready text file gets a LabelLine under its name: suggested in the background, at most 3 files at a time, confirm, edit or drop them here; props labels and labelState.",
+        "intro": "QueueRowViews.swift → <b>QueueRowView</b>. One row per queue item: a file, a <b>folder</b> (one item, not N files: folder icon, name, “12 files · 3 folders · 18.4 MB”; the chevron expands its tree, read-only) or a <b>Google Doc</b> (a .gdoc is only a pointer, so its content can’t be read here: the doc’s title, “Google Doc · needs Google Drive access”, a <b>Waiting</b> pill, Open in Google Docs, and a short hint; it is not processed). Pill and × as for files; in a batch the row is locked. Props: title, meta, tileName, status, statusText, help, noteTile, kind (file | folder | gdoc), expanded, tree (“name · size” items separated by |, two spaces per level, folders end with /; Swift: QueueTree.lines from the core’s flat tree), hint. Status <b>waiting</b> (Google Docs) is QueueRowStatus.waiting. <b>Labels</b> (2026-10-05): a ready text file gets a LabelLine under its name: suggested in the background, at most 3 files at a time, confirm, edit or drop them here; props labels and labelState. <b>Label gate</b>: a text file whose labels are not in yet (waiting, suggesting, or failed) is held for the next batch (status <b>labeling</b>: “Next batch”); props labelNote and allowSkip (Send without labels after 3 failed tries).",
         "width": 1680,
         "cols": 2,
         "wrap": "<div style=\"width: 780px; padding: 6px; border-radius: 16px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
@@ -5721,6 +5754,40 @@
             "96px"
           ],
           "caption": "No AI call."
+        },
+        {
+          "name": "Held for labels",
+          "props": {
+            "title": "tea-club-sync-2026-09-29.md",
+            "meta": "From Tea club notes · collected at 11:30 PM · 5 KB",
+            "status": "labeling",
+            "help": "Its labels are still being suggested; it goes in the next batch.",
+            "labelState": "suggesting",
+            "width": 760
+          },
+          "size": [
+            "760px",
+            "96px"
+          ],
+          "caption": "The batch that just started left it here; it goes in the next one."
+        },
+        {
+          "name": "Failed 3 times",
+          "props": {
+            "title": "tea-club-sync-2026-10-01.md",
+            "meta": "From Tea club notes · collected at 11:30 PM · 4 KB",
+            "status": "labeling",
+            "help": "Haiku timed out 3 times.",
+            "labelState": "failed",
+            "labelNote": "tried 3 times",
+            "allowSkip": true,
+            "width": 760
+          },
+          "size": [
+            "760px",
+            "96px"
+          ],
+          "caption": "Waits for you: Retry, + Add, or Send without labels."
         }
       ]
     },
@@ -6088,6 +6155,21 @@
           "default": false
         },
         {
+          "name": "selectable",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "selected",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "name": "removed",
+          "type": "boolean",
+          "default": false
+        },
+        {
           "name": "width",
           "type": "text",
           "default": ""
@@ -6097,7 +6179,7 @@
         "file": "ReviewRowsStates.dc.html",
         "title": "Review rows",
         "heading": "Review rows",
-        "intro": "The parts of the new Review (no Swift views yet). <b>ReviewGroupHeader</b>: a group that folds (chevron, title, count, one-line summary, optional action). <b>ReviewChangeRow</b>: a new or updated page that is not a source page (entity, concept, index, overview, log, ledgers). <b>ReviewSourceRow</b>: one source merged with the page it produced, so a source is listed once: the page title, “from” the file, and its labels (a LabelLine). Hover shows Edit and Open page; Edit turns the chips removable with an Add field. Approving confirms the labels shown.",
+        "intro": "The parts of the new Review (no Swift views yet). <b>ReviewGroupHeader</b>: a group that folds (chevron, title, count, one-line summary, optional action). <b>ReviewChangeRow</b>: a new or updated page that is not a source page (entity, concept, index, overview, log, ledgers). <b>ReviewSourceRow</b>: one source merged with the page it produced, so a source is listed once: the page title, “from” the file, and its labels (a LabelLine). Hover shows Edit and Open page; Edit turns the chips removable with an Add field. Approving confirms the labels shown. Rows can be picked (checkbox) to approve only some sources; Remove takes a source out of the batch (never added to the vault; its inbox file stays; Undo).",
         "width": 1440,
         "cols": 2,
         "components": [
@@ -6190,6 +6272,67 @@
             "62px"
           ],
           "caption": "+ Add labels it by hand."
+        },
+        {
+          "name": "Source, picked",
+          "props": {
+            "labels": "tea-club|gyokuro|shading:new",
+            "labelState": "suggested",
+            "selectable": true,
+            "selected": true,
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "62px"
+          ],
+          "caption": "Checked: goes in with Approve."
+        },
+        {
+          "name": "Source, not picked",
+          "props": {
+            "title": "Kettle care chat · Sep 29",
+            "file": "kettle-care-chat-2026-09-29.md",
+            "labels": "kettle|water-temperature",
+            "labelState": "suggested",
+            "selectable": true,
+            "selected": false,
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "62px"
+          ],
+          "caption": "Unchecked: stays in Review for later."
+        },
+        {
+          "name": "Source, hover with Remove",
+          "props": {
+            "labels": "tea-club|gyokuro",
+            "labelState": "suggested",
+            "selectable": true,
+            "hover": true,
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "62px"
+          ]
+        },
+        {
+          "name": "Source, removed",
+          "props": {
+            "title": "Tea club social · Sep 30",
+            "file": "tea-club-social-2026-09-30.md",
+            "labels": "tea-club",
+            "removed": true,
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "62px"
+          ],
+          "caption": "Never added to the vault; the inbox file is kept. Undo puts it back."
         }
       ]
     }

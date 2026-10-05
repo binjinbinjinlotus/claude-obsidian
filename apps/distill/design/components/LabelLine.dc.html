@@ -11,6 +11,7 @@
 <sc-if value="{{hasNote}}" hint-placeholder-val="{{ false }}"><span style="font-size: 11.5px; color: #9B978F; white-space: nowrap">{{note}}</span></sc-if>
 <sc-if value="{{showAdd}}" hint-placeholder-val="{{ false }}"><button type="button" style="height: 26px; padding: 0 6px; border: none; background: transparent; color: #6B6862; font-size: 12px; font-weight: 600">+ Add</button></sc-if>
 <sc-if value="{{hasAction}}" hint-placeholder-val="{{ false }}"><button type="button" style="height: 26px; padding: 0 6px; border: none; background: transparent; color: #1F6FEB; font-size: 12px; font-weight: 600">{{action}}</button></sc-if>
+<sc-if value="{{skip}}" hint-placeholder-val="{{ false }}"><button type="button" style="height: 26px; padding: 0 6px; border: none; background: transparent; color: #6B6862; font-size: 12px; font-weight: 600">Send without labels</button></sc-if>
 <sc-if value="{{editing}}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; gap: 2px"><button type="button" style="height: 26px; padding: 0 12px; border: none; border-radius: 13px; background: #1F6FEB; color: #FFFFFF; font-size: 12px; font-weight: 700">Done</button><button type="button" style="height: 26px; padding: 0 8px; border: none; background: transparent; color: #6B6862; font-size: 12px; font-weight: 600">Cancel</button></span></sc-if>
 </div>
 </x-dc>
@@ -42,5 +43,5 @@ const note = p.note || (state === 'own' ? 'from the file' : '');
 return { w: px(p.width, '100%'), chips, lead, leadInk: L[1], hasLead: !!lead,
   busy: state === 'suggesting', sparkle: state === 'suggested' && !!lead, clock: state === 'waiting',
   editing: state === 'editing', note, hasNote: !!note,
-  showAdd: !quiet && (state === 'suggested' || state === 'failed' || state === 'none'), action, hasAction: !!action };
+  skip: on(p.allowSkip, false) && state === 'failed', showAdd: !quiet && (state === 'suggested' || state === 'failed' || state === 'none'), action, hasAction: !!action };
 </script>
