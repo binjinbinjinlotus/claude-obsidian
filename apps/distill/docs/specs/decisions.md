@@ -17,6 +17,39 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+**Resizable panes: a draggable divider on every split screen (2026-10-05).**
+Spec: [Resizable panes](resizable-panes.md). Canvas: row 13, board Panes.
+
+The owner asked: "for any UI with the open left section, I am able to change
+the size." These are the proposed defaults. The owner's confirmation is to be
+recorded by the lead.
+
+- **Every split screen gets a handle:**
+  - the sidebar;
+  - Review's Conversation;
+  - History: the Jobs list and its Conversation, Actions, Activity;
+  - Actions: To do and each action type;
+  - Collectors;
+  - the Settings nav.
+
+  Ask, Write a note, Labels and Queue have one column.
+- **The automatic width is today's width.** A missing key changes nothing on
+  screen, and double-click returns to it.
+- **Each column has a min and a max, and the other column keeps its min.**
+  For example, Review's details keep 360 pt and the Conversation runs 220–520
+  pt.
+- **No drag-to-collapse.** The existing narrow-window rules (Review 780,
+  Activity 920, Collectors 760) still do the hiding.
+- **Widths are kept per screen in Distill's UI preferences**
+  (`@AppStorage("distill.pane.…")`, a `Double`), not in `settings.json`. The
+  core does not change. Only a drag writes; a window resize only clamps.
+- **The sidebar and the Settings nav are resizable too, at 200–320 pt.** They
+  are the "left section" in the owner's words.
+- **The mechanism is a SwiftUI modifier and a `PaneHandle` view**, not
+  `NSSplitView` or `HSplitView`, for two reasons:
+  - `ImageRenderer` snapshots can't draw AppKit split views.
+  - The screens' `GeometryReader` narrow rules stay as they are.
+
 **Full reads, built (2026-10-05).** Spec: [Full reads](full-read.md),
 section "Built".
 

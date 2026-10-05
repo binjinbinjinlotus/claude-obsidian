@@ -7121,6 +7121,101 @@
           "caption": "A follow-up, not a failure: the heading stays “Added”."
         }
       ]
+    },
+    {
+      "name": "PaneHandle",
+      "title": "Pane handle",
+      "swift": null,
+      "preview": [
+        9,
+        160
+      ],
+      "props": [
+        {
+          "name": "state",
+          "type": "enum",
+          "default": "idle",
+          "options": [
+            "idle",
+            "hover",
+            "dragging",
+            "limit"
+          ]
+        },
+        {
+          "name": "line",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "board": {
+        "file": "PaneHandleStates.dc.html",
+        "title": "Pane handle states",
+        "heading": "PaneHandle",
+        "intro": "PaneSplit.swift → <b>PaneHandle</b>. The divider you drag to resize two columns: Review and its Conversation, every list and its detail, the sidebar, the Settings nav. It takes no width; a 9 pt hit area sits over the boundary. <b>Idle</b> draws exactly what the screen draws today: the 1 pt border line, or nothing where the columns are separated only by a gap. <b>Hover</b>: the left-right resize cursor, a darker line and a grip. <b>Dragging</b>: blue. <b>At a limit</b> (this column’s min or max, or the other column’s min): peach, and the cursor points only the way it can still go. Double-click puts the automatic width back. Props: state (idle | hover | dragging | limit), line.",
+        "width": 1760,
+        "cols": 5,
+        "wrap": "<div style=\"width: 280px; height: 150px; display: flex; border-radius: 12px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; overflow: hidden\"><div style=\"flex-grow: 1; padding: 14px; display: flex; flex-direction: column; gap: 8px\"><span style=\"height: 8px; width: 70%; border-radius: 4px; background: #ECEAE5\"></span><span style=\"height: 8px; width: 50%; border-radius: 4px; background: #F6F5F2\"></span><span style=\"height: 8px; width: 60%; border-radius: 4px; background: #F6F5F2\"></span></div><div style=\"margin: 0 -4px; position: relative; z-index: 1; width: 9px; flex-shrink: 0\">{import}</div><div style=\"width: 110px; padding: 14px; display: flex; flex-direction: column; gap: 8px\"><span style=\"height: 8px; width: 80%; border-radius: 4px; background: #ECEAE5\"></span><span style=\"height: 26px; border-radius: 8px; background: #F6F5F2\"></span></div></div>"
+      },
+      "states": [
+        {
+          "name": "Idle · line",
+          "props": {
+            "state": "idle",
+            "line": true
+          },
+          "size": [
+            "9px",
+            "150px"
+          ],
+          "caption": "Today’s 1 pt border (History, Actions history, To do, Activity, Settings, the sidebar edge)."
+        },
+        {
+          "name": "Idle · gap",
+          "props": {
+            "state": "idle",
+            "line": false
+          },
+          "size": [
+            "9px",
+            "150px"
+          ],
+          "caption": "Nothing drawn where the columns sit apart (Review, Actions types, Collectors)."
+        },
+        {
+          "name": "Hover",
+          "props": {
+            "state": "hover"
+          },
+          "size": [
+            "9px",
+            "150px"
+          ],
+          "caption": "Resize cursor ↔, darker line, grip. Shows at once, no delay."
+        },
+        {
+          "name": "Dragging",
+          "props": {
+            "state": "dragging"
+          },
+          "size": [
+            "9px",
+            "150px"
+          ],
+          "caption": "Both columns follow the pointer. The width is saved when you let go."
+        },
+        {
+          "name": "At a limit",
+          "props": {
+            "state": "limit"
+          },
+          "size": [
+            "9px",
+            "150px"
+          ],
+          "caption": "Min or max reached; the cursor turns one-way (← or →). Dragging further does nothing."
+        }
+      ]
     }
   ]
 }
