@@ -90,6 +90,23 @@ isn't.
 
 ### 2026-10-05
 
+- **Full reads are checked by the core, not by the owner.** The first
+  design leaned on a Review badge for partial reads. The owner rejected it:
+  "relying on human is wrong". The final design computes coverage from the
+  stream's own Read results, continues or splits automatically, and repairs
+  past batches by itself.
+  - *Lesson:* an adversarial design reviewer, run before the build, caught
+    10 blockers over three rounds. These included ledger IDs changing on
+    archive, a backfill crediting re-reads that hadn't been approved, and a
+    repair queueing files a live job already held. Each was a paragraph to
+    fix on paper, and would have been a data bug in code.
+  - *Result:* on its first start, the new core backfilled 10 notes as fully
+    read from saved turns. It found 3 approved notes that weren't, and queued
+    them for re-reading with no click.
+  - *Friction:* the auto-mode classifier refused cleaning a rehearsal's
+    lines out of the owner's Claude session ("Session Transcript Tampering").
+    That cleanup is left to the owner.
+
 - **A batch read its sources only in part, and said so only inside a page.**
   The owner's 22 Gemini meeting notes (each a summary plus a transcript of up to
   about 130 KB) went in one batch. The ingest skill says to set a budget and,
