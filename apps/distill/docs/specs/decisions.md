@@ -41,7 +41,7 @@ no new UI. Specs: [Queue and batching](queue-and-batching.md) → Re-read source
 - **Ingest turns always stream** (stream-json), even without a live-log sink,
   so the record shows which tool calls read the sources.
 - **Re-read groups hold 3 sources by default** (`perBatch`, from 1 to 10). The
-  limit is what one session can hold. The 23 notes hold about 826 KB of text,
+  limit is what one session can hold. The 22 notes of that batch hold about 800 KB of text (measured, base64 image lines left out; 3.9 MB raw),
   roughly 210–260k tokens. Three full transcripts come to about 30–100k tokens,
   which leaves room for the existing pages and the bundle. One batch of 22 is
   what read in part.
