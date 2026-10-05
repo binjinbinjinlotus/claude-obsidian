@@ -13,7 +13,7 @@
 <sc-for list="{{lines}}" as="l" hint-placeholder-count="3"><span style="display: flex; gap: 8px; font-size: 12px; color: {{l.ink}}; line-height: 1.45"><span style="width: 190px; flex-shrink: 0; font-weight: 600">{{l.what}}</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #1D1C1A">{{l.name}}</span></span></sc-for>
 </div></sc-if>
 <sc-if value="{{showOutput}}" hint-placeholder-val="{{ false }}"><div style="margin-left: 30px; display: flex; flex-direction: column; gap: 6px">
-<div style="display: flex; align-items: center; gap: 6px"><span style="font-size: 10px; font-weight: 800; letter-spacing: .06em; color: {{outHeadInk}}">{{outHead}}</span><span style="flex-grow: 1"></span><span role="button" style="font-size: 11px; font-weight: 600; color: #1F6FEB">Copy output</span></div>
+<div style="display: flex; align-items: center; gap: 6px"><span style="font-size: 10px; font-weight: 800; letter-spacing: .06em; color: {{outHeadInk}}">{{outHead}}</span><span style="flex-grow: 1"></span><span role="button" style="font-size: 11px; font-weight: 600; color: #1F6FEB">Copy output</span><span role="button" style="font-size: 11px; font-weight: 600; color: #1F6FEB; margin-left: 6px">Open log</span></div>
 <div style="padding: 8px 10px; border-radius: 8px; background: #1F1E1C; display: flex; flex-direction: column; gap: 1px">
 <sc-for list="{{lines}}" as="l" hint-placeholder-count="3"><span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; line-height: 1.5; color: {{l.term}}; white-space: pre-wrap; word-break: break-all">{{l.text}}</span></sc-for>
 </div></div></sc-if>

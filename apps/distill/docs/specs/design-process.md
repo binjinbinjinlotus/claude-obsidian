@@ -105,7 +105,9 @@ for byte. `--measure` leaves page boards at their window height.
 A row list can use another row component: `{"list": KEY, "row":
 "CollectorRow", "selected": 0}`. A screen file can open its own canvas row:
 `"rowNote": {"id": "flow7", "text": "7 · …"}` adds the row title 240 px above
-`row` when the canvas has no note with that id.
+`row` when the canvas has no note with that id. A board can sit in another
+flow's row with its own `"row"` (2026-10-04: CollectorsLog, from
+`screens/collectors.json`, sits in the Live log row next to LiveLog).
 
 ### Drift test
 

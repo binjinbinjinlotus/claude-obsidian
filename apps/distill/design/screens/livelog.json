@@ -1,0 +1,251 @@
+{
+ "$doc": "Live log (designed 2026-10-04): what a running batch is doing, step by step, and what a collector run, package install or Test run prints, live and afterwards. One view, LogLine rows; it opens in place of the screen it came from (‹ back). Batch frames are here; the collector frames are CollectorsLog in screens/collectors.json, placed in this row. Spec: docs/specs/live-log.md.",
+ "row": 31000,
+ "rowNote": {
+  "id": "flow9",
+  "text": "9 · Live log (what a batch or a collector is doing, as it happens)"
+ },
+ "templates": {},
+ "layouts": {
+  "pane": "<div style=\"flex-grow: 1; min-height: 0; overflow: hidden; position: relative\">{detail}</div>"
+ },
+ "bases": {
+  "queue": {
+   "window": {
+    "width": 1200,
+    "height": 860
+   },
+   "sidebar": {
+    "section": "queue",
+    "queueCount": "22",
+    "status": "Sonnet · working",
+    "height": 820
+   },
+   "layout": "pane",
+   "regions": {
+    "detail": {
+     "frag": "queue-labels"
+    }
+   }
+  },
+  "review": {
+   "window": {
+    "width": 1200,
+    "height": 760
+   },
+   "sidebar": {
+    "section": "review",
+    "queueCount": "0",
+    "status": "Sonnet · waiting on you",
+    "height": 720
+   },
+   "layout": "pane",
+   "regions": {
+    "detail": {
+     "frag": "review-entry"
+    }
+   }
+  },
+  "history": {
+   "window": {
+    "width": 1200,
+    "height": 760
+   },
+   "sidebar": {
+    "section": "history",
+    "sub": "jobs",
+    "queueCount": "0",
+    "reviewCount": "",
+    "height": 720
+   },
+   "layout": "pane",
+   "regions": {
+    "detail": {
+     "frag": "steps-history"
+    }
+   }
+  }
+ },
+ "states": [
+  {
+   "id": "livelog-queue",
+   "base": "queue",
+   "label": "A · Queue: the batch card says what it is doing now (here: labeling one file of 22), and Show steps"
+  },
+  {
+   "id": "livelog-labels",
+   "base": "queue",
+   "label": "B · Steps, live: labels are suggested one file at a time before Claude starts; the newest line is followed",
+   "set": {
+    "detail": {
+     "frag": "steps-labels"
+    }
+   }
+  },
+  {
+   "id": "livelog-ai",
+   "base": "queue",
+   "label": "C · Claude’s steps in plain words; repeats fold into one line; scrolled up, so Jump to latest",
+   "set": {
+    "detail": {
+     "frag": "steps-ai"
+    }
+   }
+  },
+  {
+   "id": "livelog-details",
+   "base": "queue",
+   "label": "D · Details on: the tool and what it touched under each step, never what it read or wrote",
+   "set": {
+    "detail": {
+     "frag": "steps-details"
+    }
+   }
+  },
+  {
+   "id": "livelog-review-entry",
+   "base": "review",
+   "label": "E · Review: Show steps next to the batch’s times"
+  },
+  {
+   "id": "livelog-review",
+   "base": "review",
+   "label": "F · Steps after the run: checked by the vault core, waiting for your review",
+   "set": {
+    "detail": {
+     "frag": "steps-review"
+    }
+   }
+  },
+  {
+   "id": "livelog-history",
+   "base": "history",
+   "label": "G · History → Jobs: a past batch’s steps, saved, through Applied and Found actions"
+  },
+  {
+   "id": "livelog-narrow",
+   "base": "queue",
+   "label": "H · 890 pt window: the same view, shorter step names; times stay on the right",
+   "set": {
+    "window": {
+     "width": 890,
+     "height": 760
+    },
+    "sidebar.height": 720,
+    "detail": {
+     "frag": "steps-narrow"
+    }
+   }
+  },
+  {
+   "id": "livelog-card-words",
+   "label": "Plain words",
+   "caption": "What each step is called. Codex shows the same words; a batch never runs on a model API (no tools).",
+   "card": {
+    "height": 400,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "stretch"
+   },
+   "body": {
+    "frag": "card-words"
+   }
+  },
+  {
+   "id": "livelog-card-copy",
+   "label": "Copy",
+   "caption": "Copy takes the whole log, not only what is on screen.",
+   "card": {
+    "height": 400,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "stretch"
+   },
+   "body": {
+    "frag": "card-copy"
+   }
+  },
+  {
+   "id": "livelog-card-kept",
+   "label": "What is kept, and never",
+   "caption": "The raw transcript stays where Claude Code keeps it; Open in Terminal still resumes the session.",
+   "card": {
+    "height": 400,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "stretch"
+   },
+   "body": {
+    "frag": "card-kept"
+   }
+  },
+  {
+   "id": "livelog-card-old",
+   "label": "A batch from before",
+   "caption": "Batches that ran before this have no steps; the view says so instead of showing an empty list.",
+   "card": {
+    "height": 400,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "stretch"
+   },
+   "body": {
+    "frag": "card-old"
+   }
+  }
+ ],
+ "boards": [
+  {
+   "file": "LiveLog.dc.html",
+   "title": "Live log · a batch, step by step",
+   "heading": "Live log · a batch, step by step",
+   "intro": "“Is there any log that shows the progress of the batch?” A batch that started at 11:33 PM showed nothing until Claude’s first step at 11:37 PM: those four minutes were labels being suggested, one file at a time. Now the batch card on Queue says what is happening <b>now</b>, and <b>Show steps</b> opens the log in place of the screen (‹ goes back), from Queue while it runs, from Review, and from History → Jobs afterwards. Steps are plain words with a quiet mark (done, running, waiting, waiting for you, failed); repeats fold into one line you can open; the AI’s own status messages appear in its words. The log follows the newest line; scroll up and it stops, with <b>Jump to latest</b>. <b>Details</b> adds the raw line: the tool and what it touched, never contents. <b>Copy</b> takes the whole log as text. It stays after the run, kept with the job. Why in place and not a panel or a window: it works the same at 890 pt and in every screen (Collectors’ All runs and Activity already open this way), and the card on Queue keeps the one-line answer in view without opening anything.",
+   "width": 2520,
+   "sections": [
+    {
+     "row": [
+      "livelog-queue",
+      "livelog-labels"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "row": [
+      "livelog-ai",
+      "livelog-details"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "title": "After the run: Review and History"
+    },
+    {
+     "row": [
+      "livelog-review-entry",
+      "livelog-review"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "row": [
+      "livelog-history",
+      "livelog-narrow"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "title": "Words, Copy, and what is kept"
+    },
+    {
+     "grid": [
+      "livelog-card-words",
+      "livelog-card-copy",
+      "livelog-card-kept",
+      "livelog-card-old"
+     ],
+     "cols": 4
+    }
+   ]
+  }
+ ]
+}
