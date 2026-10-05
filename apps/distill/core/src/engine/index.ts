@@ -101,7 +101,7 @@ import {
   type FolderWalk,
   type ScanEntry,
 } from './queue.js';
-import { queuePlacementProblem, setupProblems } from './validator.js';
+import { isVault, problem, queuePlacementProblem, setupProblems } from './validator.js';
 
 /**
  * Tools an ingest turn can see. Allow rules still gate them; tools outside the
@@ -1105,6 +1105,9 @@ export function createEngine(opts: EngineOptions): Engine {
     if (!vault) {
       throw vaultPath ? new CoreError('invalid_request', `Unknown vault ${vaultPath}.`) : new CoreError('no_vault', 'No vault selected.');
     }
+    // A vault is a folder with .claude-obsidian.json (root vault-resolution rule), for every caller:
+    // labels, notes, page search and label review, not only batches.
+    if (!isVault(vault.path)) throw new CoreError('invalid_state', problem.notAVault(vault.path).message);
     return vault;
   }
 

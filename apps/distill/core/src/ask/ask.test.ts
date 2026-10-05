@@ -93,6 +93,7 @@ function fixture(): Fixture {
     mkdirSync(path.dirname(path.join(vault, rel)), { recursive: true });
     writeFileSync(path.join(vault, rel), text);
   };
+  write('.claude-obsidian.json', '{}\n');
   write('wiki/hot.md', page(['type: meta', 'title: Hot Cache', 'tags:', '  - meta']));
   write('wiki/sources/Sencha Slack.md', page(['type: source', 'title: Sencha thread', 'source_type: slack', 'tags:', '  - tea/green']));
   write('wiki/sources/Oolong Paper.md', page(['type: source', 'title: Oolong paper', 'source_type: Paper', 'tags: [tea, research]']));
@@ -355,6 +356,10 @@ test('vault resolution fails closed', async () => {
   fx.settings.vaults = [];
   await assert.rejects(service(fx, runner).ask({ question: 'q' }), /no vault/);
   await assert.rejects(service(fx, runner).ask({ question: 'q', vaultPath: fx.productRoot }), /not a claude-obsidian vault/);
+  // wiki/ alone is not enough: the vault needs its .claude-obsidian.json marker too.
+  rmSync(path.join(fx.vault, '.claude-obsidian.json'));
+  await assert.rejects(service(fx, runner).ask({ question: 'q', vaultPath: fx.vault }), /no \.claude-obsidian\.json/);
+  writeFileSync(path.join(fx.vault, '.claude-obsidian.json'), '{}\n');
   const res = await service(fx, runner).ask({ question: 'q', vaultPath: fx.vault });
   assert.ok(res.conversationID);
 });

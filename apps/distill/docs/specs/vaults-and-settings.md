@@ -105,7 +105,10 @@ Canvas: SettingsNav, Settings.
 
 - A vault is a folder containing `.claude-obsidian.json`. The app checks this
   before adding one and refuses other folders, with a hint to run
-  `claude-obsidian.py init` or `adopt`.
+  `claude-obsidian.py init` or `adopt`. The core checks it again on every use,
+  not only for batches (decision 2026-10-04). Labels, notes, page search and
+  label review answer `invalid_state` with the same hint when the marker is
+  gone, and Ask refuses the vault.
 - Several vaults can be added and one is active. The sidebar switcher and the
   Settings vault cards change it. Each vault has its own queue folder, edited
   from the card's "…" menu (including "use the vault's inbox/").

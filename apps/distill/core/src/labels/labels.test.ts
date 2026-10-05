@@ -359,6 +359,17 @@ describe('addNote and labelNote', () => {
     await assert.rejects(engine.labelNote(r.requestID, ['x']), { code: 'invalid_state' });
   });
 
+  test('labels, notes and page search need the .claude-obsidian.json marker, not just a configured vault', async () => {
+    const { engine, vault } = setup();
+    fs.rmSync(path.join(vault, '.claude-obsidian.json'));
+    const notAVault = { code: 'invalid_state', message: /no \.claude-obsidian\.json/ };
+    await assert.rejects(engine.addNote({ title: 'N', text: 't', suggest: 'none' }), notAVault);
+    await assert.rejects(engine.listLabels(), notAVault);
+    await assert.rejects(engine.labelReview(), notAVault);
+    await assert.rejects(engine.searchPages('x'), notAVault);
+    await assert.rejects(engine.confirmLabels([{ path: 'wiki/a.md', labels: [] }]), notAVault);
+  });
+
   test('a queue folder inside the vault other than inbox/ gets no notes or drops, and blocks batches', async () => {
     const vault = path.join(tmp, 'vault');
     const { engine } = setup({ settings: { vaults: [{ path: vault, queueDirectory: path.join(vault, 'wiki') }] } });

@@ -17,6 +17,20 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Every vault use needs `.claude-obsidian.json`, not only batches.**
+  Specs: [Vaults and settings](vaults-and-settings.md) → Vaults,
+  [Ask](ask.md) → Isolation. Audit item B3.
+  - Before, the marker was checked only through `batchBlocker` and
+    `status`. `resolveVault` (labels, notes, page search, label review)
+    only checked that the vault was in Settings, and Ask checked only for
+    `wiki/`.
+  - **Decision:** `resolveVault` refuses a vault without the marker
+    (`invalid_state`, with the `init`/`adopt` hint). Ask requires the marker
+    and keeps its `wiki/` check. Ask still accepts an explicit `vaultPath`
+    that isn't in Settings, which the root vault-resolution order (explicit
+    `--vault` first) allows. The Ask and activity test fixtures now create
+    the marker.
+
 - **After an agent apply, Distill records what it approved, not what the
   model reports.** Spec: [Approval and review](approval-and-review.md) →
   What Distill records after an agent apply. Audit item B2.

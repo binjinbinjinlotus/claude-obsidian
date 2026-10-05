@@ -597,6 +597,7 @@ describe('activity through the core and the API', () => {
     vault = path.join(root, 'vault');
     queue = path.join(root, 'queue');
     for (const d of [state, vault, queue, path.join(root, 'Inbox'), path.join(root, 'trash'), path.join(root, 'bin')]) fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(vault, '.claude-obsidian.json'), '{}\n');
     // Scripts' Node: the real one, seen from root/bin, so the npm next to it is the fake npm a test puts there.
     fs.symlinkSync(process.execPath, path.join(root, 'bin', 'node'));
     fs.writeFileSync(path.join(state, 'settings.json'), JSON.stringify({ vaults: [{ path: vault, queueDirectory: queue }], activeVaultPath: vault, settleSeconds: 600 }));
