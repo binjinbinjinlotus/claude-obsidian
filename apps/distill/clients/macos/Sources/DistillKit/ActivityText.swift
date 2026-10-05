@@ -354,13 +354,16 @@ public struct ActivityText: Sendable {
             if kind == "script" || e.details["interpreter"] != nil {
                 var parts: [String] = []
                 if let i = e.string("interpreter") { parts.append(i) }
-                if let file = e.string("scriptFile") {
+                // Written in Distill (inline, or a file Distill keeps: `scriptManaged`) shows lines and size;
+                // the path stays in the entry for Show in Finder. Your own file shows its path.
+                if let file = e.string("scriptFile"), e.details["scriptManaged"] != .bool(true) {
                     parts.append(collectorText.tilde(file))
                 } else {
                     if let lines = e.int("scriptLines") { parts.append(lines == 1 ? "1 line" : "\(lines) lines") }
                     if let bytes = e.int("scriptBytes") { parts.append(Self.size(bytes) + ", written in Distill") }
+                    else if e.details["scriptManaged"] == .bool(true) { parts.append("written in Distill") }
                 }
-                add("Script", parts.joined(separator: " · "), keys: ["interpreter", "scriptFile", "scriptLines", "scriptBytes"])
+                add("Script", parts.joined(separator: " · "), keys: ["interpreter", "scriptFile", "scriptManaged", "scriptLines", "scriptBytes"])
             }
             add("Folder", e.string("folder").map(collectorText.tilde), keys: ["folder"])
             add("After", e.string("afterCollect").map { $0 == "move" ? "Moves files into the queue" : $0 == "copy" ? "Copies files into the queue" : $0 },

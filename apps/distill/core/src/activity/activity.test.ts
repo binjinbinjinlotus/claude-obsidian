@@ -563,7 +563,13 @@ describe('activity through the core and the API', () => {
     const deleted = last('collector.deleted')!;
     assert.equal(deleted.object.name, 'Meetings');
     assert.equal(deleted.details?.scriptBytes, Buffer.byteLength(body));
-    assert.equal(deleted.details?.scriptLines, 4);
+    assert.equal(deleted.details?.scriptLines, 3); // three lines and a final newline
+    // Written in Distill (a managed file since v6): flagged, and the path is kept whole for Show in Finder.
+    assert.equal(deleted.details?.scriptManaged, true);
+    const scriptFile = deleted.details?.scriptFile as string;
+    assert.ok(scriptFile.startsWith(state) && scriptFile.includes(`/collectors/scripts/${id}/`), scriptFile);
+    assert.ok(!scriptFile.includes(REDACTED));
+    assert.ok(!String(deleted.details?.vault ?? '').includes(REDACTED));
     assert.equal(deleted.recovery?.kind, 'trash');
     // The activity event went out too.
     assert.ok(events.some((e) => e.type === 'activity' && e.entry.type === 'collector.deleted'));
@@ -589,6 +595,31 @@ describe('activity through the core and the API', () => {
     assert.equal(last('collector.restored')?.source, 'app');
     assert.equal((await request('GET', '/v1/trash')).body.items.length, 0);
     assert.equal((await request('POST', `/v1/trash/${trashId}/restore`)).status, 404);
+  });
+
+  test('scripts written in Distill read "N lines · size, written in Distill"; your own file stays a path', async () => {
+    const created = await request('POST', '/v1/collectors', { kind: 'script', name: 'Written here', script: { source: { inline: 'echo one\necho two\n' }, interpreter: 'zsh' } });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const id = created.body.id as string;
+    const made = last('collector.created')!;
+    assert.equal(made.details?.scriptManaged, true);
+    assert.equal(made.details?.scriptLines, 2);
+    assert.equal(made.details?.scriptBytes, 18);
+    assert.ok(String(made.details?.scriptFile).includes(`/collectors/scripts/${id}/`));
+
+    // Your own file: a path, not flagged.
+    const own = path.join(root, 'My Scripts', 'collect.sh');
+    fs.mkdirSync(path.dirname(own), { recursive: true });
+    fs.writeFileSync(own, 'echo mine\n');
+    assert.equal((await request('PATCH', `/v1/collectors/${id}`, { script: { source: { file: own } } })).status, 200);
+    const changed = last('collector.updated')!;
+    assert.equal(changed.details?.script, `2 lines · 18 bytes, written in Distill → ${own}`);
+    const ownCollector = await request('POST', '/v1/collectors', { kind: 'script', name: 'Mine', script: { source: { file: own }, interpreter: 'zsh' } });
+    assert.equal(ownCollector.status, 201, JSON.stringify(ownCollector.body));
+    const mine = last('collector.created')!;
+    assert.equal(mine.details?.scriptFile, own);
+    assert.equal(mine.details?.scriptManaged, undefined);
+    assert.equal(mine.details?.scriptLines, undefined);
   });
 
   test('v6: one trash for a script collector: its folder goes with the record; delete, restore, allow (packages reinstall), run the same bytes', async () => {
