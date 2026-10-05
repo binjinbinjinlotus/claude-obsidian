@@ -2113,6 +2113,177 @@
       ]
     },
     {
+      "name": "LabelLine",
+      "title": "Label line",
+      "swift": null,
+      "preview": [
+        560,
+        26
+      ],
+      "props": [
+        {
+          "name": "labels",
+          "type": "text",
+          "default": "tea|gyokuro|kettle:new"
+        },
+        {
+          "name": "state",
+          "type": "enum",
+          "default": "suggested",
+          "options": [
+            "waiting",
+            "suggesting",
+            "suggested",
+            "confirmed",
+            "own",
+            "failed",
+            "editing",
+            "none"
+          ]
+        },
+        {
+          "name": "lead",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "quiet",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "LabelLineStates.dc.html",
+        "title": "Label line states",
+        "heading": "LabelLine",
+        "intro": "One line of labels for one source, used by a Queue row and by a source in Review (no Swift view yet: <b>LabelLine</b>). Every text file that becomes Ready in the queue, from a collector, a drop or the app, gets labels suggested in the background, <b>at most 3 files at a time</b>; the rest show <b>Labels next</b> until a slot frees. Suggested labels are dashed chips (green = already in the vault, peach = new): click × to drop one, <b>+ Add</b> to type one, <b>Accept all</b> to confirm. A .md that has its own <code>tags</code> keeps them (<b>from the file</b>, no AI call). A failed suggestion says so with <b>Retry</b>. PDFs and images get no line. Props: labels (names separated by |, “:new” marks a label not yet in the vault), state, lead (“-” hides it), action (“-” hides it), note, quiet (no × or + Add until hover, as in Review), width.",
+        "width": 1680,
+        "cols": 2,
+        "wrap": "<div style=\"width: 600px; padding: 12px 16px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
+      },
+      "states": [
+        {
+          "name": "Waiting for a slot",
+          "props": {
+            "labels": "",
+            "state": "waiting",
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "26px"
+          ],
+          "caption": "Three files are being labeled; this one is next."
+        },
+        {
+          "name": "Suggesting",
+          "props": {
+            "labels": "",
+            "state": "suggesting",
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "26px"
+          ],
+          "caption": "Haiku reads the file, no tools. One of at most 3 at a time."
+        },
+        {
+          "name": "Suggested",
+          "props": {
+            "labels": "tea-club|gyokuro|shading:new",
+            "state": "suggested",
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "26px"
+          ],
+          "caption": "× drops a label, + Add types one, Accept all confirms. Untouched, the batch uses them as they are."
+        },
+        {
+          "name": "Confirmed",
+          "props": {
+            "labels": "tea-club|gyokuro|shading",
+            "state": "confirmed",
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "26px"
+          ],
+          "caption": "Your choice. Edit reopens it."
+        },
+        {
+          "name": "Own tags from the file",
+          "props": {
+            "labels": "tasting|sencha",
+            "state": "own",
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "26px"
+          ],
+          "caption": "A .md with its own tags: kept as yours, no AI call."
+        },
+        {
+          "name": "Couldn’t suggest",
+          "props": {
+            "labels": "",
+            "state": "failed",
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "26px"
+          ],
+          "caption": "Retry asks again (it joins the 3-at-a-time line). + Add labels it by hand. Help text has the reason."
+        },
+        {
+          "name": "Editing",
+          "props": {
+            "labels": "tea-club|gyokuro",
+            "state": "editing",
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "26px"
+          ],
+          "caption": "Type a label, Return adds it; Done saves (labels_by: user)."
+        },
+        {
+          "name": "No labels",
+          "props": {
+            "labels": "",
+            "state": "none",
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "26px"
+          ],
+          "caption": "You removed them all, or labeling is off for the queue folder."
+        }
+      ]
+    },
+    {
       "name": "FilterChip",
       "title": "Filter chip",
       "swift": "clients/macos/Sources/Distill/AskParts.swift",
@@ -5295,6 +5466,27 @@
           "default": ""
         },
         {
+          "name": "labels",
+          "type": "text",
+          "default": "",
+          "swiftPending": "queue and Review labels, 2026-10-05"
+        },
+        {
+          "name": "labelState",
+          "type": "enum",
+          "default": "none",
+          "options": [
+            "waiting",
+            "suggesting",
+            "suggested",
+            "confirmed",
+            "own",
+            "failed",
+            "none"
+          ],
+          "swiftPending": "queue and Review labels, 2026-10-05"
+        },
+        {
           "name": "width",
           "type": "text",
           "default": "",
@@ -5306,7 +5498,7 @@
         "file": "QueueRowViewStates.dc.html",
         "title": "Queue row states",
         "heading": "QueueRowView",
-        "intro": "QueueRowViews.swift → <b>QueueRowView</b>. One row per queue item: a file, a <b>folder</b> (one item, not N files: folder icon, name, “12 files · 3 folders · 18.4 MB”; the chevron expands its tree, read-only) or a <b>Google Doc</b> (a .gdoc is only a pointer, so its content can’t be read here: the doc’s title, “Google Doc · needs Google Drive access”, a <b>Waiting</b> pill, Open in Google Docs, and a short hint; it is not processed). Pill and × as for files; in a batch the row is locked. Props: title, meta, tileName, status, statusText, help, noteTile, kind (file | folder | gdoc), expanded, tree (“name · size” items separated by |, two spaces per level, folders end with /; Swift: QueueTree.lines from the core’s flat tree), hint. Status <b>waiting</b> (Google Docs) is QueueRowStatus.waiting.",
+        "intro": "QueueRowViews.swift → <b>QueueRowView</b>. One row per queue item: a file, a <b>folder</b> (one item, not N files: folder icon, name, “12 files · 3 folders · 18.4 MB”; the chevron expands its tree, read-only) or a <b>Google Doc</b> (a .gdoc is only a pointer, so its content can’t be read here: the doc’s title, “Google Doc · needs Google Drive access”, a <b>Waiting</b> pill, Open in Google Docs, and a short hint; it is not processed). Pill and × as for files; in a batch the row is locked. Props: title, meta, tileName, status, statusText, help, noteTile, kind (file | folder | gdoc), expanded, tree (“name · size” items separated by |, two spaces per level, folders end with /; Swift: QueueTree.lines from the core’s flat tree), hint. Status <b>waiting</b> (Google Docs) is QueueRowStatus.waiting. <b>Labels</b> (2026-10-05): a ready text file gets a LabelLine under its name: suggested in the background, at most 3 files at a time, confirm, edit or drop them here; props labels and labelState.",
         "width": 1680,
         "cols": 2,
         "wrap": "<div style=\"width: 780px; padding: 6px; border-radius: 16px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
@@ -5452,6 +5644,83 @@
             "760px",
             "64px"
           ]
+        },
+        {
+          "name": "Collector file, labels suggested",
+          "props": {
+            "title": "tea-club-sync-2026-09-28.md",
+            "meta": "From Tea club notes · collected at 11:30 PM · 6 KB",
+            "status": "ready",
+            "labels": "tea-club|gyokuro|shading:new",
+            "labelState": "suggested",
+            "width": 760
+          },
+          "size": [
+            "760px",
+            "96px"
+          ],
+          "caption": "Any text file, not only notes written in Distill."
+        },
+        {
+          "name": "Labeling now",
+          "props": {
+            "title": "tea-club-sync-2026-09-29.md",
+            "meta": "From Tea club notes · collected at 11:30 PM · 5 KB",
+            "status": "ready",
+            "labelState": "suggesting",
+            "width": 760
+          },
+          "size": [
+            "760px",
+            "96px"
+          ],
+          "caption": "One of the 3 running."
+        },
+        {
+          "name": "Waiting to be labeled",
+          "props": {
+            "title": "tea-club-sync-2026-09-30.md",
+            "meta": "From Tea club notes · collected at 11:30 PM · 7 KB",
+            "status": "ready",
+            "labelState": "waiting",
+            "width": 760
+          },
+          "size": [
+            "760px",
+            "96px"
+          ]
+        },
+        {
+          "name": "Labels couldn’t be suggested",
+          "props": {
+            "title": "tea-club-sync-2026-10-01.md",
+            "meta": "From Tea club notes · collected at 11:30 PM · 4 KB",
+            "status": "ready",
+            "labelState": "failed",
+            "help": "Haiku timed out.",
+            "width": 760
+          },
+          "size": [
+            "760px",
+            "96px"
+          ],
+          "caption": "Retry joins the line again; the batch also retries it."
+        },
+        {
+          "name": "Dropped .md with its own tags",
+          "props": {
+            "title": "sencha-side-by-side.md",
+            "meta": "Dropped at 2:12 AM · 3 KB",
+            "status": "ready",
+            "labels": "tasting|sencha",
+            "labelState": "own",
+            "width": 760
+          },
+          "size": [
+            "760px",
+            "96px"
+          ],
+          "caption": "No AI call."
         }
       ]
     },
@@ -5555,6 +5824,372 @@
             "28px"
           ],
           "caption": "The folder is missing or unreadable; QueuePath shows Create folder."
+        }
+      ]
+    },
+    {
+      "name": "ReviewGroupHeader",
+      "title": "Review group header",
+      "swift": null,
+      "preview": [
+        640,
+        40
+      ],
+      "props": [
+        {
+          "name": "title",
+          "type": "text",
+          "default": "New pages"
+        },
+        {
+          "name": "count",
+          "type": "int",
+          "default": 4
+        },
+        {
+          "name": "summary",
+          "type": "text",
+          "default": "3 concepts · 1 entity"
+        },
+        {
+          "name": "expanded",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "name": "busy",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "actionDisabled",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "ReviewRowsStates.dc.html"
+      },
+      "states": [
+        {
+          "name": "Group, open",
+          "props": {
+            "title": "New pages",
+            "count": 4,
+            "summary": "3 concepts · 1 entity",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "40px"
+          ]
+        },
+        {
+          "name": "Group, folded",
+          "props": {
+            "title": "Sources",
+            "count": 22,
+            "summary": "22 notes → 22 source pages · labels suggested by Haiku",
+            "expanded": false,
+            "action": "Show all",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "40px"
+          ],
+          "caption": "More than 6 rows start folded."
+        },
+        {
+          "name": "Group, labels being suggested",
+          "props": {
+            "title": "Sources",
+            "count": 22,
+            "summary": "Suggesting labels · 9 of 22",
+            "busy": true,
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "40px"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ReviewChangeRow",
+      "title": "Review change row",
+      "swift": null,
+      "preview": [
+        640,
+        36
+      ],
+      "props": [
+        {
+          "name": "title",
+          "type": "text",
+          "default": "Water temperature"
+        },
+        {
+          "name": "change",
+          "type": "enum",
+          "default": "new",
+          "options": [
+            "new",
+            "updated"
+          ]
+        },
+        {
+          "name": "kind",
+          "type": "enum",
+          "default": "",
+          "options": [
+            "",
+            "entity",
+            "concept"
+          ]
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "directory",
+          "type": "text",
+          "default": "wiki/concepts"
+        },
+        {
+          "name": "hover",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "ReviewRowsStates.dc.html"
+      },
+      "states": [
+        {
+          "name": "New entity",
+          "props": {
+            "title": "Wazuka Tea Farm",
+            "kind": "entity",
+            "note": "from 6 sources",
+            "directory": "wiki/entities",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "36px"
+          ]
+        },
+        {
+          "name": "New concept",
+          "props": {
+            "title": "Water temperature",
+            "kind": "concept",
+            "note": "from 9 sources",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "36px"
+          ]
+        },
+        {
+          "name": "Updated page",
+          "props": {
+            "title": "Overview",
+            "change": "updated",
+            "note": "adds the tea club season",
+            "directory": "wiki",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "36px"
+          ]
+        },
+        {
+          "name": "Updated, hover",
+          "props": {
+            "title": "Index",
+            "change": "updated",
+            "note": "lists the 26 new pages",
+            "directory": "wiki",
+            "hover": true,
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "36px"
+          ],
+          "caption": "Click opens the page as it will be."
+        }
+      ]
+    },
+    {
+      "name": "ReviewSourceRow",
+      "title": "Review source row",
+      "swift": null,
+      "preview": [
+        640,
+        62
+      ],
+      "props": [
+        {
+          "name": "title",
+          "type": "text",
+          "default": "Tea club sync · Sep 28"
+        },
+        {
+          "name": "file",
+          "type": "text",
+          "default": "tea-club-sync-2026-09-28.md"
+        },
+        {
+          "name": "labels",
+          "type": "text",
+          "default": "tea-club|gyokuro|shading:new"
+        },
+        {
+          "name": "labelState",
+          "type": "enum",
+          "default": "suggested",
+          "options": [
+            "waiting",
+            "suggesting",
+            "suggested",
+            "confirmed",
+            "own",
+            "failed",
+            "editing",
+            "none"
+          ]
+        },
+        {
+          "name": "hover",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "ReviewRowsStates.dc.html",
+        "title": "Review rows",
+        "heading": "Review rows",
+        "intro": "The parts of the new Review (no Swift views yet). <b>ReviewGroupHeader</b>: a group that folds (chevron, title, count, one-line summary, optional action). <b>ReviewChangeRow</b>: a new or updated page that is not a source page (entity, concept, index, overview, log, ledgers). <b>ReviewSourceRow</b>: one source merged with the page it produced, so a source is listed once: the page title, “from” the file, and its labels (a LabelLine). Hover shows Edit and Open page; Edit turns the chips removable with an Add field. Approving confirms the labels shown.",
+        "width": 1440,
+        "cols": 2,
+        "components": [
+          "ReviewGroupHeader",
+          "ReviewChangeRow",
+          "ReviewSourceRow"
+        ],
+        "wrap": "<div style=\"width: 680px; padding: 8px 10px; border-radius: 16px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
+      },
+      "states": [
+        {
+          "name": "Source, labels suggested",
+          "props": {
+            "labels": "tea-club|gyokuro|shading:new",
+            "labelState": "suggested",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "62px"
+          ],
+          "caption": "Dashed: suggested by Haiku. Approving confirms them as shown."
+        },
+        {
+          "name": "Source, hover",
+          "props": {
+            "labels": "tea-club|gyokuro|shading:new",
+            "labelState": "suggested",
+            "hover": true,
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "62px"
+          ],
+          "caption": "Edit and Open page appear on hover."
+        },
+        {
+          "name": "Source, editing",
+          "props": {
+            "labels": "tea-club|gyokuro",
+            "labelState": "editing",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "62px"
+          ],
+          "caption": "Done saves the labels into the change and re-checks it."
+        },
+        {
+          "name": "Source, labels yours",
+          "props": {
+            "title": "Sencha side by side",
+            "file": "sencha-side-by-side.md",
+            "labels": "tasting|sencha",
+            "labelState": "confirmed",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "62px"
+          ],
+          "caption": "Confirmed in the queue, edited here, or the file’s own tags."
+        },
+        {
+          "name": "Source, labels being suggested",
+          "props": {
+            "labels": "",
+            "labelState": "suggesting",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "62px"
+          ],
+          "caption": "Only for a batch that reached Review without labels (older builds)."
+        },
+        {
+          "name": "Source, PDF (no labels)",
+          "props": {
+            "title": "Gongfu brewing guide",
+            "file": "gongfu-brewing-guide.pdf",
+            "labels": "",
+            "labelState": "none",
+            "width": 640
+          },
+          "size": [
+            "640px",
+            "62px"
+          ],
+          "caption": "+ Add labels it by hand."
         }
       ]
     }

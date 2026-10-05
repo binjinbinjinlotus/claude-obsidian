@@ -1,0 +1,1625 @@
+{
+ "$doc": "The Review screen (needs your OK) and its states, moved into the schema on 2026-10-05 (the hand-made Review board is replaced). Review and History share one layout: a short summary, groups that fold (New pages, Updated, Sources), each source merged with the page it produced and its labels.",
+ "row": 2519,
+ "templates": {
+  "main": "<div style=\"flex-grow: 1; display: flex; gap: 28px; padding: 30px {pad}px 0; overflow: hidden; min-height: 0\">\n<section style=\"flex-grow: 1; display: flex; flex-direction: column; gap: 18px; min-width: 0; overflow: hidden; padding-bottom: 20px\">\n{heading}\n{notices}\n<div style=\"display: flex; flex-direction: column; gap: 12px\">{groups}</div>\n</section>\n{conversation}\n</div>\n{footer}",
+  "heading": "<div style=\"display: flex; flex-direction: column; gap: 8px\">\n<div style=\"display: flex; align-items: center; gap: 10px\"><span style=\"display: inline-flex; flex-shrink: 0\">{pill}</span><span style=\"font-size: 12px; color: #6B6862; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; min-width: 0\">{meta}</span>{right}</div>\n<h1 style=\"margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 28px; letter-spacing: -0.03em; line-height: 1.1\">{title}</h1>\n<p style=\"margin: 2px 0 0; font-size: 15px; line-height: 1.5; color: #1D1C1A\">{summary}</p>\n<p style=\"margin: 0; font-size: 13px; line-height: 1.5; color: #6B6862; white-space: nowrap; overflow: hidden; text-overflow: ellipsis\">{prose}</p>\n</div>",
+  "group": "<section style=\"display: flex; flex-direction: column; padding: 4px 6px 6px; border-radius: 16px; background: #FBFAF8\">{head}{rows}</section>",
+  "conversation": "<aside style=\"width: {w}px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; padding-bottom: 20px\">\n<h2 style=\"margin: 0; font-size: 14px; font-weight: 700\">Conversation</h2>\n<div style=\"flex-grow: 1; display: flex; flex-direction: column; gap: 10px; overflow: hidden\">{turns}</div>\n<label for=\"reply\" style=\"font-size: 12px; font-weight: 600; color: #6B6862\">Reply to Claude</label>\n<textarea id=\"reply\" rows=\"3\" placeholder=\"e.g. Put the shading notes on the Gyokuro page instead\" style=\"resize: none; border: none; border-radius: 14px; padding: 12px 14px; font-size: 13px; color: #1D1C1A; background: #F6F5F2\"></textarea>\n<span style=\"font-size: 11px; color: #9B978F\">Model Sonnet · $1.84</span>\n</aside>",
+  "footer": "<footer style=\"flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 16px {pad}px; border-top: 1px solid #ECEAE5\">\n{left}<span style=\"flex-grow: 1\"></span>{status}{right}\n</footer>"
+ },
+ "layouts": {
+  "review-frame": "{main}",
+  "review-page": "<div style=\"position: relative; width: 1200px; height: 760px; isolation: isolate\"><div style=\"position: absolute; inset: 0; z-index: -1\"><dc-import name=\"WindowShell\" layer=\"frame\" width=\"1200\" height=\"760\" hint-size=\"1200px,760px\"></dc-import></div><div style=\"position: absolute; left: 38px; top: 36px; z-index: 2\"><dc-import name=\"WindowShell\" layer=\"controls\" hint-size=\"52px,12px\"></dc-import></div>\n<div style=\"position: absolute; left: 20px; top: 20px; right: 20px; bottom: 20px; display: flex; border-radius: 16px; overflow: hidden; background: #FFFFFF\">\n<div style=\"width: 220px; height: 720px; flex-shrink: 0\"><dc-import name=\"Sidebar\" section=\"review\" review-count=\"1\" status=\"Sonnet · waiting on you\" height=\"720\" hint-size=\"220px,720px\"></dc-import></div>\n<main style=\"flex-grow: 1; display: flex; flex-direction: column; min-width: 0\">\n{main}\n</main>\n</div>\n</div>"
+ },
+ "bases": {
+  "review": {
+   "window": {
+    "width": 1200,
+    "height": 760
+   },
+   "sidebar": {
+    "section": "review",
+    "reviewCount": "1",
+    "status": "Sonnet · waiting on you",
+    "height": 720
+   },
+   "layout": "review-frame",
+   "doc": {
+    "title": "Distill — Review",
+    "css": "\nbody{margin:0;font-family:\"DM Sans\",-apple-system,sans-serif;color:#1D1C1A;-webkit-font-smoothing:antialiased}\na{color:#1F6FEB}a:hover{color:#1858C4}\nbutton,textarea{font-family:inherit;cursor:pointer}\n",
+    "props": "{\"$preview\":{\"width\":1200,\"height\":760}}",
+    "script": "class Component extends DCLogic { renderVals() { return {}; } }"
+   },
+   "regions": {
+    "main": {
+     "t": "main",
+     "vars": {
+      "pad": 40,
+      "heading": {
+       "t": "heading",
+       "vars": {
+        "pill": {
+         "c": "Pill",
+         "props": {
+          "text": "Ready for your OK",
+          "fill": "#FFE4D6",
+          "ink": "#B03A0A"
+         },
+         "size": [
+          "139px",
+          "24px"
+         ]
+        },
+        "meta": "Finished at 11:47 PM · Claude Code · Sonnet",
+        "right": "",
+        "title": "Tea club notes, Sep 28 – Oct 2",
+        "summary": "<b>22</b> new source pages · <b>3</b> new concepts · <b>1</b> new entity · <b>6</b> pages updated",
+        "prose": "Claude kept 12 tasting claims as provisional, since each comes from a single note. Nothing conflicts with your vault. <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Claude’s full summary</a>"
+       }
+      },
+      "notices": {
+       "html": "<div style=\"display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6B6862\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#1F6FEB\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0\"><path d=\"M9 6h11M9 12h11M9 18h11\"/><path d=\"M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17\"/></svg>After you apply, Distill looks for actions in these 22 notes with Sonnet and asks you to confirm them.</div>"
+      },
+      "groups": [
+       {
+        "t": "group",
+        "vars": {
+         "head": {
+          "c": "ReviewGroupHeader",
+          "props": {
+           "title": "New pages",
+           "count": 4,
+           "summary": "3 concepts · 1 entity",
+           "expanded": true
+          },
+          "size": [
+           "100%",
+           "40px"
+          ]
+         },
+         "rows": [
+          {
+           "c": "ReviewChangeRow",
+           "props": {
+            "title": "Wazuka Tea Farm",
+            "change": "new",
+            "kind": "entity",
+            "note": "from 6 sources",
+            "directory": "wiki/entities"
+           },
+           "size": [
+            "100%",
+            "36px"
+           ]
+          },
+          {
+           "c": "ReviewChangeRow",
+           "props": {
+            "title": "Water temperature",
+            "change": "new",
+            "kind": "concept",
+            "note": "from 9 sources",
+            "directory": "wiki/concepts"
+           },
+           "size": [
+            "100%",
+            "36px"
+           ]
+          },
+          {
+           "c": "ReviewChangeRow",
+           "props": {
+            "title": "Shading and umami",
+            "change": "new",
+            "kind": "concept",
+            "note": "from 7 sources",
+            "directory": "wiki/concepts"
+           },
+           "size": [
+            "100%",
+            "36px"
+           ]
+          },
+          {
+           "c": "ReviewChangeRow",
+           "props": {
+            "title": "Tea club season plan",
+            "change": "new",
+            "kind": "concept",
+            "note": "from 5 sources",
+            "directory": "wiki/concepts"
+           },
+           "size": [
+            "100%",
+            "36px"
+           ]
+          }
+         ]
+        }
+       },
+       {
+        "t": "group",
+        "vars": {
+         "head": {
+          "c": "ReviewGroupHeader",
+          "props": {
+           "title": "Updated",
+           "count": 6,
+           "summary": "Index, Overview, Log, Hot cache, 2 ledgers · plus 2 bookkeeping files",
+           "expanded": false
+          },
+          "size": [
+           "100%",
+           "40px"
+          ]
+         },
+         "rows": ""
+        }
+       },
+       {
+        "t": "group",
+        "vars": {
+         "head": {
+          "c": "ReviewGroupHeader",
+          "props": {
+           "title": "Sources",
+           "count": 22,
+           "summary": "one page per note · labels suggested by Haiku",
+           "expanded": false,
+           "action": "Show all 22"
+          },
+          "size": [
+           "100%",
+           "40px"
+          ]
+         },
+         "rows": [
+          {
+           "html": "<div style=\"padding: 0 10px 8px 30px; font-size: 12px; color: #6B6862; line-height: 1.5\">Most used labels: <b style=\"color: #3D6110; font-weight: 600\">#tea-club</b> 8 · <b style=\"color: #3D6110; font-weight: 600\">#tasting</b> 8 · <b style=\"color: #3D6110; font-weight: 600\">#wazuka</b> 7 · <b style=\"color: #3D6110; font-weight: 600\">#gyokuro</b> 6 · 2 new: <b style=\"color: #B03A0A; font-weight: 600\">#shading</b>, <b style=\"color: #B03A0A; font-weight: 600\">#sourcing</b></div>"
+          }
+         ]
+        }
+       }
+      ],
+      "conversation": {
+       "t": "conversation",
+       "vars": {
+        "w": 290,
+        "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #E3EEFF\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div>"
+       }
+      },
+      "footer": {
+       "t": "footer",
+       "vars": {
+        "pad": 40,
+        "left": {
+         "c": "SoftButton",
+         "props": {
+          "title": "Reject",
+          "tint": "#B03A0A",
+          "fill": "transparent"
+         },
+         "size": [
+          "88px",
+          "40px"
+         ]
+        },
+        "status": {
+         "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6862; margin-right: 6px\">Approving also confirms the labels shown</span>"
+        },
+        "right": [
+         {
+          "c": "SoftButton",
+          "props": {
+           "title": "Send reply"
+          },
+          "size": [
+           "120px",
+           "40px"
+          ]
+         },
+         {
+          "c": "PrimaryButton",
+          "props": {
+           "title": "Approve & apply",
+           "systemImage": "checkmark"
+          },
+          "size": [
+           "184px",
+           "40px"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "states": [
+  {
+   "id": "review",
+   "base": "review",
+   "label": "Review · a 22-note batch",
+   "set": {
+    "layout": "review-page"
+   }
+  },
+  {
+   "id": "review-sources-open",
+   "base": "review",
+   "label": "1 · Sources opened: each source with the page it made and its labels",
+   "set": {
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "New pages",
+         "count": 4,
+         "summary": "3 concepts · 1 entity",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Updated",
+         "count": 6,
+         "summary": "Index, Overview, Log, Hot cache, 2 ledgers · plus 2 bookkeeping files",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Sources",
+         "count": 22,
+         "summary": "one page per note · labels suggested by Haiku",
+         "expanded": true,
+         "action": "Fold"
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": [
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tea club sync · Sep 28",
+          "file": "tea-club-sync-2026-09-28.md",
+          "labels": "tea-club|tasting|gyokuro",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tasting circle stand-up · Sep 28",
+          "file": "tasting-circle-stand-up-2026-09-28.md",
+          "labels": "tasting|sencha",
+          "labelState": "suggested",
+          "hover": true
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Wazuka farm call · Sep 28",
+          "file": "wazuka-farm-call-2026-09-28.md",
+          "labels": "wazuka|sourcing:new|shading:new",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Shading and umami talk · Sep 28",
+          "file": "shading-and-umami-talk-2026-09-28.md",
+          "labels": "gyokuro|shading:new|water-temperature",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tea club sync · Sep 29",
+          "file": "tea-club-sync-2026-09-29.md",
+          "labels": "tea-club|matcha",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tasting circle stand-up · Sep 29",
+          "file": "tasting-circle-stand-up-2026-09-29.md",
+          "labels": "tasting|water-temperature",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Kettle care chat · Sep 29",
+          "file": "kettle-care-chat-2026-09-29.md",
+          "labels": "kettle|water-temperature",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Mei and Jin · Sep 29",
+          "file": "mei-and-jin-2026-09-29.md",
+          "labels": "tea-club|sourcing:new",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: #1F6FEB\">Show 14 more</div>"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "review-label-edit",
+   "base": "review",
+   "label": "2 · Editing one source’s labels",
+   "set": {
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "New pages",
+         "count": 4,
+         "summary": "3 concepts · 1 entity",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Updated",
+         "count": 6,
+         "summary": "Index, Overview, Log, Hot cache, 2 ledgers · plus 2 bookkeeping files",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Sources",
+         "count": 22,
+         "summary": "one page per note · labels suggested by Haiku",
+         "expanded": true,
+         "action": "Fold"
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": [
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tea club sync · Sep 28",
+          "file": "tea-club-sync-2026-09-28.md",
+          "labels": "tea-club|tasting|gyokuro",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tasting circle stand-up · Sep 28",
+          "file": "tasting-circle-stand-up-2026-09-28.md",
+          "labels": "tasting",
+          "labelState": "editing"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Wazuka farm call · Sep 28",
+          "file": "wazuka-farm-call-2026-09-28.md",
+          "labels": "wazuka|sourcing:new|shading:new",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Shading and umami talk · Sep 28",
+          "file": "shading-and-umami-talk-2026-09-28.md",
+          "labels": "gyokuro|shading:new|water-temperature",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tea club sync · Sep 29",
+          "file": "tea-club-sync-2026-09-29.md",
+          "labels": "tea-club|matcha",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tasting circle stand-up · Sep 29",
+          "file": "tasting-circle-stand-up-2026-09-29.md",
+          "labels": "tasting|water-temperature",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Kettle care chat · Sep 29",
+          "file": "kettle-care-chat-2026-09-29.md",
+          "labels": "kettle|water-temperature",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Mei and Jin · Sep 29",
+          "file": "mei-and-jin-2026-09-29.md",
+          "labels": "tea-club|sourcing:new",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: #1F6FEB\">Show 14 more</div>"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "review-label-saving",
+   "base": "review",
+   "label": "3 · After Done: the labels go into the change, the core checks it again",
+   "set": {
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "New pages",
+         "count": 4,
+         "summary": "3 concepts · 1 entity",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Updated",
+         "count": 6,
+         "summary": "Index, Overview, Log, Hot cache, 2 ledgers · plus 2 bookkeeping files",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Sources",
+         "count": 22,
+         "summary": "one page per note · labels suggested by Haiku",
+         "expanded": true,
+         "action": "Fold"
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": [
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tea club sync · Sep 28",
+          "file": "tea-club-sync-2026-09-28.md",
+          "labels": "tea-club|tasting|gyokuro",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tasting circle stand-up · Sep 28",
+          "file": "tasting-circle-stand-up-2026-09-28.md",
+          "labels": "tasting|sencha|cupping",
+          "labelState": "confirmed"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Wazuka farm call · Sep 28",
+          "file": "wazuka-farm-call-2026-09-28.md",
+          "labels": "wazuka|sourcing:new|shading:new",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Shading and umami talk · Sep 28",
+          "file": "shading-and-umami-talk-2026-09-28.md",
+          "labels": "gyokuro|shading:new|water-temperature",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tea club sync · Sep 29",
+          "file": "tea-club-sync-2026-09-29.md",
+          "labels": "tea-club|matcha",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tasting circle stand-up · Sep 29",
+          "file": "tasting-circle-stand-up-2026-09-29.md",
+          "labels": "tasting|water-temperature",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Kettle care chat · Sep 29",
+          "file": "kettle-care-chat-2026-09-29.md",
+          "labels": "kettle|water-temperature",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Mei and Jin · Sep 29",
+          "file": "mei-and-jin-2026-09-29.md",
+          "labels": "tea-club|sourcing:new",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: #1F6FEB\">Show 14 more</div>"
+        }
+       ]
+      }
+     }
+    ],
+    "main.vars.footer.vars.status": {
+     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6862; margin-right: 6px\"><span style=\"width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0\"></span>Saving your labels into the change and checking it again…</span>"
+    },
+    "main.vars.footer.vars.right": [
+     {
+      "c": "SoftButton",
+      "props": {
+       "title": "Send reply"
+      },
+      "size": [
+       "120px",
+       "40px"
+      ]
+     },
+     {
+      "c": "PrimaryButton",
+      "props": {
+       "title": "Approve & apply",
+       "systemImage": "checkmark",
+       "enabled": false
+      },
+      "size": [
+       "184px",
+       "40px"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "review-label-save-failed",
+   "base": "review",
+   "label": "4 · The label edit could not be checked: nothing changed",
+   "set": {
+    "main.vars.notices": {
+     "html": "<div style=\"display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #FFF4EE\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#B03A0A\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0; margin-top: 1px\"><path d=\"M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8v5M12 16h.01\"/></svg><span style=\"display: flex; flex-direction: column; gap: 2px\"><span style=\"font-size: 13px; font-weight: 700; color: #B03A0A\">Couldn’t save your label edit</span><span style=\"font-size: 12px; color: #48463F; line-height: 1.45\">The vault changed after Claude prepared this batch (wiki/index.md), so the core refused the edited change. Your edit was not kept; the labels are as before. Reply to Claude to rebuild the batch, or Reject.</span></span></div>"
+    },
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "New pages",
+         "count": 4,
+         "summary": "3 concepts · 1 entity",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Updated",
+         "count": 6,
+         "summary": "Index, Overview, Log, Hot cache, 2 ledgers · plus 2 bookkeeping files",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Sources",
+         "count": 22,
+         "summary": "one page per note · labels suggested by Haiku",
+         "expanded": true,
+         "action": "Fold"
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": [
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tea club sync · Sep 28",
+          "file": "tea-club-sync-2026-09-28.md",
+          "labels": "tea-club|tasting|gyokuro",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tasting circle stand-up · Sep 28",
+          "file": "tasting-circle-stand-up-2026-09-28.md",
+          "labels": "tasting|sencha",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Wazuka farm call · Sep 28",
+          "file": "wazuka-farm-call-2026-09-28.md",
+          "labels": "wazuka|sourcing:new|shading:new",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Shading and umami talk · Sep 28",
+          "file": "shading-and-umami-talk-2026-09-28.md",
+          "labels": "gyokuro|shading:new|water-temperature",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tea club sync · Sep 29",
+          "file": "tea-club-sync-2026-09-29.md",
+          "labels": "tea-club|matcha",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tasting circle stand-up · Sep 29",
+          "file": "tasting-circle-stand-up-2026-09-29.md",
+          "labels": "tasting|water-temperature",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Kettle care chat · Sep 29",
+          "file": "kettle-care-chat-2026-09-29.md",
+          "labels": "kettle|water-temperature",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Mei and Jin · Sep 29",
+          "file": "mei-and-jin-2026-09-29.md",
+          "labels": "tea-club|sourcing:new",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: #1F6FEB\">Show 14 more</div>"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "review-labels-attaching",
+   "base": "review",
+   "label": "5 · A batch that reached Review without labels: suggested now, 3 at a time",
+   "set": {
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "New pages",
+         "count": 4,
+         "summary": "3 concepts · 1 entity",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Updated",
+         "count": 6,
+         "summary": "Index, Overview, Log, Hot cache, 2 ledgers · plus 2 bookkeeping files",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Sources",
+         "count": 22,
+         "summary": "Suggesting labels · 9 of 22 · 3 at a time",
+         "expanded": true,
+         "busy": true
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": [
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tea club sync · Sep 28",
+          "file": "tea-club-sync-2026-09-28.md",
+          "labels": "tea-club|tasting|gyokuro",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tasting circle stand-up · Sep 28",
+          "file": "tasting-circle-stand-up-2026-09-28.md",
+          "labels": "tasting|sencha",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Wazuka farm call · Sep 28",
+          "file": "wazuka-farm-call-2026-09-28.md",
+          "labels": "wazuka|sourcing:new|shading:new",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Shading and umami talk · Sep 28",
+          "file": "shading-and-umami-talk-2026-09-28.md",
+          "labels": "gyokuro|shading:new|water-temperature",
+          "labelState": "suggesting"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tea club sync · Sep 29",
+          "file": "tea-club-sync-2026-09-29.md",
+          "labels": "tea-club|matcha",
+          "labelState": "suggesting"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Tasting circle stand-up · Sep 29",
+          "file": "tasting-circle-stand-up-2026-09-29.md",
+          "labels": "tasting|water-temperature",
+          "labelState": "suggesting"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Kettle care chat · Sep 29",
+          "file": "kettle-care-chat-2026-09-29.md",
+          "labels": "kettle|water-temperature",
+          "labelState": "waiting"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Mei and Jin · Sep 29",
+          "file": "mei-and-jin-2026-09-29.md",
+          "labels": "tea-club|sourcing:new",
+          "labelState": "waiting"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: #1F6FEB\">Show 14 more</div>"
+        }
+       ]
+      }
+     }
+    ],
+    "main.vars.footer.vars.status": {
+     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6862; margin-right: 6px\">Approve when the labels are in</span>"
+    },
+    "main.vars.footer.vars.right": [
+     {
+      "c": "SoftButton",
+      "props": {
+       "title": "Send reply"
+      },
+      "size": [
+       "120px",
+       "40px"
+      ]
+     },
+     {
+      "c": "PrimaryButton",
+      "props": {
+       "title": "Approve & apply",
+       "systemImage": "checkmark",
+       "enabled": false
+      },
+      "size": [
+       "184px",
+       "40px"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "review-narrow",
+   "base": "review",
+   "label": "6 · Smallest window (900 × 640): the conversation moves behind a button",
+   "set": {
+    "window": {
+     "width": 900,
+     "height": 640
+    },
+    "sidebar.height": 600,
+    "main.vars.pad": 28,
+    "main.vars.heading": {
+     "t": "heading",
+     "vars": {
+      "pill": {
+       "c": "Pill",
+       "props": {
+        "text": "Ready for your OK",
+        "fill": "#FFE4D6",
+        "ink": "#B03A0A"
+       },
+       "size": [
+        "139px",
+        "24px"
+       ]
+      },
+      "meta": "Finished at 11:47 PM · Sonnet",
+      "right": {
+       "c": "SoftButton",
+       "props": {
+        "title": "Conversation · 2",
+        "size": "small"
+       },
+       "size": [
+        "132px",
+        "30px"
+       ]
+      },
+      "title": "Tea club notes, Sep 28 – Oct 2",
+      "summary": "<b>22</b> source pages · <b>4</b> new pages · <b>6</b> updated",
+      "prose": "Claude kept 12 tasting claims as provisional, since each comes from a single note. Nothing conflicts with your vault. <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Claude’s full summary</a>"
+     }
+    },
+    "main.vars.notices": "",
+    "main.vars.conversation": "",
+    "main.vars.footer.vars.pad": 28,
+    "main.vars.footer.vars.status": ""
+   }
+  },
+  {
+   "id": "review-small",
+   "base": "review",
+   "label": "7 · A small batch (2 notes): nothing folds",
+   "set": {
+    "main.vars.heading": {
+     "t": "heading",
+     "vars": {
+      "pill": {
+       "c": "Pill",
+       "props": {
+        "text": "Ready for your OK",
+        "fill": "#FFE4D6",
+        "ink": "#B03A0A"
+       },
+       "size": [
+        "139px",
+        "24px"
+       ]
+      },
+      "meta": "Finished at 11:47 PM · Claude Code · Sonnet",
+      "right": "",
+      "title": "Gyokuro at 60 °C, Sencha side by side",
+      "summary": "<b>2</b> new source pages · <b>1</b> new concept · <b>5</b> pages updated",
+      "prose": "Claude kept 3 tasting claims as provisional, since they come from a single note. Nothing conflicts with your vault."
+     }
+    },
+    "main.vars.notices": {
+     "html": "<div style=\"display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6B6862\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#1F6FEB\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0\"><path d=\"M9 6h11M9 12h11M9 18h11\"/><path d=\"M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17\"/></svg>After you apply, Distill looks for actions in these 2 notes with Sonnet and asks you to confirm them.</div>"
+    },
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "New pages",
+         "count": 1,
+         "summary": "1 concept",
+         "expanded": true
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": [
+        {
+         "c": "ReviewChangeRow",
+         "props": {
+          "title": "Water temperature",
+          "change": "new",
+          "kind": "concept",
+          "note": "from 2 sources",
+          "directory": "wiki/concepts"
+         },
+         "size": [
+          "100%",
+          "36px"
+         ]
+        }
+       ]
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Sources",
+         "count": 2,
+         "summary": "one page per note",
+         "expanded": true
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": [
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Gyokuro at 60 °C",
+          "file": "Gyokuro at 60 °C.md",
+          "labels": "tea|gyokuro",
+          "labelState": "confirmed"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        },
+        {
+         "c": "ReviewSourceRow",
+         "props": {
+          "title": "Sencha side by side",
+          "file": "sencha-side-by-side.md",
+          "labels": "tasting|sencha|kettle:new",
+          "labelState": "suggested"
+         },
+         "size": [
+          "100%",
+          "62px"
+         ]
+        }
+       ]
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Updated",
+         "count": 5,
+         "summary": "Index, Overview, Log, Hot cache, ledgers",
+         "expanded": true
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": [
+        {
+         "c": "ReviewChangeRow",
+         "props": {
+          "title": "Index",
+          "change": "updated",
+          "note": "lists the 26 new pages",
+          "directory": "wiki"
+         },
+         "size": [
+          "100%",
+          "36px"
+         ]
+        },
+        {
+         "c": "ReviewChangeRow",
+         "props": {
+          "title": "Overview",
+          "change": "updated",
+          "note": "adds the tea club season",
+          "directory": "wiki"
+         },
+         "size": [
+          "100%",
+          "36px"
+         ]
+        },
+        {
+         "c": "ReviewChangeRow",
+         "props": {
+          "title": "Log",
+          "change": "updated",
+          "note": "one entry for this batch",
+          "directory": "wiki"
+         },
+         "size": [
+          "100%",
+          "36px"
+         ]
+        },
+        {
+         "c": "ReviewChangeRow",
+         "props": {
+          "title": "Source and claim ledgers",
+          "change": "updated",
+          "note": "2 sources, 3 claims",
+          "directory": "wiki/meta/ledgers"
+         },
+         "size": [
+          "100%",
+          "36px"
+         ]
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "review-history-applied",
+   "base": "review",
+   "label": "8 · The same batch in History after Approve: labels confirmed",
+   "set": {
+    "sidebar.section": "history",
+    "sidebar.sub": "jobs",
+    "sidebar.reviewCount": "0",
+    "sidebar.status": "Sonnet · ready",
+    "main.vars.heading": {
+     "t": "heading",
+     "vars": {
+      "pill": {
+       "c": "Pill",
+       "props": {
+        "text": "Applied at 11:52 PM",
+        "fill": "#F3FDE4",
+        "ink": "#3D6110"
+       },
+       "size": [
+        "150px",
+        "24px"
+       ]
+      },
+      "meta": "Started at 11:33 PM · Claude Code · Sonnet · approved by you at 11:52 PM",
+      "right": "",
+      "title": "Tea club notes, Sep 28 – Oct 2",
+      "summary": "<b>22</b> new source pages · <b>3</b> new concepts · <b>1</b> new entity · <b>6</b> pages updated",
+      "prose": "Claude kept 12 tasting claims as provisional, since each comes from a single note. Nothing conflicts with your vault. <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Claude’s full summary</a>"
+     }
+    },
+    "main.vars.notices": {
+     "html": "<div style=\"display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6B6862\"><b style=\"color: #3D6110\">✓</b> Found 5 actions to confirm · <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Review them</a></div>"
+    },
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "New pages",
+         "count": 4,
+         "summary": "3 concepts · 1 entity",
+         "expanded": true
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": [
+        {
+         "c": "ReviewChangeRow",
+         "props": {
+          "title": "Wazuka Tea Farm",
+          "change": "new",
+          "kind": "entity",
+          "note": "from 6 sources",
+          "directory": "wiki/entities"
+         },
+         "size": [
+          "100%",
+          "36px"
+         ]
+        },
+        {
+         "c": "ReviewChangeRow",
+         "props": {
+          "title": "Water temperature",
+          "change": "new",
+          "kind": "concept",
+          "note": "from 9 sources",
+          "directory": "wiki/concepts"
+         },
+         "size": [
+          "100%",
+          "36px"
+         ]
+        },
+        {
+         "c": "ReviewChangeRow",
+         "props": {
+          "title": "Shading and umami",
+          "change": "new",
+          "kind": "concept",
+          "note": "from 7 sources",
+          "directory": "wiki/concepts"
+         },
+         "size": [
+          "100%",
+          "36px"
+         ]
+        },
+        {
+         "c": "ReviewChangeRow",
+         "props": {
+          "title": "Tea club season plan",
+          "change": "new",
+          "kind": "concept",
+          "note": "from 5 sources",
+          "directory": "wiki/concepts"
+         },
+         "size": [
+          "100%",
+          "36px"
+         ]
+        }
+       ]
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Updated",
+         "count": 6,
+         "summary": "Index, Overview, Log, Hot cache, 2 ledgers · plus 2 bookkeeping files",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Sources",
+         "count": 22,
+         "summary": "one page per note · labels confirmed when you approved",
+         "expanded": false,
+         "action": "Show all 22"
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": [
+        {
+         "html": "<div style=\"padding: 0 10px 8px 30px; font-size: 12px; color: #6B6862; line-height: 1.5\">Most used labels: <b style=\"color: #3D6110; font-weight: 600\">#tea-club</b> 8 · <b style=\"color: #3D6110; font-weight: 600\">#tasting</b> 8 · <b style=\"color: #3D6110; font-weight: 600\">#wazuka</b> 7 · <b style=\"color: #3D6110; font-weight: 600\">#gyokuro</b> 6 · 2 new: <b style=\"color: #B03A0A; font-weight: 600\">#shading</b>, <b style=\"color: #B03A0A; font-weight: 600\">#sourcing</b></div>"
+        }
+       ]
+      }
+     }
+    ],
+    "main.vars.footer.vars.left": {
+     "html": "<span style=\"font-size: 12px; color: #9B978F\">Operation ingest-20261004-tea-club-batch</span>"
+    },
+    "main.vars.footer.vars.status": "",
+    "main.vars.footer.vars.right": ""
+   }
+  }
+ ],
+ "boards": [
+  {
+   "file": "Review.dc.html",
+   "title": "Needs review · a 22-note batch, grouped, with labels",
+   "page": "review"
+  },
+  {
+   "file": "ReviewStates.dc.html",
+   "title": "Review · labels, folding groups, narrow window, History",
+   "heading": "Review: labels you can see, groups that fold",
+   "intro": "Review now scales to a big batch. Up top, one line says what changes (“22 new source pages · 3 new concepts · 1 new entity · 6 pages updated”). Below, three groups: <b>New pages</b> (entities and concepts, open), <b>Updated</b> (index, overview, log, hot cache, ledgers: named in its summary, opens for a note per page) and <b>Sources</b>: each source is listed once, merged with the source page it made and its labels. A group with more than 6 rows starts folded; folded Sources still shows the most used labels. Labels were suggested in the queue (3 files at a time) or by the batch, so they are already there. <b>Approving confirms the labels shown</b> (labels_by: user; they don’t come back in Labels → To review). Editing a source’s labels writes them into the change and the vault core checks it again before Approve comes back; if that check fails, the edit is not kept and nothing else changes. History uses the same layout (frame 8); the old hand-made History → Jobs board is superseded by it.",
+   "width": 2520,
+   "sections": [
+    {
+     "row": [
+      "review-sources-open",
+      "review-label-edit"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "row": [
+      "review-label-saving",
+      "review-label-save-failed"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "row": [
+      "review-labels-attaching",
+      "review-small"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "row": [
+      "review-narrow",
+      "review-history-applied"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    }
+   ]
+  }
+ ]
+}

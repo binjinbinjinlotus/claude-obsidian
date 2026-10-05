@@ -330,6 +330,115 @@
    }
   },
   {
+   "id": "queue-labeling",
+   "base": "queue",
+   "label": "Queue · 22 notes from a collector, labels suggested 3 at a time",
+   "set": {
+    "doc.title": "Distill — Queue (labels as files arrive)",
+    "doc.script": "class Component extends DCLogic {\nrenderVals() {\nreturn {\nfiles: [\n]\n};\n}\n}",
+    "sidebar.queueCount": "22",
+    "header.vars.title": "22 items in the queue",
+    "header.vars.sub": "Next batch at <strong style=\"color: #1D1C1A; font-weight: 600\">5:30 AM</strong> · labels for 9 of 22 so far, 3 at a time",
+    "rows": [
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "tea-club-sync-2026-09-28.md",
+       "meta": "From Tea club notes · collected at 11:30 PM · 6 KB",
+       "status": "ready",
+       "labels": "tea-club|tasting|gyokuro",
+       "labelState": "confirmed"
+      },
+      "size": [
+       "100%",
+       "96px"
+      ]
+     },
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "tasting-circle-stand-up-2026-09-28.md",
+       "meta": "From Tea club notes · collected at 11:30 PM · 4 KB",
+       "status": "ready",
+       "labels": "tasting|sencha",
+       "labelState": "suggested"
+      },
+      "size": [
+       "100%",
+       "96px"
+      ]
+     },
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "wazuka-farm-call-2026-09-28.md",
+       "meta": "From Tea club notes · collected at 11:30 PM · 7 KB",
+       "status": "ready",
+       "labels": "wazuka|sourcing:new|shading:new",
+       "labelState": "suggested"
+      },
+      "size": [
+       "100%",
+       "96px"
+      ]
+     },
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "shading-and-umami-talk-2026-09-28.md",
+       "meta": "From Tea club notes · collected at 11:30 PM · 5 KB",
+       "status": "ready",
+       "labelState": "suggesting"
+      },
+      "size": [
+       "100%",
+       "96px"
+      ]
+     },
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "tea-club-sync-2026-09-29.md",
+       "meta": "From Tea club notes · collected at 11:30 PM · 6 KB",
+       "status": "ready",
+       "labelState": "suggesting"
+      },
+      "size": [
+       "100%",
+       "96px"
+      ]
+     },
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "tasting-circle-stand-up-2026-09-29.md",
+       "meta": "From Tea club notes · collected at 11:30 PM · 4 KB",
+       "status": "ready",
+       "help": "Haiku timed out. Retry asks again.",
+       "labelState": "failed"
+      },
+      "size": [
+       "100%",
+       "96px"
+      ]
+     },
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "kettle-care-chat-2026-09-29.md",
+       "meta": "From Tea club notes · collected at 11:30 PM · 3 KB",
+       "status": "ready",
+       "labelState": "waiting"
+      },
+      "size": [
+       "100%",
+       "96px"
+      ]
+     }
+    ]
+   }
+  },
+  {
    "id": "queue-card-settings",
    "label": "Settings → Batching: the queue check",
    "caption": "New last row on the Batching page. Default every 5 minutes; Off leaves Refresh and the check when the window opens.",
@@ -406,6 +515,11 @@
    "file": "MainFolder.dc.html",
    "title": "Queue · Refresh found a folder and a Google Doc",
    "page": "queue-refreshed"
+  },
+  {
+   "file": "MainLabels.dc.html",
+   "title": "Queue · labels suggested as files arrive (3 at a time)",
+   "page": "queue-labeling"
   },
   {
    "file": "QueueItems.dc.html",

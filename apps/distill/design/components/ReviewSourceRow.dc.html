@@ -1,0 +1,22 @@
+<!-- ReviewSourceRow: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<div style="width: {{w}}; display: flex; align-items: flex-start; gap: 12px; padding: 9px 10px; border-radius: 12px; background: {{bg}}; box-sizing: border-box">
+<span style="width: 22px; height: 22px; margin-top: 1px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0; background: #E9FBC9; color: #3D6110">+</span>
+<span style="display: flex; flex-direction: column; gap: 5px; flex-grow: 1; min-width: 0">
+<span style="display: flex; align-items: baseline; gap: 8px; min-width: 0"><span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; max-width: 60%">{{title}}</span><span style="font-size: 12px; color: #9B978F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0">from {{file}}</span></span>
+<dc-import name="LabelLine" labels="{{labels}}" state="{{labelState}}" lead="{{lead}}" action="{{action}}" quiet="{{quiet}}" hint-size="100%,26px"></dc-import>
+</span>
+<sc-if value="{{showOpen}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; font-weight: 600; color: #1F6FEB; white-space: nowrap; margin-top: 2px">Open page</span></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc-logic">
+const px = (v, d) => (v === undefined || v === null || v === '') ? d : (/^[0-9.]+$/.test(String(v)) ? v + 'px' : String(v));
+const state = p.labelState || 'suggested';
+const hover = on(p.hover, false), editing = state === 'editing';
+// In Review a row stays quiet (no ×, no + Add, no Accept all): Approve confirms the labels shown; hover offers Edit.
+const action = { suggested: 'Edit', confirmed: 'Edit', own: 'Edit' }[state] || '-';
+return { w: px(p.width, '100%'), title: p.title || 'Tea club sync · Sep 28', file: p.file || 'tea-club-sync-2026-09-28.md',
+  labels: p.labels || '', labelState: state, lead: state === 'suggested' ? '-' : '', action: hover || editing ? action : '-',
+  quiet: hover || editing ? 'false' : 'true', bg: editing ? '#F2F7FF' : (hover ? '#F6F5F2' : 'transparent'), showOpen: hover && !editing };
+</script>
