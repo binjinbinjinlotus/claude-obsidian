@@ -440,8 +440,8 @@ saved Codex ingest choice runs on Claude Code, and the app says so once.
 **Later option.** Codex ingest with sections fed in by the core: the core puts
 each section's text in the prompt, so coverage is by construction.
 
-This is adopted as the default on the lead's recommendation and recorded as
-vetoable in `decisions.md`.
+The owner decided this on 2026-10-05: Codex ingest is deferred, and the
+follow-up is a Distill To do (`act-026ab6c5…`).
 
 ## 4. Never lose originals: archive with the batch (Option A)
 
@@ -491,9 +491,7 @@ archives them.
 
 **Re-reads find their sources** by `content_sha256` → `.raw/captured/`.
 
-**Option A is the default**, adopted on the lead's recommendation. The owner
-may veto it (see `decisions.md`). The fallback, Option B, is a separate
-`capture apply` transaction at clean-up time.
+**Option A is the owner's decision** (2026-10-05, `decisions.md`).
 
 ## 5. Pages that reflect the source
 
@@ -791,9 +789,7 @@ skills reviewer.
      draft-after-read order is the only guard.
    - **`modelUsage[…].contextWindow`** on the result event, used for the
      budget.
-2. **Option A and Codex.** Both are recorded as vetoable defaults in
-   `decisions.md`: Option A for `.raw/`, and ingest only on Claude Code. Does
-   the owner veto either?
+2. (Settled 2026-10-05: Option A confirmed; Codex ingest deferred.)
 3. **Repair approvals.** The repair runs 8 serial batches of 3 for the 22
    sources. Each batch rewrites the index, log and hot cache, so a batch
    built while another waits in Review goes stale. That can mean about 15

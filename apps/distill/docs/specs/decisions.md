@@ -17,6 +17,16 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+**Owner decisions on full reads (2026-10-05).** These supersede the "vetoable
+default" wording in the entry below.
+
+- **`.raw/` archiving goes through the ingest bundle (Option A).** The owner
+  confirmed it. Each batch's bundle creates `.raw/captured/<sha256>.<ext>` and
+  points the ledger locator there. Clean up inbox only clears inbox copies.
+- **Codex ingest is deferred.** Batches run only on runners with verifiable
+  reads (`readCoverage`; today Claude Code). The follow-up is logged as a
+  Distill To do (`act-026ab6c5…`).
+
 Full reads (designed). The owner: "relying on human is wrong. we need the
 solution to be more automatic". Canvas: FullRead (row 11). Spec: [Full
 reads](full-read.md).
