@@ -200,6 +200,14 @@ user runs.**
 - **Automation can be blocked,** by a locked screen or a missing Accessibility
   or Screen Recording permission. Report the real-app phase as not run and hand
   it to the owner. Snapshots don't substitute for it.
+- **The owner's toolchain isn't yours.** Scripts the core spawns use the
+  login shell's PATH. On the owner's Mac that finds `/usr/local/bin/node`
+  v14 before nvm's v22, while the core itself runs on v22. Check what
+  `zsh -lc 'which -a node python3'` returns before trusting a green test that
+  ran under your own PATH.
+- **The session scratchpad is shared.** Other teammates use it at the same
+  time, and one overwrote another's helper script. Work in your own
+  subfolder, or use `mktemp -d`, and never reuse a path you didn't create.
 
 ### Design parity
 - **Compare state by state, wording included.** For example: "Mark done" vs

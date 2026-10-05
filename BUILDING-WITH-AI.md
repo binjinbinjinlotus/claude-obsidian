@@ -89,6 +89,15 @@ isn't.
 ## Friction log (newest first)
 
 ### 2026-10-04
+- **Green tests, broken on the owner's Mac.** Collector scripts ran with the
+  login shell's `node`, which on this Mac is v14 (`/usr/local/bin`), not
+  nvm's v22. TypeScript and npm installs passed every test but would have
+  failed for the owner. A teammate's live run against a real core caught it.
+  - *Lesson:* check the owner's actual toolchain (`zsh -lc 'which -a …'`), not
+    the agent's PATH. Added to the e2e skill's known gaps.
+- **Teammates collided in the shared scratchpad.** One overwrote another's
+  helper script and briefly used another's QA folder.
+  - *Change:* briefs and the e2e skill now say to use a private subfolder.
 - **The owner's own deletions looked like data loss.** Three Ask chats and a
   Script collector disappeared. With no activity record, we spent a long time
   investigating and suspected a teammate's stray input. In the end the owner
