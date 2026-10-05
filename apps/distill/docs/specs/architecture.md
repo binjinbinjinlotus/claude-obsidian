@@ -1,7 +1,7 @@
 ---
 title: Architecture (core, CLI, plugin, clients)
 status: built
-updated: 2026-10-04
+updated: 2026-10-05
 ---
 
 # Architecture
@@ -78,7 +78,7 @@ application/json`, at most 1 MiB). Every error is `{"error": {"code",
 "message"}}`: 400 `invalid_request`/`invalid_json`, 401 `unauthorized`, 403
 `forbidden_host`/`forbidden_origin`, 404 `not_found` (or `job_not_found`,
 `conversation_not_found`), 405 `method_not_allowed`, 409
-`invalid_state`/`busy`/`no_vault`, 413, 415, 501 `not_implemented`, 500
+`invalid_state`/`busy`/`no_vault`/`conflict`/`session_unavailable` (the last with `place`, `reason` and `detail` next to the code; [Session continuity](session-continuity.md)), 413, 415, 501 `not_implemented`, 500
 `internal_error`. Types are those in `core/src/contracts.ts`.
 
 | Method | Path | Body | Response |
@@ -89,17 +89,22 @@ application/json`, at most 1 MiB). Every error is `{"error": {"code",
 | POST | `/v1/queue/files` | `{paths}` | `{entries}` |
 | DELETE | `/v1/queue/entries` | `{path}` | `{entries}`: the file (and a note's `.distill.json`) moved to the Trash; 400 outside the active queue folder, 409 when a batch took it |
 | POST | `/v1/queue/process` | `{force?}` | `{job: Job \| null}` |
+| POST | `/v1/queue/scan` | `{trigger?: manual\|window}` | `QueueScanResult` (Refresh and the window-active scan; [Queue and batching](queue-and-batching.md)) |
+| POST | `/v1/queue/labels` · `/v1/queue/labels/retry` · `/v1/queue/labels/skip` | `{path, labels}` · `{path}` · `{path}` | `{entries}`: confirm a queue file's labels, ask again after a failure, or send it without labels ([Labels and sources](labels-and-sources.md) → Queue files) |
 | POST | `/v1/notes` | `AddNoteRequest` (`labels?`, `suggest?: wait\|background\|none`, `origin?: app\|cli`) | 201 `AddNoteResult` |
 | POST | `/v1/images/extract` | `{imagePath, vaultPath?}` (absolute png/jpg/gif/webp) | `{text, model}` (`text` '' = none found); imageText task; closing the request stops the runner |
 | POST | `/v1/notes/:requestID/labels` | `{labels: string[]}` | `{notePath, labels}`; 409 once the batch took the note |
 | GET | `/v1/labels[?vault=PATH]` | | `{labels: LabelCount[]}` |
 | GET | `/v1/labels/review[?vault=PATH]` | | `LabelReview` |
+| GET | `/v1/pages?q=…[&limit=N][&vault=PATH]` | | `{pages}`: the `[[` note picker and page links ([Markdown editing](markdown-editing.md)) |
 | POST | `/v1/labels/suggest` | `{paths, vaultPath?, selection?}` | `{job}` (UI clients) |
 | POST | `/v1/labels/confirm` | `{items: [{path, labels}], vaultPath?}` | `{job}` (UI clients) |
 | GET | `/v1/jobs` · `/v1/jobs/:id` | | `{jobs}` · `Job` |
 | DELETE | `/v1/jobs/:id` | | `{id, deleted: true}`; 409 unless completed/failed/rejected/cancelled |
-| GET | `/v1/jobs/:id/resume` | | `{argv}` that reopens the job's AI session; 404 `no_resume_command` when there is none |
-| POST | `/v1/jobs/:id/approve` · `/reply` · `/allow` · `/reject` · `/cancel` | `reply {text}`, `allow {rules}` | `{job}` (UI clients only) |
+| GET | `/v1/jobs/:id/resume[?newSession=1]` | | `{argv}` that reopens the job's AI session; 404 `no_resume_command` when there is none; 409 `session_unavailable` when the session is gone, unless `newSession` |
+| GET | `/v1/jobs/:id/steps` | | `JobStepsPage` `{jobId, steps, kept, truncated?}`: the batch's live log ([Live log](live-log.md)) |
+| POST | `/v1/jobs/:id/approve` · `/reply` · `/allow` · `/reject` · `/cancel` | `approve {labels?: confirm\|later, pages?, newSession?}`, `reply {text, newSession?}`, `allow {rules, newSession?}`, `reject {scope?: part\|batch}` | `{job}` (UI clients only; [Approval and review](approval-and-review.md)) |
+| POST | `/v1/jobs/:id/sources` · `/v1/jobs/:id/labels` | `{page, removed}` · `{edits: [{page, labels}]}` | `{job}`: remove or restore a source, edit labels in Review (UI clients only) |
 | POST | `/v1/ask` | `AskRequest` (`labelMatch?: any\|all`, `includeUnconfirmed?`, `conversationID?`: an existing chat, or a new well-formed id) | `AskResponse` (`notices?`); 409 `invalid_state` "Stopped" after a cancel |
 | POST | `/v1/conversations/:id/cancel` | | `{id, cancelled: true}`; stops the in-flight turn (no-op when idle) |
 | GET | `/v1/progress` | | `{progress: Progress[]}`: work in flight, for clients that connect mid-run |
@@ -109,7 +114,9 @@ application/json`, at most 1 MiB). Every error is `{"error": {"code",
 | GET | `/v1/runners` | | `{runners: RunnerInfo[]}` |
 | PUT | `/v1/runners/:id/secrets/:name` | `{value: string}` or `{value: null}` to clear | `{runnerID, name, isSet}` |
 | GET | `/v1/events` | | server-sent events, below |
-| … | `/v1/actions…`, `/v1/action-types`, `/v1/connections…`, `/v1/conversations/:id/actions/detect` | | v3 Actions and connections: the table in [Actions](actions.md) → API |
+| … | `/v1/actions…`, `/v1/action-types`, `/v1/connections…`, `/v1/conversations/:id/actions/detect`, `/v1/jobs/:id/actions/find` | | v3 Actions and connections: the table in [Actions](actions.md) → API |
+| … | `/v1/collectors…` | | Collectors, their runs, consent, script files, installs and Test run: [Collectors](collectors.md) → API |
+| GET · POST | `/v1/activity`, `/v1/trash`, `/v1/trash/:id/restore` | | The activity log and Distill's trash: [Activity log and trash](activity-log.md) |
 
 Label names in bodies are trimmed, lose a leading `#`, are de-duplicated and
 may not contain whitespace. Omitted `labelMatch`/`includeUnconfirmed` take the
@@ -128,7 +135,10 @@ shell commands. Stored jobs do not change.
 **Events.** `GET /v1/events` is `text/event-stream`: `retry: 2000`, then one
 `event: <type>\ndata: <CoreEvent JSON>\n\n` per event (`queue`, `job`,
 `settings`, `log`, `labelSuggestions`, `conversation`, `progress`, `action`,
-`connection`), and a
+`connection`; `collector.changed`, `collector.run.started|output|finished`,
+`collector.install.started|output|finished`,
+`collector.script.changed_outside`, `queue.scanned`, `activity`,
+`session.replaced` and `job.step`, each described in its feature's spec), and a
 `: keep-alive` comment every 15 s. A deleted job is a `job` event with
 `deleted: true` (proposed contract addition).
 
@@ -154,6 +164,13 @@ pre-step), `Read sources`, `Drafting page changes`, `Ready for review`;
 progress inside a turn, so `Read sources` covers the whole agent turn and
 `Drafting page changes` the core's `transaction inspect` of the bundle; the
 finished event of a job that waits for review points at `Ready for review`.
+What the AI does inside a turn reaches clients separately, as `job.step`
+events ([Live log](live-log.md)); they don't move `stepIndex`.
+
+**Who asked.** Every request may carry `X-Distill-Client` (`app`, `cli`, …;
+without it, the Mac app's User-Agent or else `api`); the activity log records
+it as the change's source ([Activity log and
+trash](activity-log.md)).
 
 ## CLI (built: `cli/src/cli.ts`)
 
@@ -161,7 +178,7 @@ finished event of a job that waits for review points at `Ready for review`.
 distill ask "How hot for sencha?" [--label tea]... [--match any|all] \
             [--unconfirmed include|exclude] [--source slack]... \
             [--runner claude-code --model sonnet --effort medium] \
-            [--conversation ID] [--vault PATH] [--json]
+            [--conversation ID] [--new-session] [--vault PATH] [--json]
 distill note add --title "Gyokuro at 60 °C" [--text "…" | --file note.md | -] \
             [--image card.png:extract] [--image setup.jpg] \
             [--source in-person --ref "with Mei"] [--label L]... [--no-suggest] [--json]
@@ -170,8 +187,15 @@ distill history [--json]          # list Ask conversations
 distill history show <id> [--json]
 distill history rm <id> [--json]
 distill status [--json]           # server, vault, queue, pending reviews
+distill queue scan [--json]       # Refresh: rescan the queue folder
 distill actions list [--type T] [--history] [--json]
-distill actions add "<title>" [--type todo] [--due YYYY-MM-DD] [--json]   # no confirm command
+distill actions add "<title>" [--type todo] [--body "…"] [--why "…"] [--due YYYY-MM-DD] \
+            [--vault PATH] [--json]   # no confirm command
+distill collectors list|run <id>|history <id> [--limit N] [--json]   # never consents
+distill activity [--type T]... [--object ID] [--kind K] [--source S]... [--since WHEN] \
+            [--until WHEN] [--search TEXT] [--failed] [--limit N] [--cursor C] [--json]
+distill trash [list] [--json]
+distill trash restore <trash-id> [--json]
 distill serve [--port N]          # run the core server in the foreground
 distill plugin install --target claude|codex [--dry-run] [--copy] [--force] [--json]
 ```
@@ -189,6 +213,10 @@ distill plugin install --target claude|codex [--dry-run] [--copy] [--force] [--j
   elapsed time after 3 s, "Still working" after 60 s). Ctrl-C posts
   `/v1/conversations/:id/cancel` and exits 130 with code `stopped`; a second
   Ctrl-C quits at once.
+- `ask --conversation ID` whose AI session is gone asks nothing and exits 1
+  with code `session_unavailable`; the same command with `--new-session`
+  continues in a new session seeded with the conversation so far
+  ([Session continuity](session-continuity.md)).
 - There are no approve, apply, reply, reject or confirm-labels commands:
   approval and label confirmation stay in UI clients. `--help` says so.
 - `--json` prints one JSON document (each shape is documented in `--help`);
