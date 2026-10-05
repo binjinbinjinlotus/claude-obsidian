@@ -124,9 +124,13 @@ export function needsRevision(pages: SourcePage[], overrides?: Map<string, strin
   return pages.some((p) => pageNeedsRevision(p, overrides));
 }
 
-function pageNeedsRevision(p: SourcePage, overrides?: Map<string, string[]>): boolean {
-  return p.unconfirmed || p.origin !== undefined || (overrides?.has(p.page) ?? false);
+function pageNeedsRevision(p: SourcePage, overrides?: Map<string, string[]>, mode: RevisionMode = 'confirm'): boolean {
+  if (overrides?.has(p.page)) return true;
+  return mode === 'confirm' && (p.unconfirmed || p.origin !== undefined);
 }
+
+/** confirm = every source page's labels confirmed (Approve); keep = only the user's edits confirmed, the rest as the batch wrote them (Approve, review labels later). */
+export type RevisionMode = 'confirm' | 'keep';
 
 /** The text a source page gets in a revision: the given (or current) tags, confirmed by the user. */
 export function confirmedText(p: SourcePage, labels: string[] | undefined): string {
@@ -153,14 +157,19 @@ export interface Revision {
  * drafts, `bundle-labels-<n>.json` is the bundle with those writes repointed (and their sha256
  * updated). Everything else in the bundle is copied as is. Returns undefined when nothing changes.
  */
-export function writeRevision(b: LoadedBundle, pages: SourcePage[], overrides?: Map<string, string[]>): Revision | undefined {
+export function writeRevision(
+  b: LoadedBundle,
+  pages: SourcePage[],
+  overrides?: Map<string, string[]>,
+  mode: RevisionMode = 'confirm',
+): Revision | undefined {
   const n = nextRevision(b.dir);
   const draftDir = path.join(b.dir, `labels-${n}`);
   const byWrite = new Map(pages.map((p) => [p.write, p]));
   const changed: string[] = [];
   const writes = b.writes.map((w, i) => {
     const p = byWrite.get(w);
-    if (!p || !pageNeedsRevision(p, overrides)) return w;
+    if (!p || !pageNeedsRevision(p, overrides, mode)) return w;
     const next = confirmedText(p, overrides?.get(p.page));
     if (next === p.text) return w;
     changed.push(p.page);
@@ -193,4 +202,86 @@ export function inspectReason(error: string): string {
   if (err) return `${err[2]!.trim()} (${err[1]})`;
   const line = error.split('\n').map((l) => l.trim()).find((l) => l.length > 0) ?? error;
   return line.length > 300 ? line.slice(0, 300) + '…' : line;
+}
+
+/** sha256 of each page's content in a bundle, by page. */
+export function pageShas(b: LoadedBundle): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const w of b.writes) {
+    const text = contentOf(b, w);
+    if (text !== undefined) out.set(w.path, sha256(text));
+  }
+  return out;
+}
+
+/** The absolute content file of a page in a bundle (written out first when the write is inline). */
+export function contentFileFor(b: LoadedBundle, page: string, scratchDir: string): string | undefined {
+  const w = b.writes.find((x) => x.path === page);
+  if (!w) return undefined;
+  const abs = contentAbs(b, w);
+  if (abs) return abs;
+  if (typeof w.content !== 'string') return undefined;
+  fs.mkdirSync(scratchDir, { recursive: true });
+  const file = path.join(scratchDir, path.posix.basename(page));
+  writeFileAtomic(file, w.content);
+  return file;
+}
+
+/**
+ * What the user approved against a rebuilt change: every expected source page is in it with the
+ * exact content they saw, and no page of an excluded source (not picked, removed) is in it.
+ * Returns the problems; [] = it matches.
+ */
+export function verifyRebuilt(b: LoadedBundle, expected: Record<string, string>, excluded: string[], excludedSources: string[] = []): string[] {
+  const problems: string[] = [];
+  const shas = pageShas(b);
+  for (const [page, sha] of Object.entries(expected)) {
+    const got = shas.get(page);
+    if (got === undefined) problems.push(`${page} is missing`);
+    else if (got !== sha) problems.push(`${page} is not the page you approved`);
+  }
+  const written = new Set(b.writes.map((w) => w.path));
+  for (const page of excluded) if (written.has(page)) problems.push(`${page} should not be in it`);
+  if (excludedSources.length > 0) {
+    const out = new Set(excludedSources);
+    for (const p of sourcePages(b)) {
+      if (p.source && out.has(p.source) && !(p.page in expected)) problems.push(`${p.page} (from ${p.source}) should not be in it`);
+    }
+  }
+  return problems;
+}
+
+export interface PartPromptInput {
+  reason: 'partial' | 'remaining' | 'stale';
+  bundlePath: string;
+  keep: { page: string; source?: string | null; contentFile: string; sha256: string }[];
+  leaveOut: { page: string; source?: string | null }[];
+  removed: { page: string; source?: string | null }[];
+  appliedOperation?: string;
+}
+
+/** The turn that asks the batch's own session for a change holding exactly the approved sources. */
+export function partPrompt(o: PartPromptInput): string {
+  const why = {
+    partial: 'The user approved only some of the sources in this batch.',
+    remaining: `The part the user approved was applied${o.appliedOperation ? ` (operation ${o.appliedOperation})` : ''}. Now build the change for the sources that are left.`,
+    stale: 'The vault changed after the user reviewed this batch (another change was applied first), so the reviewed bundle no longer applies.',
+  }[o.reason];
+  const item = (x: { page: string; source?: string | null }) => `- ${x.page}${x.source ? ` (from ${x.source})` : ''}`;
+  const lines = [
+    why,
+    '',
+    `Build a NEW transaction bundle at \`${o.bundlePath}\` (leave every earlier bundle as it is), for the vault as it is now.`,
+    '',
+    'It must create these source pages, each byte for byte the file given: use a `content_file` pointing at that exact file and its sha256; do not rewrite, reformat or relabel them:',
+    ...o.keep.map((k) => `- ${k.page}${k.source ? ` (from ${k.source})` : ''}: ${k.contentFile} (sha256 ${k.sha256})`),
+  ];
+  if (o.leaveOut.length > 0) lines.push('', 'Leave these sources out entirely (no page for them; they stay for a later approval):', ...o.leaveOut.map(item));
+  if (o.removed.length > 0) lines.push('', 'The user removed these sources; never write a page for them:', ...o.removed.map(item));
+  lines.push(
+    '',
+    'Write the index, log, hot cache, overview, ledgers, and any concept or entity pages again so they cover only the sources above plus what is already in the vault.',
+    'Run `transaction inspect` on the new bundle and finish with `needs_approval` and its `bundle_path`. Distill checks that the source pages are exactly the files given before the user sees it.',
+  );
+  return lines.join('\n');
 }

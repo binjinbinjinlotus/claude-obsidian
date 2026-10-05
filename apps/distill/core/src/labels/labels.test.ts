@@ -437,17 +437,20 @@ describe('batch labels in the ingest prompt', () => {
     fs.writeFileSync(path.join(queue, 'dropped.md'), '---\ntitle: D\n---\nDropped text about queues\n');
     fs.writeFileSync(path.join(queue, 'scan.pdf'), '%PDF-1.4');
     fs.writeFileSync(path.join(queue, 'tagged.md'), '---\ntags: [Mine]\n---\nOwn tags\n');
+    // Queue files get their labels in the queue (3 at a time), before the batch; own tags need no call.
+    engine.listQueue();
     await engine.whenIdle();
+    assert.ok(labeler.requests.some((r) => r.prompt.includes('Dropped text about queues') && !r.prompt.includes('title: D')));
+    assert.ok(!labeler.requests.some((r) => r.prompt.includes('Own tags')), 'own tags: no AI call');
     labeler.requests.length = 0;
 
     const job = await engine.processQueue({ force: true });
     assert.ok(job);
     await engine.whenIdle();
 
-    // Pre-step: one suggestion for the late CLI note, one for the dropped .md; none for the PDF.
-    assert.equal(labeler.requests.length, 2);
+    // Pre-step: only the late CLI note (the dropped .md was labeled in the queue); none for the PDF.
+    assert.equal(labeler.requests.length, 1);
     assert.ok(labeler.requests.some((r) => r.prompt.includes('late text')));
-    assert.ok(labeler.requests.some((r) => r.prompt.includes('Dropped text about queues') && !r.prompt.includes('title: D')));
     const prompt = ingest.requests[0]!.prompt;
     const section = prompt.slice(prompt.indexOf('Labels (the `tags` property)'));
     assert.ok(section.includes('- inbox/Confirmed.md: labels the user confirmed:\n    tags:\n      - tea\n    labels_by: user'));
@@ -466,7 +469,7 @@ describe('batch labels in the ingest prompt', () => {
     assert.ok(!section.includes('distill.json:'), 'manifests are not sources');
     assert.ok(prompt.includes('only the Labels section of this prompt decides labels'));
     const final = engine.getJob(job.id)!;
-    assert.ok(final.turns.some((t) => t.author === 'app' && t.text.startsWith('Suggested labels for 2 of 2 file(s).') && t.costUSD > 0));
+    assert.ok(final.turns.some((t) => t.author === 'app' && t.text.startsWith('Suggested labels for 1 of 1 file(s).') && t.costUSD > 0));
     void confirmed;
     void cliWait;
     void cliLate;

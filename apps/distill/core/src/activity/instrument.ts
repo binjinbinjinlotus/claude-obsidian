@@ -366,6 +366,24 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
       fail: ([file]) => ({ type: 'queue.labeled', object: { kind: 'queue', id: file, name: path.basename(file) }, summary: `Couldn't label ${q(path.basename(file))}` }),
     },
     retryQueueLabels: 'read',
+    skipQueueLabels: {
+      ok: ([file]) => ({ type: 'queue.labeled', object: { kind: 'queue', id: file, name: path.basename(file) }, summary: `Sent ${q(path.basename(file))} to the next batch without labels` }),
+      fail: ([file]) => ({ type: 'queue.labeled', object: { kind: 'queue', id: file, name: path.basename(file) }, summary: `Couldn't send ${q(path.basename(file))} without labels` }),
+    },
+    removeReviewSource: {
+      before: (id) => getJob(id),
+      ok: ([id, page, removed], _r, job: Job | undefined) => ({
+        type: removed ? 'batch.source_removed' : 'batch.source_restored',
+        object: jobObject(id, job),
+        summary: `${removed ? 'Removed' : 'Put back'} ${q(path.posix.basename(page, '.md'))} ${removed ? 'from' : 'in'} ${jobName(job)}`,
+        details: { page },
+      }),
+      fail: ([id, , removed], job: Job | undefined) => ({
+        type: removed ? 'batch.source_removed' : 'batch.source_restored',
+        object: jobObject(id, job),
+        summary: `Couldn't change a source in ${jobName(job)}`,
+      }),
+    },
     editReviewLabels: {
       before: (id) => getJob(id),
       ok: ([id, edits], _r, job: Job | undefined) => ({

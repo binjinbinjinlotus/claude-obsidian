@@ -450,6 +450,14 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       record('retryQueueLabels', file);
       return fake.queue;
     },
+    async skipQueueLabels(file) {
+      record('skipQueueLabels', file);
+      return fake.queue;
+    },
+    async removeReviewSource(jobID, page, removed) {
+      record('removeReviewSource', jobID, page, removed);
+      return sampleJob({ id: jobID });
+    },
     async editReviewLabels(jobID, edits) {
       record('editReviewLabels', jobID, edits);
       return sampleJob({ id: jobID });

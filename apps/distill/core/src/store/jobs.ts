@@ -3,6 +3,8 @@ import path from 'node:path';
 import type {
   ApprovalRequest,
   Job,
+  JobPart,
+  PendingPart,
   JobActionsSummary,
   JobState,
   PermissionDenial,
@@ -115,7 +117,53 @@ function decodeApproval(v: unknown): ApprovalRequest | undefined {
   if (Array.isArray(v.sources)) a.sources = v.sources.map(decodeReviewSource).filter((x): x is ReviewSource => !!x);
   const labels = decodeReviewLabels(v.labels);
   if (labels) a.labels = labels;
+  if (isObject(v.unconfirmed)) {
+    const bp = str(v.unconfirmed.bundlePath);
+    const plan = decodePlan(v.unconfirmed.plan);
+    if (bp !== undefined && plan) a.unconfirmed = { bundlePath: bp, plan };
+  }
+  if (isObject(v.rebuilt)) {
+    const reason = str(v.rebuilt.reason);
+    const lab = str(v.rebuilt.labels);
+    if (reason === 'partial' || reason === 'remaining' || reason === 'stale') {
+      a.rebuilt = { reason, pages: strArray(v.rebuilt.pages) ?? [], labels: lab === 'later' ? 'later' : 'confirm' };
+    }
+  }
+  const gone = str(v.sessionUnavailable);
+  if (gone !== undefined) a.sessionUnavailable = gone;
   return a;
+}
+
+function stringMap(v: unknown): Record<string, string> {
+  if (!isObject(v)) return {};
+  return Object.fromEntries(Object.entries(v).filter((e): e is [string, string] => typeof e[1] === 'string'));
+}
+
+function sourceList(v: unknown): ReviewSource[] | undefined {
+  return Array.isArray(v) ? v.map(decodeReviewSource).filter((x): x is ReviewSource => !!x) : undefined;
+}
+
+function decodePart(v: unknown): JobPart | undefined {
+  if (!isObject(v)) return undefined;
+  const operationID = str(v.operationID);
+  if (operationID === undefined) return undefined;
+  return { operationID, pages: strArray(v.pages) ?? [], labels: str(v.labels) === 'later' ? 'later' : 'confirm', at: str(v.at) ?? '' };
+}
+
+function decodePendingPart(v: unknown): PendingPart | undefined {
+  if (!isObject(v)) return undefined;
+  const reason = str(v.reason);
+  if (reason !== 'partial' && reason !== 'remaining' && reason !== 'stale') return undefined;
+  const out: PendingPart = { reason, expected: stringMap(v.expected), excluded: strArray(v.excluded) ?? [], labels: str(v.labels) === 'later' ? 'later' : 'confirm' };
+  const rest = sourceList(v.rest);
+  if (rest) out.rest = rest;
+  if (isObject(v.restExpected)) out.restExpected = stringMap(v.restExpected);
+  if (isObject(v.restFiles)) out.restFiles = stringMap(v.restFiles);
+  const removed = sourceList(v.removed);
+  if (removed) out.removed = removed;
+  const shown = sourceList(v.shown);
+  if (shown) out.shown = shown;
+  return out;
 }
 
 const REVIEW_LABEL_STATES: ReviewLabels['state'][] = ['suggesting', 'confirming', 'confirmed', 'unconfirmed'];
@@ -149,6 +197,7 @@ function decodeReviewSource(v: unknown): ReviewSource | undefined {
   if (source !== undefined) out.source = source;
   const state = str(v.state);
   if (state === 'waiting' || state === 'suggesting' || state === 'failed') out.state = state;
+  if (v.removed === true) out.removed = true;
   return out;
 }
 
@@ -203,6 +252,13 @@ export function decodeJob(v: unknown, now = new Date()): Job | undefined {
   // v5: folder items in the batch; absent (or not a string list) stays absent.
   const folders = strArray(v.folders);
   if (folders && folders.length > 0) job.folders = folders;
+  // v6: parts applied, and the part being rebuilt.
+  if (Array.isArray(v.parts)) {
+    const parts = v.parts.map(decodePart).filter((x): x is JobPart => !!x);
+    if (parts.length > 0) job.parts = parts;
+  }
+  const pendingPart = decodePendingPart(v.pendingPart);
+  if (pendingPart) job.pendingPart = pendingPart;
   return job;
 }
 
@@ -277,6 +333,7 @@ function encodeApproval(a: ApprovalRequest): JSONObject {
       const o: JSONObject = { page: src.page, title: src.title, labels: [...src.labels], by: src.by };
       if (src.source != null) o.source = src.source;
       if (src.state != null) o.state = src.state;
+      if (src.removed) o.removed = true;
       return o;
     });
   }
@@ -288,12 +345,16 @@ function encodeApproval(a: ApprovalRequest): JSONObject {
     if (a.labels.revision !== undefined) l.revision = a.labels.revision;
     out.labels = l;
   }
+  if (a.unconfirmed != null) out.unconfirmed = JSON.parse(JSON.stringify(a.unconfirmed)) as JSONObject;
+  if (a.rebuilt != null) out.rebuilt = { reason: a.rebuilt.reason, pages: [...a.rebuilt.pages], labels: a.rebuilt.labels };
+  if (a.sessionUnavailable != null) out.sessionUnavailable = a.sessionUnavailable;
   return out;
 }
 
 const JOB_KEYS = [
   'id', 'kind', 'vaultPath', 'files', 'sessionID', 'runnerID', 'model', 'effort', 'state',
   'createdAt', 'updatedAt', 'approval', 'turns', 'grantedTools', 'operationID', 'changedPaths', 'error', 'actionsFound', 'folders',
+  'parts', 'pendingPart',
 ];
 
 /** Every non-optional key is always written; nil optionals are omitted (never `null`). */
@@ -327,6 +388,8 @@ export function encodeJob(job: Job, raw: JSONObject = {}): JSONObject {
     out.actionsFound = summary;
   }
   if (job.folders != null && job.folders.length > 0) out.folders = [...job.folders];
+  if (job.parts != null && job.parts.length > 0) out.parts = JSON.parse(JSON.stringify(job.parts)) as JSONObject[];
+  if (job.pendingPart != null) out.pendingPart = JSON.parse(JSON.stringify(job.pendingPart)) as JSONObject;
   return out;
 }
 

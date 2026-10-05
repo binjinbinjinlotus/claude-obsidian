@@ -114,6 +114,8 @@ export function draftBatchLabels(
       entry.by = 'user';
       continue;
     }
+    // Sent without labels by the user (the label gate let it through).
+    if (known?.skipLabels) continue;
     if (!prefs.autoLabelQueueFolder) continue;
     const own = rel.toLowerCase().endsWith('.md') ? pageTags(text) : [];
     if (own.length > 0) {

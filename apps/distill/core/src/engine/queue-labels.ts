@@ -124,12 +124,13 @@ export class QueueLabeler {
     if (!key) return undefined;
     const o = this.deps.store.get(key);
     if (o?.labels !== undefined) return { state: 'confirmed', labels: o.labels.map((name) => ({ name, existing: true })) };
+    if (o?.skipLabels) return { state: 'skipped', labels: [] };
     if (!this.deps.enabled()) return undefined;
     const own = this.ownTags(key, e.path);
     if (own === null) return undefined;
     if (own.length > 0) return { state: 'own', labels: own.map((name) => ({ name, existing: true })) };
     if (o?.suggestedLabels !== undefined) return { state: 'suggested', labels: o.suggestedLabels };
-    if (o?.suggestError !== undefined) return { state: 'failed', labels: [], error: o.suggestError };
+    if (o?.suggestError !== undefined) return { state: 'failed', labels: [], error: o.suggestError, attempts: o.attempts ?? 1 };
     if (this.running.has(key)) return { state: 'suggesting', labels: [] };
     if (!this.waiting.some((w) => w.key === key)) this.waiting.push({ key, abs: e.path });
     this.schedulePump();
@@ -158,8 +159,28 @@ export class QueueLabeler {
   retry(abs: string): boolean {
     const key = fileLabelKey(abs);
     if (!key) return false;
-    this.deps.store.clearSuggestion(key, this.deps.now());
+    this.deps.store.clearSuggestion(key, this.deps.now(), true);
     return true;
+  }
+
+  /** The user sends the file without labels: the label gate lets it through. */
+  skip(abs: string): boolean {
+    const key = fileLabelKey(abs);
+    if (!key) return false;
+    this.deps.store.setSkip(key, this.deps.now());
+    return true;
+  }
+
+  /** Clear failed suggestions that have tries left (fewer than 3 failures), so the next listing asks again. */
+  autoRetry(): number {
+    const keys = this.deps.store.retryable('file:');
+    for (const k of keys) this.deps.store.clearSuggestion(k, this.deps.now());
+    return keys.length;
+  }
+
+  /** The label gate (decision 2026-10-05): a file whose labels are not in yet stays for the next batch. */
+  static held(l: QueueLabels | null | undefined): boolean {
+    return !!l && (l.state === 'waiting' || l.state === 'suggesting' || l.state === 'failed');
   }
 
   /** Running and waiting counts (tests, status). */

@@ -170,6 +170,18 @@ export interface ApprovalRequest {
   sources?: ReviewSource[];
   /** v6: where the labels shown in Review stand; Approve is refused while `state` is suggesting or confirming. */
   labels?: ReviewLabels | null;
+  /** v6: the same change with labels left unconfirmed (Approve, review labels later); the user's own edits are kept confirmed. */
+  unconfirmed?: { bundlePath: string; plan: TransactionPlan } | null;
+  /**
+   * v6: this plan was rebuilt in the batch's session (part of the batch, what is left, or after the vault changed) and checked
+   * against what the user approved: approve it once more. `pages` = the source pages it holds, unchanged byte for byte.
+   */
+  rebuilt?: { reason: 'partial' | 'remaining' | 'stale'; pages: string[]; labels: 'confirm' | 'later' } | null;
+  /**
+   * v6 seam for session-continuity: set when the batch's AI session could not be resumed (`resumeBatchSession` returned
+   * session_unavailable); the reason in plain words. The shared SessionReplaceConfirm decides what happens next.
+   */
+  sessionUnavailable?: string | null;
 }
 
 /** One input's source page in a pending batch (approval-and-review.md, "Labels in Review"). */
@@ -183,6 +195,8 @@ export interface ReviewSource {
   by: 'ai' | 'user' | 'none';
   /** Only while labels are attached to a batch that reached Review without them. */
   state?: 'waiting' | 'suggesting' | 'failed' | null;
+  /** v6: taken out of the batch (never added to the vault; its inbox file stays). Undo while the batch is in Review. */
+  removed?: boolean;
 }
 
 export interface ReviewLabels {
@@ -231,6 +245,46 @@ export interface Job {
   actionsFound?: JobActionsSummary | null;
   /** v5: folder items in this batch (vault-relative, e.g. inbox/2026-10-04/Tea tasting trip). Their source files are in `files`. */
   folders?: string[];
+  /** v6: parts of this batch already applied (approving only some sources); newest last. */
+  parts?: JobPart[];
+  /** v6: the part being rebuilt in the batch's session (what the user approved, by page), until its change comes back. */
+  pendingPart?: PendingPart | null;
+}
+
+export interface JobPart {
+  operationID: string;
+  /** Source pages applied in this part. */
+  pages: string[];
+  /** confirm = labels confirmed; later = left unconfirmed for Labels → To review. */
+  labels: 'confirm' | 'later';
+  at: string; // ISO-8601
+}
+
+export interface PendingPart {
+  /** partial = the user approved some sources; remaining = what is left after a part applied; stale = the vault changed after review. */
+  reason: 'partial' | 'remaining' | 'stale';
+  /** Source pages the rebuilt change must hold, with the sha256 of the content the user saw. */
+  expected: Record<string, string>;
+  /** Source pages that must not be in it (not picked, removed). */
+  excluded: string[];
+  labels: 'confirm' | 'later';
+  /** Sources the user did not pick (they stay for later), with the sha256 of their page as shown; rebuilt after this part applies. */
+  rest?: ReviewSource[];
+  restExpected?: Record<string, string>;
+  /** The content file of each rest page as shown (the rebuild of what is left reuses it byte for byte). */
+  restFiles?: Record<string, string>;
+  /** The sources the rebuilt change holds, as Review showed them (with who chose their labels). */
+  shown?: ReviewSource[];
+  /** Sources the user removed (kept for History). */
+  removed?: ReviewSource[];
+}
+
+/** v6: Approve options (approval-and-review.md). */
+export interface ApproveOptions {
+  /** confirm (default) = approving confirms the labels shown; later = apply with labels unconfirmed (Labels → To review). */
+  labels?: 'confirm' | 'later';
+  /** Source pages to approve; omitted = every source not removed. A subset makes the batch's session rebuild the change first. */
+  pages?: string[];
 }
 
 export interface JobActionsSummary {
@@ -401,13 +455,17 @@ export interface QueueEntry {
    * Google Docs, binary files, or when labeling.autoLabelQueueFolder is off.
    */
   labels?: QueueLabels | null;
+  /** v6: the label gate: a text file whose labels are not in yet stays for the next batch. */
+  heldForLabels?: boolean;
 }
 
 export interface QueueLabels {
-  /** waiting = behind the 3 running; own = the .md's own tags (no AI call). */
-  state: 'waiting' | 'suggesting' | 'suggested' | 'confirmed' | 'own' | 'failed';
+  /** waiting = behind the 3 running; own = the .md's own tags (no AI call); skipped = the user sent it without labels. */
+  state: 'waiting' | 'suggesting' | 'suggested' | 'confirmed' | 'own' | 'failed' | 'skipped';
   labels: LabelSuggestion[];
   error?: string | null;
+  /** Failed suggestions so far; Distill retries by itself until 3, then waits for the user. */
+  attempts?: number;
 }
 
 /** One entry of a folder item's tree. */
@@ -1453,7 +1511,7 @@ export interface DistillCore {
 
   listJobs(): Job[];
   getJob(id: string): Job | undefined;
-  approve(id: string): Promise<void>;
+  approve(id: string, opts?: ApproveOptions): Promise<void>;
   reply(id: string, text: string): Promise<void>;
   allow(id: string, rules: string[]): Promise<void>;
   reject(id: string): Promise<void>;
@@ -1494,6 +1552,10 @@ export interface DistillCore {
   labelQueueItem(path: string, labels: string[]): Promise<QueueEntry[]>;
   /** v6: ask again for a queue file whose suggestion failed (it joins the 3-at-a-time line). */
   retryQueueLabels(path: string): Promise<QueueEntry[]>;
+  /** v6: let a queue file whose labels failed go in the next batch without labels. */
+  skipQueueLabels(path: string): Promise<QueueEntry[]>;
+  /** v6: take a source out of a pending batch (removed = true) or put it back (false). Nothing is written to the vault or inbox/. */
+  removeReviewSource(jobID: string, page: string, removed: boolean): Promise<Job>;
   /**
    * v6: change the labels of source pages in a batch awaiting approval. The core writes a new label revision of the
    * bundle and inspects it; only a clean inspect replaces the plan (new approval hash). Otherwise `conflict` and

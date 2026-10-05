@@ -746,6 +746,24 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
       handler: async ({ body }) => ({ entries: await core.retryQueueLabels(reqString(asObject(await body(), false), 'path')) }),
     },
     {
+      // v6: let a queue file whose labels failed go without labels.
+      method: 'POST',
+      pattern: /^\/v1\/queue\/labels\/skip$/,
+      untyped: { status: 400, code: 'invalid_request' },
+      handler: async ({ body }) => ({ entries: await core.skipQueueLabels(reqString(asObject(await body(), false), 'path')) }),
+    },
+    {
+      // v6: take a source out of a pending batch, or put it back.
+      method: 'POST',
+      pattern: /^\/v1\/jobs\/([^/]+)\/sources$/,
+      untyped: { status: 409, code: 'invalid_state' },
+      handler: async ({ params, body }) => {
+        const o = asObject(await body(), false);
+        if (typeof o.removed !== 'boolean') throw bad('"removed" must be a boolean');
+        return { job: apiJob(await core.removeReviewSource(params[0]!, reqString(o, 'page'), o.removed)) };
+      },
+    },
+    {
       // v6: change source-page labels in a batch awaiting approval (a new label revision, inspected again).
       method: 'POST',
       pattern: /^\/v1\/jobs\/([^/]+)\/labels$/,
@@ -935,9 +953,13 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
         requireJob(id);
         const o = asObject(await body());
         switch (action) {
-          case 'approve':
-            await core.approve(id);
+          case 'approve': {
+            const labels = optEnum(o, 'labels', ['confirm', 'later'] as const);
+            const pages = optStringArray(o, 'pages');
+            if (o.pages !== undefined && !pages) throw bad('"pages" must be an array of strings');
+            await core.approve(id, { ...(labels ? { labels } : {}), ...(pages ? { pages } : {}) });
             break;
+          }
           case 'reply':
             await core.reply(id, reqString(o, 'text'));
             break;
