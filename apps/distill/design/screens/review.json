@@ -3190,6 +3190,1481 @@
      "html": "<div style=\"position: absolute; left: 280px; right: 378px; bottom: 112px; z-index: 6\"><dc-import name=\"SessionReplaceConfirm\" place=\"batch\" reason=\"missing\" carries=\"The new session starts with this batch’s sources, the 8 you picked and their labels; it rebuilds the change for them, and you check it before anything is applied.\" detail=\"~/.claude/projects/…/3f2a91c0-…-c217.jsonl is missing\" hint-size=\"100%,190px\"></dc-import></div>"
     }
    }
+  },
+  {
+   "id": "review-progress-starting",
+   "base": "review",
+   "label": "A · Approved: Claude resumes this batch’s own session",
+   "set": {
+    "sidebar.reviewCount": "0",
+    "sidebar.status": "Sonnet · adding to your vault",
+    "main.vars.heading": {
+     "t": "heading",
+     "vars": {
+      "pill": {
+       "c": "Pill",
+       "props": {
+        "text": "Adding to your vault",
+        "fill": "#E3EEFF",
+        "ink": "#1F6FEB",
+        "busy": true
+       },
+       "size": [
+        "170px",
+        "24px"
+       ]
+      },
+      "meta": "Approved by you at 11:52 PM · Claude Code · Sonnet",
+      "right": "",
+      "title": "Tea club notes, Sep 28 – Oct 2",
+      "summary": "<b>22</b> new source pages · <b>3</b> new concepts · <b>1</b> new entity · <b>6</b> pages updated",
+      "prose": "Claude kept 12 tasting claims as provisional, since each comes from a single note. Nothing conflicts with your vault. <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Claude’s full summary</a>"
+     }
+    },
+    "main.vars.notices": {
+     "c": "ApplyProgress",
+     "props": {
+      "stage": "starting",
+      "times": "11:52 PM|11:52 PM"
+     },
+     "size": [
+      "100%",
+      "214px"
+     ]
+    },
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "New pages",
+         "count": 4,
+         "summary": "3 concepts · 1 entity",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Updated",
+         "count": 6,
+         "summary": "Index, Overview, Log, Hot cache, 2 ledgers · plus 2 bookkeeping files",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Sources",
+         "count": 22,
+         "summary": "one page per note · labels confirmed",
+         "expanded": false,
+         "action": "Show all 22"
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     }
+    ],
+    "main.vars.conversation": {
+     "t": "conversation",
+     "vars": {
+      "w": 290,
+      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #E3EEFF\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div>"
+     }
+    },
+    "main.vars.footer.vars.left": {
+     "html": "<a href=\"#\" style=\"font-size: 12px; font-weight: 600; text-decoration: none\">Show steps</a>"
+    },
+    "main.vars.footer.vars.status": {
+     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6862; margin-right: 6px\"><span style=\"width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0\"></span>Adding to Research · you can leave this screen</span>"
+    },
+    "main.vars.footer.vars.right": ""
+   }
+  },
+  {
+   "id": "review-progress-applying",
+   "base": "review",
+   "label": "B · Applying through the vault core: the one command you approved",
+   "set": {
+    "sidebar.reviewCount": "0",
+    "sidebar.status": "Sonnet · adding to your vault",
+    "main.vars.heading": {
+     "t": "heading",
+     "vars": {
+      "pill": {
+       "c": "Pill",
+       "props": {
+        "text": "Adding to your vault",
+        "fill": "#E3EEFF",
+        "ink": "#1F6FEB",
+        "busy": true
+       },
+       "size": [
+        "170px",
+        "24px"
+       ]
+      },
+      "meta": "Approved by you at 11:52 PM · Claude Code · Sonnet",
+      "right": "",
+      "title": "Tea club notes, Sep 28 – Oct 2",
+      "summary": "<b>22</b> new source pages · <b>3</b> new concepts · <b>1</b> new entity · <b>6</b> pages updated",
+      "prose": "Claude kept 12 tasting claims as provisional, since each comes from a single note. Nothing conflicts with your vault. <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Claude’s full summary</a>"
+     }
+    },
+    "main.vars.notices": {
+     "c": "ApplyProgress",
+     "props": {
+      "stage": "applying",
+      "times": "11:52 PM|11:52 PM|11:53 PM"
+     },
+     "size": [
+      "100%",
+      "214px"
+     ]
+    },
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "New pages",
+         "count": 4,
+         "summary": "3 concepts · 1 entity",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Updated",
+         "count": 6,
+         "summary": "Index, Overview, Log, Hot cache, 2 ledgers · plus 2 bookkeeping files",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Sources",
+         "count": 22,
+         "summary": "one page per note · labels confirmed",
+         "expanded": false,
+         "action": "Show all 22"
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     }
+    ],
+    "main.vars.conversation": {
+     "t": "conversation",
+     "vars": {
+      "w": 290,
+      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #E3EEFF\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div>"
+     }
+    },
+    "main.vars.footer.vars.left": {
+     "html": "<a href=\"#\" style=\"font-size: 12px; font-weight: 600; text-decoration: none\">Show steps</a>"
+    },
+    "main.vars.footer.vars.status": {
+     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6862; margin-right: 6px\"><span style=\"width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0\"></span>Applying 31 changes…</span>"
+    },
+    "main.vars.footer.vars.right": ""
+   }
+  },
+  {
+   "id": "review-progress-added",
+   "base": "review",
+   "label": "C · Added: the counts from the checked plan; finding actions follows",
+   "set": {
+    "sidebar.reviewCount": "0",
+    "sidebar.status": "Sonnet · finding actions",
+    "main.vars.heading": {
+     "t": "heading",
+     "vars": {
+      "pill": {
+       "c": "Pill",
+       "props": {
+        "text": "Added at 11:53 PM",
+        "fill": "#F3FDE4",
+        "ink": "#3D6110"
+       },
+       "size": [
+        "150px",
+        "24px"
+       ]
+      },
+      "meta": "Approved by you at 11:52 PM · Claude Code · Sonnet",
+      "right": "",
+      "title": "Tea club notes, Sep 28 – Oct 2",
+      "summary": "<b>22</b> source pages, <b>3</b> concepts, <b>1</b> entity added · <b>6</b> pages updated",
+      "prose": "Claude kept 12 tasting claims as provisional, since each comes from a single note. Nothing conflicts with your vault. <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Claude’s full summary</a>"
+     }
+    },
+    "main.vars.notices": {
+     "c": "ApplyProgress",
+     "props": {
+      "stage": "finding",
+      "operation": "ingest-20261004-tea-club",
+      "times": "11:52 PM|11:52 PM|11:53 PM|11:53 PM|11:53 PM"
+     },
+     "size": [
+      "100%",
+      "214px"
+     ]
+    },
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "New pages",
+         "count": 4,
+         "summary": "3 concepts · 1 entity",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Updated",
+         "count": 6,
+         "summary": "Index, Overview, Log, Hot cache, 2 ledgers · plus 2 bookkeeping files",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Sources",
+         "count": 22,
+         "summary": "one page per note · labels confirmed",
+         "expanded": false,
+         "action": "Show all 22"
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     }
+    ],
+    "main.vars.conversation": {
+     "t": "conversation",
+     "vars": {
+      "w": 290,
+      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #E3EEFF\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:53 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Applied ingest-20261004-tea-club: 31 changes.</span></div>"
+     }
+    },
+    "main.vars.footer.vars.left": {
+     "html": "<span style=\"font-size: 12px; color: #9B978F\">Operation ingest-20261004-tea-club</span>"
+    },
+    "main.vars.footer.vars.status": "",
+    "main.vars.footer.vars.right": [
+     {
+      "c": "SoftButton",
+      "props": {
+       "title": "Clean up inbox · 22 files",
+       "systemImage": "trash"
+      },
+      "size": [
+       "206px",
+       "40px"
+      ]
+     },
+     {
+      "c": "PrimaryButton",
+      "props": {
+       "title": "Done"
+      },
+      "size": [
+       "96px",
+       "40px"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "review-progress-done",
+   "base": "review",
+   "label": "D · Done: open the new pages, clean up the inbox, then Done (it stays in History)",
+   "set": {
+    "sidebar.reviewCount": "0",
+    "sidebar.status": "Sonnet · ready",
+    "main.vars.heading": {
+     "t": "heading",
+     "vars": {
+      "pill": {
+       "c": "Pill",
+       "props": {
+        "text": "Added at 11:53 PM",
+        "fill": "#F3FDE4",
+        "ink": "#3D6110"
+       },
+       "size": [
+        "150px",
+        "24px"
+       ]
+      },
+      "meta": "Approved by you at 11:52 PM · Claude Code · Sonnet",
+      "right": "",
+      "title": "Tea club notes, Sep 28 – Oct 2",
+      "summary": "<b>22</b> source pages, <b>3</b> concepts, <b>1</b> entity added · <b>6</b> pages updated",
+      "prose": "Every approved file is in your knowledge base. <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Review the 5 actions</a>"
+     }
+    },
+    "main.vars.notices": {
+     "c": "ApplyProgress",
+     "props": {
+      "stage": "done",
+      "folded": true,
+      "operation": "ingest-20261004-tea-club",
+      "times": "11:52 PM|11:52 PM|11:53 PM|11:53 PM|11:54 PM"
+     },
+     "size": [
+      "100%",
+      "48px"
+     ]
+    },
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "New pages",
+         "count": 4,
+         "summary": "3 concepts · 1 entity · open them in Obsidian",
+         "expanded": true
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": [
+        {
+         "c": "ReviewChangeRow",
+         "props": {
+          "title": "Wazuka Tea Farm",
+          "change": "new",
+          "kind": "entity",
+          "note": "from 6 sources",
+          "directory": "wiki/entities",
+          "openable": true
+         },
+         "size": [
+          "100%",
+          "36px"
+         ]
+        },
+        {
+         "c": "ReviewChangeRow",
+         "props": {
+          "title": "Water temperature",
+          "change": "new",
+          "kind": "concept",
+          "note": "from 9 sources",
+          "directory": "wiki/concepts",
+          "openable": true
+         },
+         "size": [
+          "100%",
+          "36px"
+         ]
+        },
+        {
+         "c": "ReviewChangeRow",
+         "props": {
+          "title": "Shading and umami",
+          "change": "new",
+          "kind": "concept",
+          "note": "from 7 sources",
+          "directory": "wiki/concepts",
+          "openable": true
+         },
+         "size": [
+          "100%",
+          "36px"
+         ]
+        },
+        {
+         "c": "ReviewChangeRow",
+         "props": {
+          "title": "Tea club season plan",
+          "change": "new",
+          "kind": "concept",
+          "note": "from 5 sources",
+          "directory": "wiki/concepts",
+          "openable": true
+         },
+         "size": [
+          "100%",
+          "36px"
+         ]
+        }
+       ]
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Updated",
+         "count": 6,
+         "summary": "Index, Overview, Log, Hot cache, 2 ledgers · plus 2 bookkeeping files",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Sources",
+         "count": 22,
+         "summary": "22 source pages · labels confirmed",
+         "expanded": false,
+         "action": "Show all 22"
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     }
+    ],
+    "main.vars.conversation": {
+     "t": "conversation",
+     "vars": {
+      "w": 290,
+      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #E3EEFF\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:53 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Applied ingest-20261004-tea-club: 31 changes.</span></div>"
+     }
+    },
+    "main.vars.footer.vars.left": {
+     "html": "<span style=\"font-size: 12px; color: #9B978F\">Operation ingest-20261004-tea-club</span>"
+    },
+    "main.vars.footer.vars.status": "",
+    "main.vars.footer.vars.right": [
+     {
+      "c": "SoftButton",
+      "props": {
+       "title": "Clean up inbox · 22 files",
+       "systemImage": "trash"
+      },
+      "size": [
+       "206px",
+       "40px"
+      ]
+     },
+     {
+      "c": "PrimaryButton",
+      "props": {
+       "title": "Done"
+      },
+      "size": [
+       "96px",
+       "40px"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "review-progress-session-gone",
+   "base": "review",
+   "label": "E · The session is gone when Claude starts: the same confirmation as before Approve",
+   "set": {
+    "sidebar.reviewCount": "1",
+    "sidebar.status": "Sonnet · waiting on you",
+    "main.vars.heading": {
+     "t": "heading",
+     "vars": {
+      "pill": {
+       "c": "Pill",
+       "props": {
+        "text": "Not added yet",
+        "fill": "#FFE4D6",
+        "ink": "#B03A0A"
+       },
+       "size": [
+        "116px",
+        "24px"
+       ]
+      },
+      "meta": "Approved by you at 11:52 PM · Claude Code · Sonnet",
+      "right": "",
+      "title": "Tea club notes, Sep 28 – Oct 2",
+      "summary": "<b>22</b> new source pages · <b>3</b> new concepts · <b>1</b> new entity · <b>6</b> pages updated",
+      "prose": "Claude kept 12 tasting claims as provisional, since each comes from a single note. Nothing conflicts with your vault. <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Claude’s full summary</a>"
+     }
+    },
+    "main.vars.notices": {
+     "c": "ApplyProgress",
+     "props": {
+      "stage": "starting",
+      "failedAt": "starting",
+      "error": "This batch’s AI session isn’t available anymore",
+      "times": "11:52 PM|11:52 PM"
+     },
+     "size": [
+      "100%",
+      "214px"
+     ]
+    },
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "New pages",
+         "count": 4,
+         "summary": "3 concepts · 1 entity",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     }
+    ],
+    "main.vars.conversation": {
+     "t": "conversation",
+     "vars": {
+      "w": 290,
+      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #E3EEFF\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div>"
+     }
+    },
+    "main.vars.footer.vars.left": {
+     "html": "<a href=\"#\" style=\"font-size: 12px; font-weight: 600; text-decoration: none\">Show steps</a>"
+    },
+    "main.vars.footer.vars.status": "",
+    "main.vars.footer.vars.right": "",
+    "overlay": {
+     "html": "<div style=\"position: absolute; left: 280px; right: 378px; bottom: 96px; z-index: 6\"><dc-import name=\"SessionReplaceConfirm\" place=\"batch\" reason=\"notFound\" carries=\"The new session starts with this batch’s sources, your labels and the plan you approved. It runs the same apply; the plan and its approval hash stay the same.\" detail=\"claude exited 1: No conversation found with session ID: 3f2a91c0-…-c217\" hint-size=\"100%,190px\"></dc-import></div>"
+    }
+   }
+  },
+  {
+   "id": "review-progress-stale",
+   "base": "review",
+   "label": "F · The vault changed after review (exit 75): rebuilt in the same session, then your OK again",
+   "set": {
+    "sidebar.reviewCount": "0",
+    "sidebar.status": "Sonnet · rebuilding",
+    "main.vars.heading": {
+     "t": "heading",
+     "vars": {
+      "pill": {
+       "c": "Pill",
+       "props": {
+        "text": "Not added yet",
+        "fill": "#FFE4D6",
+        "ink": "#B03A0A"
+       },
+       "size": [
+        "116px",
+        "24px"
+       ]
+      },
+      "meta": "Approved by you at 11:52 PM · Claude Code · Sonnet",
+      "right": "",
+      "title": "Tea club notes, Sep 28 – Oct 2",
+      "summary": "<b>22</b> new source pages · <b>3</b> new concepts · <b>1</b> new entity · <b>6</b> pages updated",
+      "prose": "Claude kept 12 tasting claims as provisional, since each comes from a single note. Nothing conflicts with your vault. <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Claude’s full summary</a>"
+     }
+    },
+    "main.vars.notices": {
+     "c": "ApplyProgress",
+     "props": {
+      "stage": "applying",
+      "failedAt": "applying",
+      "error": "Not added: the vault changed after you reviewed this batch",
+      "help": "Nothing was changed. This batch’s own session is rebuilding the change for the vault as it is now; it comes back here for your OK.",
+      "times": "11:52 PM|11:52 PM|11:53 PM"
+     },
+     "size": [
+      "100%",
+      "240px"
+     ]
+    },
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "New pages",
+         "count": 4,
+         "summary": "3 concepts · 1 entity",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Updated",
+         "count": 6,
+         "summary": "Index, Overview, Log, Hot cache, 2 ledgers · plus 2 bookkeeping files",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Sources",
+         "count": 22,
+         "summary": "one page per note · labels confirmed",
+         "expanded": false,
+         "action": "Show all 22"
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     }
+    ],
+    "main.vars.conversation": {
+     "t": "conversation",
+     "vars": {
+      "w": 290,
+      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #E3EEFF\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:53 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Not applied: the vault changed after review.</span></div>"
+     }
+    },
+    "main.vars.footer.vars.left": {
+     "html": "<a href=\"#\" style=\"font-size: 12px; font-weight: 600; text-decoration: none\">Show steps</a>"
+    },
+    "main.vars.footer.vars.status": {
+     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6862; margin-right: 6px\"><span style=\"width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0\"></span>Rebuilding with Sonnet…</span>"
+    },
+    "main.vars.footer.vars.right": ""
+   }
+  },
+  {
+   "id": "review-progress-parts",
+   "base": "review",
+   "label": "G · Part of a batch: progress per part; the rest wait in the same batch",
+   "set": {
+    "sidebar.reviewCount": "1",
+    "sidebar.status": "Sonnet · adding to your vault",
+    "main.vars.tabs": {
+     "html": "<div style=\"display: flex; gap: 6px; padding: 14px 40px 0\"><span style=\"display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border-radius: 16px; background: #1D1C1A; color: #FFFFFF; font-size: 13px; font-weight: 600; white-space: nowrap\">Tea club notes · Sep 28<span style=\"font-size: 12px; font-weight: 600; opacity: .7\">adding 8</span></span><span style=\"display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border-radius: 16px; background: #F6F5F2; color: #1D1C1A; font-size: 13px; font-weight: 600; white-space: nowrap\">Scans · Oct 3<span style=\"font-size: 12px; font-weight: 600; opacity: .7\">3 sources</span></span></div>"
+    },
+    "main.vars.heading": {
+     "t": "heading",
+     "vars": {
+      "pill": {
+       "c": "Pill",
+       "props": {
+        "text": "Adding part 1",
+        "fill": "#E3EEFF",
+        "ink": "#1F6FEB",
+        "busy": true
+       },
+       "size": [
+        "130px",
+        "24px"
+       ]
+      },
+      "meta": "Approved by you at 9:08 AM · Claude Code · Sonnet",
+      "right": "",
+      "title": "Tea club notes, Sep 28 – Oct 2",
+      "summary": "<b>8</b> sources you picked · <b>14</b> left in this batch · <b>1</b> removed",
+      "prose": "Claude kept 12 tasting claims as provisional, since each comes from a single note. Nothing conflicts with your vault. <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Claude’s full summary</a>"
+     }
+    },
+    "main.vars.notices": [
+     {
+      "c": "ApplyProgress",
+      "props": {
+       "stage": "applying",
+       "part": "Part 1 · 8 sources",
+       "sources": "8 sources",
+       "changes": "14 changes",
+       "times": "9:08 AM|9:08 AM|9:09 AM"
+      },
+      "size": [
+       "100%",
+       "214px"
+      ]
+     },
+     {
+      "html": "<div style=\"display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 14px; background: #FBFAF8; box-shadow: inset 0 0 0 1px #ECEAE5\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#C9C5BD\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0\"><path d=\"M12 12m-6 0a6 6 0 1 0 12 0a6 6 0 1 0-12 0\"></path></svg><span style=\"font-size: 13px; font-weight: 600; white-space: nowrap\">The 14 sources left</span><span style=\"font-size: 12px; color: #6B6862; flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis\">rebuilt in the same session once part 1 is added, then back here for your OK</span></div>"
+     }
+    ],
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Sources",
+         "count": 22,
+         "summary": "8 being added · 14 left · 1 removed",
+         "expanded": false,
+         "action": "Show all"
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     }
+    ],
+    "main.vars.conversation": {
+     "t": "conversation",
+     "vars": {
+      "w": 290,
+      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #E3EEFF\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">You · 9:08 AM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved 8 sources (labels confirmed)</span></div>"
+     }
+    },
+    "main.vars.footer.vars.left": {
+     "html": "<a href=\"#\" style=\"font-size: 12px; font-weight: 600; text-decoration: none\">Show steps</a>"
+    },
+    "main.vars.footer.vars.status": {
+     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6862; margin-right: 6px\"><span style=\"width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0\"></span>Adding part 1 · 8 sources…</span>"
+    },
+    "main.vars.footer.vars.right": ""
+   }
+  },
+  {
+   "id": "review-progress-narrow",
+   "base": "review",
+   "label": "H · 890 pt: the same, with the conversation behind its button",
+   "set": {
+    "sidebar.reviewCount": "0",
+    "sidebar.status": "Sonnet · ready",
+    "main.vars.heading": {
+     "t": "heading",
+     "vars": {
+      "pill": {
+       "c": "Pill",
+       "props": {
+        "text": "Added at 11:53 PM",
+        "fill": "#F3FDE4",
+        "ink": "#3D6110"
+       },
+       "size": [
+        "150px",
+        "24px"
+       ]
+      },
+      "meta": "Approved at 11:52 PM · Sonnet",
+      "right": {
+       "c": "SoftButton",
+       "props": {
+        "title": "Conversation · 4",
+        "size": "small"
+       },
+       "size": [
+        "132px",
+        "30px"
+       ]
+      },
+      "title": "Tea club notes, Sep 28 – Oct 2",
+      "summary": "<b>22</b> source pages · <b>4</b> new pages · <b>6</b> updated",
+      "prose": "Every approved file is in your knowledge base. <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Review the 5 actions</a>"
+     }
+    },
+    "main.vars.notices": {
+     "c": "ApplyProgress",
+     "props": {
+      "stage": "done",
+      "folded": true,
+      "operation": "ingest-20261004-tea-club",
+      "times": "11:52 PM|11:52 PM|11:53 PM|11:53 PM|11:54 PM"
+     },
+     "size": [
+      "100%",
+      "48px"
+     ]
+    },
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "New pages",
+         "count": 4,
+         "summary": "3 concepts · 1 entity · open them in Obsidian",
+         "expanded": true
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": [
+        {
+         "c": "ReviewChangeRow",
+         "props": {
+          "title": "Wazuka Tea Farm",
+          "change": "new",
+          "kind": "entity",
+          "note": "from 6 sources",
+          "directory": "wiki/entities",
+          "openable": true
+         },
+         "size": [
+          "100%",
+          "36px"
+         ]
+        },
+        {
+         "c": "ReviewChangeRow",
+         "props": {
+          "title": "Water temperature",
+          "change": "new",
+          "kind": "concept",
+          "note": "from 9 sources",
+          "directory": "wiki/concepts",
+          "openable": true
+         },
+         "size": [
+          "100%",
+          "36px"
+         ]
+        },
+        {
+         "c": "ReviewChangeRow",
+         "props": {
+          "title": "Shading and umami",
+          "change": "new",
+          "kind": "concept",
+          "note": "from 7 sources",
+          "directory": "wiki/concepts",
+          "openable": true
+         },
+         "size": [
+          "100%",
+          "36px"
+         ]
+        },
+        {
+         "c": "ReviewChangeRow",
+         "props": {
+          "title": "Tea club season plan",
+          "change": "new",
+          "kind": "concept",
+          "note": "from 5 sources",
+          "directory": "wiki/concepts",
+          "openable": true
+         },
+         "size": [
+          "100%",
+          "36px"
+         ]
+        }
+       ]
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Updated",
+         "count": 6,
+         "summary": "Index, Overview, Log, Hot cache, 2 ledgers · plus 2 bookkeeping files",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Sources",
+         "count": 22,
+         "summary": "22 source pages · labels confirmed",
+         "expanded": false,
+         "action": "Show all 22"
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     }
+    ],
+    "main.vars.conversation": "",
+    "main.vars.footer.vars.left": {
+     "html": "<a href=\"#\" style=\"font-size: 12px; font-weight: 600; text-decoration: none\">Show steps</a>"
+    },
+    "main.vars.footer.vars.status": "",
+    "main.vars.footer.vars.right": [
+     {
+      "c": "SoftButton",
+      "props": {
+       "title": "Clean up inbox · 22",
+       "systemImage": "trash"
+      },
+      "size": [
+       "176px",
+       "40px"
+      ]
+     },
+     {
+      "c": "PrimaryButton",
+      "props": {
+       "title": "Done"
+      },
+      "size": [
+       "96px",
+       "40px"
+      ]
+     }
+    ],
+    "window": {
+     "width": 890,
+     "height": 760
+    },
+    "sidebar.height": 720,
+    "main.vars.pad": 28,
+    "main.vars.footer.vars.pad": 28
+   }
+  },
+  {
+   "id": "cleanup-history",
+   "base": "review",
+   "label": "A · History → Jobs: a batch that was added offers Clean up inbox (counted when you open it)",
+   "set": {
+    "sidebar.section": "history",
+    "sidebar.sub": "jobs",
+    "sidebar.reviewCount": "0",
+    "sidebar.status": "Sonnet · ready",
+    "main.vars.heading": {
+     "t": "heading",
+     "vars": {
+      "pill": {
+       "c": "Pill",
+       "props": {
+        "text": "Applied at 11:52 PM",
+        "fill": "#F3FDE4",
+        "ink": "#3D6110"
+       },
+       "size": [
+        "150px",
+        "24px"
+       ]
+      },
+      "meta": "Started at 11:33 PM · Claude Code · Sonnet · approved by you at 11:52 PM",
+      "right": "",
+      "title": "Tea club notes, Sep 28 – Oct 2",
+      "summary": "<b>22</b> new source pages · <b>3</b> new concepts · <b>1</b> new entity · <b>6</b> pages updated",
+      "prose": "Claude kept 12 tasting claims as provisional, since each comes from a single note. Nothing conflicts with your vault. <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Claude’s full summary</a>"
+     }
+    },
+    "main.vars.notices": {
+     "html": "<div style=\"display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6B6862\"><b style=\"color: #3D6110\">✓</b> Found 5 actions to confirm · <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Review them</a></div>"
+    },
+    "main.vars.footer.vars.left": {
+     "html": "<span style=\"font-size: 12px; color: #9B978F\">Operation ingest-20261004-tea-club-batch</span>"
+    },
+    "main.vars.footer.vars.status": {
+     "html": "<span style=\"font-size: 12px; color: #6B6862; margin-right: 6px\">22 files from this batch are still in inbox/</span>"
+    },
+    "main.vars.footer.vars.right": [
+     {
+      "c": "SoftButton",
+      "props": {
+       "title": "Clean up inbox · 22 files",
+       "systemImage": "trash"
+      },
+      "size": [
+       "206px",
+       "40px"
+      ]
+     }
+    ],
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "New pages",
+         "count": 4,
+         "summary": "3 concepts · 1 entity",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Updated",
+         "count": 6,
+         "summary": "Index, Overview, Log, Hot cache, 2 ledgers · plus 2 bookkeeping files",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Sources",
+         "count": 22,
+         "summary": "one page per note · labels confirmed",
+         "expanded": false,
+         "action": "Show all 22"
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "cleanup-confirm",
+   "base": "review",
+   "label": "B · Before anything moves: what goes to the Trash, what stays and why",
+   "set": {
+    "sidebar.section": "history",
+    "sidebar.sub": "jobs",
+    "sidebar.reviewCount": "0",
+    "sidebar.status": "Sonnet · ready",
+    "main.vars.heading": {
+     "t": "heading",
+     "vars": {
+      "pill": {
+       "c": "Pill",
+       "props": {
+        "text": "Applied at 11:52 PM",
+        "fill": "#F3FDE4",
+        "ink": "#3D6110"
+       },
+       "size": [
+        "150px",
+        "24px"
+       ]
+      },
+      "meta": "Started at 11:33 PM · Claude Code · Sonnet · approved by you at 11:52 PM",
+      "right": "",
+      "title": "Tea club notes, Sep 28 – Oct 2",
+      "summary": "<b>22</b> new source pages · <b>3</b> new concepts · <b>1</b> new entity · <b>6</b> pages updated",
+      "prose": "Claude kept 12 tasting claims as provisional, since each comes from a single note. Nothing conflicts with your vault. <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Claude’s full summary</a>"
+     }
+    },
+    "main.vars.notices": {
+     "html": "<div style=\"display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6B6862\"><b style=\"color: #3D6110\">✓</b> Found 5 actions to confirm · <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Review them</a></div>"
+    },
+    "main.vars.footer.vars.left": {
+     "html": "<span style=\"font-size: 12px; color: #9B978F\">Operation ingest-20261004-tea-club-batch</span>"
+    },
+    "main.vars.footer.vars.status": {
+     "html": "<span style=\"font-size: 12px; color: #6B6862; margin-right: 6px\">22 files from this batch are still in inbox/</span>"
+    },
+    "main.vars.footer.vars.right": [
+     {
+      "c": "SoftButton",
+      "props": {
+       "title": "Clean up inbox · 22 files",
+       "systemImage": "trash"
+      },
+      "size": [
+       "206px",
+       "40px"
+      ]
+     }
+    ],
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "New pages",
+         "count": 4,
+         "summary": "3 concepts · 1 entity",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Updated",
+         "count": 6,
+         "summary": "Index, Overview, Log, Hot cache, 2 ledgers · plus 2 bookkeeping files",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Sources",
+         "count": 22,
+         "summary": "one page per note · labels confirmed",
+         "expanded": false,
+         "action": "Show all 22"
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     }
+    ],
+    "overlay": {
+     "frag": "cleanup-confirm"
+    }
+   }
+  },
+  {
+   "id": "cleanup-done",
+   "base": "review",
+   "label": "C · After: what moved, and what stayed (each file is checked again when you press Move)",
+   "set": {
+    "sidebar.section": "history",
+    "sidebar.sub": "jobs",
+    "sidebar.reviewCount": "0",
+    "sidebar.status": "Sonnet · ready",
+    "main.vars.heading": {
+     "t": "heading",
+     "vars": {
+      "pill": {
+       "c": "Pill",
+       "props": {
+        "text": "Applied at 11:52 PM",
+        "fill": "#F3FDE4",
+        "ink": "#3D6110"
+       },
+       "size": [
+        "150px",
+        "24px"
+       ]
+      },
+      "meta": "Started at 11:33 PM · Claude Code · Sonnet · approved by you at 11:52 PM",
+      "right": "",
+      "title": "Tea club notes, Sep 28 – Oct 2",
+      "summary": "<b>22</b> new source pages · <b>3</b> new concepts · <b>1</b> new entity · <b>6</b> pages updated",
+      "prose": "Claude kept 12 tasting claims as provisional, since each comes from a single note. Nothing conflicts with your vault. <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Claude’s full summary</a>"
+     }
+    },
+    "main.vars.notices": {
+     "html": "<div style=\"display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #F3FDE4\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3D6110\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0; margin-top: 1px\"><path d=\"M5 12.5l4.5 4.5L19 7.5\"></path></svg><span style=\"display: flex; flex-direction: column; gap: 2px\"><span style=\"font-size: 13px; font-weight: 700; color: #3D6110\">Moved 20 files to the Trash</span><span style=\"font-size: 12px; color: #48463F; line-height: 1.45\">2 stayed in inbox/: Kettle comparison.md changed since it was added, and Gyokuro at 60 °C.md changed after you looked, so it was left alone. <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Show in Activity</a></span></span></div>"
+    },
+    "main.vars.footer.vars.left": {
+     "html": "<span style=\"font-size: 12px; color: #9B978F\">Operation ingest-20261004-tea-club-batch</span>"
+    },
+    "main.vars.footer.vars.status": {
+     "html": "<span style=\"font-size: 12px; color: #6B6862; margin-right: 6px\">2 files stay in inbox/ <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Why</a></span>"
+    },
+    "main.vars.footer.vars.right": "",
+    "main.vars.groups": [
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "New pages",
+         "count": 4,
+         "summary": "3 concepts · 1 entity",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Updated",
+         "count": 6,
+         "summary": "Index, Overview, Log, Hot cache, 2 ledgers · plus 2 bookkeeping files",
+         "expanded": false
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     },
+     {
+      "t": "group",
+      "vars": {
+       "head": {
+        "c": "ReviewGroupHeader",
+        "props": {
+         "title": "Sources",
+         "count": 22,
+         "summary": "one page per note · labels confirmed",
+         "expanded": false,
+         "action": "Show all 22"
+        },
+        "size": [
+         "100%",
+         "40px"
+        ]
+       },
+       "rows": ""
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "cleanup-card-settings",
+   "label": "Settings → Batching: every file in inbox/ that can go",
+   "caption": "A new last row. It opens the clean-up for the whole vault (next card).",
+   "card": {
+    "height": 470,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "cleanup-settings"
+   }
+  },
+  {
+   "id": "cleanup-card-sheet",
+   "label": "The whole vault: pick with select-all",
+   "caption": "Grouped by the batch that added them; a folder goes as one. What stays is counted by reason, and Show each file lists them.",
+   "card": {
+    "height": 640,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "cleanup-sheet"
+   }
+  },
+  {
+   "id": "cleanup-card-empty",
+   "label": "Nothing to clean up",
+   "caption": "Counts are worked out when the place opens, never kept: no stale “22 files” after they are gone.",
+   "card": {
+    "height": 470,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "stretch"
+   },
+   "body": {
+    "frag": "cleanup-empty"
+   }
+  },
+  {
+   "id": "cleanup-card-rules",
+   "label": "When a file can go",
+   "caption": "Reading the ledger is all Distill does with it: it never writes the ledger, wiki/ or .raw/ here.",
+   "card": {
+    "height": 330,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "stretch"
+   },
+   "body": {
+    "frag": "cleanup-rules"
+   }
+  },
+  {
+   "id": "cleanup-card-activity",
+   "label": "Activity: names and counts, never contents",
+   "caption": "Family Queue, source Mac app. The Trash move is the macOS Trash, so Restore in Activity does not apply; drag a file back from the Trash.",
+   "card": {
+    "height": 330,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "stretch"
+   },
+   "body": {
+    "frag": "cleanup-activity"
+   }
   }
  ],
  "boards": [
@@ -3274,6 +4749,86 @@
       "review-history-parts"
      ],
      "style": "display: flex; gap: 40px"
+    }
+   ]
+  },
+  {
+   "file": "ReviewProgress.dc.html",
+   "title": "Review · after you approve: watch it go into your vault",
+   "heading": "Review after Approve: every step until it is in your vault",
+   "intro": "“Update the review, so I can see the progress after I approved: when the AI is starting the process, when all the approved files are added to my knowledgebase.” Today an approved batch leaves Review at once and nothing says what happens next. Now it stays, and one card shows the steps live: <b>You approved</b>, <b>Claude starting</b> (resuming this batch’s own session), <b>applying through the vault core</b>, <b>Added</b> with the counts from the checked plan, never from the AI (“22 source pages, 3 concepts, 1 entity added · 6 pages updated”), and the follow-up, <b>finding actions</b>. These are the batch’s live-log steps, so <b>Show steps</b> opens the full log. Approve and Reject go away while it runs; the sidebar count and the flask badge count only batches that need you. Once added, the card folds to one line, new pages open from their rows, <b>Clean up inbox</b> offers the batch’s files, and <b>Done</b> takes the batch out of Review (it is in History → Jobs). A failure says what happened and what to do, in the words Review already uses (frames E, F; more in ApplyProgress states). Part of a batch shows its own progress, and the sources left wait in the same batch (frame G).",
+   "width": 2520,
+   "sections": [
+    {
+     "row": [
+      "review-progress-starting",
+      "review-progress-applying"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "row": [
+      "review-progress-added",
+      "review-progress-done"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "title": "When something goes wrong, and parts of a batch"
+    },
+    {
+     "row": [
+      "review-progress-session-gone",
+      "review-progress-stale"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "row": [
+      "review-progress-parts",
+      "review-progress-narrow"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    }
+   ]
+  },
+  {
+   "file": "InboxCleanup.dc.html",
+   "title": "Clean up inbox · move what is already in your knowledge base to the Trash",
+   "heading": "Clean up inbox: only what is safely in your knowledge base, only when you ask",
+   "intro": "“Let’s not do automatic for now, add a manual cleanup button.” claude-obsidian keeps inbox/ as yours: no operation writes it, and Distill never deletes from it on its own. Clean up is a button you press. A file can go only when the source ledger says it was added, the file has not changed since (same sha256), and every page made from it still exists. A note’s .distill.json goes with it, and a folder goes as one. Before anything moves you see what goes and what stays, and why: “not added yet”, “changed since it was added”, “its page is missing”, “waiting in Review”, “in the queue”. Files go to the macOS Trash, never deleted, and each is checked again when you press Move. Two places: a batch in History → Jobs (only that batch’s files; also on Review once a batch is added), and Settings → Batching for the whole vault, with select-all. Every clean-up is in Activity, with names and counts only.",
+   "width": 2520,
+   "sections": [
+    {
+     "row": [
+      "cleanup-history",
+      "cleanup-confirm"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "row": [
+      "cleanup-done"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "title": "The whole vault, the rules, and the record"
+    },
+    {
+     "grid": [
+      "cleanup-card-settings",
+      "cleanup-card-sheet",
+      "cleanup-card-empty"
+     ],
+     "cols": 3
+    },
+    {
+     "grid": [
+      "cleanup-card-rules",
+      "cleanup-card-activity"
+     ],
+     "cols": 2
     }
    ]
   }

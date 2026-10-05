@@ -119,7 +119,8 @@ API clients get `suggestedRule` (string or `null`) on every denial of a job
 the server returns, so Allow can show and send the exact rule without
 re-deriving it. While Approve applies, the core emits `apply` progress
 (key = job id, `Applying N changes`) until the job leaves `running`; clients
-keep Approve and Reject disabled meanwhile.
+keep Approve and Reject disabled meanwhile. Since 2026-10-05 the live log
+shows the steps after Approve (see "After you approve").
 
 Finished jobs (completed, failed, rejected, cancelled) can be removed from the
 list with `deleteJob` (`DELETE /v1/jobs/:id`); a job still running or waiting
@@ -152,6 +153,60 @@ no record under `.vault-meta/transactions`, so the plan is the trusted
 source. "Finding actions" (`onJobApplied`) runs only after a verified
 apply, and the `apply` progress finishes as "Applied" only then (otherwise
 "Not applied").
+
+## After you approve (built 2026-10-05)
+
+The owner: "update the review, so I can see the progress after I approved:
+when the AI is starting the process, when all the approved files are added to
+my knowledgebase". Canvas: ReviewProgress, ApplyProgress. Code: core
+`approvedChangeOf`, `finishReview` (engine), the apply steps in
+`core/src/steps/index.ts`; Mac `DistillKit/ApplyTimeline.swift`,
+`Distill/ApplyProgress.swift`.
+
+- **Review keeps an approved batch** (kind `ingest`; label jobs leave as
+  before) until the user presses **Done**
+  (`finishReview`, `POST /v1/jobs/:id/done` → `job.reviewDoneAt`). It is in
+  History → Jobs as before. Review lists the batches waiting for the user
+  first (oldest first), then the approved ones; their tabs say "adding…",
+  "added" or "not added". They never count as needing the user: the sidebar,
+  Dock and flask badges count `awaitingApproval` only, and an applied batch
+  never blocks the next one (`batchBlocker` looks at `running` only). A reply
+  after an approval (or a job approved by an older core, with no
+  `approvedChange`) is not shown this way.
+- **What was approved** is recorded when Approve starts the apply (all three
+  paths: agent, core, new session): `job.approvedChange = {at, operationID,
+  changes, sources, concepts, entities, otherPages, updated,
+  sourcesApproved}`. The counts come from the inspected plan and the vault
+  before the apply: a `wiki/**.md` path that doesn't exist yet is new
+  (by folder), one that exists is updated. Never from the model. A session
+  that turns out gone puts the job back without it (snapshot).
+- **The steps** are the batch's live-log steps (no new plumbing): `You
+  approved · 22 sources` (the review step), then `start-k` "Claude is
+  starting: resuming this batch's session" (agent runs only), `apply-k`
+  "Applying 31 changes through the vault core" (waiting until the AI runs the
+  `transaction apply` command, then running), `added-k` "Added to Research:
+  22 source pages, 3 concepts, 1 entity added · 6 pages updated" with the
+  operation id on the apply step, and `actions` (Finding actions).
+- **Failures** turn the step peach with a `hint` (what to do), in the words
+  Review already uses:
+  - the session is gone when the AI starts: "This batch's AI session isn't
+    available anymore" and SessionReplaceConfirm, as before Approve;
+  - exit 75: "Not added: the vault changed after you reviewed this batch" —
+    rebuilt in the batch's own session, then back for the user's OK;
+  - `LOCK_TIMEOUT`: "Not added: another app was changing your vault" —
+    approve again;
+  - `OPERATION_ID_REUSED`: "this change's operation ID was already used";
+  - the turn reported another operation: "Nothing recorded as applied:
+    Claude didn't report the approved change";
+  - the runner failed or was cancelled, or the core stopped mid-apply.
+  Finding actions failing is a quiet follow-up: the batch is still added.
+- **Review's card** (ApplyProgress) shows the five steps live, with Show
+  steps for the whole log. While it runs Approve, Reject and Cancel are gone
+  ("Adding to Research · you can leave this screen"). Once everything is done
+  the card folds to one line, new pages show **Open**, and the footer has
+  **Clean up inbox · N files** ([Clean up inbox](inbox-cleanup.md)) and
+  **Done**. A part of a batch says "Part 2 · 8 sources".
+- A core apply (labels, runners without tool permissions) has no AI step.
 
 ## Labels in Review (built 2026-10-05)
 

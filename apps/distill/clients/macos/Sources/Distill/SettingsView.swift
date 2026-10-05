@@ -387,6 +387,10 @@ struct BatchingSettings: View {
                 .accessibilityLabel("Check the queue folder for changes")
             }
             .padding(.top, 6)
+            // v8 Clean up inbox (inbox-cleanup.md): every file in inbox/ that is already in the knowledge base; only when you ask.
+            InboxCleanupSettingsRow(store: engine.inboxCleanup)
+                .padding(.top, 6)
+                .settingsAnchor("Clean up inbox")
         }
     }
 

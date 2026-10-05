@@ -17,6 +17,41 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+Review after Approve and Clean up inbox. The owner: "add a manual cleanup
+button" and "I can see the progress after I approved". Canvas: ReviewProgress,
+InboxCleanup, ApplyProgress. Specs: [Clean up inbox](inbox-cleanup.md),
+[Approval and review](approval-and-review.md) → After you approve, [Live
+log](live-log.md).
+
+- **Inbox clean-up is manual only.** Distill never cleans `inbox/` on its own;
+  a button does, after a confirm that lists what moves and what stays and why.
+  This keeps the 2026-10-04 inbox rule (no automatic delete) and the
+  claude-obsidian rule that `inbox/` is the user's.
+- **A file can go only when the ledger proves it is in the knowledge base**:
+  a `file` entry whose locator names it, the same sha256 now, and every page
+  of that entry present. The ledger is read, never written.
+- **Matching:** NFC on both sides; a case-only match counts only with one
+  matching entry whose hash agrees; with several entries for a locator the one
+  whose hash matches wins.
+- **Units:** a note goes with its `.distill.json` and listed images; a folder
+  item goes whole, only when every source file inside passes, with its
+  `.distill-folder.json`. A "seen before" file needs its own entry, so a
+  folder holding one stays (conservative; the collector's own record is not
+  proof the file is in this vault).
+- **Never** a file a running or waiting batch holds, or a queued file not yet
+  batched (the queue may be `inbox/`).
+- **Checked again at Move**; a file that changed after the preview stays.
+- **The Trash, never rm.** The core asks Finder first (Put Back works) and
+  falls back to the queue's no-overwrite rename into `~/.Trash`; the result
+  says which, and the words follow it.
+- **Review keeps an approved batch until Done.** Its steps come from the live
+  log (new steps `start`, `apply`, `added`; `JobStep.hint`), and the counts
+  from `job.approvedChange`, recorded at Approve from the plan and the vault
+  before the apply. It never counts as needing the user and never blocks a
+  batch. Only batches (`ingest`) stay until Done; a label confirmation from
+  the Labels screen leaves Review once it is applied, as before, so it never
+  needs an extra click.
+
 - **Backups include collector scripts and batch step logs.** Since script
   files (2026-10-04), a kept script's code lives only in
   `collectors/scripts/<id>/`. `distill.sh backup` copied `collectors.json` but

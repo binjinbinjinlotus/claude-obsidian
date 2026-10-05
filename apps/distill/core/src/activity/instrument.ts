@@ -233,6 +233,7 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
     getJob: 'read',
     jobResumeCommand: 'read',
     listJobSteps: 'read',
+    previewInboxCleanup: 'read',
     searchPages: 'read',
     listLabels: 'read',
     labelReview: 'read',
@@ -419,6 +420,29 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
       fail: ([id], job: Job | undefined) => ({ type: 'batch.rejected', object: jobObject(id, job), summary: `Couldn't reject ${jobName(job)}` }),
     },
     cancel: jobVerb('batch.cancelled', 'Cancelled', 'cancel'),
+    finishReview: 'quiet', // takes an approved batch out of Review; the batch and the vault are unchanged
+    cleanUpInbox: {
+      ok: ([req], r) => {
+        const files = r.moved.reduce((n, m) => n + m.fileCount, 0);
+        const stayed = r.stayed.length + r.failed.length;
+        return {
+          type: 'queue.inbox_cleaned',
+          object: { kind: 'queue', id: req.jobId ?? 'inbox', name: req.jobId ? 'inbox/ (one batch)' : 'inbox/' },
+          summary: r.moved.length === 0
+            ? `Cleaned up inbox: nothing moved${stayed ? `, ${plural(stayed, 'item')} stayed` : ''}`
+            : `Cleaned up inbox: ${plural(files, 'file')} to the Trash${stayed ? `, ${stayed} stayed` : ''}`,
+          details: {
+            moved: r.moved.map((m) => m.path),
+            stayed: [...r.stayed.map((x) => `${x.path} (${x.reason})`), ...r.failed.map((f) => `${f.path} (couldn't move)`)],
+            files,
+            method: r.method,
+            ...(req.jobId ? { jobId: req.jobId } : {}),
+          },
+          recovery: { kind: 'macosTrash', path: '~/.Trash' },
+        };
+      },
+      fail: ([req]) => ({ type: 'queue.inbox_cleaned', object: { kind: 'queue', id: req?.jobId ?? 'inbox', name: 'inbox/' }, summary: "Couldn't clean up inbox" }),
+    },
     deleteJob: {
       before: (id) => (getJob(id) ? structuredClone(getJob(id)) : undefined),
       ok: ([id], _r, job: Job | undefined) => ({

@@ -21,14 +21,17 @@ public struct JobStep: Codable, Equatable, Sendable, Identifiable {
     public var count: String?
     public var file: String?
     public var parent: String?
+    /// v8: what to do next, on a failed apply step.
+    public var hint: String?
 
     public init(id: String, at: Date, endedAt: Date? = nil, phase: String = "agent", kind: String = "step", state: String = "done",
-                verb: String = "tool", text: String, detail: String? = nil, count: String? = nil, file: String? = nil, parent: String? = nil) {
+                verb: String = "tool", text: String, detail: String? = nil, count: String? = nil, file: String? = nil, parent: String? = nil,
+                hint: String? = nil) {
         self.id = id; self.at = at; self.endedAt = endedAt; self.phase = phase; self.kind = kind; self.state = state
-        self.verb = verb; self.text = text; self.detail = detail; self.count = count; self.file = file; self.parent = parent
+        self.verb = verb; self.text = text; self.detail = detail; self.count = count; self.file = file; self.parent = parent; self.hint = hint
     }
 
-    enum Keys: String, CodingKey { case id, at, endedAt, phase, kind, state, verb, text, detail, count, file, parent }
+    enum Keys: String, CodingKey { case id, at, endedAt, phase, kind, state, verb, text, detail, count, file, parent, hint }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
         guard let id = c.lossy(String.self, .id), !id.isEmpty else {
@@ -46,6 +49,7 @@ public struct JobStep: Codable, Equatable, Sendable, Identifiable {
         count = c.lossy(String.self, .count)
         file = c.lossy(String.self, .file)
         parent = c.lossy(String.self, .parent)
+        hint = c.lossy(String.self, .hint)
     }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: Keys.self)
@@ -61,6 +65,7 @@ public struct JobStep: Codable, Equatable, Sendable, Identifiable {
         try c.encodeIfPresent(count, forKey: .count)
         try c.encodeIfPresent(file, forKey: .file)
         try c.encodeIfPresent(parent, forKey: .parent)
+        try c.encodeIfPresent(hint, forKey: .hint)
     }
 }
 

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type {
   ApprovalRequest,
+  ApprovedChange,
   Job,
   JobPart,
   PendingPart,
@@ -268,7 +269,23 @@ export function decodeJob(v: unknown, now = new Date()): Job | undefined {
   // v6: session continuity marker (lenient: a wrong shape is dropped).
   const su = decodeSessionUnavailable(v.sessionUnavailable);
   if (su) job.sessionUnavailable = su;
+  // v8: Review after Approve (lenient: a wrong shape is dropped).
+  const ac = decodeApprovedChange(v.approvedChange);
+  if (ac) job.approvedChange = ac;
+  const done = str(v.reviewDoneAt);
+  if (done !== undefined && !Number.isNaN(Date.parse(done))) job.reviewDoneAt = done;
   return job;
+}
+
+function decodeApprovedChange(v: unknown): ApprovedChange | undefined {
+  if (!isObject(v) || typeof v.at !== 'string' || typeof v.operationID !== 'string' || !v.operationID) return undefined;
+  const n = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? Math.floor(x) : 0);
+  const out: ApprovedChange = {
+    at: v.at, operationID: v.operationID, changes: n(v.changes), sources: n(v.sources), concepts: n(v.concepts),
+    entities: n(v.entities), otherPages: n(v.otherPages), updated: n(v.updated),
+  };
+  if (typeof v.sourcesApproved === 'number' && v.sourcesApproved > 0) out.sourcesApproved = Math.floor(v.sourcesApproved);
+  return out;
 }
 
 const PLACES: SessionUnavailable['place'][] = ['batch', 'conversation', 'terminal'];
@@ -388,7 +405,7 @@ function encodeApproval(a: ApprovalRequest): JSONObject {
 const JOB_KEYS = [
   'id', 'kind', 'vaultPath', 'files', 'sessionID', 'runnerID', 'model', 'effort', 'state',
   'createdAt', 'updatedAt', 'approval', 'turns', 'grantedTools', 'operationID', 'changedPaths', 'error', 'actionsFound', 'folders', 'sessionUnavailable',
-  'parts', 'pendingPart',
+  'parts', 'pendingPart', 'approvedChange', 'reviewDoneAt',
 ];
 
 /** Every non-optional key is always written; nil optionals are omitted (never `null`). */
@@ -435,6 +452,8 @@ export function encodeJob(job: Job, raw: JSONObject = {}): JSONObject {
     if (u.at != null) m.at = u.at;
     out.sessionUnavailable = m;
   }
+  if (job.approvedChange != null) out.approvedChange = JSON.parse(JSON.stringify(job.approvedChange)) as JSONObject;
+  if (job.reviewDoneAt != null) out.reviewDoneAt = job.reviewDoneAt;
   return out;
 }
 

@@ -44,6 +44,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Activity log and trash](docs/specs/activity-log.md) | built (core, API, CLI, macOS UI) |
 | [Session continuity](docs/specs/session-continuity.md) | built (core, API, CLI, macOS UI; Review's approve, approve-later and parts of a batch go through it) |
 | [Live log](docs/specs/live-log.md) | built (core, API, macOS UI; no CLI) |
+| [Clean up inbox](docs/specs/inbox-cleanup.md) | built (core, API, macOS UI; no CLI) |
 
 ## Layout
 

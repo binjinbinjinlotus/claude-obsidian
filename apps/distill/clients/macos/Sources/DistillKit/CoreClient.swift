@@ -230,6 +230,23 @@ public final class CoreClient: Sendable {
         let _: JSONValue = try await send("DELETE", "/v1/jobs/\(Self.segment(id))", body: Optional<JSONValue>.none)
     }
 
+    /// v8 `POST /v1/jobs/:id/done`: Done on an approved batch in Review; it is only in History afterwards.
+    @discardableResult public func finishReview(_ id: String) async throws -> Job {
+        try await send("POST", "/v1/jobs/\(Self.segment(id))/done", body: [String: String]())
+    }
+
+    /// v8 `GET /v1/inbox/cleanup[?job=ID]`: what Clean up inbox could move now, and what stays and why. Read-only.
+    public func inboxCleanup(jobID: String? = nil) async throws -> InboxCleanupPreview {
+        try await get("/v1/inbox/cleanup" + (jobID.map { "?job=\(Self.segment($0))" } ?? ""))
+    }
+
+    /// v8 `POST /v1/inbox/cleanup` `{paths, jobId?}`: move these to the Trash; the core checks each again first.
+    public func cleanUpInbox(paths: [String], jobID: String? = nil) async throws -> InboxCleanupResult {
+        var body: [String: JSONValue] = ["paths": .array(paths.map { .string($0) })]
+        if let jobID { body["jobId"] = .string(jobID) }
+        return try await send("POST", "/v1/inbox/cleanup", body: body, timeout: 180)
+    }
+
     /// v7 `GET /v1/jobs/:id/steps`: the job's live log as kept.
     public func jobSteps(_ id: String) async throws -> JobStepsPage {
         try await get("/v1/jobs/\(Self.segment(id))/steps")

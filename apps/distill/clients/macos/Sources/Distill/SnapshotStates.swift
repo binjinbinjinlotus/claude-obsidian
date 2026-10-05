@@ -54,6 +54,7 @@ enum StatesSnapshot {
         collectorsStates()
         activityStates()
         liveLogStates()
+        applyCleanupStates()
         settingsNavStates()
         writeManifest()
     }

@@ -256,6 +256,30 @@ export interface Job {
    * The job was put back as it was; the app shows SessionReplaceConfirm. Cleared by the next turn.
    */
   sessionUnavailable?: SessionUnavailable | null;
+  /**
+   * v8 (2026-10-05): what the user approved, recorded when Approve starts the apply (Review after Approve).
+   * Counts come from the checked plan and the vault before the apply: new pages by folder, existing ones as updated.
+   */
+  approvedChange?: ApprovedChange | null;
+  /** v8: the user pressed Done on this batch in Review after it was approved; it is then only in History. */
+  reviewDoneAt?: string | null;
+}
+
+/** v8: the approved change (plan counts, never the model's words). */
+export interface ApprovedChange {
+  at: string; // ISO-8601, when the user approved
+  operationID: string;
+  /** All paths the plan changes. */
+  changes: number;
+  /** New pages under wiki/sources/, wiki/concepts/, wiki/entities/, and any other new page under wiki/. */
+  sources: number;
+  concepts: number;
+  entities: number;
+  otherPages: number;
+  /** Pages under wiki/ that existed before the apply. */
+  updated: number;
+  /** Source pages in this approval (a part of a batch approves some). */
+  sourcesApproved?: number;
 }
 
 // ───────────────────────────── Session continuity ─────────────────────────────
@@ -826,6 +850,8 @@ export interface JobStep {
   file?: string;
   /** A step inside another (a file inside "Suggesting labels"). */
   parent?: string;
+  /** v8: what to do next, in plain words, on a failed apply step ("Nothing was changed. Approve again to try again."). */
+  hint?: string;
 }
 
 export interface JobStepsPage {
@@ -1666,6 +1692,15 @@ export interface DistillCore {
   jobResumeCommand(id: string, opts?: SessionOptions): Promise<string[] | null>;
   /** v7: the job's live log, as kept (GET /v1/jobs/:id/steps); not_found for an unknown job. */
   listJobSteps?(id: string): Promise<JobStepsPage>;
+  /** v8: Review after Approve: the user is done looking at an approved batch (it stays in History). */
+  finishReview?(id: string): Promise<Job>;
+  /**
+   * v8: Clean up inbox (inbox-cleanup.md). What could move to the Trash now, and what stays and why.
+   * `jobId` limits it to the files that batch used; otherwise every file in the vault's inbox/. Read-only.
+   */
+  previewInboxCleanup?(opts?: { jobId?: string; vaultPath?: string }): Promise<InboxCleanupPreview>;
+  /** v8: move these items (paths from a preview) to the Trash, each checked again first. Never automatic. */
+  cleanUpInbox?(req: InboxCleanupRequest): Promise<InboxCleanupResult>;
   /** Vault pages for the note picker (`[[`), best matches first. */
   searchPages(query: string, opts?: { vaultPath?: string; limit?: number }): Promise<{ path: string; title: string }[]>;
   /**
@@ -1823,4 +1858,60 @@ export interface StatePaths {
   token: string; // <dir>/token  (mode 0600)
   actions?: string; // <dir>/actions.json (v3)
   collectors?: string; // <dir>/collectors.json (v4); ledgers and runs in <dir>/collectors/
+}
+
+// ───────────────────────────── Inbox clean-up (v8) ─────────────────────────────
+
+/** Why a file stays in inbox/. */
+export type InboxStayReason = 'notAdded' | 'changed' | 'pageMissing' | 'inReview' | 'inQueue' | 'unreadable';
+
+/** One thing that can go to the Trash: a file, a note (with its manifest and images), or a folder item as one. */
+export interface InboxCleanupItem {
+  /** Vault-relative, e.g. inbox/foo.md or inbox/2026-10-04/Tea tasting trip. */
+  path: string;
+  kind: 'file' | 'note' | 'folder';
+  /** Other paths that go with it (a note's .distill.json and images); a folder moves whole. */
+  members?: string[];
+  /** Files it holds (1 for a file; a note's files; a folder's files). */
+  fileCount: number;
+  size: number;
+  /** The batch that used it, when known. */
+  jobId?: string;
+  jobTitle?: string;
+  /** When the ledger says it was added (YYYY-MM-DD). */
+  addedAt?: string;
+  /** The pages made from it. */
+  pages: string[];
+}
+
+export interface InboxCleanupStay {
+  path: string;
+  kind: 'file' | 'note' | 'folder';
+  reason: InboxStayReason;
+  /** "3 of 12 files not added yet", the missing page, … (names only). */
+  detail?: string;
+  fileCount: number;
+}
+
+export interface InboxCleanupPreview {
+  vaultPath: string;
+  jobId?: string;
+  items: InboxCleanupItem[];
+  stays: InboxCleanupStay[];
+  checkedAt: string;
+}
+
+export interface InboxCleanupRequest {
+  paths: string[];
+  jobId?: string;
+  vaultPath?: string;
+}
+
+export interface InboxCleanupResult {
+  moved: { path: string; fileCount: number }[];
+  /** Not moved: failed a check when it was checked again, or was not offered. */
+  stayed: InboxCleanupStay[];
+  failed: { path: string; error: string }[];
+  /** finder = moved by Finder (Put Back works); rename = moved into ~/.Trash. */
+  method: 'finder' | 'rename' | 'none';
 }

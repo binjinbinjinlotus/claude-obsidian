@@ -952,6 +952,45 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
       },
     },
     {
+      // v8: Review after Approve: Done takes an approved batch out of Review (it stays in History).
+      method: 'POST',
+      pattern: /^\/v1\/jobs\/([^/]+)\/done$/,
+      untyped: { status: 409, code: 'invalid_state' },
+      handler: async ({ params }) => {
+        requireJob(params[0]!);
+        if (typeof core.finishReview !== 'function') throw new HttpError(501, 'not_implemented', 'finishReview: not implemented by this core');
+        return apiJob(await core.finishReview(params[0]!));
+      },
+    },
+    {
+      // v8: Clean up inbox (spec inbox-cleanup.md): what could go to the Trash now. Read-only.
+      method: 'GET',
+      pattern: /^\/v1\/inbox\/cleanup$/,
+      handler: async ({ query }) => {
+        if (typeof core.previewInboxCleanup !== 'function') throw new HttpError(501, 'not_implemented', 'previewInboxCleanup: not implemented by this core');
+        const jobId = query.get('job') ?? undefined;
+        const vaultPath = query.get('vault') ?? undefined;
+        if (jobId) requireJob(jobId);
+        return core.previewInboxCleanup({ ...(jobId ? { jobId } : {}), ...(vaultPath ? { vaultPath } : {}) });
+      },
+    },
+    {
+      // v8: move the picked items to the Trash; each is checked again first.
+      method: 'POST',
+      pattern: /^\/v1\/inbox\/cleanup$/,
+      untyped: { status: 400, code: 'invalid_request' },
+      handler: async ({ body }) => {
+        if (typeof core.cleanUpInbox !== 'function') throw new HttpError(501, 'not_implemented', 'cleanUpInbox: not implemented by this core');
+        const o = asObject(await body(), false);
+        const paths = optStringArray(o, 'paths');
+        if (!paths || paths.length === 0) throw bad('"paths" must be a non-empty array of strings');
+        const jobId = typeof o.jobId === 'string' ? o.jobId : undefined;
+        const vaultPath = typeof o.vaultPath === 'string' ? o.vaultPath : undefined;
+        if (jobId) requireJob(jobId);
+        return core.cleanUpInbox({ paths, ...(jobId ? { jobId } : {}), ...(vaultPath ? { vaultPath } : {}) });
+      },
+    },
+    {
       // v7: the job's live log as kept (spec live-log.md).
       method: 'GET',
       pattern: /^\/v1\/jobs\/([^/]+)\/steps$/,

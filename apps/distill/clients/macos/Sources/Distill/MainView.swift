@@ -806,7 +806,7 @@ struct JobTabs: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(ReviewBatches.ordered(jobs)) { job in
+                ForEach(jobs) { job in // already in Review's order (waiting first, then approved)
                     let on = job.id == selected
                     Button { pick(job.id) } label: {
                         HStack(spacing: 6) {
@@ -1026,6 +1026,13 @@ struct JobDetailView: View {
 
     private func pill(_ job: Job) -> StateStyle {
         let style = StateStyle.of(job.state)
+        // v8 Review after Approve: "Adding to your vault" while the approved change goes in.
+        if ApplyTimeline.isApplying(job) {
+            return StateStyle(label: "Adding to your vault", fill: Theme.primaryTint, ink: Theme.primary, dot: Theme.primary)
+        }
+        if job.state == .completed, ApplyTimeline.showsInReview(job), job.operationID == job.approvedChange?.operationID {
+            return StateStyle(label: "Added", fill: style.fill, ink: style.ink, dot: style.dot)
+        }
         if job.state == .completed, let parts = job.parts, parts.count > 1 {
             return StateStyle(label: "Applied in \(parts.count) parts", fill: style.fill, ink: style.ink, dot: style.dot)
         }
@@ -1053,7 +1060,7 @@ struct JobDetailView: View {
                 }
             }
             Text(job.displayTitle).font(Theme.display(28)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-            if engine.isApplying(job.id) {
+            if engine.isApplying(job.id) && job.approvedChange == nil {
                 ApplyingLine(vault: URL(fileURLWithPath: job.vaultPath).lastPathComponent, start: engine.applyingSince(job.id) ?? Date())
             }
             if !parts.isEmpty {
@@ -1083,6 +1090,11 @@ struct JobDetailView: View {
     @ViewBuilder
     private func content(_ job: Job) -> some View {
         let summary = summary(job)
+        // v8: the steps after Approve, until every approved file is in the knowledge base (and why not).
+        if collapsesConversation { // Review (History has Show steps in the heading, and less width)
+            ApplyProgressCard(store: engine.jobSteps, job: job, onShowSteps: { showSteps = true })
+        }
+        InboxCleanupResultLine(store: engine.inboxCleanup, jobID: job.id)
         // What needs the user (plan error, questions, blocked tools with
         // "Allow & continue") comes first, so it is visible without scrolling
         // even at the 900 × 600 minimum window.
@@ -1115,7 +1127,7 @@ struct JobDetailView: View {
                 ReviewNotice(tone: .blue, title: "Rebuilding the change for your \(n == 1 ? "source" : "\(n) sources")…",
                              text: "In this batch’s own \(runnerName(job)) session (the one that read these notes). Your source pages and their labels stay exactly as you saw them; the index, log, hot cache, overview and ledgers are written again for just these.",
                              busy: true)
-            } else {
+            } else if !ApplyTimeline.isApplying(job) {
                 BatchBanner(job: job, showsCancel: false, onShowSteps: { showSteps = true })
             }
         }
@@ -1133,6 +1145,7 @@ struct JobDetailView: View {
         if let summary = job.actionsFound { JobActionsLine(job: job, summary: summary) }
         ReviewGroupsView(job: job, summary: summary, unpicked: $unpicked, editingPage: $editingPage, editDraft: $editDraft,
                          labelError: $labelError, overrides: $groupOverrides, hoverPage: hoverPage,
+                         openable: collapsesConversation && job.state == .completed && job.approvedChange != nil && job.operationID == job.approvedChange?.operationID,
                          open: { open(job: job, path: $0) })
         if job.approval?.sources == nil || !(job.folders ?? []).isEmpty, !job.files.isEmpty || !(job.folders ?? []).isEmpty {
             // A folder shows once (QueueItems cards 2 and 3): its files and their pages on Review, its tree in History.
@@ -1279,6 +1292,14 @@ struct JobDetailView: View {
                     }
                     PrimaryButton(title: part.expected.count == 1 ? "Approve 1 source" : "Approve \(part.expected.count) sources",
                                   systemImage: "checkmark", enabled: false) {}
+                } else if ApplyTimeline.isApplying(job) {
+                    // v8: nothing needs you while the approved change goes in (Show steps is in the heading and the card).
+                    Spacer()
+                    HStack(spacing: 6) {
+                        Spinner(color: Theme.muted, size: 11)
+                        Text("Adding to \(URL(fileURLWithPath: job.vaultPath).lastPathComponent) · you can leave this screen")
+                            .font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
+                    }
                 } else {
                     Text("Claude is working on it…").font(Theme.body(13)).foregroundStyle(Theme.muted)
                     Spacer()
@@ -1288,14 +1309,26 @@ struct JobDetailView: View {
                 Spacer()
                 SoftButton(title: "Send reply") { send(job) }
                     .disabled(reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if collapsesConversation && ApplyTimeline.showsInReview(job) {
+                    PrimaryButton(title: "Done") { engine.finishReview(job.id) }
+                        .help("Take this batch out of Review; it stays in History")
+                }
             case .completed, .rejected:
                 if let parts = job.parts, parts.count > 1 {
                     Text("\(parts.count) operations · \(parts.map(\.operationID).joined(separator: ", "))")
                         .font(Theme.body(12)).foregroundStyle(Theme.faint).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
                 } else if let op = job.operationID {
-                    Text("Operation \(op)").font(Theme.body(12)).foregroundStyle(Theme.faint).textSelection(.enabled)
+                    Text("Operation \(op)").font(Theme.body(12)).foregroundStyle(Theme.faint).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
                 }
                 Spacer()
+                // v8: Clean up inbox, only when you ask (never automatic).
+                if InboxCleanupButton.applies(to: job) {
+                    InboxCleanupButton(store: engine.inboxCleanup, job: job)
+                }
+                if collapsesConversation && ApplyTimeline.showsInReview(job) {
+                    PrimaryButton(title: "Done") { engine.finishReview(job.id) }
+                        .help("Take this batch out of Review; it stays in History")
+                }
             }
         }
         .padding(.horizontal, Self.sidePadding).padding(.vertical, 18)
