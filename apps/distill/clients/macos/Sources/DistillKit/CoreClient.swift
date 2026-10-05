@@ -165,6 +165,11 @@ public final class CoreClient: Sendable {
         let _: JSONValue = try await send("DELETE", "/v1/jobs/\(Self.segment(id))", body: Optional<JSONValue>.none)
     }
 
+    /// v7 `GET /v1/jobs/:id/steps`: the job's live log as kept.
+    public func jobSteps(_ id: String) async throws -> JobStepsPage {
+        try await get("/v1/jobs/\(Self.segment(id))/steps")
+    }
+
     /// `GET /v1/jobs/:id/resume`: the argv that reopens the job's runner session interactively.
     public func jobResume(_ id: String) async throws -> ResumeCommand {
         try await get("/v1/jobs/\(Self.segment(id))/resume")

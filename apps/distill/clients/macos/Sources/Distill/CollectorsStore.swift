@@ -245,7 +245,12 @@ struct CollectedSheet: Equatable {
 @MainActor
 final class CollectorsStore: ObservableObject {
     enum Phase: Equatable { case idle, loading, loaded, unavailable, failed(String) }
-    enum Page: Equatable { case overview, allRuns }
+    enum Page: Equatable {
+        case overview, allRuns
+        /// v7 live log: a run's or an install's whole output, in place of the detail (‹ goes back to `back`).
+        case log(CollectorLogTarget, back: LogBack)
+    }
+    enum LogBack: Equatable { case overview, allRuns }
 
     @Published var collectors: [Collector] = []
     @Published var phase: Phase = .idle
@@ -257,6 +262,8 @@ final class CollectorsStore: ObservableObject {
     @Published var live: [String: CollectorRun] = [:]
     /// Live output per run id.
     @Published var output: [String: (stdout: String, stderr: String)] = [:]
+    /// v7: live output per run id, both streams in order (the log view).
+    @Published var ordered: [String: [CollectorOutputChunk]] = [:]
     /// Opened (expanded) run lines.
     @Published var openRuns: Set<String> = []
     /// The settings form, for the selected collector.
@@ -448,6 +455,7 @@ final class CollectorsStore: ObservableObject {
         var o = output[runId] ?? ("", "")
         if stream == "stderr" { o.stderr = String((o.stderr + text).suffix(64 * 1024)) } else { o.stdout = String((o.stdout + text).suffix(64 * 1024)) }
         output[runId] = o
+        ordered[runId] = LiveLog.append(ordered[runId] ?? [], stream: stream, text: text, at: Date())
     }
 
     func runFinished(_ run: CollectorRun) {
@@ -457,6 +465,8 @@ final class CollectorsStore: ObservableObject {
         list.insert(run, at: 0)
         runs[run.collectorId] = list
         output[run.id] = nil
+        // The saved run carries its own ordered log; an older core's doesn't, so the live one stays for this session.
+        if !run.outputLog.isEmpty { ordered[run.id] = nil }
         busy[run.collectorId] = nil
         // The status (lastRun, lastTestRun, the sidebar count) follows the run.
         refresh(run.collectorId)
@@ -819,4 +829,48 @@ final class CollectorsStore: ObservableObject {
 
 extension AppModel {
     var collectors: CollectorsStore { CollectorsStore.of(self) }
+}
+
+
+/// v7: what a collector log shows: a run's output, or a package install's.
+enum CollectorLogTarget: Equatable {
+    case run(collectorId: String, runId: String)
+    case install(collectorId: String, installId: String)
+}
+
+extension CollectorsStore {
+    /// Show log / Open log: the whole output in place of the detail.
+    func openLog(_ target: CollectorLogTarget) {
+        let back: LogBack = page == .allRuns ? .allRuns : .overview
+        switch target {
+        case .run(let id, _), .install(let id, _): selected = id
+        }
+        page = .log(target, back: back)
+    }
+
+    func closeLog() {
+        if case .log(_, let back) = page { page = back == .allRuns ? .allRuns : .overview } else { page = .overview }
+    }
+
+    var logTarget: CollectorLogTarget? {
+        if case .log(let t, _) = page { return t }
+        return nil
+    }
+
+    /// A run by id: live, recent, or the status's last run.
+    func run(_ collectorId: String, _ runId: String) -> CollectorRun? {
+        if let r = live[collectorId], r.id == runId { return r }
+        if let r = runs[collectorId]?.first(where: { $0.id == runId }) { return r }
+        let c = collectors.first { $0.id == collectorId }
+        return [c?.lastRun, c?.status?.script?.lastTestRun].compactMap { $0 }.first { $0.id == runId }
+    }
+
+    /// The run's output in order: live while it runs, then what the core kept. Nil when only
+    /// the separate tails exist (a run saved before v7): the log shows Output, then stderr.
+    func orderedOutput(_ run: CollectorRun) -> [CollectorOutputChunk]? {
+        if !run.outputLog.isEmpty { return run.outputLog }
+        if let live = ordered[run.id], !live.isEmpty { return live }
+        if run.result == .running || run.result == .queued { return [] }
+        return nil
+    }
 }

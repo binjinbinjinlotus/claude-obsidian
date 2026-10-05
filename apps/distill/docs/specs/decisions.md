@@ -3,7 +3,7 @@ type: spec
 title: Decisions
 status: built
 created: 2026-10-02
-updated: 2026-10-04
+updated: 2026-10-05
 tags:
   - distill
   - decisions
@@ -14,6 +14,44 @@ tags:
 Newest first. Each entry: what was decided, why, and where it lives. Add an
 entry in the same change that makes a decision; never rewrite an old one —
 supersede it with a new entry.
+
+## 2026-10-05
+
+- **Live log: one view for a batch's steps and a collector's output, opened
+  in place.** Spec: [Live log](live-log.md). The owner asked for the
+  progress of a batch and for a collector's live output. A real batch
+  showed nothing for four minutes, from 03:33:13Z to 03:37:08Z, while
+  labels were suggested file by file.
+  - **In place, not a panel or a window.** A side panel crowds an 890 pt
+    window. A separate window splits the app. Collectors' All runs and
+    Activity's narrow detail already push a view with "‹ back". The batch
+    card on Queue keeps a one-line **Now** so the common question needs no
+    click.
+  - **Claude Code streams only when the live log asks.** `stream-json
+    --verbose` is chosen when `RunRequest.onStep` is set, so it covers
+    batch turns only; Ask, labels and actions keep `json`. Its final
+    `result` event decodes through the same `parseClaudeJSON`. With the
+    real CLI and `--json-schema`, the structured output came out identical
+    in both modes. The alternative was tailing Claude's transcript file
+    (`~/.claude/projects/<cwd>/<session>.jsonl`). It was rejected because
+    the path and format are Claude Code internals; stream-json is the
+    published interface.
+  - **Steps are plain words with the raw target behind Details, and never
+    contents.** No file text, tool results, draft text or keys. The AI's
+    own notes are cut to 280 characters. Each job keeps 2,000 steps or
+    512 KB, and the log goes when the job goes.
+  - **The engine change is a sink, not a rewrite.** Another teammate is
+    editing the engine. Only runner steps and per-file label progress come
+    through `EngineOptions.steps`. Every other step is derived from `job`
+    and `progress` events in `core/src/steps/`. The label loop gets two
+    calls and a `current` field on its existing progress events, which
+    holds up as that loop becomes a three-wide pool.
+  - **Collector output is kept in order from now on.** `run.outputLog`
+    holds the last 64 KB with stream and time. Older runs show Output, then
+    stderr, rather than a guessed interleaving.
+  - **The runtime shows quietly.** The log header and an opened run show
+    the runtime, for example "python3 (.venv) · ~/…/python3", from
+    `run.runtime` and `install.runtime`. Owner-approved, 2026-10-05.
 
 ## 2026-10-04
 

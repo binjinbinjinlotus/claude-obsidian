@@ -113,7 +113,8 @@ export function toolWords(step: Extract<RunnerStep, { kind: 'tool' }>, ctx: Word
       return { verb: 'search', text: `Searched for “${clip(redact(pattern), 60)}”`, detail: d(`Grep · “${pattern}”${p ? ` in ${shownPath(p, ctx)}` : ''}`) };
     }
     case 'Glob': {
-      const pattern = str(input.pattern);
+      const raw = str(input.pattern);
+      const pattern = raw.startsWith('/') ? shownPath(raw, ctx) : raw;
       return { verb: 'search', text: `Looked for files (${clip(pattern, 60)})`, detail: d(`Glob · ${pattern}${str(input.path) ? ` in ${shownPath(str(input.path), ctx)}` : ''}`) };
     }
     case 'Bash': {

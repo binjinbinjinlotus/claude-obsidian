@@ -243,7 +243,7 @@ job.
 | partial writes | write to a temporary name and rename it, or rely on the settle delay: a file still changing is not batched |
 | exit | `0` = success; anything else = failed. Files the script already wrote stay in the queue |
 | timeout | default 5 minutes, maximum 1 hour. At the timeout Distill sends SIGTERM to the process group, then SIGKILL 10 s later; the run is logged as "timed out" |
-| output | stdout and stderr captured separately; the last 64 KB of each is kept |
+| output | stdout and stderr captured separately; the last 64 KB of each is kept. v7: `run.outputLog` also keeps both streams in order (last 64 KB, `{stream, text, at}`) for the [live log](live-log.md) |
 
 Distill never reads a script's output as note content. Only files in the
 queue folder go into batches.
@@ -983,3 +983,13 @@ Open from v6 (script files and packages), for the owner:
   install when a script is added; Test run built; restore through the one
   trash (Activity). `--ignore-scripts` stays open: npm install scripts run
   under the manifest OK.
+
+## Live log (v7, 2026-10-05)
+
+**Show log** sits over the status card's last lines (running, installing,
+Run now result, a failed run or install), and **Show log** replaces Show
+output on a Test run. **Open log** sits next to Copy output in an opened
+script run. Each one opens the whole output in place of the detail
+(‹ back). In an 890 pt window it takes the whole window. The log header
+and an opened run show the runtime ("python3 (.venv) · ~/…/python3"). See
+[Live log](live-log.md).

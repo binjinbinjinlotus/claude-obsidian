@@ -248,6 +248,7 @@ describe('plain words', () => {
     assert.equal(toolWords({ kind: 'tool', tool: 'StructuredOutput', input: {} }, ctx), undefined);
     assert.equal(toolWords({ kind: 'tool', tool: 'mcp.thing', input: {} }, ctx)!.text, 'Used mcp.thing');
     assert.equal(unwrapShell('/bin/zsh -lc "ls -la"'), 'ls -la');
+    assert.equal(toolWords({ kind: 'tool', tool: 'Glob', input: { pattern: '/Users/me/product/skills/**/SKILL.md' } }, ctx)!.text, 'Looked for files (…/**/SKILL.md)');
   });
   test('keys and long notes', () => {
     assert.equal(redact('curl -H "Authorization: Bearer abcdefghijklmnop" https://x'), 'curl -H "Authorization: Bearer •••" https://x');

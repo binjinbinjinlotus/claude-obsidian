@@ -21,8 +21,10 @@ struct CollectorStatusCard: View {
         /// A header over the terminal ("OUTPUT · LAST LINES") with Copy output, and Hide for a manual run.
         var outputTitle: String?
         var hide = false
-        /// A Test run's files (name, size) with Reveal in Finder and Show output.
+        /// A Test run's files (name, size) with Reveal in Finder and Show log.
         var testRun: CollectorRun?
+        /// v7: Show log opens the whole output.
+        var log: CollectorLogTarget?
         var buttons: [(String, String?, () -> Void)] = []
     }
 
@@ -43,11 +45,15 @@ struct CollectorStatusCard: View {
             if let run = content.testRun { testFiles(run) }
             if !content.terminal.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    if let title = content.outputTitle {
+                    if let title = content.outputTitle ?? (content.log != nil ? (content.stderr ? "STDERR · LAST LINES" : "OUTPUT · LAST LINES") : nil) {
                         HStack(spacing: 12) {
                             Text(title).font(Theme.body(10, .heavy)).kerning(0.6).foregroundStyle(content.stderr ? Theme.peachInk : Theme.faint)
                             Spacer()
-                            CopyOutputButton(lines: content.terminal)
+                            if content.outputTitle != nil { CopyOutputButton(lines: content.terminal) }
+                            if let log = content.log {
+                                Button { store.openLog(log) } label: { Text("Show log").font(Theme.body(11.5, .semibold)).foregroundStyle(Theme.primary) }
+                                    .buttonStyle(.plain)
+                            }
                             if content.hide {
                                 Button { store.hideResult(c) } label: { Text("Hide").font(Theme.body(11, .semibold)).foregroundStyle(Theme.primary) }
                                     .buttonStyle(.plain)
@@ -147,10 +153,9 @@ struct CollectorStatusCard: View {
             }
             .buttonStyle(.plain)
         }
-        Button {
-            if open { store.testOutputOpen.remove(run.id) } else { store.testOutputOpen.insert(run.id) }
-        } label: {
-            Text(open ? "Hide output" : "Show output").font(Theme.body(11.5, .semibold)).foregroundStyle(Theme.primary).fixedSize()
+        // v7: the Test run's whole output opens in the log view.
+        Button { store.openLog(.run(collectorId: collector.id, runId: run.id)) } label: {
+            Text("Show log").font(Theme.body(11.5, .semibold)).foregroundStyle(Theme.primary).fixedSize()
         }
         .buttonStyle(.plain)
     }
@@ -225,7 +230,8 @@ struct CollectorStatusCard: View {
         line += " Stops after 10 minutes."
         let lines = store.installLines(c)
         _ = text
-        return Content(tone: .running, title: "Installing packages · \(elapsed)", lines: [line], terminal: Array(lines.suffix(8)))
+        return Content(tone: .running, title: "Installing packages · \(elapsed)", lines: [line], terminal: Array(lines.suffix(8)),
+                       log: install.map { .install(collectorId: c.id, installId: $0.id) })
     }
 
     private func installFailed(_ c: Collector) -> Content {
@@ -237,6 +243,7 @@ struct CollectorStatusCard: View {
         return Content(tone: .error, title: "Couldn’t install packages\(exit)",
                        lines: ["\(tool) couldn’t install them, so nothing runs: not on schedule, not with Run now, until the packages install. Fix \(name), then Install again. It isn’t retried every hour."],
                        terminal: Array(store.installLines(c).suffix(6)), stderr: true, outputTitle: "INSTALL OUTPUT · LAST LINES",
+                       log: install.map { .install(collectorId: c.id, installId: $0.id) },
                        buttons: [("Install again", "arrow.clockwise", { store.install(c) }),
                                  ("Open \(name)", nil, { store.openInEditor(path) })])
     }
@@ -266,7 +273,8 @@ struct CollectorStatusCard: View {
             while terminal.last == "" { terminal.removeLast() }
             terminal = Array(terminal.suffix(8))
         }
-        return Content(tone: .running, title: text.runningLine(c, run: run, now: store.now), lines: lines, terminal: terminal)
+        return Content(tone: .running, title: text.runningLine(c, run: run, now: store.now), lines: lines, terminal: terminal,
+                       log: c.isScript ? run.map { .run(collectorId: c.id, runId: $0.id) } : nil)
     }
 
     /// Run now's result, right away: one sentence, the schedule, and the last output lines.
@@ -290,7 +298,8 @@ struct CollectorStatusCard: View {
             if let next { line += (line.isEmpty ? "" : " ") + "It also keeps its schedule: next \(next)." }
             let out = tail(r.stdoutTail, 6)
             return Content(tone: .success, title: "Run now · \(did) \(when)", lines: line.isEmpty ? [] : [line],
-                           terminal: c.isScript && !out.isEmpty ? command + out : [], outputTitle: "OUTPUT · LAST LINES", hide: true)
+                           terminal: c.isScript && !out.isEmpty ? command + out : [], outputTitle: "OUTPUT · LAST LINES", hide: true,
+                           log: c.isScript ? .run(collectorId: c.id, runId: r.id) : nil)
         case .stopped:
             return Content(title: "Run now · stopped \(when)", lines: [r.counts.added > 0 ? "It added \(CollectorText.files(r.counts.added)) before you stopped it." : "You stopped it. It stays on schedule."],
                            terminal: c.isScript ? command + tail(r.stdoutTail ?? r.stderrTail, 6) : [], outputTitle: "OUTPUT · LAST LINES", hide: true)
@@ -302,7 +311,8 @@ struct CollectorStatusCard: View {
             if let m = r.error?.message, !m.isEmpty, c.isScript, r.error?.code != .scriptFailed { lines.append(m) }
             let err = tail(r.stderrTail, 6)
             return Content(tone: .error, title: "Run now · failed\(exit)", lines: lines,
-                           terminal: c.isScript && !err.isEmpty ? command + err : [], stderr: true, outputTitle: "STDERR · LAST LINES", hide: true)
+                           terminal: c.isScript && !err.isEmpty ? command + err : [], stderr: true, outputTitle: "STDERR · LAST LINES", hide: true,
+                           log: c.isScript ? .run(collectorId: c.id, runId: r.id) : nil)
         }
     }
 
@@ -385,7 +395,8 @@ struct CollectorStatusCard: View {
                     lines.append((r.counts.added > 0 ? "Added \(CollectorText.files(r.counts.added)); they stay in the queue." : "Added nothing.") + (nextLine.map { " " + $0 } ?? ""))
                 }
                 if let m = r.error?.message, !m.isEmpty, r.error?.code != .scriptFailed { lines.append(m) }
-                return Content(tone: .error, title: "Failed \(when)\(exit)", lines: lines, terminal: tail(r.stderrTail, 6), stderr: true)
+                return Content(tone: .error, title: "Failed \(when)\(exit)", lines: lines, terminal: tail(r.stderrTail, 6), stderr: true,
+                               log: c.isScript ? .run(collectorId: c.id, runId: r.id) : nil)
             }
         }
     }

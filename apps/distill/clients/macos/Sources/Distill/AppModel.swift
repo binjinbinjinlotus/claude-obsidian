@@ -182,6 +182,7 @@ final class AppModel: ObservableObject {
         actions.load()
         collectors.load()
         activity.reconnected()
+        jobSteps.reconnected()
     }
 
     private func apply(_ event: CoreEvent) {
@@ -230,6 +231,8 @@ final class AppModel: ObservableObject {
             applyScan(result)
         case .activity(let entry):
             activity.received(entry)
+        case .jobStep(let jobId, let step):
+            jobSteps.received(jobId: jobId, step: step)
         case .unknown:
             break
         }
