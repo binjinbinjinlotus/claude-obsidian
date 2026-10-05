@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_QUEUE_SCAN_MINUTES,
   DEFAULT_SOURCE_TAXONOMY,
+  type AgentRunner,
   runnerSupports,
   type AddNoteRequest,
   type AddNoteResult,
@@ -22,6 +23,9 @@ import {
   type Progress,
   type QueueEntry,
   type QueueScanResult,
+  type SessionAction,
+  type SessionOptions,
+  type SessionUnavailable,
   type RunRequest,
   type RunResult,
   type RunnerRegistry,
@@ -56,6 +60,8 @@ import {
 import { gateBreakingReason, uniqueDenials } from '../runners/permissions.js';
 import { isCancelled, runProcess, type ProcessOutput, type RunProcessOptions } from '../runners/process.js';
 import { defaultRegistry } from '../runners/registry.js';
+import { checkResume, resumeFailure, sessionUnavailableError, type ResumeTarget } from '../runners/session.js';
+import { batchNeverStarted, CANCELLED_BEFORE_FIRST_TURN, newSessionPrompt, savedLabelPlan, terminalSeed } from './session-seed.js';
 import {
   JobContext,
   jobKind,
@@ -136,8 +142,12 @@ export type RunnerAdminOwned = 'listRunners' | 'setRunnerSecret';
 export interface EngineExtras {
   /** Remove a finished job (completed, failed, rejected, cancelled) from the list; else invalid_state. */
   deleteJob(id: string): Promise<void>;
-  /** argv that reopens the job's AI session in a terminal, or null when there is none. */
-  jobResumeCommand(id: string): Promise<string[] | null>;
+  /**
+   * argv that reopens the job's AI session in a terminal, or null when there is none.
+   * A session that is gone throws `session_unavailable` (place terminal); `newSession` returns
+   * argv for a new interactive session primed with the batch instead (the job is not changed).
+   */
+  jobResumeCommand(id: string, opts?: SessionOptions): Promise<string[] | null>;
   /** Move a file in the active queue folder to the Trash; returns the queue afterwards. */
   removeQueueEntry(path: string): Promise<QueueEntry[]>;
   /** v3: record what "Finding actions" found for a job (actions service). */
@@ -150,12 +160,37 @@ export interface EngineExtras {
   findJobActions?(id: string): Promise<Job>;
 }
 
+export interface ResumeBatchOptions {
+  job: Job;
+  prompt: string;
+  /** Rules for this turn only (the exact approved apply command). */
+  extraTools?: string[];
+  /** The plan an approved apply turn runs. */
+  applyPlan?: TransactionPlan;
+  action?: SessionAction;
+  /**
+   * The job as it was before the caller changed it (user turn, granted tools). When the session
+   * turns out to be gone, before or at the resume, the job is put back to exactly this.
+   */
+  snapshot?: Job;
+  /** What to send again after Continue (reply text / allow rules). */
+  text?: string;
+  rules?: string[];
+}
+
+export type ResumeBatchOutcome = { kind: 'started' } | ({ kind: 'session_unavailable' } & SessionUnavailable);
+
 /** Steps of a batch, in order (`Progress.steps`); "Suggesting labels" only when the batch has a label pre-step. */
 export const BATCH_STEPS = ['Moved to inbox', 'Suggesting labels', 'Read sources', 'Drafting page changes', 'Ready for review'] as const;
 
 export type Engine = Pick<DistillCore, EngineOwned> & EngineExtras & {
   readonly runners: RunnerRegistry;
   readonly paths: StatePaths;
+  /**
+   * Session continuity seam (review-labels' approve paths plug in here): resumes the batch's
+   * session with `prompt`, or reports that it is gone. Every batch resume goes through it.
+   */
+  resumeBatchSession(o: ResumeBatchOptions): ResumeBatchOutcome;
   /** Resolves once no turn or inspect is in flight (tests, headless runs). */
   whenIdle(): Promise<void>;
 };
@@ -580,7 +615,14 @@ export function createEngine(opts: EngineOptions): Engine {
   function runTurn(
     id: string,
     prompt: string,
-    extra: { extraTools?: string[]; first?: boolean; /** Set only for the turn approve() starts to run this plan's apply. */ applyPlan?: TransactionPlan } = {},
+    extra: {
+      extraTools?: string[];
+      first?: boolean;
+      /** Set only for the turn approve() starts to run this plan's apply. */
+      applyPlan?: TransactionPlan;
+      /** A resume through resumeBatchSession: what to restore when the runner says the session is gone. */
+      resumeOf?: { target: ResumeTarget; snapshot?: Job; text?: string; rules?: string[] };
+    } = {},
   ): void {
     const job = findJob(id);
     if (!job) return;
@@ -603,6 +645,7 @@ export function createEngine(opts: EngineOptions): Engine {
     mutate(id, (j) => {
       j.state = 'running';
       delete j.error;
+      delete j.sessionUnavailable; // the next turn clears an earlier "session gone" marker
     });
     const ctx = new JobContext(clone(job), vault, settings);
     const controller = new AbortController();
@@ -637,11 +680,18 @@ export function createEngine(opts: EngineOptions): Engine {
           }
           await handle(result, id, vault, extra.applyPlan);
         } catch (err) {
+          const gone = extra.resumeOf && !extra.first ? resumeFailure(extra.resumeOf.target, err) : null;
           if (isCancelled(err) || controller.signal.aborted) {
             mutate(id, (j) => {
               j.state = 'cancelled';
               j.turns.push(newTurn('app', 'Cancelled. Reply to resume the session.', now()));
             });
+          } else if (gone && extra.resumeOf) {
+            // The runner refused the resume: put the job back as it was and ask the user (SessionReplaceConfirm).
+            const marker: SessionUnavailable = { ...gone };
+            if (extra.resumeOf.text !== undefined) marker.text = extra.resumeOf.text;
+            if (extra.resumeOf.rules !== undefined) marker.rules = [...extra.resumeOf.rules];
+            restoreJob(id, extra.resumeOf.snapshot, marker);
           } else {
             fail(id, err instanceof Error ? err.message : String(err));
           }
@@ -866,7 +916,7 @@ export function createEngine(opts: EngineOptions): Engine {
           if (controller.signal.aborted) {
             mutate(job.id, (j) => {
               j.state = 'cancelled';
-              j.turns.push(newTurn('app', 'Cancelled before the first turn.', now()));
+              j.turns.push(newTurn('app', CANCELLED_BEFORE_FIRST_TURN, now()));
             });
             return;
           }
@@ -882,7 +932,7 @@ export function createEngine(opts: EngineOptions): Engine {
     return clone(findJob(job.id) ?? job);
   }
 
-  async function approve(id: string): Promise<void> {
+  async function approve(id: string, opts: SessionOptions = {}): Promise<void> {
     const job = requireJob(id);
     if (job.state !== 'awaitingApproval') throw new CoreError('invalid_state', `Job ${id} is not awaiting approval.`);
     const plan = job.approval?.plan;
@@ -905,29 +955,55 @@ export function createEngine(opts: EngineOptions): Engine {
       track(applyInCore(id, plan, bundle));
       return;
     }
+    const approvedTurn = `Approved ${plan.operation_id} (${plan.approval_sha256.slice(0, 12)}…)`;
+    if (opts.newSession) {
+      continueInNewSession(id, 'approve', { userTurn: approvedTurn, plan, bundle });
+      applying(true);
+      return;
+    }
+    const gone = precheck(job, 'approve');
+    if (gone) throw sessionUnavailableError(gone);
+    const snapshot = clone(job);
     const ctx = new JobContext(clone(job), vaultProfileFor(job), settings);
     // Only the exact approved command is permitted, and only for this turn.
     const applyRule = `Bash(${WorkerProtocol.applyCommand(ctx, plan, bundle)})`;
-    mutate(id, (j) => j.turns.push(newTurn('user', `Approved ${plan.operation_id} (${plan.approval_sha256.slice(0, 12)}…)`, now())));
+    mutate(id, (j) => j.turns.push(newTurn('user', approvedTurn, now())));
     applying(true);
-    runTurn(id, WorkerProtocol.approvedPrompt(ctx, plan, bundle), { extraTools: [applyRule], applyPlan: clone(plan) });
+    const out = resumeBatchSession({
+      job: findJob(id) ?? job,
+      prompt: WorkerProtocol.approvedPrompt(ctx, plan, bundle),
+      extraTools: [applyRule],
+      applyPlan: clone(plan),
+      action: 'approve',
+      snapshot,
+    });
+    if (out.kind === 'session_unavailable') throw sessionUnavailableError(out);
   }
 
-  async function reply(id: string, text: string): Promise<void> {
+  async function reply(id: string, text: string, opts: SessionOptions = {}): Promise<void> {
     const trimmed = text.trim();
     if (!trimmed) throw new CoreError('invalid_request', 'Reply text is empty.');
     const job = requireJob(id);
     requireSession(job);
     if (job.state === 'running') throw new CoreError('busy', `Job ${id} is running.`);
     if (job.state !== 'awaitingApproval' && holdsOtherJob(job)) throw new CoreError('busy', 'Another job holds this vault.');
+    if (opts.newSession) {
+      startTurnProgress(job, 'Drafting page changes', 'Working on your reply in a new session');
+      continueInNewSession(id, 'reply', { userTurn: trimmed, text: trimmed });
+      return;
+    }
+    const gone = precheck(job, 'reply', { text: trimmed });
+    if (gone) throw sessionUnavailableError(gone);
+    const snapshot = clone(job);
     mutate(id, (j) => j.turns.push(newTurn('user', trimmed, now())));
     const current = findJob(id);
     if (current) startTurnProgress(current, 'Drafting page changes', 'Working on your reply');
-    runTurn(id, WorkerProtocol.replyPrompt(trimmed));
+    const out = resumeBatchSession({ job: current ?? job, prompt: WorkerProtocol.replyPrompt(trimmed), action: 'reply', snapshot, text: trimmed });
+    if (out.kind === 'session_unavailable') throw sessionUnavailableError(out);
   }
 
   /** Grants rules for previously denied calls for the rest of this job, then resumes. */
-  async function allow(id: string, rules: string[]): Promise<void> {
+  async function allow(id: string, rules: string[], opts: SessionOptions = {}): Promise<void> {
     const clean = rules.map((r) => r.trim()).filter(Boolean);
     if (clean.length === 0) throw new CoreError('invalid_request', 'No rules to allow.');
     const job = requireJob(id);
@@ -946,13 +1022,23 @@ export function createEngine(opts: EngineOptions): Engine {
         `Distill can't allow ${refused.join('; ')}. ${refused.length === 1 ? 'It' : 'They'} would change the vault without your review; reply with guidance instead.`,
       );
     }
+    const allowedTurn = 'Allowed:\n' + clean.map((r) => `- ${r}`).join('\n');
+    if (opts.newSession) {
+      startTurnProgress(job, 'Drafting page changes', 'Continuing with the tools you allowed, in a new session');
+      continueInNewSession(id, 'allow', { userTurn: allowedTurn, rules: clean });
+      return;
+    }
+    const gone = precheck(job, 'allow', { rules: clean });
+    if (gone) throw sessionUnavailableError(gone);
+    const snapshot = clone(job);
     mutate(id, (j) => {
       j.grantedTools = [...new Set([...j.grantedTools, ...clean])].sort();
-      j.turns.push(newTurn('user', 'Allowed:\n' + clean.map((r) => `- ${r}`).join('\n'), now()));
+      j.turns.push(newTurn('user', allowedTurn, now()));
     });
     const current = findJob(id);
     if (current) startTurnProgress(current, 'Drafting page changes', 'Continuing with the tools you allowed');
-    runTurn(id, WorkerProtocol.grantedPrompt(clean));
+    const out = resumeBatchSession({ job: current ?? job, prompt: WorkerProtocol.grantedPrompt(clean), action: 'allow', snapshot, rules: clean });
+    if (out.kind === 'session_unavailable') throw sessionUnavailableError(out);
   }
 
   async function reject(id: string): Promise<void> {
@@ -996,12 +1082,142 @@ export function createEngine(opts: EngineOptions): Engine {
     refreshQueue();
   }
 
-  async function jobResumeCommand(id: string): Promise<string[] | null> {
+  async function jobResumeCommand(id: string, opts: SessionOptions = {}): Promise<string[] | null> {
     const job = requireJob(id);
     if (jobKind(job.kind)?.appliesInCore) return null; // no AI session
     const runner = runners.get(jobRunnerID(job));
+    const gone = precheck(job, 'resume', {}, 'terminal');
+    if (opts.newSession) {
+      // A new interactive session primed with the batch; the job keeps its own session record.
+      const kind = jobKind(job.kind);
+      let target: { runner: AgentRunner | undefined; model: string } = { runner, model: job.model };
+      if (!runner?.newSessionCommand && kind) {
+        const fallback = selectionFor(settings, kind.task);
+        target = { runner: runners.get(fallback.runnerID), model: fallback.model };
+      }
+      const argv = target.runner?.newSessionCommand?.(terminalSeed(job), target.model, clone(settings));
+      if (!argv || argv.length === 0) return null;
+      emit({ type: 'session.replaced', place: 'terminal', objectID: job.id, ...(gone ? { reason: gone.reason } : {}) });
+      return argv;
+    }
+    if (gone) throw sessionUnavailableError(gone);
     const argv = runner?.resumeCommand?.(job.sessionID, job.model, clone(settings));
     return argv && argv.length > 0 ? argv : null;
+  }
+
+  // ───────────── session continuity ─────────────
+
+  function resumeTarget(job: Job, action: SessionAction, place: 'batch' | 'terminal' = 'batch'): ResumeTarget {
+    const runnerID = jobRunnerID(job);
+    return { place, runner: runners.get(runnerID), runnerID, sessionID: job.sessionID, neverStarted: batchNeverStarted(job), action };
+  }
+
+  /** Before changing anything: is the batch's session gone? (positive evidence only) */
+  function precheck(
+    job: Job,
+    action: SessionAction,
+    extra: { text?: string; rules?: string[] } = {},
+    place: 'batch' | 'terminal' = 'batch',
+  ): SessionUnavailable | null {
+    const gone = checkResume(resumeTarget(job, action, place));
+    if (!gone) return null;
+    if (extra.text !== undefined) gone.text = extra.text;
+    if (extra.rules !== undefined) gone.rules = [...extra.rules];
+    return gone;
+  }
+
+  /**
+   * Puts a job back exactly as it was before a resume that could not happen. `marker` is set when
+   * the runner refused after the turn started (the app shows the confirmation from it).
+   */
+  function restoreJob(id: string, snapshot: Job | undefined, marker?: SessionUnavailable): void {
+    const i = jobs.findIndex((j) => j.id === id);
+    if (i < 0) return;
+    const restored = snapshot ? clone(snapshot) : clone(jobs[i]!);
+    if (!snapshot && restored.state === 'running') restored.state = 'awaitingApproval';
+    if (marker) restored.sessionUnavailable = marker;
+    else delete restored.sessionUnavailable;
+    restored.updatedAt = isoDate(now());
+    jobs[i] = restored;
+    persistJobs();
+    emit({ type: 'job', job: clone(restored) });
+    finishProgress(id, { patch: { message: 'Needs a new session' } });
+  }
+
+  function resumeBatchSession(o: ResumeBatchOptions): ResumeBatchOutcome {
+    const target = resumeTarget(o.job, o.action ?? 'reply');
+    const gone = checkResume(target);
+    if (gone) {
+      if (o.text !== undefined) gone.text = o.text;
+      if (o.rules !== undefined) gone.rules = [...o.rules];
+      if (o.snapshot) restoreJob(o.job.id, o.snapshot); // the caller throws; nothing it changed stays
+      return { kind: 'session_unavailable', ...gone };
+    }
+    const resumeOf: { target: ResumeTarget; snapshot?: Job; text?: string; rules?: string[] } = { target };
+    if (o.snapshot) resumeOf.snapshot = o.snapshot;
+    if (o.text !== undefined) resumeOf.text = o.text;
+    if (o.rules !== undefined) resumeOf.rules = o.rules;
+    runTurn(o.job.id, o.prompt, {
+      ...(o.extraTools ? { extraTools: o.extraTools } : {}),
+      ...(o.applyPlan ? { applyPlan: o.applyPlan } : {}),
+      resumeOf,
+    });
+    return { kind: 'started' };
+  }
+
+  /**
+   * Continue in a NEW session after the user confirmed SessionReplaceConfirm: a fresh session id,
+   * seeded with the batch (sources, labels, conversation, plan) and the pending action.
+   */
+  function continueInNewSession(
+    id: string,
+    action: 'approve' | 'reply' | 'allow',
+    o: { userTurn: string; text?: string; rules?: string[]; plan?: TransactionPlan; bundle?: string },
+  ): void {
+    const job = requireJob(id);
+    const kind = jobKind(job.kind);
+    if (!kind) throw new CoreError('invalid_state', `Unknown job kind ${job.kind}`);
+    const known = job.sessionUnavailable ?? checkResume(resumeTarget(job, action));
+    // The batch's runner may be the reason; the new session then uses the batch default.
+    const current = runners.get(jobRunnerID(job));
+    const selection = !current || !runnerSupports(current, kind.task) ? selectionFor(settings, kind.task) : undefined;
+    if (selection) {
+      const next = runners.get(selection.runnerID);
+      if (!next || !runnerSupports(next, kind.task)) throw new CoreError('invalid_state', 'No AI runner can continue this batch. Check Settings → AI runners.');
+    }
+    // The conversation so far, before the pending action is added.
+    const before = clone(job);
+    mutate(id, (j) => {
+      j.sessionID = randomUUID().toLowerCase();
+      if (selection) {
+        j.runnerID = selection.runnerID;
+        j.model = selection.model;
+        if (selection.effort) j.effort = selection.effort;
+        else delete j.effort;
+      }
+      if (o.rules) j.grantedTools = [...new Set([...j.grantedTools, ...o.rules])].sort();
+      j.turns.push(newTurn('app', 'Continued in a new AI session: the earlier one was not available. It starts with this batch’s sources, labels, conversation and plan.', now()));
+      j.turns.push(newTurn('user', o.userTurn, now()));
+      delete j.sessionUnavailable;
+    });
+    const fresh = requireJob(id);
+    const vault = vaultProfileFor(fresh);
+    const labelPlan = savedLabelPlan(jobStateDirectory(fresh));
+    const ctx = new JobContext(clone(fresh), vault, settings, labelPlan);
+    let pending: string;
+    const extra: { extraTools?: string[]; applyPlan?: TransactionPlan; first: true } = { first: true };
+    if (action === 'approve' && o.plan && o.bundle) {
+      pending = WorkerProtocol.approvedPrompt(ctx, o.plan, o.bundle);
+      extra.extraTools = [`Bash(${WorkerProtocol.applyCommand(ctx, o.plan, o.bundle)})`];
+      extra.applyPlan = clone(o.plan);
+    } else if (action === 'allow') {
+      pending = WorkerProtocol.grantedPrompt(o.rules ?? []);
+    } else {
+      pending = WorkerProtocol.replyPrompt(o.text ?? '');
+    }
+    const seedCtx = new JobContext({ ...before, sessionID: fresh.sessionID, grantedTools: fresh.grantedTools }, vault, settings, labelPlan);
+    emit({ type: 'session.replaced', place: 'batch', objectID: id, ...(known ? { reason: known.reason } : {}) });
+    runTurn(id, newSessionPrompt(kind, seedCtx, pending), extra);
   }
 
   /** Moves a pending file of the active queue folder to the Trash (a note's manifest goes with it). */
@@ -1665,6 +1881,7 @@ export function createEngine(opts: EngineOptions): Engine {
     },
     deleteJob,
     jobResumeCommand,
+    resumeBatchSession,
     removeQueueEntry,
     setJobActions(id: string, summary: JobActionsSummary) {
       mutate(id, (j) => {

@@ -31,6 +31,7 @@ import type {
   PermissionDenial,
   Settings,
 } from '../contracts.js';
+import { CoreError } from '../contracts.js';
 import { ACTION_STATUSES } from '../actions/store.js';
 import type { EngineExtras } from '../engine/index.js';
 import { suggestedRule } from '../runners/permissions.js';
@@ -131,12 +132,28 @@ function sendJSON(res: http.ServerResponse, status: number, body: unknown, extra
   res.end(payload);
 }
 
-function sendError(res: http.ServerResponse, status: number, code: string, message: string, headers: Record<string, string> = {}): void {
+function sendError(
+  res: http.ServerResponse,
+  status: number,
+  code: string,
+  message: string,
+  headers: Record<string, string> = {},
+  /** Additive fields next to code and message (e.g. a session_unavailable's place, reason, detail). */
+  details: Record<string, unknown> = {},
+): void {
   if (res.headersSent) {
     res.destroy();
     return;
   }
-  sendJSON(res, status, { error: { code, message } }, headers);
+  sendJSON(res, status, { error: { ...details, code, message } }, headers);
+}
+
+/** A CoreError's `details`, with string values passed through the secret redaction. */
+function errorDetails(err: unknown, clean: (s: string) => string): Record<string, unknown> {
+  if (!(err instanceof CoreError) || !err.details) return {};
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(err.details)) out[k] = typeof v === 'string' ? clean(v) : v;
+  return out;
 }
 
 async function readBody(req: http.IncomingMessage, limit: number): Promise<unknown> {
@@ -265,6 +282,7 @@ function parseAsk(body: unknown): AskRequest {
   const includeUnconfirmed = optBoolean(o, 'includeUnconfirmed');
   if (labelMatch) req.labelMatch = labelMatch;
   if (includeUnconfirmed !== undefined) req.includeUnconfirmed = includeUnconfirmed;
+  if (optBoolean(o, 'newSession') === true) req.newSession = true;
   return req;
 }
 
@@ -645,6 +663,7 @@ function coreErrorStatus(err: unknown, untyped?: { status: number; code: string 
     busy: 409,
     invalid_state: 409,
     no_vault: 409,
+    session_unavailable: 409,
     not_implemented: 501,
   };
   if (code && byCode[code] !== undefined) return { status: byCode[code]!, code, message };
@@ -885,10 +904,11 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
     {
       method: 'GET',
       pattern: /^\/v1\/jobs\/([^/]+)\/resume$/,
-      handler: async ({ params }) => {
+      handler: async ({ params, query }) => {
         const jobResumeCommand = extra('jobResumeCommand');
         requireJob(params[0]!);
-        const argv = await jobResumeCommand(params[0]!);
+        const newSession = ['1', 'true'].includes(query.get('newSession') ?? '');
+        const argv = await jobResumeCommand(params[0]!, newSession ? { newSession: true } : {});
         if (!argv || argv.length === 0) throw new HttpError(404, 'no_resume_command', `job "${params[0]}" has no session to resume`);
         return { argv };
       },
@@ -902,17 +922,19 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
         const action = params[1] as (typeof JOB_ACTIONS)[number];
         requireJob(id);
         const o = asObject(await body());
+        // Session continuity: the same call again with newSession after the user's OK.
+        const session = optBoolean(o, 'newSession') === true ? { newSession: true } : {};
         switch (action) {
           case 'approve':
-            await core.approve(id);
+            await core.approve(id, session);
             break;
           case 'reply':
-            await core.reply(id, reqString(o, 'text'));
+            await core.reply(id, reqString(o, 'text'), session);
             break;
           case 'allow': {
             const rules = optStringArray(o, 'rules');
             if (!rules || rules.length === 0) throw bad('"rules" must be a non-empty array of strings');
-            await core.allow(id, rules);
+            await core.allow(id, rules, session);
             break;
           }
           case 'reject':
@@ -1246,7 +1268,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         return;
       }
       const mapped = coreErrorStatus(err, matchedRoute?.untyped);
-      sendError(res, mapped.status, mapped.code, clean(mapped.message));
+      sendError(res, mapped.status, mapped.code, clean(mapped.message), {}, errorDetails(err, clean));
     }
   });
   server.requestTimeout = 0; // SSE streams are long-lived; Ask can take minutes

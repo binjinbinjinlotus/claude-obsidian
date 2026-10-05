@@ -26,6 +26,31 @@ import { ConversationStore, KeyedMutex, conversationOf, isValidConversationID, s
 import { filterPages, hasFilter, normalizeTag, readRule, scanVaultPages, type VaultPage } from './filters.js';
 import { ASK_OUTPUT_SCHEMA_TEXT, ASK_READ_ONLY_TOOLS, ASK_SYSTEM_PROMPT, buildAskPrompt } from './prompt.js';
 import { expandSources, taxonomyFrom, type SourceTaxonomy } from './taxonomy.js';
+import { checkResume, resumeFailure, sessionUnavailableError, type ResumeTarget } from '../runners/session.js';
+
+const REPLAY_TURNS = 10;
+const REPLAY_ANSWER_CHARS = 1500;
+
+/**
+ * The conversation so far for a new session that replaces a lost one: the last questions and
+ * answers (bounded), as context ahead of the new question. Same scope only (see ask()).
+ */
+export function historyReplay(record: ConversationRecord): string {
+  const turns = (record.history ?? []).slice(-REPLAY_TURNS);
+  if (turns.length === 0) return '';
+  const lines = turns.map((t, i) => {
+    const a = t.response.answer.length > REPLAY_ANSWER_CHARS ? `${t.response.answer.slice(0, REPLAY_ANSWER_CHARS)}…` : t.response.answer;
+    return `Q${i + 1}: ${t.request.question}\nA${i + 1}: ${a}`;
+  });
+  return `This conversation continues in a new session (the earlier one is no longer available). \
+The questions and answers so far, for context only; answer the new question from the vault as usual:
+
+${lines.join('\n\n')}
+
+---
+
+`;
+}
 
 export interface AskDeps {
   getSettings(): Settings;
@@ -341,13 +366,36 @@ export function createAskService(deps: AskDeps): AskService {
       );
     }
 
+    // Session continuity: a session that is gone is never resumed silently. Without newSession the
+    // call fails with session_unavailable (nothing saved); with it, a new session starts with the
+    // conversation so far. Only reached when the scope is unchanged (a scope change nulled sessionID).
+    const resumeTarget: ResumeTarget | undefined =
+      sessionID !== null ? { place: 'conversation', runner, runnerID: runner.id, sessionID, action: 'ask' } : undefined;
+    let replay = '';
+    if (resumeTarget && !req.newSession) {
+      const gone = checkResume(resumeTarget);
+      if (gone) throw sessionUnavailableError(gone);
+    } else if (resumeTarget && req.newSession && record) {
+      const gone = checkResume(resumeTarget);
+      replay = historyReplay(record);
+      sessionID = null;
+      notices.push('Started a new session: the earlier one wasn’t available, so the questions and answers so far were passed along.');
+      emit({
+        type: 'session.replaced',
+        place: 'conversation',
+        objectID: conversationID,
+        ...(gone ? { reason: gone.reason } : {}),
+        ...(record.title ? { name: record.title } : {}),
+      });
+    }
+
     const isNewSession = sessionID === null;
     const runSessionID = sessionID ?? store.newID();
     const request: RunRequest = {
       // Not the vault: Claude Code auto-approves reads inside its working
       // directories, which would bypass the per-page Read rules (verified).
       workingDirectory: workspace,
-      prompt: buildAskPrompt(question, { vaultPath, labels, sources, labelMatch, allowedPages }),
+      prompt: replay + buildAskPrompt(question, { vaultPath, labels, sources, labelMatch, allowedPages }),
       session: isNewSession ? { start: runSessionID } : { resume: runSessionID },
       selection,
       availableTools: allowedPages ? ['Skill', 'Read'] : [...ASK_READ_ONLY_TOOLS],
@@ -363,7 +411,15 @@ export function createAskService(deps: AskDeps): AskService {
       environment: { CLAUDE_OBSIDIAN_VAULT: vaultPath },
     };
 
-    const result = await runWithProgress(runner, request, settings, conversationID, signal);
+    let result: RunResult;
+    try {
+      result = await runWithProgress(runner, request, settings, conversationID, signal);
+    } catch (err) {
+      // The runner refused to resume (not found): the typed error, nothing saved.
+      const gone = resumeTarget && !isNewSession ? resumeFailure(resumeTarget, err) : null;
+      if (gone) throw sessionUnavailableError(gone);
+      throw err;
+    }
     if (result.isError) {
       throw new Error(`ask: ${runner.displayName} failed: ${result.resultText || 'no result text'}`);
     }

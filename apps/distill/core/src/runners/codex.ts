@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { AgentRunner, ModelOption, RunRequest, RunResult, RunnerCapability, Settings, SetupProblem } from '../contracts.js';
+import type { AgentRunner, ModelOption, RunRequest, RunResult, RunnerCapability, SessionStoreStatus, Settings, SetupProblem } from '../contracts.js';
+import { codexHome, codexRolloutStatus, sessionNotFoundError } from './session.js';
 import { runProcess, RunnerError, type ProcessOutput, type RunProcessOptions } from './process.js';
 import { parseStructured, prepareSchema, runnerOption, type PreparedSchema } from './model-api.js';
 
@@ -191,7 +192,11 @@ export class CodexRunner implements AgentRunner {
   readonly effortLevels = ['low', 'medium', 'high', 'xhigh'];
   readonly defaultModel = 'gpt-5.5';
 
-  constructor(private readonly launch: ProcessLauncher = runProcess) {}
+  constructor(
+    private readonly launch: ProcessLauncher = runProcess,
+    /** Codex home (tests); default CODEX_HOME or ~/.codex. */
+    private readonly home?: string,
+  ) {}
 
   problems(settings: Settings): SetupProblem[] {
     const p = codexPath(settings);
@@ -248,6 +253,10 @@ export class CodexRunner implements AgentRunner {
       const raw = output.stdout.toString('utf8');
       const events = parseCodexEvents(raw);
       if (events.threadID === undefined && events.lastMessage === undefined && output.status !== 0) {
+        if (inv.sessionResume !== undefined) {
+          const gone = sessionNotFoundError(`${events.error ?? ''}\n${output.stderr.toString('utf8')}`, inv.sessionResume);
+          if (gone) throw gone;
+        }
         throw new RunnerError(`Exited ${output.status}: ${(events.error ?? output.stderr.toString('utf8')).slice(-2000)}`, 'nonZeroExit');
       }
       const result: RunResult = {
@@ -276,5 +285,16 @@ export class CodexRunner implements AgentRunner {
   resumeCommand(sessionID: string, model: string, settings: Settings): string[] | undefined {
     const bin = codexPath(settings);
     return bin ? [bin, 'resume', sessionID, '-m', model] : undefined;
+  }
+
+  /** A new interactive session whose first message is `prompt`. */
+  newSessionCommand(prompt: string, model: string, settings: Settings): string[] | undefined {
+    const bin = codexPath(settings);
+    return bin ? [bin, '-m', model, prompt] : undefined;
+  }
+
+  /** A rollout file ending in the session id under <CODEX_HOME or ~/.codex>/sessions; `home` overrides (tests). */
+  sessionStatus(sessionID: string, environment?: Record<string, string | undefined>): SessionStoreStatus {
+    return codexRolloutStatus(sessionID, this.home ?? codexHome({ ...process.env, ...(environment ?? {}) }));
   }
 }

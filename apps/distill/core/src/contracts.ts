@@ -199,6 +199,44 @@ export interface Job {
   actionsFound?: JobActionsSummary | null;
   /** v5: folder items in this batch (vault-relative, e.g. inbox/2026-10-04/Tea tasting trip). Their source files are in `files`. */
   folders?: string[];
+  /**
+   * v6: the batch's AI session was found gone when a turn tried to resume it (session continuity).
+   * The job was put back as it was; the app shows SessionReplaceConfirm. Cleared by the next turn.
+   */
+  sessionUnavailable?: SessionUnavailable | null;
+}
+
+// ───────────────────────────── Session continuity ─────────────────────────────
+//
+// System-wide rule (2026-10-05): Distill never resumes into a session that is gone and never
+// swaps sessions silently. A resume that can't happen is a typed `session_unavailable` error;
+// the same call again with `newSession: true` continues in a new, seeded session.
+
+/** Where the session belonged. */
+export type SessionPlace = 'batch' | 'conversation' | 'terminal';
+/** Why it is unavailable: the runner said not found, its transcript is gone, it never started, or its runner is gone. */
+export type SessionUnavailableReason = 'notFound' | 'missing' | 'neverStarted' | 'runnerGone';
+/** The call that hit it, so the client can repeat it with newSession. */
+export type SessionAction = 'approve' | 'reply' | 'allow' | 'ask' | 'resume';
+
+export interface SessionUnavailable {
+  place: SessionPlace;
+  reason: SessionUnavailableReason;
+  /** Plain sentence for people. */
+  message: string;
+  /** The technical reason (runner stderr line, missing path); never content. */
+  detail: string;
+  action?: SessionAction;
+  /** Reply text / allow rules to send again (batch only). */
+  text?: string;
+  rules?: string[];
+  at?: string;
+}
+
+/** Options for a call that may resume a session. */
+export interface SessionOptions {
+  /** Continue in a new session (the user confirmed SessionReplaceConfirm). */
+  newSession?: boolean;
 }
 
 export interface JobActionsSummary {
@@ -296,7 +334,16 @@ export interface AgentRunner {
   run(request: RunRequest, settings: Settings): Promise<RunResult>;
   /** argv that reopens a session interactively, if supported. */
   resumeCommand?(sessionID: string, model: string, settings: Settings): string[] | undefined;
+  /** argv that opens a NEW interactive session primed with `prompt` (session continuity), if supported. */
+  newSessionCommand?(prompt: string, model: string, settings: Settings): string[] | undefined;
+  /**
+   * Whether the runner's own store still holds this session: 'missing' only on positive evidence
+   * (the store is readable and has no file for it); 'unknown' whenever that can't be told.
+   */
+  sessionStatus?(sessionID: string, environment?: Record<string, string | undefined>): SessionStoreStatus;
 }
+
+export type SessionStoreStatus = 'present' | 'missing' | 'unknown';
 
 export interface RunnerRegistry {
   all(): AgentRunner[];
@@ -527,6 +574,8 @@ export interface AskRequest {
   labelMatch?: LabelMatch;
   /** Default: settings askPreferences.includeUnconfirmed (true). */
   includeUnconfirmed?: boolean;
+  /** Continue in a new session seeded with the conversation so far (after session_unavailable). */
+  newSession?: boolean;
 }
 
 export interface AskCitation {
@@ -612,12 +661,23 @@ export interface Progress {
 // ───────────────────────────── Errors ─────────────────────────────
 
 /** HTTP mapping: not_found→404, invalid_request→400, invalid_state/busy/no_vault→409, not_implemented→501. */
-export type CoreErrorCode = 'not_found' | 'invalid_request' | 'invalid_state' | 'busy' | 'no_vault' | 'not_implemented' | 'conflict';
+export type CoreErrorCode =
+  | 'not_found'
+  | 'invalid_request'
+  | 'invalid_state'
+  | 'busy'
+  | 'no_vault'
+  | 'not_implemented'
+  | 'conflict'
+  /** The AI session a call would resume is gone; `details` is a SessionUnavailable. */
+  | 'session_unavailable';
 
 export class CoreError extends Error {
   constructor(
     readonly code: CoreErrorCode,
     message: string,
+    /** Extra fields for the API error body (additive), e.g. a SessionUnavailable. */
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'CoreError';
@@ -1365,7 +1425,9 @@ export type CoreEvent =
   // v5: a queue scan finished (Refresh, window, periodic). A `queue` event precedes it when the list changed.
   | { type: 'queue.scanned'; result: QueueScanResult }
   // v6: a line was added to the activity log (older Mac builds decode unknown events as `.unknown`).
-  | { type: 'activity'; entry: ActivityEntry };
+  | { type: 'activity'; entry: ActivityEntry }
+  /** v6: an AI session that was gone was replaced by a new one after the user's OK (never content). */
+  | { type: 'session.replaced'; place: SessionPlace; reason?: SessionUnavailableReason; objectID: string; name?: string };
 
 // ───────────────────────────── The core facade ─────────────────────────────
 
@@ -1402,15 +1464,15 @@ export interface DistillCore {
 
   listJobs(): Job[];
   getJob(id: string): Job | undefined;
-  approve(id: string): Promise<void>;
-  reply(id: string, text: string): Promise<void>;
-  allow(id: string, rules: string[]): Promise<void>;
+  approve(id: string, opts?: SessionOptions): Promise<void>;
+  reply(id: string, text: string, opts?: SessionOptions): Promise<void>;
+  allow(id: string, rules: string[], opts?: SessionOptions): Promise<void>;
   reject(id: string): Promise<void>;
   cancel(id: string): Promise<void>;
   /** Finished jobs only (completed/failed/rejected/cancelled); else invalid_state. */
   deleteJob(id: string): Promise<void>;
   /** argv that reopens the job's session interactively; null when the runner has none. */
-  jobResumeCommand(id: string): Promise<string[] | null>;
+  jobResumeCommand(id: string, opts?: SessionOptions): Promise<string[] | null>;
   /** Vault pages for the note picker (`[[`), best matches first. */
   searchPages(query: string, opts?: { vaultPath?: string; limit?: number }): Promise<{ path: string; title: string }[]>;
   /**

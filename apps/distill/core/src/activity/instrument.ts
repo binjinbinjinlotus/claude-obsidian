@@ -942,6 +942,24 @@ export function createEventLogger(deps: EventLoggerDeps, seedJobs: Job[]): (even
           );
           return;
         }
+        case 'session.replaced': {
+          // Session continuity: the place and the reason, never content.
+          const object: ActivityObject =
+            event.place === 'conversation'
+              ? { kind: 'chat', id: event.objectID, ...(event.name ? { name: event.name } : {}) }
+              : { kind: 'batch', id: event.objectID, name: event.name ?? event.objectID };
+          const what = event.place === 'conversation' ? 'the chat' : event.place === 'terminal' ? 'a batch in Terminal' : 'a batch';
+          write(
+            {
+              type: 'session.replaced',
+              object,
+              summary: `Continued ${what} in a new AI session (the earlier one was not available)`,
+              details: { place: event.place, reason: event.reason ?? null },
+            },
+            currentSource(),
+          );
+          return;
+        }
         case 'queue.scanned': {
           const r = event.result;
           if (r.added === 0 && r.removed === 0) return; // changed sizes/times alone aren't worth a line
