@@ -371,20 +371,6 @@ final class AppModel: ObservableObject {
         return "\(prefix) \(f.string(from: date)).\(ext)"
     }
 
-    /// Removes a file the user put in the queue folder (to the Trash; it is their file).
-    func trash(_ entry: QueueEntry) {
-        // A note's members (manifest, images) first, the row's own file last.
-        for path in (entry.members ?? []) + [entry.path] {
-            let url = URL(fileURLWithPath: path)
-            do {
-                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-            } catch {
-                lastError = "Could not move \(url.lastPathComponent) to the Trash: \(error.localizedDescription)"
-            }
-        }
-        refreshQueue()
-    }
-
     // MARK: Terminal
 
     /// A throwaway script that reopens a Claude Code job's session interactively.

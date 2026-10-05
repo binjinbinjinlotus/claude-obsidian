@@ -66,7 +66,10 @@ schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
   (`name 2` on a clash; the name is claimed with an exclusive `mkdir`, so an
   existing Trash folder is never replaced). Also refused for paths outside
   the folder and symlinks (`invalid_request`) and, when the queue is the
-  inbox, items a batch already took (`invalid_state`).
+  inbox, items a batch already took (`invalid_state`). Only the core
+  removes queue files: the macOS app no longer trashes them itself when the
+  core is unavailable, because that skipped the "a batch already took it"
+  guard (decision 2026-10-04). It shows an error instead.
 
 ## Queue screen
 

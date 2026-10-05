@@ -17,6 +17,17 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Only the core removes queue files; the app's Trash fallback is gone.**
+  Spec: [Queue and batching](queue-and-batching.md) → Remove.
+  - `AppModel.removeFromQueue` used to move files to the Trash itself when
+    there was no client or the core answered "not available". That skipped
+    the core's guard against removing an `inbox/` file a batch already took.
+  - **Decision:** drop the fallback (option one of the audit's two). With no
+    core, the app shows "Can't remove … while the Distill core isn't
+    running." The core ships with the app, so an older core without
+    `removeQueueEntry` is no longer a case to support. `AppModel.trash(_:)`
+    had no other caller and was removed.
+
 - **The meeting-notes script never replaces a file in the queue.** Code:
   `apps/scripts/meeting-notes/fetch_meeting_notes.py` (`place_new`); its
   README. Follows the inbox rule below.
