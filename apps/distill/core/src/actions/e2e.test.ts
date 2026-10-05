@@ -97,18 +97,34 @@ test('approve → applied → "Finding actions" adds pending items and the job s
   runner.jobID = () => job.id;
   await engine.whenIdle();
   assert.equal(core.getJob(job.id)!.state, 'awaitingApproval', core.getJob(job.id)!.approval?.planError ?? '');
+  // v11: looked for while it waits in Review; nothing in Actions before approval.
+  const inReview = await (core as unknown as { jobActions(id: string): Promise<{ proposals: { state: string }[]; summary: { stage?: string } | null }> }).jobActions(job.id);
+  assert.deepEqual(inReview.proposals.map((p) => p.state), ['waiting']);
+  assert.equal(inReview.summary?.stage, 'review');
+  assert.equal((await core.listActions()).length, 0);
   await core.approve(job.id);
   await engine.whenIdle();
   const done = core.getJob(job.id)!;
   assert.equal(done.state, 'completed', done.error ?? '');
-  assert.deepEqual(done.actionsFound, { status: 'done', found: 1, pending: 1, added: 0, byType: { todo: 1 }, model: 'Sonnet' });
+  // v11: found while the batch waited in Review, added when it applied.
+  assert.deepEqual(done.actionsFound, {
+    status: 'done', found: 1, pending: 1, added: 0, byType: { todo: 1 }, model: 'Sonnet',
+    stage: 'applied', proposed: 0, lines: 1, linesOf: 1, sources: 1, duplicates: 0,
+  });
   const items = await core.listActions();
   assert.equal(items.length, 1);
   assert.equal(items[0]!.status, 'pending');
-  assert.deepEqual(items[0]!.source, { kind: 'note', jobID: job.id, notePath: 'wiki/tea.md', pageTitle: 'Tea', quote: 'I will book the tasting room.' });
-  const steps = events.filter((e): e is Extract<CoreEvent, { type: 'progress' }> => e.type === 'progress' && e.progress.key === job.id);
+  const src = items[0]!.source as Extract<CoreEvent, { type: 'action' }>['action']['source'] & { kind: 'note' };
+  assert.equal(src.jobID, job.id);
+  assert.equal(src.quote, 'I will book the tasting room.');
+  assert.deepEqual(src.raw?.lines, [1, 1]);
+  assert.equal(src.raw?.match, 'quote');
+  const steps = events.filter((e): e is Extract<CoreEvent, { type: 'progress' }> => e.type === 'progress' && e.progress.key === `actions:job:${job.id}`);
   assert.ok(steps.some((e) => e.progress.message.startsWith('Finding actions in')));
-  assert.equal(steps.at(-1)!.progress.message, 'Found 1 action to confirm: 1 to-do');
+  assert.equal(steps.at(-1)!.progress.message, 'Found 1 action: 1 to-do');
+  // Review showed it before apply; GET /v1/jobs/:id/actions shows it added now.
+  const shown = await (core as unknown as { jobActions(id: string): Promise<{ proposals: { state: string }[] }> }).jobActions(job.id);
+  assert.deepEqual(shown.proposals.map((p) => p.state), ['added']);
   assert.equal((await core.listProgress()).length, 0, 'nothing left in flight');
   // jobs.json keeps the summary.
   const saved = JSON.parse(fs.readFileSync(path.join(state, 'jobs.json'), 'utf8'));

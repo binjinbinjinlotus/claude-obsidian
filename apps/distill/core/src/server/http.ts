@@ -1116,6 +1116,16 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
       },
     },
     {
+      // v11 (action-context.md): the actions a batch found, as Review shows them.
+      method: 'GET',
+      pattern: /^\/v1\/jobs\/([^/]+)\/actions$/,
+      handler: async ({ params }) => {
+        const jobActions = extra('jobActions');
+        requireJob(params[0]!);
+        return jobActions(params[0]!);
+      },
+    },
+    {
       method: 'POST',
       pattern: /^\/v1\/jobs\/([^/]+)\/actions\/find$/,
       untyped: { status: 409, code: 'invalid_state' },

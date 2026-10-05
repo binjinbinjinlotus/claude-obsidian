@@ -38,6 +38,10 @@ final class ActionsStore: ObservableObject {
     @Published var types: [ActionTypeInfo] = []
     @Published var items: [String: ActionItem] = [:]
     @Published var phase: Phase = .idle
+    /// v11: what each batch found, as Review shows it (GET /v1/jobs/:id/actions), by job id.
+    @Published var jobActions: [String: JobActions] = [:]
+    /// v11: the core has no GET /v1/jobs/:id/actions (an older core).
+    var jobActionsUnavailable = false
     @Published var historyLoaded = false
     /// The open Actions sub-item: "todo" or a type id.
     @Published var tab = "todo"

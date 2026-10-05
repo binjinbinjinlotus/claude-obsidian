@@ -22,21 +22,51 @@ import {
   type CoreEvent,
   type DistillCore,
   type Job,
+  type JobActionProposal,
+  type JobActions,
   type JobActionsSummary,
+  type ActionRawRef,
+  type ActionWikiRef,
   type ModelSelection,
   type NewActionInput,
   type Progress,
   type RunnerRegistry,
   type Settings,
 } from '../contracts.js';
-import type { ActionsOwned } from '../engine/index.js';
+import type { ActionsOwned, ReviewReadyInfo } from '../engine/index.js';
+import { makeReadingCopy } from '../coverage/copy.js';
+import { ledgerRecords } from '../coverage/archive.js';
+import { mapPool } from '../engine/queue-labels.js';
+import { jobStateDirectory } from '../store/jobs.js';
+import { buildWindowPrompt, loadFound, saveFound, type FoundFile, type FoundSource } from './batch.js';
+import {
+  bestHeading,
+  closestLines,
+  coveredLines,
+  excerptOf,
+  headingsOf,
+  locateQuote,
+  normalizeForMatch,
+  numbered,
+  originalOfPage,
+  parseLines,
+  readLines,
+  resolveOriginal,
+  sectionText,
+  sha256File,
+  sourceLineOf,
+  titleOfPage,
+  wikiRef,
+  windowAround,
+  windowsOf,
+} from './context.js';
 import type { FetchLike } from '../runners/model-api.js';
 import { defaultSecretStore, type SecretStore } from '../runners/secrets.js';
 import { isoDate } from '../store/json.js';
 import { actionPreferences, defaultSelection as settingsDefaultSelection } from '../store/settings.js';
 import { DRAFT_SCHEMA, FIND_SCHEMA, fieldsFrom, IMPROVE_SCHEMA, modelName, runStructured, type ActionTask } from './ai.js';
 import { ActionHandlerError, API_TOKEN_URL, ATLASSIAN, AtlassianClient, ConnectionFile } from './atlassian.js';
-import { buildDraftPrompt, buildFindPrompt, buildImprovePrompt, DEFAULT_FIND_PROMPT, type FindDocument } from './prompts.js';
+import { buildDraftPrompt, buildFindPrompt, buildImprovePrompt, DEFAULT_FIND_PROMPT, type DraftContext, type FindDocument } from './prompts.js';
 import {
   actionTypeDef,
   actionTypeDefs,
@@ -68,6 +98,8 @@ export interface ActionsServiceOptions {
   getConversation?: (id: string) => Promise<AskConversation | undefined>;
   /** Write the job's "Found 5 actions" summary (engine.setJobActions). */
   setJobActions?: (jobID: string, summary: JobActionsSummary) => void;
+  /** v11: the job as it is now (commit checks which parts applied). */
+  getJob?: (id: string) => Job | undefined;
 }
 
 export type ActionsService = Pick<DistillCore, ActionsOwned> & {
@@ -75,6 +107,12 @@ export type ActionsService = Pick<DistillCore, ActionsOwned> & {
   findInJob(job: Job, opts?: { retry?: boolean }): Promise<void>;
   /** After an Ask answer: background detection when Settings say so. Never throws. */
   afterAsk(conversationID: string, response?: AskResponse): Promise<void>;
+  /** v11: a batch reached Review: look through its sources for actions (they wait in the job until apply). Never throws. */
+  findForReview(job: Job, info: ReviewReadyInfo): Promise<void>;
+  /** v11: a batch ended without applying: its waiting proposals are not added. Never throws. */
+  jobEnded(job: Job): Promise<void>;
+  /** v11: the actions a batch found, as Review shows them. */
+  jobActions(jobID: string): Promise<JobActions>;
   /** Drop History items older than historyDays (also runs on load and at most hourly). */
   sweepHistory(): void;
   /** Resolves when no background draft or find is running (tests). */
@@ -148,6 +186,17 @@ export function describeByType(byType: Record<string, number>): string {
       return plural(n, one, many);
     })
     .join(', ');
+}
+
+/** A reading copy's lines (absolute path). */
+function readCopy(abs: string): string[] {
+  try {
+    const lines = fs.readFileSync(abs, 'utf8').split('\n');
+    if (lines.at(-1) === '') lines.pop();
+    return lines;
+  } catch {
+    return [];
+  }
 }
 
 function readText(file: string, max: number): string | undefined {
@@ -372,13 +421,53 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     return { item, noteTitle, notePath, today: isoDate(now()).slice(0, 10) };
   }
 
-  function noteTextFor(item: ActionItem): string | undefined {
+  /**
+   * v11 (action-context.md): what a draft is written from. The original's lines ±25 (archive, then
+   * inbox; the stored excerpt when it is gone) and each wiki section; an older item without `raw`
+   * gets its note's text in a window centred on its quote, never the first 12,000 characters.
+   */
+  function draftContextFor(item: ActionItem): DraftContext | undefined {
     const src = item.source;
-    const rel = src.kind === 'note' ? src.notePath : src.kind === 'ask' ? src.citedPaths?.[0] : undefined;
-    if (!rel || !item.vaultPath) return undefined;
-    const abs = path.resolve(item.vaultPath, rel);
-    if (!abs.startsWith(path.resolve(item.vaultPath) + path.sep)) return undefined;
-    return readText(abs, MAX_DOC_CHARS);
+    if (src.kind === 'manual' || !item.vaultPath) return undefined;
+    const vault = item.vaultPath;
+    const out: DraftContext = {};
+    const raw = src.raw;
+    if (raw && raw.match !== 'none') {
+      const at = resolveOriginal(vault, raw);
+      const lines = at ? readLines(vault, at) : undefined;
+      if (lines && raw.lines) {
+        const w = windowAround(lines, raw.lines[0], raw.lines[1], 25, MAX_DOC_CHARS);
+        out.original = { path: at!, from: w.from, to: w.to, text: w.text };
+      } else if (raw.excerpt && raw.lines) {
+        out.original = { path: raw.path, from: raw.lines[0], to: raw.lines[1], text: raw.excerpt };
+      }
+    }
+    const wiki: NonNullable<DraftContext['wiki']> = [];
+    for (const w of (src.wiki ?? []).slice(0, 3)) {
+      const lines = readLines(vault, w.path);
+      const text = lines ? sectionText(lines.join('\n'), w.heading ?? null) : undefined;
+      const body = text ?? w.excerpt ?? undefined;
+      if (body) wiki.push({ path: w.path, heading: w.heading ?? null, text: body.length > 4000 ? `${body.slice(0, 4000)}\n[…]` : body });
+    }
+    if (wiki.length > 0) out.wiki = wiki;
+    if (!out.original) {
+      const rel = src.kind === 'note' ? src.notePath : src.citedPaths?.[0];
+      const lines = rel ? readLines(vault, rel) : undefined;
+      if (lines && (wiki.length === 0 || src.kind === 'note')) {
+        const loc = src.quote ? locateQuote(lines, src.quote) : undefined;
+        const w = loc ? windowAround(lines, loc[0], loc[1], 200, MAX_DOC_CHARS) : windowAround(lines, 1, 1, 0, MAX_DOC_CHARS);
+        if (!loc) {
+          // No quote to centre on: the start, up to the limit.
+          let b = 1;
+          let size = 0;
+          while (b <= lines.length && size + lines[b - 1]!.length + 1 <= MAX_DOC_CHARS) size += lines[b++ - 1]!.length + 1;
+          out.note = lines.slice(0, Math.max(1, b - 1)).join('\n') + (b <= lines.length ? '\n[…truncated]' : '');
+        } else {
+          out.note = `${w.from > 1 ? `[lines ${w.from}–${w.to} of ${lines.length}]\n` : ''}${w.text}`;
+        }
+      }
+    }
+    return out.original || out.wiki || out.note ? out : undefined;
   }
 
   async function aiPass(
@@ -425,7 +514,7 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     const snapshot = clone(item);
     try {
       const ctx = promptContext(snapshot);
-      const prompt = kind === 'draft' ? buildDraftPrompt(eff, snapshot, ctx, noteTextFor(snapshot)) : buildImprovePrompt(eff, snapshot, ctx);
+      const prompt = kind === 'draft' ? buildDraftPrompt(eff, snapshot, ctx, draftContextFor(snapshot)) : buildImprovePrompt(eff, snapshot, ctx);
       const out = await runStructured({
         runners: opts.runners,
         settings: opts.getSettings(),
@@ -495,6 +584,9 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     why: string;
     quote: string;
     notePath: string | null;
+    /** v11: the line numbers the model gave (window prompts); only a hint for the core's own search. */
+    lines?: [number, number];
+    wiki?: { path: string; heading: string }[];
   }
 
   function parseFound(value: Record<string, unknown>): Found[] {
@@ -505,7 +597,7 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       const o = r as Record<string, unknown>;
       const title = typeof o.title === 'string' ? o.title.trim() : '';
       if (!title) continue;
-      out.push({
+      const f: Found = {
         type: typeof o.type === 'string' ? o.type.trim() : TODO_TYPE,
         title: title.slice(0, 300),
         body: typeof o.body === 'string' && o.body.trim() ? o.body.trim() : null,
@@ -513,7 +605,16 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         why: typeof o.why === 'string' ? o.why.trim() : '',
         quote: typeof o.quote === 'string' ? o.quote.trim().slice(0, 600) : '',
         notePath: typeof o.notePath === 'string' && o.notePath.trim() ? o.notePath.trim() : null,
-      });
+      };
+      const lines = parseLines(o.lines);
+      if (lines) f.lines = lines;
+      if (Array.isArray(o.wiki)) {
+        f.wiki = o.wiki
+          .filter((w): w is Record<string, unknown> => typeof w === 'object' && w !== null && typeof (w as Record<string, unknown>).path === 'string')
+          .map((w) => ({ path: String(w.path).trim(), heading: typeof w.heading === 'string' ? w.heading.trim() : '' }))
+          .slice(0, 4);
+      }
+      out.push(f);
     }
     return out;
   }
@@ -531,6 +632,97 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     return { todos, allowed, confirm: sp.confirm };
   }
 
+  /** A found item as it would be added (type fallback, field defaults); undefined when its type isn't wanted. */
+  function buildItem(f: Found, o: { source: ActionSource; vaultPath: string | null; model: string; todos: boolean; allowed: string[]; confirm: boolean }): ActionItem | undefined {
+    let type = o.allowed.includes(f.type) ? f.type : TODO_TYPE;
+    if (type === TODO_TYPE && !o.todos) return undefined;
+    if (!effective(type)) type = TODO_TYPE;
+    const t = isoDate(now());
+    return {
+      id: newActionID(),
+      type,
+      status: o.confirm ? 'pending' : initialStatus(type, type === TODO_TYPE ? f.body : null),
+      title: f.title,
+      body: type === TODO_TYPE ? f.body : null,
+      fields: withDefaults(type, f.fields),
+      why: f.why || null,
+      source: o.source,
+      vaultPath: o.vaultPath,
+      createdAt: t,
+      updatedAt: t,
+      draftModel: null,
+      events: [event(now(), 'found', `by ${o.model}`)],
+    };
+  }
+
+  /**
+   * v11: the same content (raw sha256): an item from the same original, of the same type, on
+   * overlapping lines or with the same quote. Older items without `raw` count when their note
+   * still hashes to that sha256 and their quote is found in the original (`oldLines`).
+   */
+  function sameContent(i: DedupeKey & { vaultPath?: string | null }, candidate: DedupeKey, oldLines?: (i: DedupeKey & { vaultPath?: string | null }) => [number, number] | undefined): boolean {
+    if (i.type !== candidate.type) return false;
+    const cr = rawOf(candidate.source);
+    if (!cr?.sha256) return false;
+    const ir = rawOf(i.source);
+    const quotesMatch = () => {
+      const a = normalizeText(sourceQuote(i.source));
+      return a !== '' && a === normalizeText(sourceQuote(candidate.source));
+    };
+    const overlap = (a: [number, number] | null | undefined, b: [number, number] | null | undefined) => !!a && !!b && a[0] <= b[1] && b[0] <= a[1];
+    if (ir?.sha256) {
+      if (ir.sha256 !== cr.sha256) return false;
+      return overlap(ir.lines, cr.lines) || quotesMatch();
+    }
+    if (!oldLines) return false;
+    return overlap(oldLines(i), cr.lines);
+  }
+
+  function rawOf(s: ActionSource): ActionRawRef | null | undefined {
+    return s.kind === 'manual' ? undefined : s.raw;
+  }
+
+  /** v11: an older item (no raw) located in a new original: its quote's lines there, when its note is that content or the quote is long. */
+  function oldLinesIn(sha256: string, lines: string[], sourceLines: number) {
+    const cache = new Map<string, [number, number] | undefined>();
+    return (i: DedupeKey & { vaultPath?: string | null }): [number, number] | undefined => {
+      if (i.source.kind !== 'note' || !i.source.quote) return undefined;
+      const key = i.source.quote;
+      if (cache.has(key)) return cache.get(key);
+      let hit: [number, number] | undefined;
+      const sameFile = i.vaultPath && i.source.notePath ? sha256File(path.resolve(i.vaultPath, i.source.notePath)) === sha256 : false;
+      if (sameFile || normalizeText(i.source.quote).length >= 24) {
+        const loc = locateQuote(lines, i.source.quote);
+        if (loc) hit = [sourceLineOf(lines, loc[0], sourceLines), sourceLineOf(lines, loc[1], sourceLines)];
+      }
+      cache.set(key, hit);
+      return hit;
+    };
+  }
+
+  /** The existing item a candidate repeats, if any (see actions.md → Duplicates, action-context.md → Dedupe). */
+  function duplicateOf(
+    candidate: ActionItem,
+    before: ActionItem[],
+    o: { conversationID?: string; oldLines?: (i: DedupeKey & { vaultPath?: string | null }) => [number, number] | undefined } = {},
+  ): ActionItem | undefined {
+    // Earlier items: same quote or same title. Items from this same run share
+    // quotes ("book the room and tell Mei" is a to-do and a message), so only
+    // the title rule applies among them.
+    // Lines already handled (in any status: done, removed, sent, dismissed)
+    // are never suggested again when a later batch rewrites the same page.
+    // The title rule only counts live items (a recurring to-do may come back),
+    // and items dismissed in this same Ask chat.
+    return before.find(
+      (i) =>
+        sameSourceQuote(i, candidate) ||
+        sameContent(i, candidate, o.oldLines) ||
+        ((LIVE_STATUSES.includes(i.status) ||
+          (i.status === 'dismissed' && o.conversationID && i.source.kind === 'ask' && i.source.conversationID === o.conversationID)) &&
+          sameTitle(i, candidate)),
+    );
+  }
+
   /**
    * Turn model findings into items: unknown / disabled types fall back to to-do;
    * duplicates of live items (or of items dismissed in this chat) are not added
@@ -544,48 +736,14 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     const existing: ActionItem[] = [];
     const before = [...items];
     for (const f of found) {
-      let type = o.allowed.includes(f.type) ? f.type : TODO_TYPE;
-      if (type === TODO_TYPE && !o.todos) continue;
-      const source = o.source(f);
-      const candidate = { type, title: f.title, source };
-      // Earlier items: same quote or same title. Items from this same run share
-      // quotes ("book the room and tell Mei" is a to-do and a message), so only
-      // the title rule applies among them.
-      // Lines already handled (in any status: done, removed, sent, dismissed)
-      // are never suggested again when a later batch rewrites the same page.
-      // The title rule only counts live items (a recurring to-do may come back),
-      // and items dismissed in this same Ask chat.
-      const dup = before.find(
-        (i) =>
-          sameSourceQuote(i, candidate) ||
-          ((LIVE_STATUSES.includes(i.status) ||
-            (i.status === 'dismissed' && o.conversationID && i.source.kind === 'ask' && i.source.conversationID === o.conversationID)) &&
-            sameTitle(i, candidate)),
-      );
+      const item = buildItem(f, { ...o, source: o.source(f) });
+      if (!item) continue;
+      const dup = duplicateOf(item, before, o.conversationID ? { conversationID: o.conversationID } : {});
       if (dup) {
         if (LIVE_STATUSES.includes(dup.status) && !existing.includes(dup)) existing.push(dup);
         continue;
       }
-      if (added.some((a) => a.type === type && normalizeText(a.title) === normalizeText(f.title))) continue;
-      const eff = effective(type);
-      if (!eff) type = TODO_TYPE;
-      const fields = withDefaults(type, f.fields);
-      const t = isoDate(now());
-      const item: ActionItem = {
-        id: newActionID(),
-        type,
-        status: o.confirm ? 'pending' : initialStatus(type, type === TODO_TYPE ? f.body : null),
-        title: f.title,
-        body: type === TODO_TYPE ? f.body : null,
-        fields,
-        why: f.why || null,
-        source,
-        vaultPath: o.vaultPath,
-        createdAt: t,
-        updatedAt: t,
-        draftModel: null,
-        events: [event(now(), 'found', `by ${o.model}`)],
-      };
+      if (added.some((a) => a.type === item.type && normalizeText(a.title) === normalizeText(item.title))) continue;
       items.push(item);
       added.push(item);
     }
@@ -599,114 +757,615 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     return { added: added.map(clone), existing: existing.map(clone) };
   }
 
-  function summarize(added: ActionItem[], confirm: boolean, model: string): JobActionsSummary {
-    const byType: Record<string, number> = {};
-    for (const i of added) byType[i.type] = (byType[i.type] ?? 0) + 1;
-    return { status: 'done', found: added.length, pending: confirm ? added.length : 0, added: confirm ? 0 : added.length, byType, model };
+  // ───────────── finding in a batch (v11, action-context.md) ─────────────
+
+  /** One source of a batch to look through. */
+  interface PassSource {
+    /** The source file (vault-relative): inbox/…, .raw/captured/…, or a wiki page (pageOnly). */
+    file: string;
+    /** Where the text is read from when it isn't `file` (the archive copy of a gone inbox file). */
+    readFrom?: string;
+    page?: { path: string; title: string; text: string } | null;
+    /** The text is the wiki page itself (the original isn't available). */
+    pageOnly?: boolean;
   }
 
-  function documentsForJob(job: Job): FindDocument[] {
-    const vault = path.resolve(job.vaultPath);
-    // The batch's own notes first (the new text), then the pages it changed.
-    const rels = [
-      ...job.files.filter((p) => /\.(md|txt|markdown)$/i.test(p)),
-      ...job.changedPaths.filter((p) => p.endsWith('.md') && !SKIP_PAGES.some((re) => re.test(p))),
-    ];
-    const docs: FindDocument[] = [];
-    let total = 0;
-    for (const rel of [...new Set(rels)]) {
-      const abs = path.resolve(vault, rel);
-      if (!abs.startsWith(vault + path.sep)) continue;
-      const text = readText(abs, MAX_DOC_CHARS);
-      if (!text?.trim()) continue;
-      if (total + text.length > MAX_TOTAL_CHARS) continue; // a big page doesn't push out the smaller ones
-      total += text.length;
-      docs.push({ path: rel, title: titleOf(text, rel), text });
+  /** Which runner looks through a batch's sources: the finding model, on the batch's own runner when it is another provider. */
+  function passSelection(job: Job): ModelSelection {
+    const sel = selectionFor('actionFind', prefs().findSelection);
+    const own = job.runnerID ?? null;
+    if (!own || own === sel.runnerID) return sel;
+    const runner = opts.runners.get(own);
+    if (!runner) return sel;
+    const model = runner.models.some((m) => m.id === sel.model) ? sel.model : job.model || runner.defaultModel;
+    return { runnerID: own, model, effort: sel.effort ?? null };
+  }
+
+  function summaryOf(job: Job, f: FoundFile, model?: string | null): JobActionsSummary {
+    const sources = Object.values(f.sources);
+    const live = f.proposals.filter((p) => p.state !== 'duplicate' && p.state !== 'notApplied');
+    const byType: Record<string, number> = {};
+    for (const p of live) byType[p.item.type] = (byType[p.item.type] ?? 0) + 1;
+    const addedItems = f.proposals.filter((p) => p.state === 'added').map((p) => find(p.item.id)).filter((i): i is ActionItem => !!i);
+    // A pass that isn't running any more (Distill quit meanwhile) didn't finish: it shows as failed, with Try again.
+    const active = passes.has(job.id);
+    const failed = sources.filter((s) => s.status === 'failed' || (s.status === 'finding' && !active));
+    const finding = active && sources.some((s) => s.status === 'finding');
+    const waiting = f.proposals.filter((p) => p.state === 'waiting').length;
+    const committed = f.proposals.some((p) => p.state === 'added' || p.state === 'duplicate') || (job.state === 'completed' && !!job.operationID);
+    const failedText = failed
+      .map((s) => {
+        const file = Object.keys(f.sources).find((k) => f.sources[k] === s)!;
+        return `${path.basename(file, path.extname(file))}: ${s.error ?? (s.status === 'finding' ? 'Distill stopped before it finished looking' : 'it failed')}`;
+      })
+      .join('; ');
+    return {
+      status: finding ? 'finding' : failed.length > 0 ? 'failed' : 'done',
+      found: live.length,
+      pending: addedItems.filter((i) => i.status === 'pending').length,
+      added: addedItems.filter((i) => i.status !== 'pending').length,
+      byType,
+      ...(failed.length > 0 ? { error: failedText } : {}),
+      model: model ?? sources.find((s) => s.model)?.model ?? null,
+      stage: committed ? 'applied' : 'review',
+      proposed: waiting,
+      lines: sources.reduce((n, s) => n + coveredLines(s.looked), 0),
+      linesOf: sources.reduce((n, s) => n + s.lines, 0),
+      sources: sources.length,
+      duplicates: f.proposals.filter((p) => p.state === 'duplicate').length,
+    };
+  }
+
+  function setSummary(jobID: string, s: JobActionsSummary): void {
+    try {
+      opts.setJobActions?.(jobID, s);
+    } catch {
+      /* the job may be gone */
     }
-    return docs;
+  }
+
+  /** The wiki refs of a found item: its source page first (best section), then refs the model named that exist. */
+  function wikiRefsFor(f: Found, src: PassSource, written: Map<string, string>, vaultPath: string): ActionWikiRef[] {
+    const out: ActionWikiRef[] = [];
+    const query = `${f.title} ${f.quote} ${f.why}`;
+    const textOf = (p: string): string | undefined => {
+      if (written.has(p)) return written.get(p);
+      const lines = readLines(vaultPath, p);
+      return lines ? lines.join('\n') : undefined;
+    };
+    const named = (f.wiki ?? []).filter((w) => w.path.startsWith('wiki/') && w.path.endsWith('.md'));
+    if (src.page) {
+      const own = named.find((w) => w.path === src.page!.path && w.heading && sectionText(src.page!.text, w.heading) !== undefined);
+      const heading = own?.heading || bestHeading(src.page.text, query) || null;
+      const ref = wikiRef(src.page.path, src.page.text, heading);
+      if (ref) out.push(ref);
+    }
+    for (const w of named) {
+      if (out.some((r) => r.path === w.path) || out.length >= 3) continue;
+      const text = textOf(w.path);
+      if (text === undefined) continue;
+      const ref = wikiRef(w.path, text, w.heading || null);
+      if (ref) out.push(ref);
+    }
+    return out;
+  }
+
+  /**
+   * Look through every line of `sources` (windows of planned sections) and record what was found
+   * in the job's side file as proposals. Sources already looked through (same file and sha256)
+   * are skipped unless `retry` and they failed.
+   */
+  /** One pass per job at a time (a rebuild can reach Review again while one runs); the next skips what is done. */
+  const passes = new Map<string, Promise<unknown>>();
+
+  function runPass(job: Job, sources: PassSource[], written: Map<string, string>, o: { stage: 'review' | 'applied'; retry?: boolean }): Promise<FoundFile> {
+    const before = passes.get(job.id) ?? Promise.resolve();
+    const next = before.catch(() => undefined).then(() => runPassNow(job, sources, written, o));
+    passes.set(job.id, next);
+    void next.finally(() => {
+      if (passes.get(job.id) === next) passes.delete(job.id);
+    }).catch(() => undefined);
+    return next;
+  }
+
+  async function runPassNow(job: Job, sources: PassSource[], written: Map<string, string>, o: { stage: 'review' | 'applied'; retry?: boolean }): Promise<FoundFile> {
+    const vault = path.resolve(job.vaultPath);
+    const jobDir = jobStateDirectory(job);
+    let f = loadFound(job) ?? { version: 1 as const, sources: {}, proposals: [], committed: [] };
+    const types = findTypes('notes', false);
+    const p = prefs();
+    const selection = passSelection(job);
+    const model = modelName(opts.runners, selection);
+    const today = isoDate(now()).slice(0, 10);
+    const writtenList = [...written.entries()].filter(([w]) => !SKIP_PAGES.some((re) => re.test(w))).map(([w, text]) => ({ path: w, title: titleOfPage(text, w) }));
+
+    interface Prepared {
+      src: PassSource;
+      sha256: string | null;
+      lines: string[];
+      sourceLines: number;
+      windows: { from: number; to: number }[];
+      title: string;
+    }
+    const prepared: Prepared[] = [];
+    let n = 0;
+    for (const src of sources) {
+      const prev = f.sources[src.file];
+      const readRel = src.readFrom ?? src.file;
+      n += 1;
+      let copy;
+      if (src.pageOnly && src.page) {
+        // The page's text in this change (it may not be in the vault yet).
+        const pagesDir = path.join(jobDir, 'actions', 'pages');
+        fs.mkdirSync(pagesDir, { recursive: true });
+        fs.writeFileSync(path.join(pagesDir, `${n}.md`), src.page.text);
+        copy = makeReadingCopy(pagesDir, `${n}.md`, path.join(jobDir, 'actions'), n);
+      } else {
+        copy = makeReadingCopy(vault, readRel, path.join(jobDir, 'actions'), n);
+      }
+      const sha = copy.sha256 || null;
+      if (prev && prev.sha256 === sha && (prev.status === 'done' || (prev.status === 'failed' && !o.retry))) continue;
+      if (copy.unreadable || !copy.copy) {
+        // Not text (PDF, image) or unreadable: its page is looked through instead, when there is one.
+        if (!src.pageOnly && src.page) {
+          sources.push({ file: src.file, page: src.page, pageOnly: true });
+          continue;
+        }
+        f.sources[src.file] = { sha256: sha, status: 'failed', lines: 0, looked: [], error: copy.unreadable ?? 'it isn’t text', at: isoDate(now()), ...(src.page ? { page: src.page.path } : {}) };
+        continue;
+      }
+      const lines = readCopy(copy.copy);
+      const windows = windowsOf(lines, copy.sections);
+      // Drop this source's earlier proposals that never applied: they are found again.
+      f.proposals = f.proposals.filter((x) => !(x.file === src.file && (x.state === 'waiting' || x.state === 'notApplied')));
+      f.sources[src.file] = {
+        sha256: sha,
+        status: 'finding',
+        lines: lines.length,
+        looked: [],
+        at: isoDate(now()),
+        model,
+        ...(src.page ? { page: src.page.path } : {}),
+        ...(src.pageOnly ? { pageOnly: true } : {}),
+      };
+      prepared.push({ src, sha256: sha, lines, sourceLines: copy.sourceLines, windows, title: src.page?.title ?? titleOfPage(lines.join('\n'), src.file) });
+    }
+    saveFound(job, f);
+    if (prepared.length === 0) return f;
+
+    const totalLines = prepared.reduce((k, x) => k + x.lines.length, 0);
+    const key = o.stage === 'review' ? `actions:job:${job.id}` : job.id;
+    const startedAt = isoDate(now());
+    const base =
+      o.stage === 'review'
+        ? { key, kind: 'actions' as const, startedAt, runnerID: selection.runnerID, model: selection.model }
+        : { key, kind: 'batch' as const, steps: FIND_STEPS, startedAt, runnerID: selection.runnerID, model: selection.model, stepIndex: FIND_STEPS.indexOf('Finding actions') };
+    let looked = 0;
+    const lookedText = () => `${looked.toLocaleString('en-US')} of ${totalLines.toLocaleString('en-US')} lines`;
+    progress({ ...base, message: `Finding actions in ${plural(prepared.length, 'source')} · ${lookedText()}` });
+    setSummary(job.id, summaryOf(job, f, model));
+
+    const tasks = prepared.flatMap((pr) => pr.windows.map((w, i) => ({ pr, w, i })));
+    const results = await mapPool(tasks, 3, async ({ pr, w, i }) => {
+      const prompt = buildWindowPrompt({
+        instructions: p.findPrompt?.trim() ? p.findPrompt : DEFAULT_FIND_PROMPT,
+        types: findTypeList(types.todos, types.allowed),
+        today,
+        file: pr.src.pageOnly && pr.src.page ? pr.src.page.path : pr.src.file,
+        title: pr.title,
+        from: w.from,
+        to: w.to,
+        of: pr.lines.length,
+        part: i + 1,
+        parts: pr.windows.length,
+        text: numbered(pr.lines, w.from, w.to),
+        page: pr.src.pageOnly ? null : (pr.src.page ?? null),
+        written: writtenList,
+      });
+      let lastError = '';
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const out = await runStructured({ runners: opts.runners, settings: opts.getSettings(), task: 'actionFind', selection, prompt, schema: FIND_SCHEMA, scratchRoot });
+          looked += w.to - w.from + 1;
+          progress({ ...base, message: `Finding actions in ${plural(prepared.length, 'source')} · ${lookedText()}` });
+          // Review's strip counts the lines as they are looked through.
+          f.sources[pr.src.file]?.looked.push([w.from, w.to]);
+          setSummary(job.id, summaryOf(job, f, model));
+          return { pr, w, found: parseFound(out.value), model: out.model };
+        } catch (err) {
+          lastError = (err as Error).message;
+        }
+      }
+      return { pr, w, error: lastError };
+    });
+
+    f = loadFound(job) ?? f;
+    for (const pr of prepared) {
+      const mine = results.filter((r) => r.pr === pr);
+      const s = f.sources[pr.src.file]!;
+      const errors = mine.filter((r) => 'error' in r) as { w: { from: number; to: number }; error: string }[];
+      s.looked = mine.filter((r) => !('error' in r)).map((r) => [r.w.from, r.w.to] as [number, number]);
+      s.status = errors.length > 0 ? 'failed' : 'done';
+      if (errors.length > 0) s.error = `lines ${errors.map((e) => `${e.w.from}–${e.w.to}`).join(', ')} weren’t looked through: ${errors[0]!.error}`;
+      else delete s.error;
+      const foundModel = mine.find((r) => 'model' in r && r.model) as { model: string } | undefined;
+      if (foundModel) s.model = foundModel.model;
+      const found = mine.flatMap((r) => ('found' in r && r.found ? r.found.map((x) => ({ x, w: r.w })) : []));
+      const oldLines = pr.sha256 && !pr.src.pageOnly ? oldLinesIn(pr.sha256, pr.lines, pr.sourceLines) : undefined;
+      for (const { x, w } of found) {
+        const hint = x.lines ? ([Math.max(w.from, x.lines[0]), Math.min(w.to, x.lines[1])] as [number, number]) : null;
+        const loc = locateQuote(pr.lines, x.quote, hint && hint[0] <= hint[1] ? hint : null);
+        const srcLines = loc ? ([sourceLineOf(pr.lines, loc[0], pr.sourceLines), sourceLineOf(pr.lines, loc[1], pr.sourceLines)] as [number, number]) : undefined;
+        const lines = srcLines && srcLines[0] > srcLines[1] ? ([srcLines[1], srcLines[0]] as [number, number]) : srcLines;
+        const wiki = wikiRefsFor(x, pr.src, written, vault);
+        let source: ActionSource;
+        if (pr.src.pageOnly) {
+          source = {
+            kind: 'note',
+            jobID: job.id,
+            notePath: pr.src.page?.path ?? pr.src.file,
+            pageTitle: pr.title,
+            quote: x.quote || null,
+            ...(wiki.length > 0 ? { wiki } : {}),
+            contextNote: 'Found in the wiki page: the original isn’t available.',
+          };
+        } else {
+          const raw: ActionRawRef = {
+            path: pr.src.readFrom ?? pr.src.file,
+            ...(pr.src.readFrom && pr.src.readFrom !== pr.src.file ? { inboxPath: pr.src.file } : pr.src.file.startsWith('.raw/') ? {} : { inboxPath: pr.src.file }),
+            ...(pr.sha256 ? { sha256: pr.sha256 } : {}),
+            match: lines ? 'quote' : 'none',
+          };
+          if (lines && loc) {
+            raw.lines = lines;
+            raw.excerpt = excerptOf(pr.lines, loc[0], loc[1]);
+          }
+          source = {
+            kind: 'note',
+            jobID: job.id,
+            notePath: pr.src.page?.path ?? pr.src.file,
+            pageTitle: pr.src.page?.title ?? pr.title,
+            quote: x.quote || null,
+            raw,
+            ...(wiki.length > 0 ? { wiki } : {}),
+          };
+        }
+        const item = buildItem(x, { source, vaultPath: job.vaultPath, model: s.model ?? model, todos: types.todos, allowed: types.allowed, confirm: true });
+        if (!item) continue;
+        item.status = 'pending';
+        // Within one pass only the title rule applies (one sentence can hold two actions).
+        if (f.proposals.some((q) => q.file === pr.src.file && q.item.type === item.type && normalizeText(q.item.title) === normalizeText(item.title))) continue;
+        const dup = duplicateOf(item, items, oldLines ? { oldLines } : {});
+        f.proposals.push({
+          item,
+          file: pr.src.file,
+          ...(pr.src.page ? { page: pr.src.page.path } : {}),
+          state: dup ? 'duplicate' : 'waiting',
+          ...(dup ? { existingID: dup.id } : {}),
+        });
+      }
+    }
+    saveFound(job, f);
+    const summary = summaryOf(job, f, model);
+    setSummary(job.id, summary);
+    const what = describeByType(summary.byType);
+    const message = summary.status === 'failed'
+      ? 'Couldn’t look through every line'
+      : summary.found === 0
+        ? `No actions found · ${lookedText()}`
+        : `Found ${plural(summary.found, 'action')}${what ? `: ${what}` : ''}`;
+    progress({ ...base, message, finished: true, ...(summary.status === 'failed' ? { error: summary.error ?? 'failed' } : {}), ...(o.stage === 'applied' ? { stepIndex: FIND_STEPS.length - 1 } : {}) });
+    return f;
+  }
+
+  /** Which of a job's proposals may be added now: their source page applied (a part), or the whole change applied. */
+  function appliedCheck(job: Job, assumeApplied = false): (p: JobActionProposal) => boolean {
+    const parts = job.parts ?? [];
+    const pages = new Set(parts.flatMap((x) => x.pages));
+    const applied = assumeApplied || (job.state === 'completed' && (!!job.operationID || job.changedPaths.length > 0)) || parts.length > 0;
+    return (p) => {
+      if (!applied) return false;
+      if (parts.length === 0) return true;
+      if (p.page) return pages.has(p.page);
+      return true;
+    };
+  }
+
+  /**
+   * Add the proposals whose source's pages applied (idempotent: runs on every apply and when a pass
+   * finishes after one). Duplicates are not added; a source left out never adds.
+   */
+  function commitJob(jobIn: Job, o: { applied?: boolean } = {}): FoundFile | undefined {
+    const job = opts.getJob?.(jobIn.id) ?? jobIn;
+    const f = loadFound(job);
+    if (!f) return undefined;
+    const ok = appliedCheck(job, !!o.applied);
+    const ended = ['rejected', 'cancelled'].includes(job.state) || (job.state === 'completed' && !job.pendingPart);
+    const types = findTypes('notes', false);
+    const added: ActionItem[] = [];
+    // Items from this same batch share quotes ("book the room and tell Mei"): among them only the title rule applies.
+    const before = items.filter((i) => !(f.committed ?? []).includes(i.id));
+    let changed = false;
+    for (const p of f.proposals) {
+      if (p.state !== 'waiting' && p.state !== 'notApplied') continue;
+      if (!ok(p)) {
+        if (ended && p.state === 'waiting') {
+          p.state = 'notApplied';
+          changed = true;
+        }
+        continue;
+      }
+      if (f.committed?.includes(p.item.id) || find(p.item.id)) {
+        p.state = 'added';
+        changed = true;
+        continue;
+      }
+      const candidate: ActionItem = clone(p.item);
+      // A type turned off since it was found comes in as a to-do (or is dropped when to-dos are off).
+      if (candidate.type !== TODO_TYPE && !types.allowed.includes(candidate.type)) {
+        candidate.type = TODO_TYPE;
+        candidate.fields = withDefaults(TODO_TYPE, candidate.fields);
+      }
+      if (candidate.type === TODO_TYPE && !types.todos) {
+        p.state = 'notApplied';
+        changed = true;
+        continue;
+      }
+      const dup = duplicateOf(candidate, before) ?? added.find((a) => a.type === candidate.type && normalizeText(a.title) === normalizeText(candidate.title));
+      if (dup) {
+        p.state = 'duplicate';
+        p.existingID = dup.id;
+        changed = true;
+        continue;
+      }
+      // The original moves into the archive with the batch.
+      if (candidate.source.kind === 'note' && candidate.source.raw) {
+        const at = resolveOriginal(job.vaultPath, candidate.source.raw);
+        if (at && at !== candidate.source.raw.path) {
+          if (!candidate.source.raw.inboxPath && !candidate.source.raw.path.startsWith('.raw/')) candidate.source.raw.inboxPath = candidate.source.raw.path;
+          candidate.source.raw.path = at;
+        }
+      }
+      const t = isoDate(now());
+      candidate.status = types.confirm ? 'pending' : initialStatus(candidate.type, candidate.type === TODO_TYPE ? candidate.body : null);
+      candidate.updatedAt = t;
+      items.push(candidate);
+      added.push(candidate);
+      p.item = clone(candidate);
+      p.state = 'added';
+      f.committed = [...(f.committed ?? []), candidate.id];
+      changed = true;
+    }
+    if (added.length > 0) {
+      persist();
+      for (const i of added) emit({ type: 'action', action: clone(i) });
+      if (!types.confirm) {
+        for (const i of added) if (i.type !== TODO_TYPE && effective(i.type)?.draftWhen === 'onFind') draftInBackground(i.id);
+      }
+      const what = describeByType(Object.fromEntries(Object.entries(added.reduce<Record<string, number>>((m, i) => ((m[i.type] = (m[i.type] ?? 0) + 1), m), {}))));
+      log('info', `${types.confirm ? `Found ${plural(added.length, 'action')} to confirm` : `Added ${plural(added.length, 'action')}`} from ${job.id}${what ? ` (${what})` : ''}.`);
+    }
+    if (changed) saveFound(job, f);
+    const summary = summaryOf(job, f);
+    if (Object.keys(f.sources).length > 0) setSummary(job.id, summary);
+    return f;
+  }
+
+  /** The sources of an applied batch without a side file (older jobs, Try again): originals, else their pages. */
+  function sourcesOfApplied(job: Job): { sources: PassSource[]; written: Map<string, string> } {
+    const vault = path.resolve(job.vaultPath);
+    const written = new Map<string, string>();
+    for (const rel of job.changedPaths) {
+      if (!rel.endsWith('.md') || !rel.startsWith('wiki/')) continue;
+      const lines = readLines(vault, rel);
+      if (lines) written.set(rel, lines.join('\n'));
+    }
+    const pageFor = (file: string): PassSource['page'] => {
+      for (const [p, text] of written) {
+        if (SKIP_PAGES.some((re) => re.test(p))) continue;
+        const sp = /^source_path:\s*["']?(.+?)["']?\s*$/m.exec(text.split('\n').slice(0, 40).join('\n'))?.[1];
+        if (sp && (sp === file || path.basename(sp) === path.basename(file))) return { path: p, title: titleOfPage(text, p), text };
+      }
+      return null;
+    };
+    let records: ReturnType<typeof ledgerRecords> | undefined;
+    const sources: PassSource[] = [];
+    for (const file of job.files) {
+      if (file.endsWith('.distill.json')) continue;
+      if (!/\.(md|txt|markdown|text|vtt|srt|csv|html?)$/i.test(file)) continue;
+      const page = pageFor(file);
+      // Part of a batch: a source whose page didn't apply (removed, or left for later) isn't looked through here.
+      if (!page && (job.parts?.length ?? 0) > 0) continue;
+      const abs = path.resolve(vault, file);
+      if (abs.startsWith(vault + path.sep) && fs.existsSync(abs)) {
+        sources.push({ file, page });
+        continue;
+      }
+      // Gone from the inbox: its archived copy, through the ledger.
+      try {
+        records ??= ledgerRecords(vault);
+      } catch {
+        records = [];
+      }
+      const rec = records.find((r) => r.locator === file && r.sha256);
+      const at = rec?.sha256 ? resolveOriginal(vault, { path: file, sha256: rec.sha256 }) : undefined;
+      if (at) sources.push({ file, readFrom: at, page });
+      else if (page) sources.push({ file: page.path, page, pageOnly: true, readFrom: page.path });
+    }
+    if (sources.length === 0) {
+      // No text sources: the changed pages are what there is.
+      for (const [p, text] of written) {
+        if (SKIP_PAGES.some((re) => re.test(p))) continue;
+        sources.push({ file: p, page: { path: p, title: titleOfPage(text, p), text }, pageOnly: true, readFrom: p });
+      }
+    }
+    return { sources, written };
+  }
+
+  /** The last change each job showed in Review (Try again in Review reuses it). */
+  const reviewInfo = new Map<string, ReviewReadyInfo>();
+
+  function reviewSourcesOf(job: Job, info: ReviewReadyInfo): PassSource[] {
+    const files = job.files.filter((f) => !f.endsWith('.distill.json'));
+    const sources: PassSource[] = [];
+    for (const file of files) {
+      const page = info.pages.find((p) => p.source === file || (p.source && path.basename(p.source) === path.basename(file)));
+      // Sources with no page in this change (not added, or a stop) aren't part of what is reviewed.
+      if (!page && info.pages.length > 0) continue;
+      sources.push({ file, page: page ? { path: page.page, title: page.title, text: page.text } : null });
+    }
+    return sources;
+  }
+
+  async function findForReview(job: Job, info: ReviewReadyInfo, o: { retry?: boolean } = {}): Promise<void> {
+    reviewInfo.set(job.id, info);
+    const sp = prefs().sources.notes;
+    if (!sp.detectTodos && !sp.detectTypes) {
+      setSummary(job.id, { status: 'skipped', found: 0, pending: 0, added: 0, byType: {}, stage: 'review' });
+      return;
+    }
+    const written = new Map(info.written.map((w) => [w.path, w.text]));
+    const sources = reviewSourcesOf(job, info);
+    if (sources.length === 0) return;
+    try {
+      await runPass(job, sources, written, { stage: 'review', retry: !!o.retry });
+    } catch (err) {
+      log('warn', `Finding actions for ${job.id} failed: ${(err as Error).message}`);
+    }
+    // Approved meanwhile: add what applied.
+    commitJob(job);
   }
 
   async function findInJob(job: Job, o: { retry?: boolean } = {}): Promise<void> {
-    if (o.retry) store.processedJobs = store.processedJobs.filter((id) => id !== job.id);
-    if (store.processedJobs.includes(job.id)) return;
-    const setSummary = (s: JobActionsSummary) => {
-      try {
-        opts.setJobActions?.(job.id, s);
-      } catch {
-        /* the job may be gone */
+    const existing = loadFound(job);
+    // Try again while the batch is in Review: the sources that failed, from the change it shows.
+    if (o.retry && job.state !== 'completed') {
+      const info = reviewInfo.get(job.id);
+      if (info) await findForReview(job, info, { retry: true });
+      return;
+    }
+    if (existing && !o.retry) {
+      // A pass still running adds what applied when it ends.
+      if (passes.has(job.id)) return;
+      // Looked through in Review (or after an earlier apply): add what applied now.
+      if (Object.values(existing.sources).every((s) => s.status === 'done')) {
+        commitJob(job, { applied: true });
+        return;
       }
-    };
-    const types = findTypes('notes', false);
+      // A source not looked through in full (a window failed, or Distill quit meanwhile): once more,
+      // by itself, now that the batch applied. Nothing is missed silently.
+      o = { retry: true };
+    }
+    if (!existing) {
+      if (o.retry) store.processedJobs = store.processedJobs.filter((id) => id !== job.id);
+      if (store.processedJobs.includes(job.id)) return;
+    }
     const sp = prefs().sources.notes;
     const markProcessed = () => {
-      store.processedJobs.push(job.id);
+      if (!store.processedJobs.includes(job.id)) store.processedJobs.push(job.id);
       persist();
     };
     if (!sp.detectTodos && !sp.detectTypes) {
       markProcessed();
-      setSummary({ status: 'skipped', found: 0, pending: 0, added: 0, byType: {} });
+      setSummary(job.id, { status: 'skipped', found: 0, pending: 0, added: 0, byType: {} });
       return;
     }
-    const docs = documentsForJob(job);
-    if (docs.length === 0) {
+    const { sources, written } = existing && o.retry
+      ? (() => {
+          // Try again: the sources that failed, read as before.
+          const all = sourcesOfApplied(job);
+          const failed = new Set(Object.entries(existing.sources).filter(([, s]) => s.status !== 'done').map(([k]) => k));
+          return { sources: all.sources.filter((s) => failed.has(s.file)), written: all.written };
+        })()
+      : sourcesOfApplied(job);
+    if (sources.length === 0) {
       markProcessed();
-      setSummary({ status: 'skipped', found: 0, pending: 0, added: 0, byType: {} });
+      if (!existing) setSummary(job.id, { status: 'skipped', found: 0, pending: 0, added: 0, byType: {} });
+      else commitJob(job, { applied: true });
       return;
     }
-    const p = prefs();
-    const selection = selectionFor('actionFind', p.findSelection);
-    const model = modelName(opts.runners, selection);
-    const startedAt = isoDate(now());
-    const base = { key: job.id, kind: 'batch' as const, steps: FIND_STEPS, startedAt, runnerID: selection.runnerID, model: selection.model };
-    progress({ ...base, message: `Finding actions in ${plural(docs.length, 'note')}`, stepIndex: FIND_STEPS.indexOf('Finding actions') });
-    setSummary({ status: 'finding', found: 0, pending: 0, added: 0, byType: {}, model });
     // Recorded before the run so a restart never finds the same batch twice.
     markProcessed();
     try {
-      const out = await runStructured({
-        runners: opts.runners,
-        settings: opts.getSettings(),
-        task: 'actionFind',
-        selection,
-        prompt: buildFindPrompt({
-          instructions: p.findPrompt?.trim() ? p.findPrompt : DEFAULT_FIND_PROMPT,
-          types: findTypeList(types.todos, types.allowed),
-          documents: docs,
-          today: isoDate(now()).slice(0, 10),
-        }),
-        schema: FIND_SCHEMA,
-        scratchRoot,
-      });
-      const titles = new Map(docs.map((d) => [d.path, d.title ?? null]));
-      const sourceNote = job.files[0] ?? docs[0]!.path;
-      const { added } = addFound(parseFound(out.value), {
-        source: (f) => {
-          const notePath = f.notePath && titles.has(f.notePath) ? f.notePath : sourceNote;
-          return { kind: 'note', jobID: job.id, notePath, pageTitle: titles.get(notePath) ?? null, quote: f.quote || null };
-        },
-        vaultPath: job.vaultPath,
-        model: out.model,
-        todos: types.todos,
-        allowed: types.allowed,
-        confirm: types.confirm,
-      });
-      const summary = summarize(added, types.confirm, out.model);
-      setSummary(summary);
-      const what = describeByType(summary.byType);
-      const message =
-        added.length === 0
-          ? 'No actions found'
-          : types.confirm
-            ? `Found ${plural(added.length, 'action')} to confirm`
-            : `Added ${plural(added.length, 'action')}`;
-      progress({ ...base, message: what ? `${message}: ${what}` : message, stepIndex: FIND_STEPS.length - 1, finished: true });
-      if (added.length > 0) log('info', `${message} from ${job.id}${what ? ` (${what})` : ''}.`);
+      await runPass(job, sources, written, { stage: 'applied', retry: !!o.retry });
     } catch (err) {
       const message = (err as Error).message;
-      setSummary({ status: 'failed', found: 0, pending: 0, added: 0, byType: {}, error: message, model });
-      progress({ ...base, message: 'Couldn’t find actions', stepIndex: FIND_STEPS.indexOf('Finding actions'), finished: true, error: message });
+      setSummary(job.id, { status: 'failed', found: 0, pending: 0, added: 0, byType: {}, error: message });
       log('warn', `Finding actions for ${job.id} failed: ${message}`);
+      return;
     }
+    commitJob(job, { applied: true });
+  }
+
+  async function jobEnded(job: Job): Promise<void> {
+    if (loadFound(job)) commitJob(job);
+  }
+
+  async function jobActions(jobID: string): Promise<JobActions> {
+    const job = opts.getJob?.(jobID);
+    if (!job) throw new CoreError('not_found', `Unknown job ${jobID}.`);
+    const f = loadFound(job);
+    if (!f) return { summary: job.actionsFound ?? null, proposals: [] };
+    // The item as it is now in Actions, for proposals already added.
+    const proposals = f.proposals.map((p) => {
+      const now = p.state === 'added' ? find(p.item.id) : undefined;
+      return clone(now ? { ...p, item: now } : p);
+    });
+    return { summary: summaryOf(job, f), proposals };
+  }
+
+  // ───────────── Ask: raw context for found items (v11) ─────────────
+
+  /** The cited pages' archived original and its closest lines; else wiki only. */
+  function askContext(vaultPath: string, cited: string[], f: Found): Pick<Extract<ActionSource, { kind: 'ask' }>, 'raw' | 'wiki' | 'contextNote'> {
+    const query = `${f.title} ${f.quote} ${f.why}`;
+    const wiki: ActionWikiRef[] = [];
+    let raw: ActionRawRef | undefined;
+    let records: ReturnType<typeof ledgerRecords> | undefined;
+    try {
+      records = ledgerRecords(vaultPath);
+    } catch {
+      records = [];
+    }
+    let anyOriginal = false;
+    for (const page of cited.slice(0, 3)) {
+      const lines = readLines(vaultPath, page);
+      if (lines && wiki.length < 2) {
+        const text = lines.join('\n');
+        const ref = wikiRef(page, text, bestHeading(text, query) ?? null);
+        if (ref) wiki.push(ref);
+      }
+      if (raw?.lines) continue;
+      const orig = originalOfPage(vaultPath, page, records);
+      if (!orig) continue;
+      anyOriginal = true;
+      const olines = readLines(vaultPath, orig.path);
+      if (!olines) continue;
+      const hit = closestLines(olines, query);
+      if (hit) {
+        raw = {
+          path: orig.path,
+          ...(orig.inboxPath ? { inboxPath: orig.inboxPath } : {}),
+          ...(orig.sha256 ? { sha256: orig.sha256 } : {}),
+          lines: [hit.from, hit.to],
+          excerpt: excerptOf(olines, hit.from, hit.to),
+          match: 'closest',
+        };
+      } else if (!raw) {
+        raw = { path: orig.path, ...(orig.inboxPath ? { inboxPath: orig.inboxPath } : {}), ...(orig.sha256 ? { sha256: orig.sha256 } : {}), match: 'none' };
+      }
+    }
+    const out: Pick<Extract<ActionSource, { kind: 'ask' }>, 'raw' | 'wiki' | 'contextNote'> = {};
+    if (raw) out.raw = raw;
+    if (wiki.length > 0) out.wiki = wiki;
+    if (!raw?.lines) {
+      out.contextNote = anyOriginal
+        ? 'No lines in the original match it closely; the wiki sections are its context.'
+        : cited.length === 0
+          ? 'The answer cites no pages.'
+          : 'The cited pages have no archived original; the wiki sections are its context.';
+    }
+    return out;
   }
 
   function findTypeList(todos: boolean, allowed: string[]) {
@@ -772,6 +1431,8 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         source: (f) => ({
           kind: 'ask', conversationID, question: turn.request.question, quote: f.quote || null, citedPaths: cited,
           turnIndex: index, gap: fromGap(f, turn.response?.gaps),
+          // v11: the cited pages' archived original (closest lines), else wiki only.
+          ...askContext(conv.vaultPath, cited, f),
         }),
         vaultPath: conv.vaultPath,
         model: out.model,
@@ -1203,6 +1864,13 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
           await detectAsk(conversationID, undefined, false, response);
         })().catch((err: unknown) => log('warn', `Finding actions in an answer failed: ${(err as Error).message}`)),
       ),
+
+    findForReview: (job, info) =>
+      track(findForReview(job, info).catch((err: unknown) => log('warn', `Finding actions for ${job.id} failed: ${(err as Error).message}`))),
+
+    jobEnded: (job) => track(jobEnded(job).catch((err: unknown) => log('warn', `Actions of ${job.id}: ${(err as Error).message}`))),
+
+    jobActions,
 
     sweepHistory,
 

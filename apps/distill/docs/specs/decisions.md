@@ -17,6 +17,48 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+**Action context: actions found in the batch, from the original and the wiki
+(2026-10-05).** Spec: [Action context](action-context.md). The owner asked for
+actions made from "the raw source + the wiki", pointing at the raw source, and
+for a preview before Create draft; then said "please design and build
+directly". The five open choices below took the recommended default and are
+recorded as the owner's pre-approval of 2026-10-05.
+
+1. **Finding runs in the batch, as a separate pass fed by the core**, not
+   inside the ingest session. When the change reaches Review, the core sends
+   every line of every source (the reading copy, in windows of at most 24K
+   tokens) with the source's page draft as wiki context. Why: the AI's own
+   list can't be checked for what it left out, a core-fed pass is complete by
+   construction, and the ingest session's continuations stay for reading.
+   Supersedes the post-apply "Finding actions" step's 12,000 / 60,000
+   character cuts, which left most of a long meeting unread.
+2. **Items enter Actions when their source's pages apply.** Before that they
+   live in the job's side file (`<job dir>/actions-found.json`); Review shows
+   them as information, with the preview. Reject adds nothing; part of a batch
+   adds only the applied sources'; Jira and Confluence creation stays the
+   owner's click.
+3. **The pass runs on the batch's own runner** when Settings → Model for
+   finding actions is another provider, so whole transcripts go nowhere the
+   batch didn't.
+4. **Ask actions get the closest lines of the cited pages' archived original**
+   (word overlap, at least 40%, labelled "closest lines", never "quoted"), or
+   are marked wiki only with the reason.
+5. **Re-reads and repairs find actions too.** A content-hash dedupe (same
+   original sha256, same type, overlapping lines or the same quote, in any
+   status) keeps them from adding what was already found, done, removed or
+   dismissed; older items without `raw` are located by their quote.
+
+Also decided while building:
+
+- **Line numbers come from the core**, by searching the quote in the
+  original; the model's lines are only a hint. A quote not found keeps the
+  item with `match: none` and no lines.
+- **A source not looked through in full is tried again by itself** when the
+  batch applies (a failed window, or Distill quitting mid-pass); after that it
+  shows as failed with Try again, naming the lines.
+- **Open original uses the default app**, not Obsidian: Obsidian doesn't show
+  `.raw/` (a dot folder).
+
 **Full reads, built (2026-10-05).** Spec: [Full reads](full-read.md),
 section "Built".
 

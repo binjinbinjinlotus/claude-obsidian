@@ -65,6 +65,7 @@ struct ReviewGroupsView: View {
             // v10 hard stop: what couldn't be read in full is not in the change and can't be approved.
             if !job.stopped.isEmpty { StoppedGroup(job: job) }
             if let sources, !sources.isEmpty { sourcesGroup(sources) }
+            ReviewActionsFound(job: job, unpicked: unpicked) // v11: actions found while the batch was read (action-context.md)
         }
     }
 

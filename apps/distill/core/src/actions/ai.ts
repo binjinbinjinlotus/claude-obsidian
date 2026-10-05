@@ -39,6 +39,17 @@ export const FIND_SCHEMA = JSON.stringify({
           why: { type: 'string' },
           quote: { type: 'string' },
           notePath: { type: 'string' },
+          // v11 (action-context.md): the window's line numbers and the wiki sections it relates to.
+          lines: { type: 'string' },
+          wiki: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: { path: { type: 'string' }, heading: { type: 'string' } },
+              required: ['path', 'heading'],
+            },
+          },
         },
         required: ['type', 'title', 'fields', 'why', 'quote'],
       },

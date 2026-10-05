@@ -9,6 +9,7 @@ import type {
   RestoreResult,
   TrashItem,
   ActionItem,
+  JobActions,
   AddNoteRequest,
   AddNoteResult,
   AskConversation,
@@ -101,6 +102,7 @@ Usage:
   distill actions list [--type T] [--history] [--json]
   distill actions add "<title>" [--type todo] [--body "..."] [--why "..."] [--due YYYY-MM-DD]
               [--vault PATH] [--json]
+  distill actions found <job-id> [--json]
   distill collectors list [--json]
   distill collectors run <id> [--json]
   distill collectors history <id> [--limit N] [--json]
@@ -170,6 +172,9 @@ Commands:
                 --type narrows to one type; --history adds done, sent and removed items.
   actions add   Add a to-do (or, with --type, an item of another enabled type) by hand.
                 It is added for the user; nothing is sent or created outside Distill.
+  actions found Show what a batch found while it was read: each action, where it stands
+                (waits for apply, added, already in Actions, not added) and the lines of
+                the original it comes from, plus how many lines were looked through.
   collectors list
                 List collectors (Folder and script) for all vaults: kind, on/off, schedule,
                 next run, last run, and whether one needs the user (a failed run, or a
@@ -245,6 +250,9 @@ or $DISTILL_STATE_DIR.
              "createdAt","updatedAt","events", ...}]}
   actions add
             {the new action, same shape}
+  actions found
+            {"summary": {"status","found","stage","proposed","lines","linesOf",...} | null,
+             "proposals": [{"item": {action}, "file", "page"?, "state", "existingID"?}]}
   collectors list
             {"collectors": [{"id","kind","name","vaultPath","enabled","schedule": {"cron","preset"},
              "folder"?: {"source","afterCollect"}, "script"?: {"source","interpreter","timeoutSeconds",...},
@@ -771,7 +779,31 @@ async function actions(args: string[], io: CliIO, api: ApiFactory): Promise<numb
     out.result(item, () => `Added ${item.type === 'todo' ? 'to-do' : item.type} ${item.id}: ${item.title}\nComplete, send or remove it in the Distill app (Actions).\n`);
     return 0;
   }
-  throw usageError(sub ? `unknown actions command "${sub}" (use "actions list" or "actions add")` : 'usage: distill actions list | add "<title>"');
+  if (sub === 'found') {
+    // v11 (action-context.md): what a batch found, with the original's lines; read-only.
+    const { values, positionals } = parse(rest, {});
+    const [jobID, extra] = positionals;
+    if (!jobID) throw usageError('usage: distill actions found <job-id> [--json]');
+    if (extra !== undefined) throw usageError(`unexpected argument "${extra}"`);
+    const out = new Output(io, values.json === true);
+    const client = await api(out);
+    const res = await client.request<JobActions>('GET', `/v1/jobs/${encodeURIComponent(jobID)}/actions`);
+    out.result(res, () => {
+      const s = res.summary;
+      const head = s?.linesOf ? `Looked through ${(s.lines ?? 0).toLocaleString('en-US')} of ${s.linesOf.toLocaleString('en-US')} lines${s.status === 'failed' && s.error ? ` (${s.error})` : ''}.\n` : '';
+      if (!res.proposals.length) return `${head}No actions found in ${jobID}.\n`;
+      const words: Record<string, string> = { waiting: 'waits for apply', added: 'added', duplicate: 'already in Actions', notApplied: 'not added' };
+      const lines = res.proposals.map((p) => {
+        const src = p.item.source;
+        const raw = src.kind !== 'manual' ? src.raw : undefined;
+        const at = raw?.lines ? `  ${p.file}:${raw.lines[0]}${raw.lines[1] !== raw.lines[0] ? `-${raw.lines[1]}` : ''}` : `  ${p.file}`;
+        return `${p.item.id}  ${p.item.type}  ${words[p.state] ?? p.state}  ${p.item.title}${at}`;
+      });
+      return head + lines.join('\n') + '\n';
+    });
+    return 0;
+  }
+  throw usageError(sub ? `unknown actions command "${sub}" (use "actions list", "actions add" or "actions found")` : 'usage: distill actions list | add "<title>" | found <job-id>');
 }
 
 // ───────────────────────────── collectors ─────────────────────────────

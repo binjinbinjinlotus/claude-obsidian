@@ -355,7 +355,10 @@ struct ActionContextBlock: View {
                 Text("FROM").font(Theme.body(10, .heavy)).kerning(0.5).foregroundStyle(Theme.faint)
                 source
             }
-            if let quote = item.source.quote, !quote.isEmpty {
+            if !item.context.isEmpty {
+                // v11 (action-context.md): the original's lines and the wiki section, each with Open.
+                ActionContextSections(item: item, compact: true)
+            } else if let quote = item.source.quote, !quote.isEmpty {
                 Text("“\(quote)”").font(Theme.body(12).italic()).foregroundStyle(Theme.softInk)
                     .lineSpacing(3).fixedSize(horizontal: false, vertical: true)
                     .padding(.leading, 10).padding(.vertical, 2)
@@ -596,6 +599,17 @@ struct JobActionsLine: View {
     let summary: JobActionsSummary
 
     var body: some View {
+        // v11: while the batch waits in Review, its "Actions found" group shows them (ReviewActionsFound).
+        if summary.foundInBatch && job.state == .awaitingApproval { EmptyView() } else { line }
+    }
+
+    /// "2 already in Actions" for a re-read or repair (v11).
+    private var duplicatesText: String {
+        guard let d = summary.duplicates, d > 0 else { return "" }
+        return " · \(d) already in Actions"
+    }
+
+    @ViewBuilder private var line: some View {
         let store = engine.actions
         switch summary.status {
         case "finding":
@@ -605,7 +619,7 @@ struct JobActionsLine: View {
                 Spinner(size: 15)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Finding actions in \(n == 1 ? "1 note" : "\(n) notes")…").font(Theme.body(13, .bold))
-                    Text("\(ModelChoice.shortName(p?.model ?? summary.model ?? "sonnet")) · started at \(ActionsClock.time(p?.startedAt ?? job.updatedAt)) · after the batch was applied")
+                    Text("\(ModelChoice.shortName(p?.model ?? summary.model ?? "sonnet")) · started at \(ActionsClock.time(p?.startedAt ?? job.updatedAt)) · \(summary.foundInBatch ? "while the batch was read" : "after the batch was applied")")
                         .font(Theme.body(11)).foregroundStyle(Theme.muted)
                 }
                 Spacer(minLength: 0)
@@ -624,7 +638,7 @@ struct JobActionsLine: View {
                         .frame(width: 30, height: 30).background(RoundedRectangle(cornerRadius: 9).fill(Theme.primaryTint))
                     VStack(alignment: .leading, spacing: 2) {
                         Text(summary.pending > 0 ? line : "Added \(ActionCounts.phrase(summary.byType, types: store.types))").font(Theme.body(13, .bold))
-                        Text(ActionCounts.phrase(summary.byType, types: store.types)).font(Theme.body(12)).foregroundStyle(Theme.muted)
+                        Text(ActionCounts.phrase(summary.byType, types: store.types) + duplicatesText).font(Theme.body(12)).foregroundStyle(Theme.muted)
                     }
                     Spacer(minLength: 8)
                     ActionButton(title: summary.pending > 0 ? "Review them" : "Open in Actions", kind: .soft, height: 30) { store.openJob(job.id) }

@@ -462,6 +462,12 @@ public final class CoreClient: Sendable {
         try await send("POST", "/v1/jobs/\(Self.segment(jobID))/actions/find", body: JSONValue.object([:]), as: Wrapped<Job?>.self, key: "job").value
     }
 
+    /// v11 `GET /v1/jobs/:id/actions`: the actions a batch found, as Review shows them (action-context.md).
+    /// An older core answers 404 "no route for" (`isNotAvailable`).
+    public func jobActions(_ jobID: String) async throws -> JobActions {
+        try await get("/v1/jobs/\(Self.segment(jobID))/actions")
+    }
+
     private func itemAction(_ id: String, _ action: String) async throws -> ActionItem {
         try await send("POST", "/v1/actions/\(Self.segment(id))/\(action)", body: JSONValue.object([:]))
     }

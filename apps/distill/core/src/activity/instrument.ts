@@ -264,6 +264,7 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
     testCollector: 'event', // collector.test_run when it finishes
     installCollectorPackages: 'event', // collector.install when it finishes (also installs on Allow and before a run)
     findJobActions: 'event', // action.found when the job's actionsFound settles
+    jobActions: 'read',
 
     // ── nothing kept changes ──
     cancelAsk: 'quiet',

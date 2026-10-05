@@ -81,6 +81,8 @@ struct TodoUI {
     var panel: String?
     /// Snapshots draw the panel in place (a popover isn't captured).
     var inlinePanel = false
+    /// Snapshots: To confirm rows drawn open on their preview.
+    var previewing: Set<String> = []
     var panelHeight: CGFloat = 520
     /// Panel sections showing all their rows.
     var expanded: Set<String> = []
@@ -176,7 +178,7 @@ struct TodoScreen: View {
                 } else if visible.isEmpty && toConfirm.isEmpty && ui.adding == nil {
                     emptyState.padding(.top, 60)
                 } else {
-                    if !toConfirm.isEmpty { ToConfirmGroup(store: store, items: toConfirm) }
+                    if !toConfirm.isEmpty { ToConfirmGroup(store: store, items: toConfirm, expanded: ui.previewing) }
                     if case .context(let line)? = searchContext, !ui.filter.text.isEmpty {
                         Text("\(visible.count) of \(todos.filter { ui.filter.statusMatches($0) }.count) to-dos match")
                             .font(Theme.body(12)).foregroundStyle(Theme.muted).padding(.horizontal, 12).padding(.vertical, 6)
@@ -393,6 +395,8 @@ struct TodoMeta: View {
 struct ToConfirmGroup: View {
     @ObservedObject var store: ActionsStore
     let items: [ActionItem]
+    /// Rows open on their preview (snapshots start with some open).
+    @State var expanded: Set<String> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -406,25 +410,10 @@ struct ToConfirmGroup: View {
                 }
             }
             ForEach(items) { item in
-                HStack(spacing: 12) {
-                    let style = ActionsTheme.typeStyle(item.type)
-                    Image(systemName: style.0).font(.system(size: 11, weight: .semibold)).foregroundStyle(style.2)
-                        .frame(width: 22, height: 22).background(RoundedRectangle(cornerRadius: 7).fill(style.1))
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(item.title).font(Theme.body(14, .semibold)).lineLimit(1)
-                        HStack(spacing: 4) {
-                            Image(systemName: "doc.text").font(.system(size: 9))
-                            Text("\(ActionList.noteTitle(item) ?? "Ask chat") · found at \(ActionsClock.time(item.createdAt))")
-                            if item.type != "todo" { Text("· \(store.type(item.type)?.label ?? item.type)") }
-                        }
-                        .font(Theme.body(11)).foregroundStyle(Theme.muted).lineLimit(1)
-                    }
-                    Spacer(minLength: 6)
-                    ActionButton(title: item.type == "todo" ? "Add" : "Create draft", icon: "plus", kind: .soft, height: 26) { store.confirm([item.id]) }
-                    IconButton(systemImage: "xmark", size: 26, help: "Dismiss") { store.dismiss([item.id]) }
-                }
-                .padding(.horizontal, 12).padding(.vertical, 9)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Theme.primaryTint.opacity(0.35)))
+                // v11 (action-context.md): the full title and where it goes; open it for the preview.
+                ActionConfirmRow(store: store, item: item, expanded: Binding(
+                    get: { expanded.contains(item.id) },
+                    set: { open in if open { expanded.insert(item.id) } else { expanded.remove(item.id) } }))
             }
         }
         .padding(.bottom, 6)

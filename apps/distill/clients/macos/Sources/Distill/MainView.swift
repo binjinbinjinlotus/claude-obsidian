@@ -1146,7 +1146,7 @@ struct JobDetailView: View {
         if job.state == .completed, let parts = job.parts, !parts.isEmpty {
             JobPartsList(parts: parts, removed: (job.approval?.sources ?? []).filter(\.removed))
         }
-        if job.state == .awaitingApproval, job.kind == "ingest" || job.kind == "batch" {
+        if job.state == .awaitingApproval, job.actionsFound == nil, job.kind == "ingest" || job.kind == "batch" {
             let n = job.approval?.sources.map { ReviewPicking.active($0).count } ?? job.sources.count // a folder counts once
             HStack(spacing: 8) {
                 Image(systemName: "checklist").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.primary)

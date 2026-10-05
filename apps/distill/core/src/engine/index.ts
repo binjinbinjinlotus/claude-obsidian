@@ -25,6 +25,7 @@ import {
   type DistillCore,
   type Job,
   type JobActionsSummary,
+  type JobActions,
   type LabelCount,
   type LabelReview,
   type LabelSuggestion,
@@ -121,6 +122,7 @@ import {
   readBundle,
   reviewSources,
   sourcePages,
+  wikiWrites,
   verifyRebuilt,
   writeRevision,
 } from './review-labels.js';
@@ -205,6 +207,8 @@ export interface EngineExtras {
    * Composed in index.ts.
    */
   findJobActions?(id: string): Promise<Job>;
+  /** v11 (action-context.md): the actions a batch found, as Review shows them (GET /v1/jobs/:id/actions). Composed in index.ts. */
+  jobActions?(id: string): Promise<JobActions>;
 }
 
 export interface ResumeBatchOptions {
@@ -262,8 +266,23 @@ export interface EngineOptions {
   trashMover?: TrashMover;
   /** v3: a batch (queue-consumer job) was applied: completed with changed paths. Runs once per transition. */
   onJobApplied?: (job: Job) => void | Promise<void>;
+  /**
+   * v11 (action-context.md): a batch's change reached Review with a valid plan: its source pages and every
+   * wiki page it writes. The actions service looks for actions in the sources then (in the background).
+   */
+  onReviewReady?: (job: Job, info: ReviewReadyInfo) => void | Promise<void>;
+  /** v11: a batch ended without applying (rejected, cancelled or failed). */
+  onJobEnded?: (job: Job) => void | Promise<void>;
   /** v7: the live log (steps/). Gets each agent step of a turn and each file of the label pre-step. */
   steps?: EngineStepSink;
+}
+
+/** v11: what a batch's change holds when it reaches Review (onReviewReady). */
+export interface ReviewReadyInfo {
+  /** Source pages: the page, its source file (`source_path`), title and text. */
+  pages: { page: string; source?: string; title: string; text: string }[];
+  /** Every wiki page the change writes, with its text. */
+  written: { path: string; text: string }[];
 }
 
 /** v7: where the engine reports what the live log can't see in events. */
@@ -599,6 +618,7 @@ export function createEngine(opts: EngineOptions): Engine {
     const job = findJob(id);
     if (!job) return;
     const wasCompleted = job.state === 'completed';
+    const stateBefore = job.state;
     change(job);
     job.updatedAt = isoDate(now());
     persistJobs();
@@ -615,6 +635,12 @@ export function createEngine(opts: EngineOptions): Engine {
     if (!wasCompleted && job.state === 'completed' && job.kind === queueConsumer().id && job.operationID) {
       const vault = vaultProfileFor(job);
       track(Promise.resolve().then(() => fullRead.repairScan(vault, { force: true })).then(() => undefined));
+    }
+    // v11: a batch that ends without applying (rejected, cancelled, failed): its found actions are not added.
+    if (stateBefore !== job.state && ['rejected', 'cancelled', 'failed'].includes(job.state) && job.kind === queueConsumer().id && opts.onJobEnded) {
+      const hook = opts.onJobEnded;
+      const ended = clone(job);
+      track(Promise.resolve().then(() => hook(ended)).catch((err: unknown) => log('warn', `After the batch ended: ${(err as Error).message}`)));
     }
     if (!wasCompleted && job.state === 'completed' && job.kind === queueConsumer().id && job.changedPaths.length > 0 && opts.onJobApplied) {
       const hook = opts.onJobApplied;
@@ -997,6 +1023,20 @@ export function createEngine(opts: EngineOptions): Engine {
       j.approval = request;
     });
     if (confirm) track(reviseReviewLabels(id, undefined, true).catch((err: unknown) => log('warn', `Review labels: ${(err as Error).message}`)));
+    // v11 (action-context.md): actions are looked for in the batch's sources while it waits in Review.
+    const reviewed = findJob(id);
+    if (opts.onReviewReady && reviewed && reviewed.kind === queueConsumer().id && request.plan?.valid && request.bundlePath) {
+      const b = readBundle(request.bundlePath);
+      if (b) {
+        const info: ReviewReadyInfo = {
+          pages: sourcePages(b).map((p) => ({ page: p.page, ...(p.source ? { source: p.source } : {}), title: p.title, text: p.text })),
+          written: wikiWrites(b),
+        };
+        const hook = opts.onReviewReady;
+        const snapshot = clone(reviewed);
+        track(Promise.resolve().then(() => hook(snapshot, info)).catch((err: unknown) => log('warn', `Finding actions: ${(err as Error).message}`)));
+      }
+    }
   }
 
   // ───────────── labels in Review (review-labels.ts) ─────────────

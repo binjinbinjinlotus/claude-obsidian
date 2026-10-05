@@ -459,6 +459,18 @@ describe('distill CLI', () => {
       assert.ok(help.stdout.includes('distill actions list'));
       assert.ok(help.stdout.includes('no command to confirm, complete, send or create actions'));
     });
+    it('found: what a batch found (v11); read-only', async () => {
+      const id = core.jobs[0]!.id;
+      const r = await cli(['actions', 'found', id]);
+      assert.equal(r.code, 0, r.stderr);
+      assert.match(r.stdout, /No actions found in /);
+      assert.deepEqual(lastCall('jobActions')?.args, [id]);
+      const j = await cli(['actions', 'found', id, '--json']);
+      assert.ok(Array.isArray(JSON.parse(j.stdout).proposals));
+      assert.equal((await cli(['actions', 'found'])).code, 2);
+      assert.equal((await cli(['actions', 'found', 'job-nope', '--json'])).code, 1);
+      assert.ok((await cli(['--help'])).stdout.includes('distill actions found <job-id>'));
+    });
   });
 
   describe('collectors', () => {

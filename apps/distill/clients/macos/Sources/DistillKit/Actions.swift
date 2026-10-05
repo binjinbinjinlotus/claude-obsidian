@@ -194,6 +194,8 @@ public struct ActionItem: Codable, Hashable, Identifiable, Sendable {
     public var fields: [String: String]
     public var why: String?
     public var source: ActionSource
+    /// v11: the original's lines and the wiki refs, read from the same `source` object (action-context.md).
+    public var context: ActionContextRefs = .none
     public var vaultPath: String?
     public var labels: [String]
     public var createdAt: Date
@@ -209,11 +211,12 @@ public struct ActionItem: Codable, Hashable, Identifiable, Sendable {
                 fields: [String: String] = [:], why: String? = nil, source: ActionSource = .manual, vaultPath: String? = nil,
                 labels: [String] = [], createdAt: Date = Date(), updatedAt: Date? = nil, draftModel: String? = nil,
                 previousBody: String? = nil, external: ActionExternal? = nil, error: ActionError? = nil,
-                fromActionID: String? = nil, events: [ActionEvent] = []) {
+                fromActionID: String? = nil, events: [ActionEvent] = [], context: ActionContextRefs = .none) {
         self.id = id; self.type = type; self.status = status; self.title = title; self.body = body; self.fields = fields
         self.why = why; self.source = source; self.vaultPath = vaultPath; self.labels = labels; self.createdAt = createdAt
         self.updatedAt = updatedAt ?? createdAt; self.draftModel = draftModel; self.previousBody = previousBody
         self.external = external; self.error = error; self.fromActionID = fromActionID; self.events = events
+        self.context = context
     }
 
     enum CodingKeys: String, CodingKey {
@@ -231,6 +234,7 @@ public struct ActionItem: Codable, Hashable, Identifiable, Sendable {
         fields = Self.decodeFields(c.lossy(JSONValue.self, .fields))
         why = c.lossy(String.self, .why)
         source = c.lossy(ActionSource.self, .source) ?? .manual
+        context = c.lossy(ActionContextRefs.self, .source) ?? .none
         vaultPath = c.lossy(String.self, .vaultPath)
         labels = c.lossyArray(String.self, .labels)
         createdAt = c.lossyDate(.createdAt) ?? .distantPast
@@ -252,7 +256,10 @@ public struct ActionItem: Codable, Hashable, Identifiable, Sendable {
         try c.encodeIfPresent(body, forKey: .body)
         try c.encode(fields, forKey: .fields)
         try c.encodeIfPresent(why, forKey: .why)
-        try c.encode(source, forKey: .source)
+        // The source's own keys and the context keys share one object.
+        let sourceEncoder = c.superEncoder(forKey: .source)
+        try source.encode(to: sourceEncoder)
+        if !context.isEmpty { try context.encode(to: sourceEncoder) }
         try c.encodeIfPresent(vaultPath, forKey: .vaultPath)
         if !labels.isEmpty { try c.encode(labels, forKey: .labels) }
         try c.encode(CoreDate.format(createdAt), forKey: .createdAt)
@@ -397,14 +404,30 @@ public struct JobActionsSummary: Codable, Hashable, Sendable {
     public var byType: [String: Int]
     public var error: String?
     public var model: String?
+    /// v11: review = found while the batch was read (they wait until their source's pages apply); applied = in Actions.
+    public var stage: String?
+    /// v11: found before apply, not added yet.
+    public var proposed: Int?
+    /// v11: lines looked through, of how many.
+    public var lines: Int?
+    public var linesOf: Int?
+    public var sources: Int?
+    /// v11: found again (re-read, repair) and already in Actions.
+    public var duplicates: Int?
 
     public init(status: String, found: Int = 0, pending: Int = 0, added: Int = 0, byType: [String: Int] = [:],
-                error: String? = nil, model: String? = nil) {
+                error: String? = nil, model: String? = nil, stage: String? = nil, proposed: Int? = nil,
+                lines: Int? = nil, linesOf: Int? = nil, sources: Int? = nil, duplicates: Int? = nil) {
         self.status = status; self.found = found; self.pending = pending; self.added = added
         self.byType = byType; self.error = error; self.model = model
+        self.stage = stage; self.proposed = proposed; self.lines = lines; self.linesOf = linesOf
+        self.sources = sources; self.duplicates = duplicates
     }
 
-    enum CodingKeys: String, CodingKey { case status, found, pending, added, byType, error, model }
+    enum CodingKeys: String, CodingKey { case status, found, pending, added, byType, error, model, stage, proposed, lines, linesOf, sources, duplicates }
+
+    /// Found while the batch was read (before Review), not after it applied.
+    public var foundInBatch: Bool { stage != nil }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         status = c.lossy(String.self, .status) ?? "done"
@@ -418,6 +441,12 @@ public struct JobActionsSummary: Codable, Hashable, Sendable {
         byType = by
         error = c.lossy(String.self, .error)
         model = c.lossy(String.self, .model)
+        stage = c.lossy(String.self, .stage)
+        proposed = c.lossyInt(.proposed)
+        lines = c.lossyInt(.lines)
+        linesOf = c.lossyInt(.linesOf)
+        sources = c.lossyInt(.sources)
+        duplicates = c.lossyInt(.duplicates)
     }
 }
 

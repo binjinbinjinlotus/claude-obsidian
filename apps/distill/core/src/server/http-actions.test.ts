@@ -111,6 +111,16 @@ describe('HTTP API: actions and connections', () => {
     assert.equal((await request(port, 'POST', '/v1/jobs/nope/actions/find')).status, 404);
   });
 
+  it('GET /v1/jobs/:id/actions (v11: what Review shows)', async () => {
+    const id = core.jobs[0]!.id;
+    const res = await request(port, 'GET', `/v1/jobs/${id}/actions`);
+    assert.equal(res.status, 200);
+    assert.ok(Array.isArray(res.body.proposals));
+    assert.ok('summary' in res.body);
+    assert.deepEqual(last('jobActions')!.args, [id]);
+    assert.equal((await request(port, 'GET', '/v1/jobs/nope/actions')).status, 404);
+  });
+
   it('POST /v1/conversations/:id/actions/detect', async () => {
     const res = await request(port, 'POST', '/v1/conversations/conv-1/actions/detect', { turnIndex: 0 });
     assert.equal(res.status, 200);

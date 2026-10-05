@@ -41,6 +41,15 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras &
       await opts.onJobApplied?.(job);
       await actions?.findInJob(job);
     },
+    // v11 (action-context.md): actions are looked for while the batch waits in Review, added when it applies.
+    onReviewReady: async (job, info) => {
+      await opts.onReviewReady?.(job, info);
+      await actions?.findForReview(job, info);
+    },
+    onJobEnded: async (job) => {
+      await opts.onJobEnded?.(job);
+      await actions?.jobEnded(job);
+    },
     steps: {
       runnerStep: (jobId, step) => {
         opts.steps?.runnerStep(jobId, step);
@@ -97,6 +106,7 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras &
     ...(opts.now ? { now: opts.now } : {}),
     getConversation: (id) => ask.getConversation(id),
     setJobActions: (id, summary) => engine.setJobActions?.(id, summary),
+    getJob: (id) => engine.getJob(id),
   });
   const collectors = createCollectorsService({
     emit,
@@ -141,6 +151,9 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras &
   const {
     findInJob: _findInJob,
     afterAsk: _afterAsk,
+    findForReview: _findForReview,
+    jobEnded: _jobEnded,
+    jobActions: _jobActions,
     sweepHistory: _sweepHistory,
     whenIdle: _actionsIdle,
     ...actionMethods
@@ -163,12 +176,18 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras &
     async findJobActions(id: string) {
       const job = engine.getJob(id);
       if (!job) throw new CoreError('not_found', `Unknown job ${id}.`);
-      if (job.state !== 'completed' || job.changedPaths.length === 0 || job.kind === 'labels') {
+      // v11: also a batch in Review whose look-through failed (it runs again for the failed sources).
+      const inReview = job.state === 'awaitingApproval' && job.kind !== 'labels' && job.actionsFound?.stage === 'review';
+      if (!inReview && (job.state !== 'completed' || job.changedPaths.length === 0 || job.kind === 'labels')) {
         throw new CoreError('invalid_state', `Job ${id} has no applied changes to find actions in.`);
       }
-      engine.setJobActions?.(id, { status: 'finding', found: 0, pending: 0, added: 0, byType: {} });
+      engine.setJobActions?.(id, { status: 'finding', found: 0, pending: 0, added: 0, byType: {}, ...(inReview ? { stage: 'review' as const } : {}) });
       void service.findInJob(job, { retry: true });
       return engine.getJob(id) ?? job;
+    },
+    async jobActions(id: string) {
+      if (!engine.getJob(id)) throw new CoreError('not_found', `Unknown job ${id}.`);
+      return service.jobActions(id);
     },
     async ask(req) {
       const response = await ask.ask(req);

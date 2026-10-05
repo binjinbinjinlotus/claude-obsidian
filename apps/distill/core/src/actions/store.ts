@@ -7,7 +7,7 @@
  */
 import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import type { ActionError, ActionEvent, ActionItem, ActionSource, ActionStatus } from '../contracts.js';
+import type { ActionError, ActionEvent, ActionItem, ActionRawRef, ActionSource, ActionStatus, ActionWikiRef } from '../contracts.js';
 import { encodeJSON, isObject, isoDate, normalizeDate, preserveUnreadable, readJSON, str, strArray, writeFileAtomic, type JSONObject } from '../store/json.js';
 
 export const ACTION_STATUSES: ActionStatus[] = ['pending', 'open', 'drafting', 'ready', 'creating', 'created', 'done', 'sent', 'removed', 'dismissed'];
@@ -28,20 +28,72 @@ function nullableStr(v: unknown): string | null | undefined {
   return str(v);
 }
 
+/** v11: `[from, to]`, two positive integers with from ≤ to; anything else is dropped. */
+function decodeLines(v: unknown): [number, number] | undefined {
+  if (!Array.isArray(v) || v.length !== 2) return undefined;
+  const [a, b] = v;
+  if (typeof a !== 'number' || typeof b !== 'number' || !Number.isInteger(a) || !Number.isInteger(b) || a < 1 || b < a) return undefined;
+  return [a, b];
+}
+
+/** v11 (action-context.md): the original's lines. Lenient: a missing path drops it; wrong-typed fields are dropped. */
+export function decodeRawRef(v: unknown): ActionRawRef | undefined {
+  if (!isObject(v)) return undefined;
+  const p = str(v.path);
+  if (!p) return undefined;
+  const r: ActionRawRef = { path: p };
+  for (const k of ['inboxPath', 'sha256', 'excerpt'] as const) {
+    const x = nullableStr(v[k]);
+    if (x !== undefined) r[k] = x;
+  }
+  const lines = decodeLines(v.lines);
+  if (lines) r.lines = lines;
+  if (v.match === 'quote' || v.match === 'closest' || v.match === 'none') r.match = v.match;
+  return r;
+}
+
+export function decodeWikiRefs(v: unknown): ActionWikiRef[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: ActionWikiRef[] = [];
+  for (const e of v) {
+    if (!isObject(e)) continue;
+    const p = str(e.path);
+    if (!p) continue;
+    const r: ActionWikiRef = { path: p };
+    for (const k of ['title', 'heading', 'excerpt'] as const) {
+      const x = nullableStr(e[k]);
+      if (x !== undefined) r[k] = x;
+    }
+    out.push(r);
+  }
+  return out;
+}
+
+/** v11: raw, wiki and contextNote on a note or ask source. */
+function decodeContext(v: JSONObject, s: Extract<ActionSource, { kind: 'note' | 'ask' }>): void {
+  const raw = v.raw === null ? null : decodeRawRef(v.raw);
+  if (raw !== undefined) s.raw = raw;
+  const wiki = decodeWikiRefs(v.wiki);
+  if (wiki) s.wiki = wiki;
+  const note = nullableStr(v.contextNote);
+  if (note !== undefined) s.contextNote = note;
+}
+
 function decodeSource(v: unknown): ActionSource {
   if (!isObject(v)) return { kind: 'manual' };
   if (v.kind === 'note') {
-    const s: ActionSource = { kind: 'note' };
+    const s: Extract<ActionSource, { kind: 'note' }> = { kind: 'note' };
     for (const k of ['jobID', 'notePath', 'pageTitle', 'quote'] as const) {
       const x = nullableStr(v[k]);
       if (x !== undefined) s[k] = x;
     }
+    decodeContext(v, s);
     return s;
   }
   if (v.kind === 'ask') {
     const conversationID = str(v.conversationID);
     if (conversationID !== undefined) {
-      const s: ActionSource = { kind: 'ask', conversationID };
+      const s: Extract<ActionSource, { kind: 'ask' }> = { kind: 'ask', conversationID };
       for (const k of ['question', 'quote'] as const) {
         const x = nullableStr(v[k]);
         if (x !== undefined) s[k] = x;
@@ -50,6 +102,7 @@ function decodeSource(v: unknown): ActionSource {
       if (cited) s.citedPaths = cited;
       if (typeof v.turnIndex === 'number' && Number.isInteger(v.turnIndex) && v.turnIndex >= 0) s.turnIndex = v.turnIndex;
       if (v.gap === true) s.gap = true;
+      decodeContext(v, s);
       return s;
     }
   }
@@ -116,6 +169,9 @@ export function decodeAction(v: unknown, now = new Date()): ActionItem | undefin
   return item;
 }
 
+/** Every `source` key this build reads (v11 adds raw, wiki, contextNote). */
+const SOURCE_KEYS = ['kind', 'jobID', 'notePath', 'pageTitle', 'quote', 'conversationID', 'question', 'citedPaths', 'turnIndex', 'gap', 'by', 'raw', 'wiki', 'contextNote'];
+
 const ITEM_KEYS = [
   'id', 'type', 'status', 'title', 'body', 'fields', 'why', 'source', 'vaultPath', 'labels', 'createdAt', 'updatedAt',
   'draftModel', 'previousBody', 'external', 'error', 'fromActionID', 'events',
@@ -131,6 +187,13 @@ export function encodeAction(item: ActionItem, raw: JSONObject = {}): JSONObject
   for (const k of ITEM_KEYS) delete out[k];
   const known = plain(item) as unknown as JSONObject;
   for (const [k, v] of Object.entries(known)) if (v !== null || k === 'body') out[k] = v;
+  // v11: keys inside `source` this build doesn't know survive a save (same kind only).
+  const rawSource = raw.source;
+  if (isObject(rawSource) && isObject(out.source) && rawSource.kind === out.source.kind) {
+    const known = new Set(SOURCE_KEYS);
+    const extra = Object.fromEntries(Object.entries(rawSource).filter(([k]) => !known.has(k)));
+    out.source = { ...extra, ...out.source };
+  }
   // Null optionals are omitted (Swift-friendly), except inside fields (null = cleared).
   return out;
 }

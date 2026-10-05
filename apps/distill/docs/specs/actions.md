@@ -3,7 +3,7 @@ type: spec
 title: Actions
 status: built
 created: 2026-10-02
-updated: 2026-10-04
+updated: 2026-10-05
 tags:
   - distill
   - actions
@@ -37,10 +37,14 @@ SettingsNav). Contract: `core/src/contracts.ts` → "Actions (actions.json)",
 
 ## Where items come from
 
-- **Notes**: after Approve & apply, the batch's last step "Finding actions"
-  reads the changed pages and source notes (task `actionFind`, default
-  Claude Code · Sonnet). The finished job shows "Found 5 actions to confirm ·
-  Review them".
+- **Notes** (since 2026-10-05, [Action context](action-context.md)): while
+  the batch waits in Review, the core looks through every line of every
+  source (task `actionFind`, default Claude Code · Sonnet, on the batch's own
+  runner when that is another provider) with the source's wiki page as
+  context. Review shows them under "Actions found"; they enter Actions when
+  their source's pages apply. Each item points at the original's lines
+  (`source.raw`) and its wiki sections (`source.wiki`). The finished job
+  shows "Found 5 actions to confirm · Review them".
 - **Ask answers**: after each answer, detection runs in the background (does
   not delay the answer) and shows "Found in this answer" under it. Any answer
   also has **Add to to-do ▾ / Send to ▾**, and selected text gets a small bar
@@ -210,7 +214,10 @@ step instead.
 Every prompt is the instructions (the default, or the user's version from
 Settings with placeholders filled in) followed by a context block the user
 can't remove: the item (title, why, fields, labels, quoted lines, note) and,
-for drafts, the source note text (`<source>`, max 12 000 characters). Notes
+for drafts, the original's lines around the item (`<original>`, ±25 lines,
+max 12 000 characters) and its wiki sections (`<wiki>`, up to 3); an older
+item without `raw` gets its note's text centred on its quote (`<source>`,
+max 12 000 characters) instead of the note's first 12 000 characters. Notes
 and answers are wrapped as data and the model is told to ignore instructions
 inside them. Output is structured (find: `items[{type, title, body?,
 fields[{key,value}], why, quote, notePath?}]`; draft: `{title, body,
@@ -218,13 +225,23 @@ fields}`; improve: `{body}`); a JSON object in the text is the fallback.
 
 ### Finding
 
-- **Notes** (`findInJob`): the engine calls `onJobApplied` when a
+- **Notes, in the batch** (v11, [Action context](action-context.md)):
+  `onReviewReady` → `findForReview` looks through each source's reading copy
+  in windows of at most 24K tokens (every line, by construction) and keeps
+  the found items in `<job dir>/actions-found.json`; `onJobApplied` →
+  `findInJob` adds those whose source page applied (`commitJob`, idempotent,
+  per part), and `onJobEnded` marks them not applied. Progress key
+  `actions:job:<id>` (kind `actions`) in Review. The 12 000 / 60 000
+  character cuts below are gone.
+- **Notes, after apply** (`findInJob`, older jobs with no side file and Try
+  again): the engine calls `onJobApplied` when a
   queue-consumer (ingest) job turns `completed` with changed paths (both the
-  agent-applied and the core-applied path; label jobs never). Documents: the
-  job's source files first (the new text), then the changed `.md` pages minus
+  agent-applied and the core-applied path; label jobs never). It runs the
+  same windowed pass over the job's source files (inbox, else their archived
+  copy through the ledger), with the changed `.md` pages minus
   `wiki/log.md`, `wiki/hot.md`, `wiki/index.md`, `wiki/meta/**`, `.raw/**`,
-  `_index.md`; 12 000 characters each, 60 000 in all (a page that doesn't
-  fit is skipped, smaller ones after it still go in). Progress: key = job id, kind
+  `_index.md` as wiki context; with no readable source, those pages are
+  looked through themselves. Progress: key = job id, kind
   `batch`, steps `Moved to inbox · Read sources · Applied changes · Finding
   actions · Done`, "Finding actions in 2 notes", finished with "Found 5
   actions to confirm: 3 to-dos, 1 Slack message, 1 Jira ticket" / "Added …" /
@@ -361,7 +378,8 @@ All routes need the bearer token, like every other route.
 | POST | `/v1/actions/:id/remove` | | `ActionItem` |
 | POST | `/v1/actions/:id/restore` | | `ActionItem` |
 | POST | `/v1/conversations/:id/actions/detect` | `{turnIndex?}` | `{actions: ActionItem[]}` |
-| POST | `/v1/jobs/:id/actions/find` | | `{job}` (Try again; 409 when the job has no applied changes) |
+| GET | `/v1/jobs/:id/actions` | | `JobActions {summary, proposals}` (v11: what Review shows; 404 unknown job) |
+| POST | `/v1/jobs/:id/actions/find` | | `{job}` (Try again; also in Review for failed sources; 409 when the job has no applied changes and isn't in Review) |
 | GET | `/v1/connections` | | `{connections: ConnectionInfo[]}` |
 | POST | `/v1/connections/:id/connect` | `{site, email, token}` (scrubbed from errors) | `ConnectionInfo` |
 | GET | `/v1/connections/:id/sign-in-url` | `?site=` | `{url}` |
@@ -377,6 +395,9 @@ is dropped), `connection`, and `progress`.
   including found ones ("to confirm").
 - `distill actions add "<title>" [--type todo] [--body ..] [--why ..]
   [--due YYYY-MM-DD] [--vault PATH] [--json]`: agents can add to-dos.
+- `distill actions found <job-id> [--json]` (v11): what a batch found, where
+  each stands (waits for apply, added, already in Actions, not added), the
+  original's lines, and how many lines were looked through. Read-only.
 - There is no confirm, complete, send or create command: those are the
   user's, in the app.
 
@@ -534,8 +555,9 @@ Status per part; `built` parts ship in `clients/macos`.
   do; no results: names the filters, Clear filters. History → Jobs and Review
   show the job's line from `Job.actionsFound` (Found N actions to confirm · by
   type · Review them / Open in Actions, which open To do filtered to that job;
-  finding uses the loading pattern; failed has Try again); Review says before
-  apply that actions are looked for after it.
+  finding uses the loading pattern; failed has Try again); Review shows the
+  actions found while the batch was read ("Actions found", see [Action
+  context](action-context.md)).
 
 - **Ask** (built): see [Ask](ask.md) → Actions in answers.
 - **Batch progress** (built): the Queue banner's steps end with "Finding

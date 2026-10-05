@@ -63,6 +63,17 @@ function contentOf(b: LoadedBundle, w: BundleWrite): string | undefined {
   }
 }
 
+/** v11 (action-context.md): every Markdown page under wiki/ the bundle writes, with its text. */
+export function wikiWrites(b: LoadedBundle): { path: string; text: string }[] {
+  const out: { path: string; text: string }[] = [];
+  for (const w of b.writes) {
+    if (!w.path.startsWith('wiki/') || !w.path.toLowerCase().endsWith('.md')) continue;
+    const text = contentOf(b, w);
+    if (text !== undefined) out.push({ path: w.path, text });
+  }
+  return out;
+}
+
 /** A page of the bundle that carries an input's labels. */
 export interface SourcePage {
   write: BundleWrite;

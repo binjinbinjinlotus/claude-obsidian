@@ -515,6 +515,42 @@ export interface JobActionsSummary {
   byType: Record<string, number>;
   error?: string | null;
   model?: string | null;
+  /**
+   * v11 (action-context.md): review = found in the batch before Review (they wait in the job until
+   * their source's pages apply: `proposed`); applied = added to Actions. Absent = an older job (found after apply).
+   */
+  stage?: 'review' | 'applied';
+  /** v11: found before apply, not added yet (their source's pages haven't applied). */
+  proposed?: number;
+  /** v11: lines looked through for actions, and lines in the sources (all of them, by construction). */
+  lines?: number;
+  linesOf?: number;
+  /** v11: sources looked through. */
+  sources?: number;
+  /** v11: found again by a re-read or repair and already in Actions (not added twice). */
+  duplicates?: number;
+}
+
+/** v11: one action found in a batch, as Review shows it (GET /v1/jobs/:id/actions). */
+export interface JobActionProposal {
+  /** The item as it will be added (status pending; `id` is kept when it is added). */
+  item: ActionItem;
+  /** The source file (vault-relative) and its source page in the change. */
+  file: string;
+  page?: string | null;
+  /**
+   * waiting   = in Review; added after its source's page applies;
+   * added     = in Actions (`item.id`);
+   * duplicate = already in Actions (`existingID`), not added again;
+   * notApplied = its source was removed from the batch or the batch was rejected.
+   */
+  state: 'waiting' | 'added' | 'duplicate' | 'notApplied';
+  existingID?: string | null;
+}
+
+export interface JobActions {
+  summary: JobActionsSummary | null;
+  proposals: JobActionProposal[];
 }
 
 /** Structured status every agent turn must end with (JSON schema in WorkerProtocol). */
@@ -1066,14 +1102,59 @@ export type ActionTypeID = string;
  */
 export type ActionStatus = 'pending' | 'open' | 'drafting' | 'ready' | 'creating' | 'created' | 'done' | 'sent' | 'removed' | 'dismissed';
 
+/**
+ * v11 (action-context.md): where in the ORIGINAL source an action comes from. The lines are located by the
+ * core in the original's text (never taken from the model's report).
+ */
+export interface ActionRawRef {
+  /** Vault-relative: `.raw/captured/<sha>.<ext>` once archived, else where the source was (inbox/…). */
+  path: string;
+  /** Where the source was when the action was found (inbox/…), when that differs from `path`. */
+  inboxPath?: string | null;
+  sha256?: string | null;
+  /** Lines in the original, 1-based and inclusive: [from, to]. Absent when `match` is none. */
+  lines?: [number, number] | null;
+  /** The text of those lines, at most 1,500 characters. */
+  excerpt?: string | null;
+  /**
+   * quote   = the action's quoted words were found on these lines;
+   * closest = the lines that share the most words with the action (Ask actions; shown as "closest lines");
+   * none    = the original is known but no lines match.
+   */
+  match?: 'quote' | 'closest' | 'none';
+}
+
+/** v11: a wiki page (and section) an action relates to. */
+export interface ActionWikiRef {
+  /** Vault-relative page path (wiki/…). */
+  path: string;
+  title?: string | null;
+  /** The section's heading, without #'s; absent = the page as a whole. */
+  heading?: string | null;
+  /** A few lines of that section, at most 800 characters. */
+  excerpt?: string | null;
+}
+
 export type ActionSource =
-  | { kind: 'note'; jobID?: string | null; notePath?: string | null; pageTitle?: string | null; quote?: string | null }
+  | {
+      kind: 'note'; jobID?: string | null; notePath?: string | null; pageTitle?: string | null; quote?: string | null;
+      /** v11: the original's lines (raw source) and the wiki pages the action relates to. */
+      raw?: ActionRawRef | null;
+      wiki?: ActionWikiRef[];
+      /** v11: why there is no `raw` (plain words), e.g. "found before originals were archived". */
+      contextNote?: string | null;
+    }
   | {
       kind: 'ask'; conversationID: string; question?: string | null; quote?: string | null; citedPaths?: string[];
       /** Which turn of the chat it came from (0-based). */
       turnIndex?: number | null;
       /** It came from the answer's gap (what the vault didn't cover): clients then hide that Gap callout. */
       gap?: boolean;
+      /** v11: the cited pages' archived original, closest lines (match "closest"); absent = wiki only. */
+      raw?: ActionRawRef | null;
+      wiki?: ActionWikiRef[];
+      /** v11: why there is no `raw`, e.g. "the cited pages have no archived original". */
+      contextNote?: string | null;
     }
   | { kind: 'manual'; /** Who added it: the user in the app (default) or an agent through the CLI/API. */ by?: 'user' | 'agent' };
 
