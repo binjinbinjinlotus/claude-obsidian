@@ -110,7 +110,7 @@ model API, because those runners have no tools and so give no steps.
 ## What is kept, and never
 
 - **Kept**: each step's plain words, the file or page name, and the tool
-  with its target. A job keeps at most **2,000 steps / 512 KB** in
+  with its target. A job keeps at most **2,000 steps / 512 KB** of new steps in
   `<state>/steps/<job-id>.jsonl` (mode 0600, one JSON line per new or
   changed step, the last line of an id wins). Past that limit, one line
   "Later steps weren't kept" closes the log. A log is removed with its job:
@@ -126,9 +126,12 @@ model API, because those runners have no tools and so give no steps.
 - **An older core** (no steps route): the view says "Update the Distill
   core", as Actions and Collectors do.
 - **Past the cap** a step already kept can still finish, so its mark
-  stops. Once a job is no longer running, any step still marked running
-  (cut off by a restart or a failure) shows as done, or failed when the
-  job failed or was cancelled.
+  stops; such updates can take the file to at most 1 MB. Once a job is no
+  longer running, any step still marked running (cut off by a restart or
+  a failure) shows as done, or failed when the job failed or was
+  cancelled. Once it is finished, blocked tools and questions no longer
+  say "waiting for you" (the core closes them with the review; the app
+  settles older logs).
 - **Pruning at start** is skipped when the job list is empty, so a
   `jobs.json` set aside as unreadable never wipes every log.
 - **Collector runs**: `run.outputLog` holds both streams in order, the last

@@ -52,6 +52,15 @@ supersede it with a new entry.
   - **The runtime shows quietly.** The log header and an opened run show
     the runtime, for example "python3 (.venv) · ~/…/python3", from
     `run.runtime` and `install.runtime`. Owner-approved, 2026-10-05.
+  - **No stale marks, no silent blank, no wipe.** Once a job is no longer
+    running, nothing in its log spins, and once it is finished nothing
+    says "waiting for you". The core closes blocked tools and questions
+    with the review and settles running steps when a job fails or is
+    cancelled. The app settles logs written before that, and steps cut off
+    by the cap or a restart. An older core without the steps route shows
+    "Update the Distill core", as Actions and Collectors do, not an empty
+    log. Pruning at start is skipped when the job list is empty, so a
+    `jobs.json` set aside as unreadable never deletes every log.
 
 ## 2026-10-04
 

@@ -194,7 +194,10 @@ export function createStepLog(opts: StepLogOptions): StepLog {
   function closeReview(jobId: string, text: string): void {
     const l = logFor(jobId);
     if (!l.review) return;
-    change(jobId, l.review, { state: 'done', verb: 'answer', text, endedAt: isoDate(now()) });
+    const end = isoDate(now());
+    // Blocked tools and questions were answered along with the review.
+    for (const s of [...l.steps.values()]) if (s.state === 'review' && s.id !== l.review) change(jobId, s.id, { state: 'done', endedAt: end });
+    change(jobId, l.review, { state: 'done', verb: 'answer', text, endedAt: end });
     l.review = undefined;
   }
 
@@ -282,11 +285,11 @@ export function createStepLog(opts: StepLogOptions): StepLog {
         break;
       }
       case 'failed':
-        for (const s of [...l.steps.values()]) if (s.state === 'running') change(job.id, s.id, { state: 'done', endedAt: end });
+        for (const s of [...l.steps.values()]) if (s.state === 'running' || s.state === 'review') change(job.id, s.id, { state: 'done', endedAt: end });
         step(job.id, { phase: l.review ? 'review' : 'agent', kind: 'step', state: 'failed', verb: 'error', text: `Failed: ${clip(redact(job.error ?? 'unknown error'), 200)}` });
         break;
       case 'cancelled':
-        for (const s of [...l.steps.values()]) if (s.state === 'running') change(job.id, s.id, { state: 'done', endedAt: end });
+        for (const s of [...l.steps.values()]) if (s.state === 'running' || s.state === 'review') change(job.id, s.id, { state: 'done', endedAt: end });
         step(job.id, { phase: 'agent', kind: 'step', state: 'failed', verb: 'error', text: 'Cancelled' });
         break;
       case 'rejected':

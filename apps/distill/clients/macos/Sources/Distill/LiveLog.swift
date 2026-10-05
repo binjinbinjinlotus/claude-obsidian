@@ -450,8 +450,7 @@ struct JobStepsView: View {
     @State private var primed = false
 
     var body: some View {
-        let steps = LiveLog.settled(store.steps[job.id] ?? [], jobRunning: job.state == .running,
-                                    jobFailed: job.state == .failed || job.state == .cancelled)
+        let steps = LiveLog.settled(store.steps[job.id] ?? [], job: job.state)
         let runner = runnerName
         let rows = LiveLog.rows(steps, runner: runner == "Claude Code" ? "Claude" : runner, expanded: expanded, details: details)
         let empty: (title: String, message: String)? = !steps.isEmpty ? nil

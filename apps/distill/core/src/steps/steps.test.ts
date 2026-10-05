@@ -210,6 +210,21 @@ describe('job steps (live log)', () => {
   });
 });
 
+describe('step log review', () => {
+  test('blocked tools and questions stop waiting once the review is answered or the job ends', () => {
+    const dir = path.join(root, 'steps-review');
+    let job = { ...newJob({ id: 'job-r', kind: 'ingest', vaultPath: root, files: ['inbox/a.md'], model: 'm', now: new Date() }) };
+    const log = createStepLog({ dir, emit: () => undefined, getJob: () => job });
+    log.onEvent({ type: 'job', job });
+    job = { ...job, state: 'awaitingApproval', approval: { summary: 's', questions: ['Which?'], plan: PLAN, denials: [{ toolName: 'Bash', toolUseID: 'u', input: { command: 'rm x' } }], skipped: [] } } as typeof job;
+    log.onEvent({ type: 'job', job });
+    assert.equal(log.list('job-r').steps.filter((s) => s.state === 'review').length, 3);
+    job = { ...job, state: 'rejected' } as typeof job;
+    log.onEvent({ type: 'job', job });
+    assert.deepEqual(log.list('job-r').steps.filter((s) => s.state === 'review'), []);
+  });
+});
+
 describe('step log limits', () => {
   test('stops at MAX_STEPS with one “not kept” line', () => {
     const dir = path.join(root, 'steps');

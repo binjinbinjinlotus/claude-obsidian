@@ -106,9 +106,10 @@ final class LiveLogTests: XCTestCase {
 
     func testSettledLeavesNoSpinnerAfterTheJob() {
         let steps = [step("a", 0, state: "running"), step("b", 1, "review", "review", "Waiting for your review", state: "review"), step("c", 2)]
-        XCTAssertEqual(LiveLog.settled(steps, jobRunning: true).map(\.state), ["running", "review", "done"])
-        XCTAssertEqual(LiveLog.settled(steps, jobRunning: false).map(\.state), ["done", "review", "done"])
-        XCTAssertEqual(LiveLog.settled(steps, jobRunning: false, jobFailed: true).map(\.state), ["failed", "review", "done"])
+        XCTAssertEqual(LiveLog.settled(steps, job: .running).map(\.state), ["running", "review", "done"])
+        XCTAssertEqual(LiveLog.settled(steps, job: .awaitingApproval).map(\.state), ["done", "review", "done"])
+        XCTAssertEqual(LiveLog.settled(steps, job: .completed).map(\.state), ["done", "done", "done"])
+        XCTAssertEqual(LiveLog.settled(steps, job: .failed).map(\.state), ["failed", "done", "done"])
     }
 
     func testNowLineAndCopy() {
