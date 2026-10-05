@@ -325,6 +325,65 @@ describe('batches: approve, reply, allow, Open in Terminal', () => {
     assert.ok(req.prompt.includes('bundle.json'), 'the plan under review');
   });
 
+  test('Continue keeps the batch progress open while the new session works (reply)', async () => {
+    h = engineSetup(new FakeAgent([]));
+    const job = await reviewedBatch(h);
+    h.runner.steps.push({ structured: { status: 'nothing_to_do', summary: 'ok' } });
+    await h.engine.reply(job.id, 'go on', { newSession: true });
+    const last = h.events.filter((e): e is Extract<CoreEvent, { type: 'progress' }> => e.type === 'progress' && e.progress.key === job.id).at(-1);
+    assert.ok(last && !last.progress.finished, 'progress is running, not closed as "Ready for review"');
+    assert.match(last.progress.message, /new session/);
+    await h.engine.whenIdle();
+  });
+
+  test('approve refused at the resume: the live log keeps no spinning step', async () => {
+    const { createStepLog } = await import('./steps/index.js');
+    h = engineSetup(new FakeAgent([]));
+    const log = createStepLog({ dir: path.join(tmp, 'steps'), emit: () => undefined, getJob: (id) => h.engine.getJob(id) });
+    h.engine.subscribe((e) => log.onEvent(e));
+    const job = await reviewedBatch(h);
+    h.runner.steps.push({ throws: new RunnerError(CLAUDE_NOT_FOUND, 'sessionNotFound') });
+    await h.engine.approve(job.id);
+    await h.engine.whenIdle();
+    const back = h.engine.getJob(job.id)!;
+    assert.equal(back.state, 'awaitingApproval');
+    assert.equal(back.sessionUnavailable?.action, 'approve');
+    const running = log.list(job.id).steps.filter((s) => s.state === 'running');
+    assert.deepEqual(running, [], 'no "Applying…" or agent step left running');
+    assert.ok(log.list(job.id).steps.some((s) => s.state === 'review'), 'waiting for the user again');
+  });
+
+  test('approve when the batch runner is gone and the default cannot limit tools: the core applies, no agent turn', async () => {
+    const weak = new FakeAgent([]);
+    h = engineSetup(weak);
+    const job = await reviewedBatch(h);
+    // The batch now names a runner this core no longer has; the default (the fake) loses toolPermissions.
+    (weak.capabilities as Set<RunnerCapability>).delete('toolPermissions');
+    (weak.capabilities as Set<RunnerCapability>).add('sandboxedWrites');
+    const jobsFile = path.join(tmp, 'state', 'jobs.json');
+    await h.engine.stop();
+    const saved = JSON.parse(fs.readFileSync(jobsFile, 'utf8'));
+    saved[0].runnerID = 'retired-runner';
+    fs.writeFileSync(jobsFile, JSON.stringify(saved));
+    const applies: string[][] = [];
+    const engine = createEngine({
+      paths: statePaths(path.join(tmp, 'state')),
+      runners: createRunnerRegistry([weak]),
+      launch: async (o: RunProcessOptions) => {
+        applies.push(o.args);
+        return out(0, JSON.stringify(o.args.includes('apply') ? { ok: true, operation_id: 'op-1', changed_paths: ['wiki/a.md'] } : PLAN), '');
+      },
+      tickMs: 60_000,
+    });
+    h = { ...h, engine };
+    await assert.rejects(engine.approve(job.id), (e: unknown) => isSessionUnavailableError(e) && (e as CoreError).details?.reason === 'runnerGone');
+    const calls = weak.requests.length;
+    await engine.approve(job.id, { newSession: true });
+    await engine.whenIdle();
+    assert.equal(weak.requests.length, calls, 'no agent turn ran the apply');
+    assert.ok(applies.some((a) => a.includes('apply') && a.includes('--approved-plan-sha256')), 'the core ran the pinned apply');
+  });
+
   test('allow: transcript gone → nothing granted (Cancel); Continue grants and runs in a new session', async () => {
     h = engineSetup(new FakeAgent([]));
     const job = await reviewedBatch(h);

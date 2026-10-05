@@ -961,18 +961,31 @@ export function createEngine(opts: EngineOptions): Engine {
         message: `Applying ${plural(plan.changed_paths.length, 'change')}`,
         ...(agent ? selectionFields({ runnerID: jobRunnerID(job), model: job.model }) : {}),
       });
-    if (coreApplies(job)) {
+    const applyByCore = () => {
       mutate(id, (j) => {
         j.state = 'running';
         delete j.error;
+        delete j.sessionUnavailable;
         j.turns.push(newTurn('user', `Approved ${plan.operation_id} (${plan.approval_sha256.slice(0, 12)}…)`, now()));
       });
       applying(false);
       track(applyInCore(id, plan, bundle));
+    };
+    if (coreApplies(job)) {
+      applyByCore();
       return;
     }
     const approvedTurn = `Approved ${plan.operation_id} (${plan.approval_sha256.slice(0, 12)}…)`;
     if (opts.newSession) {
+      // The batch's runner may be gone: when the runner that would continue can't be limited to the
+      // exact apply command, the core applies the approved plan itself (no AI session needed).
+      const kind = jobKind(job.kind);
+      const current = runners.get(jobRunnerID(job));
+      const next = current && kind && runnerSupports(current, kind.task) ? current : kind ? runners.get(selectionFor(settings, kind.task).runnerID) : undefined;
+      if (next && !next.capabilities.has('toolPermissions')) {
+        applyByCore();
+        return;
+      }
       continueInNewSession(id, 'approve', { userTurn: approvedTurn, plan, bundle });
       applying(true);
       return;
@@ -1004,8 +1017,10 @@ export function createEngine(opts: EngineOptions): Engine {
     if (job.state === 'running') throw new CoreError('busy', `Job ${id} is running.`);
     if (job.state !== 'awaitingApproval' && holdsOtherJob(job)) throw new CoreError('busy', 'Another job holds this vault.');
     if (opts.newSession) {
-      startTurnProgress(job, 'Drafting page changes', 'Working on your reply in a new session');
+      // After the switch: its first change (state not yet running) would close a progress started before.
       continueInNewSession(id, 'reply', { userTurn: trimmed, text: trimmed });
+      const current = findJob(id);
+      if (current) startTurnProgress(current, 'Drafting page changes', 'Working on your reply in a new session');
       return;
     }
     const gone = precheck(job, 'reply', { text: trimmed });
@@ -1040,8 +1055,9 @@ export function createEngine(opts: EngineOptions): Engine {
     }
     const allowedTurn = 'Allowed:\n' + clean.map((r) => `- ${r}`).join('\n');
     if (opts.newSession) {
-      startTurnProgress(job, 'Drafting page changes', 'Continuing with the tools you allowed, in a new session');
       continueInNewSession(id, 'allow', { userTurn: allowedTurn, rules: clean });
+      const current = findJob(id);
+      if (current) startTurnProgress(current, 'Drafting page changes', 'Continuing with the tools you allowed, in a new session');
       return;
     }
     const gone = precheck(job, 'allow', { rules: clean });
@@ -1156,8 +1172,10 @@ export function createEngine(opts: EngineOptions): Engine {
     restored.updatedAt = isoDate(now());
     jobs[i] = restored;
     persistJobs();
+    // Progress first, with an error, so the live log closes an "Applying…" step instead of leaving
+    // it spinning; then the job event puts the review step back.
+    finishProgress(id, { error: 'The AI session isn’t available anymore', patch: { message: 'Needs a new session' } });
     emit({ type: 'job', job: clone(restored) });
-    finishProgress(id, { patch: { message: 'Needs a new session' } });
   }
 
   function resumeBatchSession(o: ResumeBatchOptions): ResumeBatchOutcome {
