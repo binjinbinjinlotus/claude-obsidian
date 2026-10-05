@@ -261,8 +261,13 @@ export const IngestJobKind: JobKind = {
 
   initialPrompt(ctx: JobContext): string {
     const list = ctx.job.files.map((f) => `- ${f}`).join('\n');
+    const skillDir = path.join(ctx.settings.productRoot, 'skills', 'wiki-ingest');
     return `Use the claude-obsidian:wiki-ingest skill to ingest this batch from the \
-selected vault's inbox (vault-relative paths):
+selected vault's inbox. If that skill is not loaded (some runners have no plugin), \
+read ${path.join(skillDir, 'SKILL.md')} with the Read tool and follow it; paths it \
+mentions are relative to ${skillDir} or the product root ${ctx.settings.productRoot}.
+
+The batch (vault-relative paths):
 
 ${list}
 

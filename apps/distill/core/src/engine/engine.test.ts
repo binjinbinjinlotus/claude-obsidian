@@ -207,6 +207,8 @@ describe('engine state machine', () => {
     assert.equal(first!.workingDirectory, h.vault);
     assert.equal(first!.environment?.CLAUDE_OBSIDIAN_VAULT, h.vault);
     assert.ok(first!.prompt.includes('inbox/a.md'));
+    // Every runner gets the skill's absolute path (Codex loads no plugin).
+    assert.ok(first!.prompt.includes(`read ${path.join(h.root, 'product/skills/wiki-ingest/SKILL.md')} with the Read tool`));
     assert.ok(second!.prompt.includes('APPROVED operation op-1'));
     const persisted = JSON.parse(fs.readFileSync(path.join(h.root, 'state/jobs.json'), 'utf8'));
     assert.equal(persisted[0].state, 'completed');

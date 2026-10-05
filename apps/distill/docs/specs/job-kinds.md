@@ -1,7 +1,7 @@
 ---
 title: Job kinds
 status: built
-updated: 2026-10-02
+updated: 2026-10-04
 ---
 
 # Job kinds
@@ -27,7 +27,10 @@ reject, cost tracking, Open Session in Terminal, and recovery.
 - **Ingest** (`ingest`, consumes the queue): runs the
   `claude-obsidian:wiki-ingest` skill on the batch, builds one
   `claude-obsidian.transaction.v1` bundle in the job directory, inspects it,
-  and stops at `needs_approval`.
+  and stops at `needs_approval`. The prompt also names the skill's absolute
+  path, `<productRoot>/skills/wiki-ingest/SKILL.md`, and its folder, so a
+  runner that loads no plugin can still read and follow it. Codex runs with
+  `--ignore-user-config` and its cwd in the job folder (decision 2026-10-04).
 
 - **Labels** (`labels`, task `labelSuggest`, TS core only): created by
   `confirmLabels` / `suggestLabelsForPages`. No agent turn: the core writes the

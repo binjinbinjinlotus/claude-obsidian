@@ -17,6 +17,17 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **The ingest prompt names the wiki-ingest skill's absolute path for every
+  runner.** Spec: [Job kinds](job-kinds.md) → Ingest. Audit item B4.
+  - The prompt named only `claude-obsidian:wiki-ingest`. Codex gets no
+    plugin or skill path: it runs with `--ignore-user-config`, and its cwd
+    is the job folder. So it could not load the skill.
+  - **Decision:** the prompt adds "If that skill is not loaded, read
+    `<productRoot>/skills/wiki-ingest/SKILL.md` with the Read tool". Paths
+    in the skill are resolved against its folder or the product root. This
+    goes to every runner; Claude Code still loads the plugin skill as
+    before.
+
 - **Every vault use needs `.claude-obsidian.json`, not only batches.**
   Specs: [Vaults and settings](vaults-and-settings.md) → Vaults,
   [Ask](ask.md) → Isolation. Audit item B3.
