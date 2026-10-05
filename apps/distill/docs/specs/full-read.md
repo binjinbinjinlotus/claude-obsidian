@@ -73,6 +73,8 @@ Everything below ships, except where a line says otherwise.
   `rounds`.
 - **"Page didn't change" check.** It looks only at sources that were asked
   for more lines.
+- **An unreadable source** is left out of the prompt's list of files to
+  ingest. It is named only under "NOT part of this batch".
 
 **The reviewer's build notes, as built.**
 
@@ -812,8 +814,14 @@ of these hold:
   that record's locator is the file or its `.raw/captured/` copy.
 
 Rejected, cancelled and failed jobs never count. Jobs that are `running` or
-`awaitingApproval` are skipped: they are recorded by `recordApplied` when
-they apply.
+`awaitingApproval` are skipped. They are recorded by `recordApplied` when they
+apply:
+
+- A job that started on this build has a coverage record.
+- A job that started before has none (for example the owner's re-read groups
+  still running at the upgrade). Then `recordApplied` runs the same per-job
+  back-fill on its saved turns, by the rules above, before the repair scan
+  that follows the apply.
 
 **The repair never takes a source a live job holds.** The scan skips a source
 when any of these hold:
@@ -982,7 +990,7 @@ They pass `make test`. The skills reviewer has not seen them yet.
 | --- | --- |
 | Settings | `batchSourceTokens?` (null = Automatic), `detailLevel?` per source type; model windows cached in `<state>/coverage/models.json` |
 | Job | `coverage?` (CoverageSummary), `stopped?: StoppedSource[]`, `batchOf?: {index, total}` |
-| CoverageSummary | `sources[]` (`file` vault-relative; `lines`, `read`, `state`, `reason?` lowercase with no final period, `images?`, `rounds?`), `full`, `of`, `lines`, `rounds`, `continued`, `state`, `detail? {checked, added, left, note?}`, `partialWording?`, `later?`, `archived?` |
+| CoverageSummary | `sources[]` (`file` vault-relative; `lines`, `read`, `state`, `reason?` lowercase with no final period, `images?`, `rounds?`, `readTo?` for a source not read to the end), `full`, `of`, `lines`, `rounds`, `continued`, `state`, `detail? {checked, added, left, note?}`, `partialWording?`, `later?`, `archived?` |
 | PendingPart | reasons `covered` and `unread`; `unread?: string[]`. The gate skips `covered` and runs on `unread` |
 | ApprovalRequest | `rebuilt.reason` may be `covered` |
 | runTurn | option `autoContinue` |

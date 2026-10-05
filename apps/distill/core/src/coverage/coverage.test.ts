@@ -106,6 +106,13 @@ describe('what a turn read, from stream-json', () => {
     // Across turns: the next turn compares with the last context of this one.
     const next = parseTurn(msg(1_900), p.nextSeq, p.lastContext);
     assert.equal(next.events.length, 0);
+    // The context is input + cache-read + cache-creation: a message whose tokens are all
+    // cache-creation counts, so a drop after it is a compaction.
+    const parts = (o: Record<string, number>) => JSON.stringify({ type: 'assistant', message: { content: [], usage: { input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, ...o } } });
+    const sum = parseTurn([parts({ cache_creation_input_tokens: 100_000 }), parts({ cache_read_input_tokens: 30_000 })].join('\n'));
+    assert.equal(sum.events.filter((e) => e.t === 'compact').length, 1);
+    const grown = parseTurn([parts({ input_tokens: 40_000 }), parts({ input_tokens: 5_000, cache_read_input_tokens: 20_000, cache_creation_input_tokens: 20_000 })].join('\n'));
+    assert.equal(grown.events.length, 0, '45K after 40K is no drop');
     const boundary = parseTurn(JSON.stringify({ type: 'system', subtype: 'compact_boundary' }));
     assert.equal(boundary.events[0]?.t, 'compact');
     const windows = parseTurn(JSON.stringify({ type: 'result', modelUsage: { 'claude-sonnet-5-5': { contextWindow: 1_000_000 } } }));

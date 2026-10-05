@@ -250,6 +250,8 @@ export function summarize(cov: SourceCoverage[], r: CoverageRecord, state: Cover
       ...(c.unreadable ? { reason: c.unreadable } : {}),
       ...(r.sources.find((s) => s.file === c.file)?.imageLines.length ? { images: r.sources.find((s) => s.file === c.file)!.imageLines.length } : {}),
       ...(r.sources.find((s) => s.file === c.file)?.rounds ? { rounds: r.sources.find((s) => s.file === c.file)!.rounds! } : {}),
+      // Not read to the end: the last line read without a gap from line 1 ("read up to line 412").
+      ...(!c.full && !c.unreadable && c.missing[0] ? { readTo: Math.max(0, c.missing[0][0] - 1) } : {}),
     })),
     full: readable.filter((c) => c.full).length,
     of: readable.length,

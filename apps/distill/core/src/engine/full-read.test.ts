@@ -255,7 +255,11 @@ describe('the gate', () => {
     const a = note(h.vault, 'Meeting A.md', 5);
     fs.writeFileSync(path.join(h.vault, 'inbox', 'bad.md'), Buffer.from([0x61, 0x0a, 0xff, 0xfe, 0x0a]));
     h.runner.script = (req, c) => {
-      assert.ok(!req.prompt.includes('bad.md\n') || true);
+      // Only the readable source is given to read: no fact line, no reading copy for bad.md.
+      assert.deepEqual(req.prompt.split('\n').filter((l) => l.includes('bad.md')), [
+        '- inbox/bad.md: it isn’t valid UTF-8 text from line 2',
+      ], 'named only as not part of this batch');
+      assert.equal(loadRecord(c.jobDir)!.sources.find((s) => s.file === 'inbox/bad.md')?.copy, undefined);
       const { copy, lines } = copyOf(c.jobDir, a);
       writeBundle(h.vault, c.bundle, [a]);
       return { ...approval(c.bundle), raw: done(read(copy, 1, 5, lines)) };
@@ -263,7 +267,7 @@ describe('the gate', () => {
     const job = (await h.engine.rereadSources!({ files: [a, 'inbox/bad.md'], perBatch: 10 })).started[0]!;
     await h.engine.whenIdle();
     const j = h.engine.getJob(job.id)!;
-    assert.equal(j.state, 'awaitingApproval');
+    assert.equal(j.state, 'awaitingApproval', j.error);
     assert.deepEqual(j.stopped?.map((s) => [s.file, s.reason]), [['inbox/bad.md', 'it isn’t valid UTF-8 text from line 2']]);
     assert.equal(j.coverage?.state, 'stopped');
     assert.equal((await h.engine.listHeld!()).length, 1);
@@ -313,6 +317,8 @@ describe('the split', () => {
     assert.deepEqual(j.pendingPart?.unread, [b]);
     assert.equal(j.coverage?.state, 'split');
     assert.deepEqual(j.coverage?.later, [b]);
+    const later = j.coverage?.sources.find((s) => s.file === b);
+    assert.deepEqual([later?.state, later?.lines, later?.readTo], ['later', 100, 30], '“100 lines · read up to line 30 in this session”');
     assert.deepEqual(j.approval?.sources?.map((s) => s.page), ['wiki/sources/Meeting A.md']);
 
     await h.engine.approve(job.id);
@@ -477,6 +483,27 @@ describe('backfill counts only applied changes', () => {
     const content = (f: string) => sha(fs.readFileSync(path.join(vault, f)));
     assert.equal(fr.index.isFull(content(files[0]!)), true);
     for (const f of files.slice(1)) assert.equal(fr.index.isFull(content(f)), false, f);
+  });
+
+  test('a batch started before full reads (no coverage record) is counted when it applies; the repair then leaves it alone', async () => {
+    const vault = path.join(tmp, 'vault');
+    fs.mkdirSync(path.join(vault, 'inbox'), { recursive: true });
+    const a = note(vault, 'a.md', 10);
+    ledgerFor(vault, [{ file: a, page: 'wiki/sources/a.md' }]);
+    const job = pastJob(vault, 'job-inflight', [a], 'awaitingApproval');
+    turnFile(job, read(path.join(vault, a), 1, 10, 10));
+    const { fr, requests } = moduleHarness([job], vault);
+    assert.equal(fr.backfill(), 0, 'in Review: not counted yet');
+    const content = sha(fs.readFileSync(path.join(vault, a)));
+    assert.equal(fr.index.isFull(content), false);
+    // The owner approves it on the new build.
+    job.state = 'completed';
+    job.operationID = 'op-x';
+    job.changedPaths = ['wiki/sources/a.md'];
+    fr.recordApplied(job, job.changedPaths);
+    assert.equal(fr.index.isFull(content), true);
+    await fr.repairScan({ path: vault, queueDirectory: '' }, { force: true });
+    assert.equal(requests.length, 0, 'not queued again');
   });
 
   test('a read of only part of a file is not a full read', () => {

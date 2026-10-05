@@ -488,7 +488,10 @@ export const IngestJobKind: JobKind = {
   task: 'ingest',
 
   initialPrompt(ctx: JobContext): string {
-    const list = ctx.job.files.map((f) => `- ${f}`).join('\n');
+    // v10: a file the core can't read as text is not part of the batch: it is named only in the
+    // reading plan's "NOT part of this batch" list, never in the files to ingest.
+    const unreadable = new Set((ctx.reread?.unreadable ?? []).map((u) => u.file));
+    const list = ctx.job.files.filter((f) => !unreadable.has(f)).map((f) => `- ${f}`).join('\n');
     const skillDir = path.join(ctx.settings.productRoot, 'skills', 'wiki-ingest');
     const pageBudget = ctx.job.reread != null
       ? "the existing-page budget raised as far as updating these sources' pages needs"

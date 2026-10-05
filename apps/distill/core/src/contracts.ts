@@ -303,6 +303,8 @@ export interface CoverageSourceSummary {
   images?: number;
   /** Automatic continuations that asked for lines of this source; absent when the first pass read it all. */
   rounds?: number;
+  /** Not read to the end: the last line read without a gap from line 1 (0 = none). */
+  readTo?: number;
 }
 
 /** v10: a batch's coverage (full-read.md). Information for the owner, never a decision. */

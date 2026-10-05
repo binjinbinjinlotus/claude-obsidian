@@ -708,7 +708,13 @@ export function createFullRead(d: FullReadDeps) {
   function recordApplied(job: Job, pagesApplied: string[], bundlePath?: string): void {
     const jobDir = jobStateDirectory(job);
     const record = loadRecord(jobDir);
-    if (!record) return;
+    // A batch started before full reads (no coverage record): count it from its saved turns, by the
+    // back-fill rules, before the repair scan that follows this apply could queue its sources.
+    if (!record) {
+      const added = backfillJob(d.findJob(job.id) ?? job);
+      if (added > 0) d.log('info', `Full reads: ${plural(added, 'source')} of ${job.id} were read in full (from its saved steps).`);
+      return;
+    }
     const vault = d.vaultProfileFor(job);
     const b = bundlePath ? readBundle(bundlePath) : undefined;
     const pages = b ? sourcePages(b) : [];
@@ -735,12 +741,20 @@ export function createFullRead(d: FullReadDeps) {
    */
   function backfill(): number {
     let added = 0;
-    for (const job of d.jobs()) {
-      if (job.kind !== 'ingest' || job.state !== 'completed' || !job.operationID) continue;
+    for (const job of d.jobs()) added += backfillJob(job);
+    if (added > 0) d.log('info', `Full reads: ${plural(added, 'source')} of past batches were read in full (from their saved steps).`);
+    return added;
+  }
+
+  /** One job's back-fill (the rules above); the number of sources recorded as read in full. */
+  function backfillJob(job: Job): number {
+    let added = 0;
+    {
+      if (job.kind !== 'ingest' || job.state !== 'completed' || !job.operationID) return 0;
       const vault = d.vaultProfileFor(job);
       const jobDir = jobStateDirectory(job);
       const applied = new Set(job.parts?.length ? job.parts.flatMap((p) => p.pages) : job.changedPaths);
-      if (applied.size === 0) continue;
+      if (applied.size === 0) return 0;
       const ledger = ledgerRecordsSafe(vault.path);
       const files = readableSources(vault.path, job.files).filter((f) => sourceKind(f) === 'text');
       const candidates = files.flatMap((f) => {
@@ -750,14 +764,14 @@ export function createFullRead(d: FullReadDeps) {
         if (!rec || !rec.pages.some((p) => applied.has(p))) return [];
         return [{ file: f, sha, pages: rec.pages.filter((p) => applied.has(p)) }];
       });
-      if (candidates.length === 0) continue;
+      if (candidates.length === 0) return 0;
       let turnFiles: string[];
       try {
         turnFiles = fs.readdirSync(jobDir).filter((n) => /^turn-\d+\.json$/.test(n)).sort((a, b) => Number(a.slice(5, -5)) - Number(b.slice(5, -5)));
       } catch {
-        continue;
+        return 0;
       }
-      if (turnFiles.length === 0) continue;
+      if (turnFiles.length === 0) return 0;
       // Copies are not on disk for these jobs: the record counts the original lines (image lines left out).
       const copies = candidates.map((c) => {
         const rc = makeReadingCopy(vault.path, c.file, path.join(jobDir, 'backfill'), candidates.indexOf(c) + 1);
@@ -791,7 +805,6 @@ export function createFullRead(d: FullReadDeps) {
         /* a scratch copy */
       }
     }
-    if (added > 0) d.log('info', `Full reads: ${plural(added, 'source')} of past batches were read in full (from their saved steps).`);
     return added;
   }
 
