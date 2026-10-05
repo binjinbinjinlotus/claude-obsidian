@@ -89,6 +89,27 @@ isn't.
 ## Friction log (newest first)
 
 ### 2026-10-04
+- **An audit handoff worked well as a spec, but it listed symptoms, not every
+  reader.** A compliance audit found where Distill broke claude-obsidian's
+  rules: it edited files in `inbox/`, the core didn't enforce the approval
+  gate, and it trusted the model's apply report. The owner approved items A
+  and B, and a teammate built them from the handoff, one commit per item.
+  The handoff gave file and line evidence, which made the work fast. A
+  reviewer pass before coding still caught gaps the handoff left:
+  - a third reader of note labels (the queue row);
+  - a queue set to `wiki/` still received notes and drops even after the
+    validator blocked batches;
+  - `renameSync` silently replacing a file in `inbox/`.
+  - *Lesson:* when a rule says "never write X", list every writer and every
+    reader of X before coding, not only the lines the audit named. A short
+    advisor or reviewer pass before the first edit is cheap insurance.
+- **The worktree sandbox refused long shell heredocs.** Multi-line
+  `python3 - <<EOF` edits containing `$` or `\n` were rejected as "too
+  complex to verify", and one Write aimed at the shared checkout instead of
+  the worktree was blocked.
+  - *Change:* write edit scripts to a private scratchpad folder and run them
+    as `python3 <file>`, or use the Edit tool. Always build paths from the
+    worktree root.
 - **Green tests, broken on the owner's Mac.** Collector scripts ran with the
   login shell's `node`, which on this Mac is v14 (`/usr/local/bin`), not
   nvm's v22. TypeScript and npm installs passed every test but would have
