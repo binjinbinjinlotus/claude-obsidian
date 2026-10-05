@@ -796,6 +796,18 @@ skills reviewer.
    approvals. Packing the repair groups by tokens instead of 3 at a time gives
    about 4 batches. That needs `rereadSources` to take a token budget rather
    than `perBatch`.
+   **What has already run.** Re-read group 1 ran before this design was
+   built: job `job-20261005-123916-df39`, 3 notes, started 16:39Z. It has no
+   coverage record, so the repair would read those 3 again.
+
+   **Options for those 3:**
+   - Accept the repeat.
+   - Back-fill coverage from that job's saved stream (`turn-*.json` holds
+     `result.raw`) with the same parser, when the stream has the Read
+     results. This is preferred if they are there; it must be checked at
+     build time.
+
+   **The other 19 notes** go through the repair as designed.
 4. **Stale batches.** A batch built while another waits in Review rebuilds
    after that one applies, and the owner approves twice. An alternative: one
    Review per drop, backed by several reading sessions plus one merge
