@@ -9,9 +9,11 @@ import type {
   RunnerCapability,
   RunnerStep,
   Settings,
+  SessionStoreStatus,
   SetupProblem,
 } from '../contracts.js';
 import { runProcess, RunnerError, type ProcessOutput, type RunProcessOptions } from './process.js';
+import { claudeConfigDir, claudeTranscriptStatus, sessionNotFoundError } from './session.js';
 
 export const CLAUDE_CODE_ID = 'claude-code';
 
@@ -164,7 +166,11 @@ export class ClaudeCodeRunner implements AgentRunner {
   readonly effortLevels = ['low', 'medium', 'high', 'xhigh', 'max'];
   readonly defaultModel = 'sonnet';
 
-  constructor(private readonly launch: ProcessLauncher = runProcess) {}
+  constructor(
+    private readonly launch: ProcessLauncher = runProcess,
+    /** Where transcripts live (tests); default CLAUDE_CONFIG_DIR or ~/.claude. */
+    private readonly configDir?: string,
+  ) {}
 
   problems(settings: Settings): SetupProblem[] {
     try {
@@ -219,6 +225,13 @@ export class ClaudeCodeRunner implements AgentRunner {
       };
     }
     const output = await this.launch(opts);
+    // A refused resume: exit 1 and "No conversation found with session ID: <id>" on stderr. With
+    // stream-json, stdout also carries an error `result` event (verified 2026-10-05), so this is
+    // checked before stdout is parsed.
+    if (output.status !== 0 && 'resume' in inv.session) {
+      const gone = sessionNotFoundError(output.stderr.toString('utf8'), inv.session.resume);
+      if (gone) throw gone;
+    }
     if (output.stdout.length === 0 && output.status !== 0) {
       throw new RunnerError(`Exited ${output.status}: ${output.stderr.toString('utf8').slice(-2000)}`, 'nonZeroExit');
     }
@@ -228,5 +241,15 @@ export class ClaudeCodeRunner implements AgentRunner {
 
   resumeCommand(sessionID: string, model: string, settings: Settings): string[] {
     return [settings.claudePath, '--resume', sessionID, '--plugin-dir', settings.productRoot, '--model', model];
+  }
+
+  /** A new interactive session whose first message is `prompt`. */
+  newSessionCommand(prompt: string, model: string, settings: Settings): string[] {
+    return [settings.claudePath, '--plugin-dir', settings.productRoot, '--model', model, prompt];
+  }
+
+  /** A transcript file named after the session under <CLAUDE_CONFIG_DIR or ~/.claude>/projects; `configDir` overrides (tests). */
+  sessionStatus(sessionID: string, environment?: Record<string, string | undefined>): SessionStoreStatus {
+    return claudeTranscriptStatus(sessionID, this.configDir ?? claudeConfigDir({ ...process.env, ...(environment ?? {}) }));
   }
 }

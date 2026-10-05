@@ -281,19 +281,17 @@ public struct ApprovalRequest: Codable, Equatable, Sendable {
     public var unconfirmed: UnconfirmedPlan?
     /// v6: the plan was rebuilt in the batch's session and checked against what the user approved.
     public var rebuilt: RebuiltPlan?
-    /// v6: the batch's AI session could not be resumed; the reason in plain words.
-    public var sessionUnavailable: String?
     /// v6: the user discarded the rebuilt change for these sources; nothing was applied. Approve rebuilds it again.
-    public var partDiscarded: Bool?
+    public var needsRebuild: Bool?
 
     public var canApplyPlan: Bool { plan?.valid == true && bundlePath != nil }
     /// v6: a rebuilt part of a batch (Reject discards only it) or a discarded one (Approve rebuilds it).
-    public var isPart: Bool { rebuilt != nil || partDiscarded == true }
+    public var isPart: Bool { rebuilt != nil || needsRebuild == true }
 
     public init(summary: String, questions: [String] = [], bundlePath: String? = nil, plan: TransactionPlan? = nil,
                 planError: String? = nil, denials: [PermissionDenial] = [], skipped: [String] = [],
                 sources: [ReviewSource]? = nil, labels: ReviewLabels? = nil, unconfirmed: UnconfirmedPlan? = nil,
-                rebuilt: RebuiltPlan? = nil, sessionUnavailable: String? = nil, partDiscarded: Bool? = nil) {
+                rebuilt: RebuiltPlan? = nil, needsRebuild: Bool? = nil) {
         self.summary = summary
         self.questions = questions
         self.bundlePath = bundlePath
@@ -305,8 +303,7 @@ public struct ApprovalRequest: Codable, Equatable, Sendable {
         self.labels = labels
         self.unconfirmed = unconfirmed
         self.rebuilt = rebuilt
-        self.sessionUnavailable = sessionUnavailable
-        self.partDiscarded = partDiscarded
+        self.needsRebuild = needsRebuild
     }
 
     public init(from decoder: Decoder) throws {
@@ -322,8 +319,7 @@ public struct ApprovalRequest: Codable, Equatable, Sendable {
         labels = c.lossy(ReviewLabels.self, .labels)
         unconfirmed = c.lossy(UnconfirmedPlan.self, .unconfirmed).flatMap { $0.bundlePath.isEmpty ? nil : $0 }
         rebuilt = c.lossy(RebuiltPlan.self, .rebuilt)
-        sessionUnavailable = c.lossy(String.self, .sessionUnavailable).flatMap { $0.isEmpty ? nil : $0 }
-        partDiscarded = c.lossy(Bool.self, .partDiscarded).flatMap { $0 ? true : nil }
+        needsRebuild = c.lossy(Bool.self, .needsRebuild).flatMap { $0 ? true : nil }
     }
 }
 
@@ -368,7 +364,7 @@ public struct TurnRecord: Codable, Equatable, Sendable, Identifiable {
 public struct Job: Codable, Identifiable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, kind, vaultPath, files, sessionID, runnerID, model, effort, state, createdAt, updatedAt
-        case approval, turns, grantedTools, operationID, changedPaths, error, actionsFound, folders, parts, pendingPart
+        case approval, turns, grantedTools, operationID, changedPaths, error, actionsFound, folders, parts, pendingPart, sessionUnavailable
     }
 
     public var id: String
@@ -396,6 +392,9 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
     public var parts: [JobPart]?
     /// v6: the part being rebuilt in the batch's session, until its change comes back.
     public var pendingPart: PendingPart?
+    /// v6: the batch's AI session was found gone when a turn tried to resume it (session continuity).
+    /// The app shows SessionReplaceConfirm from it; the next turn clears it. nil on older cores.
+    public var sessionUnavailable: SessionUnavailable?
 
     public var totalCostUSD: Double { turns.reduce(0) { $0 + $1.costUSD } }
     public var selection: ModelSelection { ModelSelection(runnerID: runnerID ?? "claude-code", model: model, effort: effort) }
@@ -447,6 +446,7 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
         folders = c.lossy([Lossy<String>].self, .folders).map { $0.compactMap(\.value) }
         parts = c.lossy([Lossy<JobPart>].self, .parts).map { $0.compactMap(\.value) }
         pendingPart = c.lossy(PendingPart.self, .pendingPart)
+        sessionUnavailable = c.lossy(SessionUnavailable.self, .sessionUnavailable)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -472,6 +472,7 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
         try c.encodeIfPresent(folders, forKey: .folders)
         try c.encodeIfPresent(parts, forKey: .parts)
         try c.encodeIfPresent(pendingPart, forKey: .pendingPart)
+        try c.encodeIfPresent(sessionUnavailable, forKey: .sessionUnavailable)
     }
 }
 
@@ -964,6 +965,8 @@ public struct AskRequest: Codable, Hashable, Sendable {
     public var vaultPath: String?
     public var labelMatch: LabelMatch?
     public var includeUnconfirmed: Bool?
+    /// Continue in a new session seeded with the conversation so far (after session_unavailable).
+    public var newSession: Bool?
 
     public init(question: String, conversationID: String? = nil, selection: ModelSelection? = nil, labels: [String]? = nil,
                 sources: [String]? = nil, vaultPath: String? = nil, labelMatch: LabelMatch? = nil, includeUnconfirmed: Bool? = nil) {
@@ -987,6 +990,7 @@ public struct AskRequest: Codable, Hashable, Sendable {
         vaultPath = c.lossy(String.self, .vaultPath)
         labelMatch = c.lossy(LabelMatch.self, .labelMatch)
         includeUnconfirmed = c.lossy(Bool.self, .includeUnconfirmed)
+        newSession = c.lossy(Bool.self, .newSession)
     }
 }
 

@@ -93,14 +93,37 @@ review](approval-and-review.md), [Queue and batching](queue-and-batching.md),
   vault and should go in first. A batch whose plan went stale (apply exit 75,
   not a lock or a reused id) is rebuilt in its own session and checked the
   same way.
-- **`resumeBatchSession` is the one path to a batch's AI session.** It
-  returns a result or `session_unavailable`. On the latter the batch goes back
-  to Review with `approval.sessionUnavailable` and nothing runs. The detection
-  and the "start a new session" confirmation are session-continuity's shared
-  helper; ReviewStates frame 9 is a placeholder for `SessionReplaceConfirm`.
+- **`resumeBatchSession` is the one path to a batch's AI session.** It is
+  session-continuity's helper (merged 2026-10-05): approve, approve-later,
+  the rebuild of a picked part and its apply all go through it. A gone
+  session puts the job back exactly as it was and the app shows
+  `SessionReplaceConfirm` (ReviewStates frame 9). Continue sends the same
+  approval with `newSession`: the same plan and bundle (the label revision,
+  approve-later's unconfirmed bundle, or the part's rebuilt bundle), and for a
+  pick the same sources. The refused call's approve options (`labels`,
+  `pages`) ride on the `session_unavailable` details and the job marker, so
+  Continue never widens a part into the whole batch.
+  - A part's rebuild the core starts itself (what is left after a part
+    applied, or after the vault changed) first leaves its sources waiting in
+    Review with no plan (`approval.needsRebuild`). A gone session leaves
+    exactly that, with the marker; Continue rebuilds in a new session.
 - **"Wait before picking up a file" is hours and minutes, 0 to 24 hours**
   (was minutes and seconds, up to 59:59). 0 means no wait. The core clamps
   `settleSeconds` to 0..86400.
+- **A lost AI session is never replaced silently (system-wide).** Spec:
+  [Session continuity](session-continuity.md).
+  - The owner's rule covers every place that resumes a session: batches
+    (approve, reply, allow), Ask follow-ups, Open in Terminal and
+    `distill ask --conversation`. Wherever Distill would resume a session that
+    no longer exists, it shows one shared confirmation, `SessionReplaceConfirm`,
+    and continues in a new session only after your OK.
+  - Detection uses positive evidence only: the runner's not-found error with
+    the exact ID, a missing transcript under a readable store, a job that never
+    ran a turn, or a runner that's gone. Ordinary failures stay failures.
+  - Actions, label suggestions and image text are not covered. They start a
+    fresh session on every call, so they never resume one.
+  - Ask's deliberate resets (runner, vault, scope or workspace changed) keep
+    their notice. They are your change, not a lost session.
 
 - **Live log: one view for a batch's steps and a collector's output, opened
   in place.** Spec: [Live log](live-log.md). The owner asked for the

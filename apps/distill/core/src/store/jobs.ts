@@ -10,6 +10,7 @@ import type {
   PermissionDenial,
   ReviewLabels,
   ReviewSource,
+  SessionUnavailable,
   TransactionPlan,
   TurnRecord,
 } from '../contracts.js';
@@ -129,9 +130,7 @@ function decodeApproval(v: unknown): ApprovalRequest | undefined {
       a.rebuilt = { reason, pages: strArray(v.rebuilt.pages) ?? [], labels: lab === 'later' ? 'later' : 'confirm' };
     }
   }
-  const gone = str(v.sessionUnavailable);
-  if (gone !== undefined) a.sessionUnavailable = gone;
-  if (v.partDiscarded === true) a.partDiscarded = true;
+  if (v.needsRebuild === true) a.needsRebuild = true;
   return a;
 }
 
@@ -266,7 +265,35 @@ export function decodeJob(v: unknown, now = new Date()): Job | undefined {
   }
   const pendingPart = decodePendingPart(v.pendingPart);
   if (pendingPart) job.pendingPart = pendingPart;
+  // v6: session continuity marker (lenient: a wrong shape is dropped).
+  const su = decodeSessionUnavailable(v.sessionUnavailable);
+  if (su) job.sessionUnavailable = su;
   return job;
+}
+
+const PLACES: SessionUnavailable['place'][] = ['batch', 'conversation', 'terminal'];
+const REASONS: SessionUnavailable['reason'][] = ['notFound', 'missing', 'neverStarted', 'runnerGone'];
+const ACTIONS: NonNullable<SessionUnavailable['action']>[] = ['approve', 'reply', 'allow', 'ask', 'resume'];
+
+export function decodeSessionUnavailable(v: unknown): SessionUnavailable | undefined {
+  if (!isObject(v)) return undefined;
+  const place = str(v.place) as SessionUnavailable['place'] | undefined;
+  const reason = str(v.reason) as SessionUnavailable['reason'] | undefined;
+  if (!place || !PLACES.includes(place) || !reason || !REASONS.includes(reason)) return undefined;
+  const out: SessionUnavailable = { place, reason, message: str(v.message) ?? '', detail: str(v.detail) ?? '' };
+  const action = str(v.action) as SessionUnavailable['action'] | undefined;
+  if (action && ACTIONS.includes(action)) out.action = action;
+  const text = str(v.text);
+  if (text !== undefined) out.text = text;
+  const rules = strArray(v.rules);
+  if (rules) out.rules = rules;
+  const labels = str(v.labels);
+  if (labels === 'confirm' || labels === 'later') out.labels = labels;
+  const pages = strArray(v.pages);
+  if (pages) out.pages = pages;
+  const at = str(v.at);
+  if (at !== undefined) out.at = at;
+  return out;
 }
 
 const SUMMARY_STATES: JobActionsSummary['status'][] = ['finding', 'done', 'failed', 'skipped'];
@@ -354,13 +381,13 @@ function encodeApproval(a: ApprovalRequest): JSONObject {
   }
   if (a.unconfirmed != null) out.unconfirmed = JSON.parse(JSON.stringify(a.unconfirmed)) as JSONObject;
   if (a.rebuilt != null) out.rebuilt = { reason: a.rebuilt.reason, pages: [...a.rebuilt.pages], labels: a.rebuilt.labels };
-  if (a.sessionUnavailable != null) out.sessionUnavailable = a.sessionUnavailable;
+  if (a.needsRebuild === true) out.needsRebuild = true;
   return out;
 }
 
 const JOB_KEYS = [
   'id', 'kind', 'vaultPath', 'files', 'sessionID', 'runnerID', 'model', 'effort', 'state',
-  'createdAt', 'updatedAt', 'approval', 'turns', 'grantedTools', 'operationID', 'changedPaths', 'error', 'actionsFound', 'folders',
+  'createdAt', 'updatedAt', 'approval', 'turns', 'grantedTools', 'operationID', 'changedPaths', 'error', 'actionsFound', 'folders', 'sessionUnavailable',
   'parts', 'pendingPart',
 ];
 
@@ -397,6 +424,17 @@ export function encodeJob(job: Job, raw: JSONObject = {}): JSONObject {
   if (job.folders != null && job.folders.length > 0) out.folders = [...job.folders];
   if (job.parts != null && job.parts.length > 0) out.parts = JSON.parse(JSON.stringify(job.parts)) as JSONObject[];
   if (job.pendingPart != null) out.pendingPart = JSON.parse(JSON.stringify(job.pendingPart)) as JSONObject;
+  if (job.sessionUnavailable != null) {
+    const u = job.sessionUnavailable;
+    const m: JSONObject = { place: u.place, reason: u.reason, message: u.message, detail: u.detail };
+    if (u.action != null) m.action = u.action;
+    if (u.text != null) m.text = u.text;
+    if (u.rules != null) m.rules = [...u.rules];
+    if (u.labels != null) m.labels = u.labels;
+    if (u.pages != null) m.pages = [...u.pages];
+    if (u.at != null) m.at = u.at;
+    out.sessionUnavailable = m;
+  }
   return out;
 }
 

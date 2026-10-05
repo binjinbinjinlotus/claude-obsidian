@@ -28,14 +28,14 @@ final class ReviewLabelsDecodingTests: XCTestCase {
     }
 
     func testDiscardedPart() throws {
-        let a = try decode(ApprovalRequest.self, #"{"summary":"","partDiscarded":true,"sources":[{"page":"wiki/sources/B.md","title":"B","labels":[],"by":"none"}]}"#)
-        XCTAssertEqual(a.partDiscarded, true)
+        let a = try decode(ApprovalRequest.self, #"{"summary":"","needsRebuild":true,"sources":[{"page":"wiki/sources/B.md","title":"B","labels":[],"by":"none"}]}"#)
+        XCTAssertEqual(a.needsRebuild, true)
         XCTAssertTrue(a.isPart)
         XCTAssertFalse(a.canApplyPlan)
         let again = try JSONDecoder.core.decode(ApprovalRequest.self, from: JSONEncoder.core.encode(a))
         XCTAssertEqual(again, a)
-        let plain = try decode(ApprovalRequest.self, #"{"summary":"","partDiscarded":false}"#)
-        XCTAssertNil(plain.partDiscarded)
+        let plain = try decode(ApprovalRequest.self, #"{"summary":"","needsRebuild":false}"#)
+        XCTAssertNil(plain.needsRebuild)
         XCTAssertFalse(plain.isPart)
     }
 
@@ -61,7 +61,7 @@ final class ReviewLabelsDecodingTests: XCTestCase {
          "labels":{"state":"confirming","message":null,"done":3,"total":22,"revision":2},
          "unconfirmed":{"bundlePath":"/x/b.json","plan":{"operation_id":"op","valid":true,"changed_paths":["wiki/a.md"],"approval_sha256":"h"}},
          "rebuilt":{"reason":"remaining","pages":["wiki/sources/A.md"],"labels":"later"},
-         "sessionUnavailable":"Claude Code no longer has its conversation."}
+         "needsRebuild":true}
         """#)
         XCTAssertEqual(a.sources?.count, 2, "a source without a page is skipped")
         XCTAssertEqual(a.sources?[0].by, .ai)
@@ -74,7 +74,7 @@ final class ReviewLabelsDecodingTests: XCTestCase {
         XCTAssertEqual(a.unconfirmed?.bundlePath, "/x/b.json")
         XCTAssertEqual(a.unconfirmed?.plan?.changedPaths, ["wiki/a.md"])
         XCTAssertEqual(a.rebuilt, RebuiltPlan(reason: .remaining, pages: ["wiki/sources/A.md"], labels: .later))
-        XCTAssertEqual(a.sessionUnavailable, "Claude Code no longer has its conversation.")
+        XCTAssertEqual(a.needsRebuild, true)
     }
 
     func testOldApprovalAndUnknownValues() throws {
@@ -83,17 +83,17 @@ final class ReviewLabelsDecodingTests: XCTestCase {
         XCTAssertNil(old.labels)
         XCTAssertNil(old.unconfirmed)
         XCTAssertNil(old.rebuilt)
-        XCTAssertNil(old.sessionUnavailable)
+        XCTAssertNil(old.needsRebuild)
 
         let odd = try decode(ApprovalRequest.self, #"""
         {"summary":"s","sources":"nope","labels":{"state":"thinking"},"unconfirmed":{"plan":null},
-         "rebuilt":{"reason":"mystery","labels":"someday"},"sessionUnavailable":""}
+         "rebuilt":{"reason":"mystery","labels":"someday"},"needsRebuild":"yes"}
         """#)
         XCTAssertNil(odd.sources)
         XCTAssertEqual(odd.labels?.state, .confirmed, "an unknown labels state reads as confirmed")
         XCTAssertNil(odd.unconfirmed, "no bundle path = no unconfirmed change")
         XCTAssertEqual(odd.rebuilt, RebuiltPlan(reason: .partial, pages: [], labels: .confirm))
-        XCTAssertNil(odd.sessionUnavailable)
+        XCTAssertNil(odd.needsRebuild)
     }
 
     func testJobPartsAndPendingPart() throws {

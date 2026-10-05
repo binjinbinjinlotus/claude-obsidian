@@ -624,7 +624,8 @@ describe('activity through the core and the API', () => {
 
   test('every core method is classified (logged, read, event or quiet)', () => {
     const classified = classifiedMethods();
-    const internal = new Set(['start', 'stop', 'subscribe', 'setJobActions', 'whenIdle', 'listActivity', 'listTrash', 'restoreFromTrash']);
+    // resumeBatchSession: the engine's session-continuity seam; approve, reply and allow (logged) call it.
+    const internal = new Set(['start', 'stop', 'subscribe', 'setJobActions', 'whenIdle', 'listActivity', 'listTrash', 'restoreFromTrash', 'resumeBatchSession']);
     const methods = Object.keys(core).filter((k) => typeof (core as unknown as Record<string, unknown>)[k] === 'function' && !internal.has(k));
     const missing = methods.filter((m) => !(m in classified));
     assert.deepEqual(missing, [], `unclassified core methods: ${missing.join(', ')}`);

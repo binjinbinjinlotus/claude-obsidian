@@ -548,6 +548,25 @@ extension StatesSnapshot {
             ReviewSection(selectedJob: .constant(e.jobs[0].id))
         }
 
+        // Session continuity (canvas: SessionContinuity): the batch's AI session is gone.
+        e = engine()
+        e.jobs = [awaiting(e)]
+        e.sessionPrompts[e.jobs[0].id] = SessionPrompt(jobID: e.jobs[0].id, info: SessionUnavailable(
+            place: "batch", reason: "missing", detail: "~/.claude/projects/…/3f2a91c0-…-c217.jsonl is missing", action: "approve"))
+        main("session-review-approve", f, "Review", "Approve: the AI session is gone", "SessionReplaceConfirm above the dimmed footer; Continue applies in a new session.", e, section: .review, job: e.jobs[0].id) {
+            ReviewSection(selectedJob: .constant(e.jobs[0].id))
+        }
+
+        e = engine()
+        var refused = awaiting(e)
+        refused.sessionUnavailable = SessionUnavailable(place: "batch", reason: "notFound",
+                                                        detail: "claude exited 1: No conversation found with session ID: 3f2a91c0-…-c217",
+                                                        action: "reply", text: "Put the shading notes on the Gyokuro page instead", at: "t")
+        e.jobs = [refused]
+        main("session-review-reply", f, "Review", "Reply: the runner can't find the session", "From the job's marker after a refused resume; the reply is kept for Continue.", e, section: .review, job: e.jobs[0].id) {
+            ReviewSection(selectedJob: .constant(e.jobs[0].id))
+        }
+
         e = engine()
         e.jobs = [awaiting(e, questions: ["Should the tasting notes go on the existing Green tea page or a new Gyokuro page?",
                                           "The brewing card says 50–60 °C; your note says 60 °C. Which one should the page use?"],
@@ -684,6 +703,12 @@ extension StatesSnapshot {
         AskFixtures.loading(e.ask.main, question: "How hot should the water be for green tea, and does it differ for gyokuro?")
         e.ask.main.pending?.status = .failed("Claude Code exited: usage limit reached.")
         main("ask-error", f, "Ask", "Error", "Couldn't get an answer; the question is kept, Retry.", e, section: .ask) { AskScreen() }
+
+        e = engine()
+        AskFixtures.loading(e.ask.main, question: "And does it differ for gyokuro?")
+        e.ask.main.pending?.status = .sessionUnavailable(SessionUnavailable(
+            place: "conversation", reason: "notFound", detail: "claude exited 1: No conversation found with session ID: 8c1d…04ab", action: "ask"))
+        main("session-ask", f, "Ask", "Follow-up: the AI session is gone", "SessionReplaceConfirm in place of the pending question; Cancel puts it back in the box.", e, section: .ask) { AskScreen() }
 
         e = engine()
         AskFixtures.answered(e.ask.main)

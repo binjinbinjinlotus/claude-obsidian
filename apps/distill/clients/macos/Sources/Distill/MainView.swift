@@ -989,11 +989,24 @@ struct JobDetailView: View {
                     }
                     .padding(.horizontal, pad)
                 }
+                // Session continuity: the batch's AI session is gone; ask before a new one is used.
+                let sessionPrompt = engine.sessionPrompt(for: job)
+                if let p = sessionPrompt {
+                    SessionReplaceConfirm(p.info, runner: SessionReplaceText.runnerName(job.runnerID), place: "batch",
+                                          carries: p.info.reason == "neverStarted" ? "The new session starts with this batch’s sources and labels, then reads them as usual." : "",
+                                          onContinue: { engine.continueInNewSession(job) }, onCancel: { engine.cancelSessionPrompt(job) })
+                        .padding(.horizontal, Self.sidePadding).padding(.bottom, 14)
+                }
                 footer(job)
+                    .disabled(sessionPrompt != nil)
+                    .opacity(sessionPrompt != nil ? 0.45 : 1)
             }
             .onChange(of: jobID) {
                 reply = ""; allowed = []; unpicked = []; editingPage = nil; editDraft = []; labelError = nil
                 groupOverrides = [:]; menuOpen = false; summaryOpen = false
+            }
+            .onChange(of: engine.returnedReply) {
+                if let r = engine.returnedReply, r.jobID == job.id, reply.isEmpty { reply = r.text }
             }
         }
     }
@@ -1082,13 +1095,10 @@ struct JobDetailView: View {
                         text: approval.questions.map { "• \($0)" }.joined(separator: "\n"))
             }
             if !approval.denials.isEmpty { blocked(job, approval) }
-            if let reason = approval.sessionUnavailable {
-                ReviewNotice(tone: .peach, title: "This batch’s AI session isn’t available anymore", text: reason, systemImage: "exclamationmark.circle")
-            }
             if let rebuilt = approval.rebuilt { rebuiltNotice(rebuilt) }
-            if approval.partDiscarded == true {
-                ReviewNotice(tone: .calm, title: "You discarded the rebuilt change",
-                             text: "Nothing was applied. These sources stay in this batch: Rebuild asks this batch’s session for their change again, or Reject batch ends it.",
+            if approval.needsRebuild == true {
+                ReviewNotice(tone: .calm, title: "These sources wait for their change",
+                             text: "Nothing was applied. They stay in this batch: Rebuild asks this batch’s session for their change again, or Reject batch ends it.",
                              systemImage: "arrow.uturn.backward")
             }
             if let labelError {
@@ -1193,6 +1203,16 @@ struct JobDetailView: View {
                 IconButton(systemImage: "terminal", size: 16, iconSize: 13, weight: .regular,
                            help: "Open this session in Terminal") { engine.openInTerminal(job) }
                     .disabled(job.state == .running)
+                    .popover(isPresented: Binding(get: { engine.terminalSessionPrompt?.jobID == job.id },
+                                                  set: { if !$0 { engine.terminalSessionPrompt = nil } }),
+                             arrowEdge: .bottom) {
+                        if let p = engine.terminalSessionPrompt {
+                            SessionReplaceConfirm(p.info, runner: SessionReplaceText.runnerName(job.runnerID), place: "terminal", width: 404,
+                                                  onContinue: { engine.continueTerminalInNewSession(job) },
+                                                  onCancel: { engine.terminalSessionPrompt = nil })
+                                .padding(8)
+                        }
+                    }
             }
             ChatScrolling {
                 VStack(alignment: .leading, spacing: 10) {
@@ -1245,10 +1265,10 @@ struct JobDetailView: View {
                     ApplyingButton(count: s.sourcePages.count + s.newPages.count + s.updated.count)
                 } else if approval?.canApplyPlan == true {
                     approveButton(job, approval: approval, enabled: blocker == nil && editingPage == nil)
-                } else if approval?.partDiscarded == true {
+                } else if approval?.needsRebuild == true {
                     let n = approval?.sources?.count ?? 0
                     PrimaryButton(title: n == 1 ? "Rebuild 1 source" : "Rebuild \(n) sources", systemImage: "arrow.clockwise",
-                                  enabled: approval?.sessionUnavailable == nil) { engine.approve(job.id) }
+                                  enabled: true) { engine.approve(job.id) }
                 }
             case .running:
                 if let part = job.pendingPart {

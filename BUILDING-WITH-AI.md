@@ -108,6 +108,21 @@ isn't.
   pending job, its worker folder and the six bookkeeping files into a
   throwaway vault showed exactly what the reinstall will do (labels confirmed
   in revision 1, no AI call), without touching the owner's data.
+- **Probing the real CLIs paid off twice for session continuity.** The rule is
+  "never resume into a session that is gone", and it depends on telling a
+  missing session apart from any other failure. Guessing that from error text
+  would have been fragile. So the teammate ran `claude -p --resume <random
+  id>` and `codex exec resume <random id>` once each, with a throwaway
+  `CLAUDE_CONFIG_DIR` / `CODEX_HOME` so the owner's transcripts were never
+  touched. That gave the exact refusal lines, which the code matches together
+  with the exact session id.
+  - The probe was repeated after the live-log merge switched Claude Code to
+    `stream-json`, and the result had changed. Claude Code now also prints an
+    error `result` event on stdout, so the old "empty stdout" path no longer
+    ran and a refused resume would have looked like an ordinary failed turn.
+    The detection now checks stderr before it parses stdout.
+  - Lesson: when a teammate changes how a runner is invoked, probe the edge
+    cases again rather than trusting the earlier result.
 
 ### 2026-10-04
 - **An audit handoff worked well as a spec, but it listed symptoms, not every

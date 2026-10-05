@@ -143,6 +143,35 @@ describe('distill CLI', () => {
       });
       assert.equal(JSON.parse(r.stdout).conversationID, 'conv-7');
     });
+    it('a gone session: plain message, nothing asked, exit 1, names --new-session; --new-session sends newSession', async () => {
+      const original = core.ask;
+      const { CoreError } = await import('@distill/core/contracts');
+      core.ask = async (req) => {
+        if (!req.newSession) {
+          throw new CoreError('session_unavailable', 'This conversation’s AI session isn’t available anymore (Claude Code couldn’t find it). Distill will start a new session to continue.', {
+            place: 'conversation', reason: 'notFound', message: 'm', detail: 'No conversation found with session ID: s-1', action: 'ask',
+          });
+        }
+        return original(req);
+      };
+      try {
+        const r = await cli(['ask', 'And gyokuro?', '--conversation', 'conv-7']);
+        assert.equal(r.code, 1);
+        assert.equal(r.stdout, '');
+        assert.match(r.stderr, /isn’t available anymore/);
+        assert.match(r.stderr, /run the same command with --new-session/);
+        assert.match(r.stderr, /detail: No conversation found/);
+        const j = await cli(['ask', 'And gyokuro?', '--conversation', 'conv-7', '--json']);
+        const err = JSON.parse(j.stdout).error;
+        assert.equal(err.code, 'session_unavailable');
+        assert.equal(err.reason, 'notFound');
+        const ok = await cli(['ask', 'And gyokuro?', '--conversation', 'conv-7', '--new-session', '--json']);
+        assert.equal(ok.code, 0, ok.stderr);
+        assert.equal((lastCall('ask')?.args[0] as { newSession?: boolean }).newSession, true);
+      } finally {
+        core.ask = original;
+      }
+    });
     it('--runner different from the default requires --model', async () => {
       assert.equal((await cli(['ask', 'q', '--runner', 'codex'])).code, 2);
     });

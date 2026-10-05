@@ -12,6 +12,8 @@ export class CliError extends Error {
     message: string,
     readonly code = 'error',
     readonly exitCode = 1,
+    /** Additive fields of the server's error body (e.g. session_unavailable's place, reason, detail). */
+    readonly details: Record<string, unknown> = {},
   ) {
     super(message);
   }
@@ -234,8 +236,9 @@ export function apiRequest<T>(lock: ServerLock, token: string, method: string, p
         }
         const status = res.statusCode ?? 0;
         if (status >= 200 && status < 300) return resolve(parsed as T);
-        const err = (parsed as { error?: { code?: string; message?: string } } | null)?.error;
-        reject(new CliError(err?.message ?? `HTTP ${status}`, err?.code ?? `http_${status}`));
+        const err = (parsed as { error?: { code?: string; message?: string } & Record<string, unknown> } | null)?.error;
+        const { code: _c, message: _m, ...details } = err ?? {};
+        reject(new CliError(err?.message ?? `HTTP ${status}`, err?.code ?? `http_${status}`, 1, details));
       });
     });
     req.on('error', (e: NodeJS.ErrnoException) => {

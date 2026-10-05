@@ -195,7 +195,7 @@ Canvas: ReviewChoose. `approve(id, { labels?, pages? })`, `POST
     the same plan;
   - what is left after a part applied (`remaining`) or a change rebuilt after
     the vault changed (`stale`): the sources stay in Review without a plan
-    (`approval.partDiscarded`). Approve sends the same request to the batch's
+    (`approval.needsRebuild`). Approve sends the same request to the batch's
     session again, to a new `bundle-part-<n>.json`, and the result is checked
     as before.
   - Only **Reject batch** (`reject(id, { scope: 'batch' })`, body `{"scope":
@@ -207,12 +207,17 @@ Canvas: ReviewChoose. `approve(id, { labels?, pages? })`, `POST
 
 ### The session seam
 
-Every turn on a batch's AI session goes through `resumeBatchSession({ job,
-prompt, extraTools?, first?, signal })`, which returns `{ kind: 'result' }`
-or `{ kind: 'session_unavailable', reason }`. On the latter nothing runs, the
-batch goes back to Review with `approval.sessionUnavailable`, and Approve is
-refused. Detection (`sessionUnavailableReason`) and the "start a new session"
-confirmation (`SessionReplaceConfirm`) belong to session-continuity.
+Every resume of a batch's AI session goes through session-continuity's
+`resumeBatchSession({ job, prompt, extraTools?, applyPlan?, action, snapshot?,
+text?, rules?, labels?, pages? })` ([Session continuity](session-continuity.md)):
+approve, approve-later (the unconfirmed bundle), the rebuild of a picked part,
+the apply of a rebuilt part, and a retry after a discarded rebuild. `snapshot`
+is the job before the user turn or progress, so Cancel leaves it unchanged.
+`labels`/`pages` are the approve options to send again: Continue
+(`approve(id, { newSession: true, … })`) applies the same plan and bundle, and
+rebuilds the same sources for a part. A part's rebuild the core starts itself
+leaves its sources in Review with `approval.needsRebuild` when the session is
+gone, with the job marker for the confirmation.
 
 ## Core applies (label jobs, runners without tool permissions)
 

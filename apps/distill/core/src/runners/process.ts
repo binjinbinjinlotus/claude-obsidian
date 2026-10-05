@@ -21,7 +21,9 @@ export class RunnerError extends Error {
       /** A secret (API key) the runner needs is not set. */
       | 'missingSecret'
       /** An HTTP model API answered with an error (auth, rate limit, bad request, server). */
-      | 'apiError',
+      | 'apiError'
+      /** The runner refused to resume: the session does not exist (session continuity). */
+      | 'sessionNotFound',
   ) {
     super(message);
     this.name = 'RunnerError';

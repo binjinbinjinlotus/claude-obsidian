@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test';
-import type { AgentRunner, Job, RunRequest, RunResult, RunnerCapability } from '../contracts.js';
+import type { AgentRunner, CoreError, Job, RunRequest, RunResult, RunnerCapability, SessionStoreStatus } from '../contracts.js';
+import { isSessionUnavailableError, sessionNotFoundError } from '../runners/session.js';
 import { createRunnerRegistry } from '../runners/registry.js';
 import { statePaths } from '../store/paths.js';
 import { createEngine, type Engine } from './index.js';
@@ -217,6 +218,45 @@ function sessionRunner(s: Seed, o: { tamper?: boolean; labels?: string[] } = {})
     return { structured: { status: 'needs_approval', summary: `Rebuilt for ${keep.length}.`, bundle_path: at[1]! } };
   });
 }
+
+/**
+ * A batch runner that can be limited to the exact apply command (so approving resumes the batch's session), whose
+ * sessions in `gone` have no transcript (session continuity's check), and which runs the approved apply for real.
+ */
+class AgentFake extends FakeRunner {
+  readonly gone = new Set<string>();
+  sessionStatus(sessionID: string): SessionStoreStatus {
+    return this.gone.has(sessionID) ? 'missing' : 'unknown';
+  }
+}
+
+function agentRunner(s: Seed): AgentFake {
+  const parts = sessionRunner(s);
+  return new AgentFake(
+    'sandboxed',
+    (req) => {
+      const rule = req.allowedTools.find((t) => t.startsWith('Bash(') && t.includes(' transaction apply '));
+      if (!rule) return parts.answer(req);
+      const out = JSON.parse(execSync(rule.slice('Bash('.length, -1), { shell: '/bin/sh' }).toString());
+      return { structured: { status: 'done', summary: 'Applied.', operation_id: out.operation_id, changed_paths: out.changed_paths } };
+    },
+    new Set<RunnerCapability>(['agentTools', 'sandboxedWrites', 'sessionResume', 'structuredOutput', 'toolPermissions']),
+  );
+}
+
+const strip = (j: Job | undefined) => {
+  const { updatedAt: _u, ...rest } = structuredClone(j!);
+  return rest;
+};
+
+const goneError = (e: unknown, expect: { labels?: string; pages?: string[] }) => {
+  assert.ok(isSessionUnavailableError(e), String(e));
+  const d = (e as CoreError).details as Record<string, unknown>;
+  assert.equal(d.action, 'approve');
+  assert.equal(d.labels, expect.labels);
+  assert.deepEqual(d.pages, expect.pages);
+  return true;
+};
 
 function start(s: Seed, runner: FakeRunner): Engine {
   engine = createEngine({ paths: statePaths(s.state), runners: createRunnerRegistry([runner]), tickMs: 60_000 });
@@ -430,7 +470,7 @@ describe('parts of a batch (pick, remove, rebuild in the same session)', () => {
     await e.reject(s.jobID, { scope: 'part' });
     job = e.getJob(s.jobID)!;
     assert.equal(job.state, 'awaitingApproval');
-    assert.equal(job.approval!.partDiscarded, true);
+    assert.equal(job.approval!.needsRebuild, true);
     assert.equal(job.approval!.plan, undefined);
     assert.deepEqual(job.approval!.sources!.map((x) => x.page), [sources[1]!.page, sources[2]!.page]);
     assert.ok(!fs.existsSync(path.join(s.vault, 'wiki/sources/Source B.md')));
@@ -478,23 +518,114 @@ describe('parts of a batch (pick, remove, rebuild in the same session)', () => {
     assert.equal(e.getJob(s.jobID)!.state, 'completed');
   });
 
-  test('resumeBatchSession: a session that is gone sends the batch back to Review, nothing runs', async () => {
+  test('the session is gone on a partial approve: Cancel leaves the batch exactly as it was', async () => {
     const s = seed();
-    const runner = sessionRunner(s);
+    const runner = agentRunner(s);
     const e = start(s, runner);
     await e.start();
     await e.whenIdle();
-    runner.answer = (req) => {
-      if (isLabelRun(req)) return { structured: { labels: [] } };
-      throw Object.assign(new Error('Claude Code no longer has this conversation'), { code: 'session_unavailable' });
+    const before = strip(e.getJob(s.jobID));
+    const sources = before.approval!.sources!;
+    runner.gone.add(before.sessionID);
+    const calls = runner.requests.length;
+    await assert.rejects(e.approve(s.jobID, { pages: [sources[0]!.page] }), (err) => goneError(err, { labels: 'confirm', pages: [sources[0]!.page] }));
+    assert.deepEqual(strip(e.getJob(s.jobID)), before, 'Cancel: nothing changed, no part pending');
+    assert.equal(runner.requests.length, calls, 'no runner call');
+    // The runner refuses at the resume (no positive evidence before): the job is put back too, with the marker.
+    runner.gone.clear();
+    runner.answer = () => {
+      throw sessionNotFoundError(`No conversation found with session ID: ${before.sessionID}`, before.sessionID);
     };
-    const sources = e.getJob(s.jobID)!.approval!.sources!;
     await e.approve(s.jobID, { pages: [sources[0]!.page] });
     await e.whenIdle();
+    const back = e.getJob(s.jobID)!;
+    assert.equal(back.state, 'awaitingApproval');
+    assert.equal(back.pendingPart, undefined);
+    assert.deepEqual(back.approval, before.approval);
+    assert.equal(back.sessionUnavailable!.reason, 'notFound');
+    assert.deepEqual(back.sessionUnavailable!.pages, [sources[0]!.page], 'Continue must rebuild the same part, never the whole batch');
+  });
+
+  test('the session is gone on a partial approve: Continue rebuilds and applies only the part, in a new session', async () => {
+    const s = seed();
+    const runner = agentRunner(s);
+    const e = start(s, runner);
+    await e.start();
+    await e.whenIdle();
+    const job0 = e.getJob(s.jobID)!;
+    const sources = job0.approval!.sources!;
+    runner.gone.add(job0.sessionID);
+    await assert.rejects(e.approve(s.jobID, { pages: [sources[0]!.page] }));
+    // Continue: the same pick, in a new seeded session; the rebuilt change is checked as before.
+    await e.approve(s.jobID, { pages: [sources[0]!.page], newSession: true });
+    await e.whenIdle();
+    let job = e.getJob(s.jobID)!;
+    assert.equal(job.state, 'awaitingApproval', job.approval?.planError ?? job.error ?? '');
+    assert.notEqual(job.sessionID, job0.sessionID);
+    assert.deepEqual(job.approval!.rebuilt!.pages, [sources[0]!.page]);
+    const rebuild = runner.requests.find((r) => r.prompt.includes('Build a NEW transaction bundle'))!;
+    assert.deepEqual(rebuild.session, { start: job.sessionID });
+    assert.match(rebuild.prompt, /Leave these sources out entirely[\s\S]*Source B/, 'the same part request, seeded');
+    // The new session is gone too when the part is approved: Continue applies exactly the rebuilt part's plan.
+    const partPlan = job.approval!.plan!;
+    const partBundle = job.approval!.bundlePath!;
+    runner.gone.add(job.sessionID);
+    await assert.rejects(e.approve(s.jobID), (err) => goneError(err, { labels: undefined, pages: undefined }));
+    assert.equal(e.getJob(s.jobID)!.state, 'awaitingApproval');
+    await e.approve(s.jobID, { newSession: true });
+    await e.whenIdle();
+    job = e.getJob(s.jobID)!;
+    const apply = runner.requests.find((r) => r.allowedTools.some((t) => t.includes(' transaction apply ')))!;
+    assert.ok(apply.allowedTools.some((t) => t.includes(partBundle) && t.includes(`--approved-plan-sha256 ${partPlan.approval_sha256}`)), 'the part, not the full plan');
+    assert.equal(job.parts!.length, 1, job.error ?? '');
+    assert.deepEqual(job.parts![0]!.pages, [sources[0]!.page]);
+    assert.ok(fs.existsSync(path.join(s.vault, 'wiki/sources/Source A.md')));
+    assert.ok(!fs.existsSync(path.join(s.vault, 'wiki/sources/Source B.md')), 'the rest is not applied');
+  });
+
+  test('the session is gone on approve-later: Continue applies the unconfirmed bundle', async () => {
+    const s = seed();
+    const runner = agentRunner(s);
+    const e = start(s, runner);
+    await e.start();
+    await e.whenIdle();
+    const job0 = e.getJob(s.jobID)!;
+    const twin = job0.approval!.unconfirmed!;
+    runner.gone.add(job0.sessionID);
+    const before = strip(job0);
+    await assert.rejects(e.approve(s.jobID, { labels: 'later' }), (err) => goneError(err, { labels: 'later', pages: undefined }));
+    assert.deepEqual(strip(e.getJob(s.jobID)), before);
+    await e.approve(s.jobID, { labels: 'later', newSession: true });
+    await e.whenIdle();
     const job = e.getJob(s.jobID)!;
-    assert.equal(job.state, 'awaitingApproval');
-    assert.equal(job.approval!.sessionUnavailable, 'Claude Code no longer has this conversation');
-    await assert.rejects(e.approve(s.jobID), /session isn't available anymore/);
+    assert.equal(job.state, 'completed', job.error ?? '');
+    const apply = runner.requests.find((r) => r.allowedTools.some((t) => t.includes(' transaction apply ')))!;
+    assert.ok(apply.allowedTools.some((t) => t.includes(twin.bundlePath) && t.includes(`--approved-plan-sha256 ${twin.plan.approval_sha256}`)));
+    assert.ok(pageText(s, 'a').includes('labels_reviewed: false'));
+    assert.equal(job.parts![0]!.labels, 'later');
+    // A marker left by a refused resume carries "later" too, so Continue without options keeps it.
+    assert.equal((await e.labelReview(s.vault)).toReview.length, 3);
+  });
+
+  test('a refused resume of approve-later leaves the marker with labels later; Continue without options keeps it', async () => {
+    const s = seed();
+    const runner = agentRunner(s);
+    const e = start(s, runner);
+    await e.start();
+    await e.whenIdle();
+    const job0 = e.getJob(s.jobID)!;
+    const answer = runner.answer;
+    runner.answer = () => {
+      throw sessionNotFoundError(`No conversation found with session ID: ${job0.sessionID}`, job0.sessionID);
+    };
+    await e.approve(s.jobID, { labels: 'later' });
+    await e.whenIdle();
+    assert.equal(e.getJob(s.jobID)!.sessionUnavailable!.labels, 'later');
+    runner.answer = answer;
+    await e.approve(s.jobID, { newSession: true });
+    await e.whenIdle();
+    assert.equal(e.getJob(s.jobID)!.state, 'completed');
+    assert.ok(pageText(s, 'b').includes('labels_reviewed: false'));
   });
 });
 

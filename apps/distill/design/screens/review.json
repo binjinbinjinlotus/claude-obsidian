@@ -2970,7 +2970,7 @@
   {
    "id": "review-session-gone",
    "base": "review",
-   "label": "9 · The batch’s AI session is gone (placeholder for the shared SessionReplaceConfirm)",
+   "label": "9 · The batch’s AI session is gone: the shared SessionReplaceConfirm, right above the footer (Approve 8 sources)",
    "set": {
     "main.vars.groups": [
      {
@@ -3187,7 +3187,7 @@
      }
     ],
     "overlay": {
-     "html": "<div style=\"position: absolute; inset: 0; background: rgba(29,28,26,.28); display: flex; align-items: center; justify-content: center; z-index: 6\"><div role=\"dialog\" aria-labelledby=\"sg-title\" style=\"width: 440px; display: flex; flex-direction: column; gap: 12px; padding: 22px 24px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 18px 48px rgba(29,28,26,.22)\"><span id=\"sg-title\" style=\"font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -0.02em\">Start a new session for this batch?</span><span style=\"font-size: 13px; color: #48463F; line-height: 1.5\">This batch’s AI session isn’t available anymore (Claude Code no longer has its conversation; it was probably cleaned up). Distill will start a new session to finish it.</span><span style=\"font-size: 12px; color: #6B6862; line-height: 1.5\">The new session gets the batch’s 22 sources, the 8 you picked and the 1 you removed, the labels shown here, and the current change for reference. It rebuilds the change; you check it before anything is applied.</span><div style=\"display: flex; justify-content: flex-end; gap: 10px; padding-top: 6px\"><button type=\"button\" style=\"height: 36px; padding: 0 16px; border: none; border-radius: 18px; background: #F6F5F2; color: #1D1C1A; font-size: 13px; font-weight: 600\">Cancel</button><button type=\"button\" style=\"height: 36px; padding: 0 16px; border: none; border-radius: 18px; background: #1F6FEB; color: #FFFFFF; font-size: 13px; font-weight: 700\">Continue</button></div></div></div>"
+     "html": "<div style=\"position: absolute; left: 280px; right: 378px; bottom: 112px; z-index: 6\"><dc-import name=\"SessionReplaceConfirm\" place=\"batch\" reason=\"missing\" carries=\"The new session starts with this batch’s sources, the 8 you picked and their labels; it rebuilds the change for them, and you check it before anything is applied.\" detail=\"~/.claude/projects/…/3f2a91c0-…-c217.jsonl is missing\" hint-size=\"100%,190px\"></dc-import></div>"
     }
    }
   }

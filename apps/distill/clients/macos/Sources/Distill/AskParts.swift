@@ -530,12 +530,28 @@ struct AnswerShimmer: View {
 /// Stopped or failed: the question is kept, one way forward.
 struct AskHaltRow: View {
     let pending: PendingQuestion
+    var width: CGFloat? = nil
+    var continueNew: () -> Void = {}
+    var cancel: () -> Void = {}
     let retry: () -> Void
+
+    init(pending: PendingQuestion, width: CGFloat? = nil, continueNew: @escaping () -> Void = {}, cancel: @escaping () -> Void = {},
+         retry: @escaping () -> Void) {
+        self.pending = pending
+        self.width = width
+        self.continueNew = continueNew
+        self.cancel = cancel
+        self.retry = retry
+    }
 
     var body: some View {
         switch pending.status {
         case .running:
             EmptyView()
+        case .sessionUnavailable(let s):
+            // Session continuity: never a silent new session; the user decides.
+            SessionReplaceConfirm(s, runner: SessionReplaceText.runnerName(pending.request.selection?.runnerID), place: "conversation",
+                                  width: width, onContinue: continueNew, onCancel: cancel)
         case .stopped:
             row(icon: AnyView(Image(systemName: "stop.fill").font(.system(size: 8)).foregroundStyle(.white)
                     .frame(width: 20, height: 20).background(Circle().fill(Theme.muted))),

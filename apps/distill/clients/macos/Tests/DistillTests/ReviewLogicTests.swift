@@ -9,6 +9,16 @@ final class ReviewLogicTests: XCTestCase {
         ReviewSource(page: "wiki/sources/\(name).md", title: name, source: "inbox/\(name).md", labels: labels, by: by, removed: removed)
     }
 
+    /// Continue after SessionReplaceConfirm approves the same version and part: options from the call, else the marker.
+    func testSessionPromptCarriesApproveOptions() {
+        let marker = SessionUnavailable(place: "batch", reason: "notFound", action: "approve", labels: "later", pages: ["wiki/sources/A.md"])
+        XCTAssertEqual(SessionPrompt(jobID: "j", info: marker).approve, ApproveOptions(labels: .later, pages: ["wiki/sources/A.md"]))
+        let fromCall = SessionPrompt(jobID: "j", info: SessionUnavailable(place: "batch", reason: "missing"), action: "approve",
+                                     approve: ApproveOptions(pages: ["wiki/sources/B.md"]))
+        XCTAssertEqual(fromCall.approve, ApproveOptions(pages: ["wiki/sources/B.md"]))
+        XCTAssertTrue(SessionPrompt(jobID: "j", info: SessionUnavailable(place: "batch", reason: "missing")).approve.isEmpty)
+    }
+
     private let teaPaths = ["wiki/sources/A.md", "wiki/sources/B.md", "wiki/sources/C.md",
                             "wiki/entities/Wazuka Tea Farm.md", "wiki/concepts/Water temperature.md", "wiki/concepts/Shading.md",
                             "wiki/index.md", "wiki/overview.md", "wiki/log.md", "wiki/hot.md",
