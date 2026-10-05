@@ -12,8 +12,8 @@ import { ClaudeCodeRunner, claudeArguments, parseClaudeJSON, type ClaudeInvocati
 import { bypassesApproval, suggestedRule } from './runners/permissions.js';
 import { defaultRegistry } from './runners/registry.js';
 import { IngestJobKind, JobContext, parseWorkerStatus, shellQuote, WorkerProtocol } from './engine/job-kinds.js';
-import { BatchInterval, claimFiles, pendingFiles, settledFiles } from './engine/queue.js';
-import { setupProblems } from './engine/validator.js';
+import { BatchInterval, claimFiles, pendingFiles, queueIsInbox, settledFiles } from './engine/queue.js';
+import { queuePlacementProblem, setupProblems } from './engine/validator.js';
 import { decodeJob, jobRunnerID, newJob } from './store/jobs.js';
 import { decodeSettings, defaultSettings, encodeSettings, selectionFor } from './store/settings.js';
 
@@ -160,12 +160,42 @@ describe('QueueTests', () => {
     assert.ok(fs.existsSync(path.join(inbox, 'a.md')));
   });
 
+  test('queueIsInbox agrees with the placement check when the vault is reached through a symlink', () => {
+    const real = path.join(tmp, 'real-vault');
+    fs.mkdirSync(path.join(real, 'inbox'), { recursive: true });
+    const link = path.join(tmp, 'vault-link');
+    fs.symlinkSync(real, link);
+    assert.equal(queueIsInbox({ path: link, queueDirectory: path.join(real, 'inbox') }), true);
+    assert.equal(queueIsInbox({ path: real, queueDirectory: path.join(link, 'inbox') }), true);
+    assert.equal(queueIsInbox({ path: real, queueDirectory: path.join(tmp, 'queue') }), false);
+  });
+
   test('testValidatorRejectsQueueInsideRaw', () => {
     const s = settingsWith({ vaults: [{ path: tmp, queueDirectory: path.join(tmp, '.raw/x') }] });
     const problems = setupProblems(s, defaultRegistry());
     const p = problems.find((x) => x.code === 'queueIsVaultInternal');
     assert.ok(p);
     assert.ok(p.message.includes(path.resolve(tmp, '.raw/x')));
+  });
+
+  test('queue placement: inside the vault only exactly <vault>/inbox (decision 2026-10-04)', () => {
+    const vault = path.join(tmp, 'MyKnowledgeVault');
+    fs.mkdirSync(path.join(vault, 'wiki'), { recursive: true });
+    fs.mkdirSync(path.join(vault, 'inbox'), { recursive: true });
+    const placed = (q: string) => queuePlacementProblem(vault, q)?.code;
+    // Refused: the root, wiki/, .raw/, .vault-meta/, a folder under inbox/, a not-yet-made folder inside.
+    for (const q of [vault, path.join(vault, 'wiki'), path.join(vault, '.raw'), path.join(vault, '.vault-meta/q'), path.join(vault, 'inbox/sub'), path.join(vault, 'new/queue'), vault + '/']) {
+      assert.equal(placed(q), 'queueIsVaultInternal', q);
+    }
+    // Allowed: the inbox itself, the owner's sibling queue, a folder whose name only starts like the vault's.
+    for (const q of [path.join(vault, 'inbox'), path.join(vault, 'inbox/'), path.join(tmp, 'Distill Queue', 'MyKnowledgeVault'), vault + '2', path.join(tmp, 'elsewhere')]) {
+      assert.equal(placed(q), undefined, q);
+    }
+    // Through a symlink into the vault: still inside.
+    fs.symlinkSync(path.join(vault, 'wiki'), path.join(tmp, 'link'));
+    assert.equal(placed(path.join(tmp, 'link')), 'queueIsVaultInternal');
+    const s = settingsWith({ vaults: [{ path: vault, queueDirectory: path.join(vault, 'wiki') }], activeVaultPath: vault });
+    assert.ok(setupProblems(s, defaultRegistry()).some((x) => x.code === 'queueIsVaultInternal'));
   });
 });
 

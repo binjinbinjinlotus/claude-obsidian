@@ -17,6 +17,190 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Follow-ups to the audit fixes, from a review pass.** Specs: [Approval and
+  review](approval-and-review.md), [Labels and
+  sources](labels-and-sources.md), [Queue and
+  batching](queue-and-batching.md).
+  - An unverified agent apply finished its `apply` progress as "Applied",
+    which contradicted the job's own turn. It now says "Not applied" unless
+    an operation was recorded.
+  - `queueIsInbox` compared `path.resolve` strings while the placement check
+    resolves symlinks. A vault saved through a symlink, with the queue saved
+    as the real `…/inbox`, passed placement but switched off every inbox-mode
+    protection. Both now compare resolved paths.
+  - The `allow()` refusal names the rules first, so they fit the app's
+    three-line error banner.
+
+- **Exit 75 from `transaction apply` is worded by its error code.** Spec:
+  [Approval and review](approval-and-review.md) → Core applies. Audit item
+  B5.
+  - Before, every exit 75 said "The vault changed after this plan was
+    reviewed". But exit 75 is any `TransactionConflict`, including
+    `LOCK_TIMEOUT` and `OPERATION_ID_REUSED`.
+  - **Decision:** the core reads `ERR <CODE>:` from stderr.
+    - `LOCK_TIMEOUT` keeps the plan and says another process held the vault
+      lock; approve again to try again. Nothing changed, so the reviewed plan
+      still holds.
+    - `OPERATION_ID_REUSED` says the ID was already used and the operation
+      may already be applied. Label jobs still rebuild with a fresh ID.
+    - Every other code keeps the "vault changed" wording and adds the code.
+  - The agent's approved-apply prompt also says not to rebuild on
+    `LOCK_TIMEOUT`.
+
+- **The ingest prompt names the wiki-ingest skill's absolute path for every
+  runner.** Spec: [Job kinds](job-kinds.md) → Ingest. Audit item B4.
+  - The prompt named only `claude-obsidian:wiki-ingest`. Codex gets no
+    plugin or skill path: it runs with `--ignore-user-config`, and its cwd
+    is the job folder. So it could not load the skill.
+  - **Decision:** the prompt adds "If that skill is not loaded, read
+    `<productRoot>/skills/wiki-ingest/SKILL.md` with the Read tool". Paths
+    in the skill are resolved against its folder or the product root. This
+    goes to every runner; Claude Code still loads the plugin skill as
+    before.
+
+- **Every vault use needs `.claude-obsidian.json`, not only batches.**
+  Specs: [Vaults and settings](vaults-and-settings.md) → Vaults,
+  [Ask](ask.md) → Isolation. Audit item B3.
+  - Before, the marker was checked only through `batchBlocker` and
+    `status`. `resolveVault` (labels, notes, page search, label review)
+    only checked that the vault was in Settings, and Ask checked only for
+    `wiki/`.
+  - **Decision:** `resolveVault` refuses a vault without the marker
+    (`invalid_state`, with the `init`/`adopt` hint). Ask requires the marker
+    and keeps its `wiki/` check. Ask still accepts an explicit `vaultPath`
+    that isn't in Settings, which the root vault-resolution order (explicit
+    `--vault` first) allows. The Ask and activity test fixtures now create
+    the marker.
+
+- **After an agent apply, Distill records what it approved, not what the
+  model reports.** Spec: [Approval and review](approval-and-review.md) →
+  What Distill records after an agent apply. Audit item B2.
+  - Before, a `done` recorded `status.operation_id` and
+    `status.changed_paths` straight from the model. A `done` in a turn that
+    never ran an approved apply also completed the job, possibly with a
+    made-up operation ID, and triggered "Finding actions".
+  - **Decision:** `approve()` passes the approved plan to that one turn. On
+    `done`, the job records the operation only when the turn was the apply
+    turn and `operation_id` equals `plan.operation_id`, and takes the paths
+    from `plan.changed_paths`. An app turn says "Applied <op>:". Otherwise
+    nothing is recorded, and an app turn says so. The job still completes,
+    because a `done` is the agent's final word. `nothing_to_do` never records
+    paths. The plan is the trusted source, because a committed transaction
+    leaves nothing under `.vault-meta/transactions` (checked on a real
+    vault).
+- **The core enforces the approval gate on tool rules.** Spec: [Approval
+  and review](approval-and-review.md) → Phase 1. Audit item B1.
+  - Before, `settings.extraAllowedTools` and `job.grantedTools` reached
+    phase 1 unfiltered, and `allow()` stored any rule. The only check was
+    the UI's substring test (`!rule.includes('/.vault-meta/worker/')`), so
+    `…/worker/../../wiki/**` or another job's folder passed.
+  - **Decision:** one classifier, `gateBreakingReason`
+    (`runners/permissions.ts`), used by `planningTools` (filters at use
+    time; never rewrites settings), `allow()` (refuses the whole call with
+    a `CoreError` naming each rule) and `bypassesApproval`. The Swift
+    warning now resolves `..` and checks the job's own folder.
+  - Beyond the audit list, exact rules for shell interpreters are refused,
+    not only prefix rules: `Bash(sh /job/x.sh)` would run a script the agent
+    wrote. Any spelling of `transaction apply` (extra spaces, quotes) is
+    refused too.
+  - Any Bash grant still shows the warning, because even an exact
+    `Bash(cp … wiki/x)` writes. Prefix rules for other write-capable
+    programs (`cp`, `mv`, `tee`, `python3 <script>`, `node`, `perl`) are
+    not refused; they are listed as residual risk rather than a denylist.
+
+- **Inside the vault, the queue may only be exactly `<vault>/inbox`, and a
+  Folder collector may not read from a vault.** Specs: [Vaults and
+  settings](vaults-and-settings.md) → Validation, [Queue and
+  batching](queue-and-batching.md) → Queue folder,
+  [Collectors](collectors.md) → Folder and the script contract. Audit item
+  A3.
+  - Before, the validator rejected only a queue under `.raw/` or
+    `.vault-meta/`. A queue set to the vault root or `wiki/` passed, and a
+    batch would then move `wiki/` pages into `inbox/`.
+  - **Decision:** `queuePlacementProblem` (in `engine/validator.ts`) resolves
+    symlinks and respects folder boundaries. It reports the existing
+    `queueIsVaultInternal` code for anything inside the vault except
+    exactly `<vault>/inbox`. DistillKit decodes problems as plain strings,
+    so a new code would also have worked, but reusing the code keeps
+    clients unchanged. Batches are blocked. `addNote` and `addQueueFiles`
+    refuse with `invalid_state`, and collector runs fail with code `other`
+    and the reason. The owner's sibling queue
+    (`~/Documents/Distill Queue/MyKnowledgeVault`) stays valid.
+  - A Folder collector source inside any configured vault is refused on
+    create and update. A saved one that becomes invalid fails its run
+    visibly (`failed`, code `other`); the scheduler does not skip it
+    silently.
+  - Script collectors keep `DISTILL_VAULT`. `collectors.md` now states that
+    a consented script must write only to `DISTILL_QUEUE_DIR`.
+
+- **Only the core removes queue files; the app's Trash fallback is gone.**
+  Spec: [Queue and batching](queue-and-batching.md) → Remove.
+  - `AppModel.removeFromQueue` used to move files to the Trash itself when
+    there was no client or the core answered "not available". That skipped
+    the core's guard against removing an `inbox/` file a batch already took.
+  - **Decision:** drop the fallback (option one of the audit's two). With no
+    core, the app shows "Can't remove … while the Distill core isn't
+    running." The core ships with the app, so an older core without
+    `removeQueueEntry` is no longer a case to support. `AppModel.trash(_:)`
+    had no other caller and was removed.
+
+- **The meeting-notes script never replaces a file in the queue.** Code:
+  `apps/scripts/meeting-notes/fetch_meeting_notes.py` (`place_new`); its
+  README. Follows the inbox rule below.
+  - When a Drive file changed, `part.replace(path)` overwrote the earlier
+    download, which may sit in the vault's `inbox/`.
+  - **Decision:** the `.part` temp file is kept, then hard-linked in
+    create-only (an exclusive create where hard links don't work). A taken
+    name becomes `name (2).ext`. A changed file arrives as a new file next
+    to the old one.
+  - The owner's collector runs a saved copy of the script. The new version
+    reaches it only when it is pasted into the collector's script editor and
+    allowed.
+
+- **When the queue is `inbox/`, a note's label state lives in Distill's
+  state.** Spec: [Notes composer](notes-composer.md). Follows the inbox rule
+  below.
+  - Before, `labelNote` rewrote the note's `tags` and its `.distill.json`
+    manifest, and a background suggestion rewrote the manifest. With the
+    queue set to `inbox/`, those are files already in the inbox.
+  - **Decision:** in inbox mode those writes go to
+    `<state>/labels/notes.json` instead (keyed by requestID, newest 2000
+    kept). The queue row's `labelsConfirmed` and the batch's label plan
+    merge it over the manifest, so what reaches the wiki is unchanged. When
+    the queue is elsewhere, the files are still in the queue, not the vault,
+    and are edited as before.
+
+- **A batch's move into `inbox/` is create-only.** Spec: [Queue and
+  batching](queue-and-batching.md) → Batch, Folders. Follows the inbox rule
+  below.
+  - Loose files now move with `moveIntoDirNoOverwrite` (hard link, then
+    unlink, or an exclusive copy). Folder items move with
+    `moveFolderIntoDirNoOverwrite` (an exclusive `mkdir` claims the name).
+    Before, the batch checked `existsSync` and then used `renameSync`, which
+    silently replaces a file that appears in between.
+  - A folder item's `.gdoc` pointers are recorded in its
+    `.distill-folder.json` while the folder is still in the queue folder.
+    Before, that file was rewritten inside `inbox/<date>/<name>` after the
+    move.
+
+- **Distill may add new files to `inbox/`; it never edits one already there.**
+  Specs: [Architecture](architecture.md) rule 2, [Queue and
+  batching](queue-and-batching.md) → Queue folder. Owner-approved from the
+  compliance audit (item A).
+  - claude-obsidian keeps `inbox/` outside the transaction system:
+    `claude_obsidian/transaction.py` lets no operation write `inbox/` (only
+    setup writes `inbox/.gitkeep`), and `skills/wiki-ingest/SKILL.md` says
+    files already there "remain user-owned and read-only".
+  - **Decision:** Distill may ADD new files to `inbox/` without a
+    transaction, the way a user drops a file there by hand. It must never
+    edit, overwrite or automatically delete a file already there. Every
+    `wiki/` and `.raw/` change still goes only through the reviewed
+    transaction.
+  - Architecture rule 2 said "the vault is written only by the Python core",
+    and the `distill-note` skill promised nothing reaches the vault before
+    approval. Both were wrong when the queue is `inbox/`; both now name the
+    exception.
+
 - **A kept script saved in another editor is logged; a spec error never drops
   an entry.** Spec: [Activity log](activity-log.md) → Edits outside Distill.
   The owner's "Meeting Note" save at 22:41:07 had no activity entry.

@@ -178,6 +178,8 @@ do_backup() {
     for f in "$STATE_DIR"/collectors/runs/*(N.); do cp -p "$f" "$dest/collectors/runs/"; done
   fi
   for f in "$STATE_DIR"/ask/*.json(N); do cp -p "$f" "$dest/ask/"; done
+  # Label state for notes in the vault's inbox/ (kept out of inbox/ itself).
+  [[ -f "$STATE_DIR/labels/notes.json" ]] && { mkdir -p "$dest/labels"; cp -p "$STATE_DIR/labels/notes.json" "$dest/labels/"; }
   chmod 700 "$BACKUPS" "$dest"
   local old=( "$BACKUPS"/*(N/On[$((KEEP_BACKUPS + 1)),-1]) )
   (( ${#old} )) && rm -rf -- "${old[@]}"
@@ -212,6 +214,7 @@ do_restore() {
   fi
   mkdir -p "$STATE_DIR/ask"
   for f in "$src"/ask/*.json(N); do cp -p "$f" "$STATE_DIR/ask/"; done
+  [[ -f "$src/labels/notes.json" ]] && { mkdir -p "$STATE_DIR/labels"; cp -p "$src/labels/notes.json" "$STATE_DIR/labels/notes.json"; }
   echo "Restored $name ($(describe_data "$(data_summary)")). Start with: $SCRIPT start"
 }
 

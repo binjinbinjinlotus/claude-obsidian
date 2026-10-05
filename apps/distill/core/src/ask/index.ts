@@ -519,6 +519,8 @@ async function resolveVault(req: AskRequest, record: ConversationRecord | undefi
   } catch {
     throw new Error(`ask: vault ${candidate} does not exist`);
   }
+  const marker = await fs.stat(path.join(real, '.claude-obsidian.json')).catch(() => undefined);
+  if (!marker?.isFile()) throw new Error(`ask: ${candidate} is not a claude-obsidian vault (no .claude-obsidian.json)`);
   const wiki = await fs.stat(path.join(real, 'wiki')).catch(() => undefined);
   if (!wiki?.isDirectory()) throw new Error(`ask: ${candidate} is not a claude-obsidian vault (no wiki/ directory)`);
   return real;

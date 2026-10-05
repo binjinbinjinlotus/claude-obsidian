@@ -16,7 +16,10 @@ add them to your vault. It looks in two places:
 | Meeting recordings (video, audio) | Skipped, unless you pass `--include-recordings` |
 
 It downloads each file once. A file comes down again only if it has changed in
-Google since the last run.
+Google since the last run. The script never replaces a file that is already
+there, because your queue folder may be the vault's `inbox/`, and files there
+are yours. A changed file arrives as a new file next to the old one, such as
+`2026-10-04 Standup (2).md`.
 
 Your Google secrets stay in the macOS Keychain. No `credentials.json` or
 `token.json` is left on disk.

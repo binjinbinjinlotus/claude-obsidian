@@ -53,7 +53,7 @@ import {
   selectionFor,
   SettingsStore,
 } from '../store/settings.js';
-import { uniqueDenials } from '../runners/permissions.js';
+import { gateBreakingReason, uniqueDenials } from '../runners/permissions.js';
 import { isCancelled, runProcess, type ProcessOutput, type RunProcessOptions } from '../runners/process.js';
 import { defaultRegistry } from '../runners/registry.js';
 import {
@@ -70,6 +70,7 @@ import {
 import { CoreError } from './errors.js';
 import { searchVaultPages } from './pages.js';
 import { noteFileFor, readManifest, validateNote, writeManifest, writeNote, type NoteLabelState } from './notes.js';
+import { NoteLabelStore } from './note-labels.js';
 import { draftBatchLabels } from '../labels/batch.js';
 import { bodyOf, parseFrontmatter, scalarValue, setLabelProperties } from '../labels/frontmatter.js';
 import { extractImageText } from './image-text.js';
@@ -100,7 +101,7 @@ import {
   type FolderWalk,
   type ScanEntry,
 } from './queue.js';
-import { setupProblems } from './validator.js';
+import { isVault, problem, queuePlacementProblem, setupProblems } from './validator.js';
 
 /**
  * Tools an ingest turn can see. Allow rules still gate them; tools outside the
@@ -259,6 +260,8 @@ export function createEngine(opts: EngineOptions): Engine {
   const noteRequests = new Map<string, { vaultPath: string; manifest: string }>();
   /** Empty working directory for label suggestion runs (never the vault). */
   const labelScratch = path.join(paths.dir, 'labels', 'scratch');
+  /** Label state for notes in the vault's inbox/ (never written into inbox/; decision 2026-10-04). */
+  const noteLabels = NoteLabelStore.at(paths.dir);
 
   // ───────────── events & persistence ─────────────
 
@@ -329,7 +332,8 @@ export function createEngine(opts: EngineOptions): Engine {
     if (!current) return;
     const patch: Partial<Progress> = {};
     if (job.state === 'awaitingApproval') patch.message = 'Ready for review';
-    else if (job.state === 'completed') patch.message = current.kind === 'apply' ? 'Applied' : 'Done';
+    // "Applied" only when an operation was recorded (an unverified agent apply records none).
+    else if (job.state === 'completed') patch.message = current.kind === 'apply' ? (job.operationID ? 'Applied' : 'Not applied') : 'Done';
     else if (job.state === 'cancelled') patch.message = 'Cancelled';
     else if (job.state === 'failed') patch.message = 'Failed';
     else if (job.state === 'rejected') patch.message = 'Rejected';
@@ -462,7 +466,11 @@ export function createEngine(opts: EngineOptions): Engine {
   }
 
   function queueEntries(): QueueEntry[] {
-    return queueList(queued, settings.settleSeconds, now(), { firstSeen, sourceLabel });
+    return queueList(queued, settings.settleSeconds, now(), {
+      firstSeen,
+      sourceLabel,
+      labelsConfirmed: (id) => noteLabels.get(id)?.labels !== undefined,
+    });
   }
 
   /**
@@ -569,7 +577,11 @@ export function createEngine(opts: EngineOptions): Engine {
 
   // ───────────── turns ─────────────
 
-  function runTurn(id: string, prompt: string, extra: { extraTools?: string[]; first?: boolean } = {}): void {
+  function runTurn(
+    id: string,
+    prompt: string,
+    extra: { extraTools?: string[]; first?: boolean; /** Set only for the turn approve() starts to run this plan's apply. */ applyPlan?: TransactionPlan } = {},
+  ): void {
     const job = findJob(id);
     if (!job) return;
     const vault = vaultProfileFor(job);
@@ -623,7 +635,7 @@ export function createEngine(opts: EngineOptions): Engine {
           } catch {
             /* the raw envelope is a debugging aid */
           }
-          await handle(result, id, vault);
+          await handle(result, id, vault, extra.applyPlan);
         } catch (err) {
           if (isCancelled(err) || controller.signal.aborted) {
             mutate(id, (j) => {
@@ -640,7 +652,7 @@ export function createEngine(opts: EngineOptions): Engine {
     );
   }
 
-  async function handle(result: RunResult, id: string, vault: VaultProfile): Promise<void> {
+  async function handle(result: RunResult, id: string, vault: VaultProfile, applyPlan?: TransactionPlan): Promise<void> {
     const status = parseWorkerStatus(result.structured);
     const summary = status?.summary ?? result.resultText;
     mutate(id, (j) => {
@@ -659,11 +671,30 @@ export function createEngine(opts: EngineOptions): Engine {
           await requestDecision(id, status, result, vault);
           return;
         }
+        // The model's report is not evidence: an operation is recorded only when this was the
+        // approved apply turn and it names the approved operation; the paths come from the
+        // inspected plan, never from the model.
         mutate(id, (j) => {
           j.state = 'completed';
           delete j.approval;
-          if (status.operation_id) j.operationID = status.operation_id;
-          if (status.changed_paths.length > 0) j.changedPaths = status.changed_paths;
+          if (status.status !== 'done') return;
+          if (applyPlan && status.operation_id === applyPlan.operation_id) {
+            j.operationID = applyPlan.operation_id;
+            j.changedPaths = [...applyPlan.changed_paths];
+            j.turns.push(newTurn('app', `Applied ${applyPlan.operation_id}:\n` + applyPlan.changed_paths.map((p) => `- ${p}`).join('\n'), now()));
+          } else if (applyPlan) {
+            j.turns.push(
+              newTurn(
+                'app',
+                `Nothing recorded as applied: the turn did not report the approved operation ${applyPlan.operation_id}` +
+                  (status.operation_id ? ` (it reported ${status.operation_id}).` : '.') +
+                  ' Check the vault log before running it again.',
+                now(),
+              ),
+            );
+          } else {
+            j.turns.push(newTurn('app', 'Nothing was applied: this turn had no approved plan to apply.', now()));
+          }
         });
         return;
       case 'needs_approval':
@@ -773,7 +804,7 @@ export function createEngine(opts: EngineOptions): Engine {
     ];
     job.turns.push(newTurn('app', `Batched ${files.length} file(s):\n` + batched.join('\n'), now()));
     insert(job);
-    const draft = draftBatchLabels(vault.path, loose, labelingPreferences(settings));
+    const draft = draftBatchLabels(vault.path, loose, labelingPreferences(settings), (rid) => noteLabels.get(rid));
     jobSteps.set(job.id, batchSteps(draft.pending.length > 0));
     const reading = `Reading ${plural(itemCount, 'source')} into ${vaultName(vault.path)}`;
     const start = (plan: SourceLabels[]) => {
@@ -879,7 +910,7 @@ export function createEngine(opts: EngineOptions): Engine {
     const applyRule = `Bash(${WorkerProtocol.applyCommand(ctx, plan, bundle)})`;
     mutate(id, (j) => j.turns.push(newTurn('user', `Approved ${plan.operation_id} (${plan.approval_sha256.slice(0, 12)}…)`, now())));
     applying(true);
-    runTurn(id, WorkerProtocol.approvedPrompt(ctx, plan, bundle), { extraTools: [applyRule] });
+    runTurn(id, WorkerProtocol.approvedPrompt(ctx, plan, bundle), { extraTools: [applyRule], applyPlan: clone(plan) });
   }
 
   async function reply(id: string, text: string): Promise<void> {
@@ -902,6 +933,19 @@ export function createEngine(opts: EngineOptions): Engine {
     const job = requireJob(id);
     requireSession(job);
     if (job.state !== 'awaitingApproval') throw new CoreError('invalid_state', `Job ${id} is not awaiting approval.`);
+    // Nothing that gets round the approval gate is granted; the whole call is refused before any change.
+    const ctx = new JobContext(clone(job), vaultProfileFor(job), settings);
+    const refused = clean.flatMap((r) => {
+      const why = gateBreakingReason(r, ctx);
+      return why ? [`${r} (${why})`] : [];
+    });
+    if (refused.length > 0) {
+      // Rules first: the app's error banner shows three lines.
+      throw new CoreError(
+        'invalid_request',
+        `Distill can't allow ${refused.join('; ')}. ${refused.length === 1 ? 'It' : 'They'} would change the vault without your review; reply with guidance instead.`,
+      );
+    }
     mutate(id, (j) => {
       j.grantedTools = [...new Set([...j.grantedTools, ...clean])].sort();
       j.turns.push(newTurn('user', 'Allowed:\n' + clean.map((r) => `- ${r}`).join('\n'), now()));
@@ -1039,9 +1083,16 @@ export function createEngine(opts: EngineOptions): Engine {
     return clone(settings);
   }
 
+  /** Nothing is written into a queue folder inside the vault other than exactly `<vault>/inbox`. */
+  function requireQueuePlacement(vault: VaultProfile): void {
+    const p = queuePlacementProblem(vault.path, vault.queueDirectory);
+    if (p) throw new CoreError('invalid_state', p.message);
+  }
+
   async function addQueueFiles(files: string[]): Promise<QueueEntry[]> {
     const vault = activeVault(settings);
     if (!vault) throw new CoreError('no_vault', 'No vault selected.');
+    requireQueuePlacement(vault);
     const copies = new Set(copyIntoQueue(files.map((f) => path.resolve(f)), vault.queueDirectory));
     refreshQueue();
     return queueEntries().filter((e) => copies.has(e.path));
@@ -1054,6 +1105,9 @@ export function createEngine(opts: EngineOptions): Engine {
     if (!vault) {
       throw vaultPath ? new CoreError('invalid_request', `Unknown vault ${vaultPath}.`) : new CoreError('no_vault', 'No vault selected.');
     }
+    // A vault is a folder with .claude-obsidian.json (root vault-resolution rule), for every caller:
+    // labels, notes, page search and label review, not only batches.
+    if (!isVault(vault.path)) throw new CoreError('invalid_state', problem.notAVault(vault.path).message);
     return vault;
   }
 
@@ -1108,6 +1162,7 @@ export function createEngine(opts: EngineOptions): Engine {
 
   async function addNote(req: AddNoteRequest): Promise<AddNoteResult> {
     const vault = resolveVault(req.vaultPath);
+    requireQueuePlacement(vault);
     const { title } = validateNote(req); // fail before any AI spend
     const confirmed = req.labels !== undefined ? cleanLabels(req.labels) : undefined;
     const origin = req.origin === 'cli' ? 'cli' : 'app';
@@ -1176,7 +1231,10 @@ export function createEngine(opts: EngineOptions): Engine {
     }
     // Check and write in one synchronous step so a batch can't claim the note in between.
     const where = locateRequest(requestID);
-    if (where?.state === 'queued') {
+    if (where?.state === 'queued' && queueIsInbox(where.vault)) {
+      // The note is in inbox/: its files are the user's now; keep the result in Distill's state.
+      noteLabels.setSuggestion(requestID, error ? { error } : { labels }, now());
+    } else if (where?.state === 'queued') {
       const m = readManifest(where.manifest);
       if (m) {
         if (error) m.suggestError = error;
@@ -1208,13 +1266,19 @@ export function createEngine(opts: EngineOptions): Engine {
     }
     const m = readManifest(where.manifest);
     if (!m) throw new CoreError('not_found', `No queued note for request ${requestID}.`);
-    m.labels = clean; // [] = confirmed: no labels (no AI fallback)
-    writeManifest(where.manifest, m);
     const notePath = noteFileFor(where.manifest);
-    const page = readPage(path.dirname(notePath), path.basename(notePath));
-    if (typeof page !== 'string') {
-      const next = setLabelProperties(page.text, { tags: clean });
-      if (next !== page.text) writeFileAtomic(notePath, next);
+    if (queueIsInbox(where.vault)) {
+      // The queue is the vault's inbox/: Distill never edits a file already there (decision
+      // 2026-10-04). The labels live in Distill's state; the batch reads them from there.
+      noteLabels.setLabels(requestID, clean, now());
+    } else {
+      m.labels = clean; // [] = confirmed: no labels (no AI fallback)
+      writeManifest(where.manifest, m);
+      const page = readPage(path.dirname(notePath), path.basename(notePath));
+      if (typeof page !== 'string') {
+        const next = setLabelProperties(page.text, { tags: clean });
+        if (next !== page.text) writeFileAtomic(notePath, next);
+      }
     }
     if (where.vault.path === activeVault(settings)?.path) refreshQueue();
     return { notePath, labels: clean };
@@ -1475,23 +1539,41 @@ export function createEngine(opts: EngineOptions): Engine {
         return;
       }
       if (out.status === 75) {
+        // Exit 75 is any TransactionConflict: stale hashes, but also a held lock or a reused
+        // operation id. The core prints `ERR <CODE>: <message>` on stderr.
+        const code = /^ERR ([A-Z_]+):/m.exec(out.stderr.toString('utf8'))?.[1];
+        if (code === 'LOCK_TIMEOUT') {
+          // Nothing changed and the plan is still valid: Approve again retries it.
+          mutate(id, (j) => {
+            j.state = 'awaitingApproval';
+            if (j.approval) delete j.approval.planError;
+            j.turns.push(
+              newTurn('app', 'Not applied: another process held the vault lock (LOCK_TIMEOUT). Nothing changed; approve again to try again.', now()),
+            );
+          });
+          return;
+        }
         const request =
           jobKind(job.kind) === LabelsJobKind ? readLabelRequest(path.join(jobStateDirectory(job), 'request.json')) : undefined;
         if (request) {
-          mutate(id, (j) =>
-            j.turns.push(newTurn('app', 'The pages changed after you reviewed them; the plan was rebuilt. Review it again.', now())),
-          );
+          const why =
+            code === 'OPERATION_ID_REUSED'
+              ? 'This operation ID was already used in the vault; the plan was rebuilt with a new one. Review it again.'
+              : 'The pages changed after you reviewed them; the plan was rebuilt. Review it again.';
+          mutate(id, (j) => j.turns.push(newTurn('app', why, now())));
           await planLabelJob(id, request);
           return;
         }
+        const reused = code === 'OPERATION_ID_REUSED';
         mutate(id, (j) => {
           j.state = 'awaitingApproval';
           if (j.approval) {
             delete j.approval.plan;
-            j.approval.planError =
-              'The vault changed after this plan was reviewed (transaction apply exited 75). Reply to have it rebuilt, or reject.';
+            j.approval.planError = reused
+              ? 'The vault already has an operation with this ID (transaction apply exited 75, OPERATION_ID_REUSED); it may already be applied. Check the vault log, then reply to have the bundle rebuilt with a new ID, or reject.'
+              : `The vault changed after this plan was reviewed (transaction apply exited 75${code ? `, ${code}` : ''}). Reply to have it rebuilt, or reject.`;
           }
-          j.turns.push(newTurn('app', 'Not applied: the vault changed after review.', now()));
+          j.turns.push(newTurn('app', reused ? 'Not applied: this operation ID was already used in the vault.' : 'Not applied: the vault changed after review.', now()));
         });
         return;
       }

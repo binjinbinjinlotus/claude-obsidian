@@ -128,16 +128,18 @@ extension AppModel {
 
     var hasFinishedJobs: Bool { jobs.contains { $0.state.isFinished } }
 
-    /// Drops a file from the queue through the core; falls back to the Trash on an older core.
+    /// Drops a file from the queue through the core only. The core refuses items a batch already
+    /// took from inbox/, so the app never trashes queue files itself (decision 2026-10-04).
     func removeFromQueue(_ entry: QueueEntry) {
-        guard let client else { trash(entry); return }
+        guard let client else {
+            lastError = "Can't remove \(entry.name) while the Distill core isn't running."
+            return
+        }
         Task {
             do {
                 try await client.removeQueueEntry(path: entry.path)
                 let gone = QueueRows.paths(removing: entry) // a note takes its members along
                 queued.removeAll { gone.contains($0.path) }
-            } catch let e as CoreClientError where e.isNotAvailable {
-                trash(entry)
             } catch {
                 report(error)
             }

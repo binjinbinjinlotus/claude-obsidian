@@ -1,7 +1,7 @@
 ---
 title: Approval and review
 status: built
-updated: 2026-10-02
+updated: 2026-10-04
 ---
 
 # Approval and review
@@ -18,6 +18,35 @@ Allowed tools (`JobContext.planningTools`): `Skill`, `Read`, `Glob`, `Grep`,
 commands: `python3 <core> transaction inspect:*`, `doctor:*`, `lint:*`,
 `shasum -a 256:*`, plus Settings → extra allowed tools and rules the user
 granted for this job. `transaction apply` is never allowed in this phase.
+
+**The core enforces the gate** (decision 2026-10-04). One classifier,
+`gateBreakingReason` in `core/src/runners/permissions.ts`, decides whether a
+rule would let the agent change the vault before review. Gate-breaking rules:
+
+- bare `Bash`, `Bash(*)`;
+- any rule that mentions `transaction apply`, in any spelling;
+- a Bash prefix rule whose prefix also starts the core's apply command, such
+  as `Bash(python3:*)` or `Bash(/usr/bin/python3:*)`;
+- a Bash rule for a shell interpreter (`sh`, `bash`, `zsh`, `env`, `xargs`,
+  `eval`, …);
+- an Edit/Write/MultiEdit/NotebookEdit rule that is bare, not `//abs`, keeps
+  a glob after one trailing `/**` or `/*`, or resolves (`..` and symlinks
+  included) outside **this** job's directory.
+
+It is used in three places:
+
+- `planningTools` drops such rules from Settings → extra allowed tools and
+  from the job's grants at use time. Saved settings are never rewritten.
+  Codex, which turns directory Edit rules into sandbox writable roots, gets
+  the filtered list.
+- `allow()` refuses the whole call with `invalid_request` before changing
+  anything. The message starts with each refused rule and why ("Distill
+  can't allow <rule> (<why>). It would change the vault without your
+  review…"), so the rules fit the app's three-line error banner.
+- The approval screen's warning (`bypassesApproval`) uses the job's own
+  folder.
+
+The one-turn apply rule that Approve adds is not filtered.
 
 The system prompt tells Claude to build the bundle without scripts (Write tool
 plus `shasum`), run one command at a time with absolute paths, and end with a
@@ -39,7 +68,7 @@ User actions:
 - **Allow & continue**: grants the selected denied tool calls for the rest of
   the job. Compound shell commands get no rule (Claude Code checks them part by
   part); Bash and out-of-job-dir Edit grants show a warning that they bypass
-  review.
+  review. The core refuses the gate-breaking ones (see Phase 1).
 - **Reject**: ends the job. Inbox files are kept.
 
 Layout (canvas: "Review"): the details column shows the heading, then what
@@ -65,6 +94,28 @@ cannot be deleted either: its files would go back into the next batch.
 in a terminal (the runner's `resumeCommand`; none for label jobs).
 
 On exit 75 (stale hashes) Claude is told to rebuild, re-inspect, and ask again.
+On `ERR LOCK_TIMEOUT` it is told not to rebuild, only to inspect the same
+bundle again and ask again.
+
+**What Distill records after an agent apply** (decision 2026-10-04). When
+Approve starts the agent's apply turn, the core remembers the approved plan
+for that turn only. On `done`, the job records `operationID` and
+`changedPaths` only if that turn was the approved apply turn and
+`status.operation_id` equals `plan.operation_id`. The paths come from the
+inspected plan (`plan.changed_paths`), never from the model, and an app turn
+says "Applied <op>:" with the paths, as the core-applies path does.
+Otherwise nothing is recorded:
+
+- a `done` in the apply turn that names another operation: "Nothing recorded
+  as applied: the turn did not report the approved operation <op>…";
+- a `done` in any other turn: "Nothing was applied: this turn had no
+  approved plan to apply."
+
+`nothing_to_do` never records changed paths. A committed transaction leaves
+no record under `.vault-meta/transactions`, so the plan is the trusted
+source. "Finding actions" (`onJobApplied`) runs only after a verified
+apply, and the `apply` progress finishes as "Applied" only then (otherwise
+"Not applied").
 
 ## Core applies (label jobs, runners without tool permissions)
 
@@ -81,10 +132,22 @@ Some jobs have no agent that can be limited to one exact apply command (TS core)
 On **Approve** the core runs
 `python3 <core> transaction apply <bundle> --vault <vault> --approved-plan-sha256 <sha>`
 itself (never an agent) and completes the job with the core's
-`changed_paths` and `operation_id`. Exit 75 (a page changed after review): a
-label job rebuilds its bundle from `request.json` with a **new** operation id
-(the core treats a reused id as a replay), re-inspects and asks again; other
-jobs go back to awaiting approval with the plan cleared. Reply and Allow are
+`changed_paths` and `operation_id`. Exit 75 is any `TransactionConflict`,
+so the core reads the code from `ERR <CODE>:` on stderr (decision
+2026-10-04):
+
+- `LOCK_TIMEOUT`: another process held the vault lock. Nothing changed, so
+  the job goes back to awaiting approval with its plan kept, and the app turn
+  says to approve again to try again.
+- `OPERATION_ID_REUSED`: a label job rebuilds with a new id ("This operation
+  ID was already used…"). Other jobs clear the plan, and the plan error says
+  the operation may already be applied: check the vault log, then reply to
+  rebuild with a new ID, or reject.
+- Anything else (a page changed after review): a label job rebuilds its
+  bundle from `request.json` with a **new** operation id (the core treats a
+  reused id as a replay), re-inspects and asks again. Other jobs go back to
+  awaiting approval with the plan cleared ("The vault changed after this
+  plan was reviewed (transaction apply exited 75, <CODE>)"). Reply and Allow are
 refused (`invalid_state`) for label jobs; Reject works as for ingest. Cancel
 does not interrupt a running apply.
 

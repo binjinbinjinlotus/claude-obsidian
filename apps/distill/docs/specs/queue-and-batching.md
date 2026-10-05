@@ -14,6 +14,14 @@ schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
 
 - Each vault profile has its own queue folder. Default:
   `~/Documents/Distill Queue/<vault name>`. It may also be the vault's `inbox/`.
+- **`inbox/` is create-only for Distill** (decision 2026-10-04).
+  claude-obsidian keeps `inbox/` outside its transactions: no operation
+  writes it, and files already there are the user's. Distill may add new
+  files there without a transaction (a batch moving items in, notes, drops,
+  pastes and collectors when the queue is the inbox). It never edits,
+  overwrites or automatically deletes a file already in `inbox/`. Every
+  `wiki/` and `.raw/` change still goes only through the reviewed
+  transaction.
 - Pending files: top-level, non-hidden regular files. Folders are left alone.
   Partial downloads are skipped (`.crdownload .part .download .tmp .partial`).
   **Built in the core 2026-10-04:** top-level folders are folder items and
@@ -48,7 +56,13 @@ schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
 - `status().queueCount` counts these rows, not files.
   The core re-emits the queue only when an entry changes (for example
   `settled` flips), so clients never need a ticking timer.
-- The queue may not be inside the vault's `.raw/` or `.vault-meta/`.
+- Inside the vault, the queue may only be exactly `<vault>/inbox`
+  (`queueIsVaultInternal`, decision 2026-10-04). Anything else inside the
+  vault (its root, `wiki/`, `.raw/`, `.vault-meta/`, a folder under `inbox/`)
+  blocks batches; a batch would otherwise move `wiki/` pages into `inbox/`.
+  `addNote` and `addQueueFiles` refuse to write there (`invalid_state`) and
+  collector runs fail. The default `~/Documents/Distill Queue/<vault name>`
+  is outside the vault and stays valid.
 - **Remove** (`removeQueueEntry(path)`, `DELETE /v1/queue/entries`): moves a
   pending file of the active queue folder to the user's Trash (`~/.Trash`,
   collisions become `name 2.ext`). Removing a note row moves its whole set
@@ -58,7 +72,10 @@ schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
   (`name 2` on a clash; the name is claimed with an exclusive `mkdir`, so an
   existing Trash folder is never replaced). Also refused for paths outside
   the folder and symlinks (`invalid_request`) and, when the queue is the
-  inbox, items a batch already took (`invalid_state`).
+  inbox, items a batch already took (`invalid_state`). Only the core
+  removes queue files: the macOS app no longer trashes them itself when the
+  core is unavailable, because that skipped the "a batch already took it"
+  guard (decision 2026-10-04). It shows an error instead.
 
 ## Queue screen
 
@@ -102,12 +119,15 @@ Canvas: "Queue rows: every state" and Main. Code: `QueueView` in
 
 1. Blocked when setup is invalid or another job holds the vault.
 2. Settled files are moved into `<vault>/inbox/` (name collisions become
-   `name 2.ext`). When the queue is the inbox, files stay and only unclaimed
+   `name 2.ext`). The move is create-only (hard link then unlink, or an
+   exclusive copy): it can never replace a file already in `inbox/`. When the queue is the inbox, files stay and only unclaimed
    ones are taken.
 3. One job is created for all of them (the queue-consuming `JobKind`, today
    Ingest).
 4. Labels (TS core; see [Labels and sources](labels-and-sources.md)): the core
-   decides each input's labels from its manifest and the `labeling` settings.
+   decides each input's labels from its manifest (merged with the label state
+   kept in Distill's state when the queue is `inbox/`) and the `labeling`
+   settings.
    When an input needs an AI suggestion (a queue-folder text file, or a CLI
    note with nothing confirmed), a pre-step runs the `labelSuggest` runner
    before the first turn. Its cost is recorded as an app turn; a failed
@@ -305,10 +325,12 @@ Code: `scanQueueFolder`, `walkFolder`, `folderTreeEntries`,
   move they step into a hidden staging folder in the queue folder, then
   come back as a folder of the original name (" 2" if taken), at their
   relative paths, where they keep waiting ("google-drive"). Subfolders
-  left empty by that are not moved. The moved folder's
-  `.distill-folder.json` records each pointer (path, size, kind `gdoc`; no
-  contents), so the prompt still lists it as "Google Doc, not read" and
-  the header still counts it. When the queue is the inbox, folders stay where they are
+  left empty by that are not moved. The folder's `.distill-folder.json`
+  records each pointer (path, size, kind `gdoc`; no contents), so the
+  prompt still lists it as "Google Doc, not read" and the header still
+  counts it. That record is written while the folder is still in the queue
+  folder; the move into `inbox/<date>/` claims a free name first and nothing
+  inside the folder is written after it (inbox rule, 2026-10-04). When the queue is the inbox, folders stay where they are
   and a folder counts as taken once any of its files is in a job. "Reading N
   sources" and the app turn count a folder as one. Files inside a folder get
   no per-file AI labels (one folder would otherwise cost one label call per

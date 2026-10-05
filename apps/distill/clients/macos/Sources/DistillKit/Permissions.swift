@@ -76,8 +76,21 @@ public struct PermissionDenial: Codable, Hashable, Sendable {
     }
 
     /// Granting this lets Claude change files outside the approval gate.
-    public var bypassesApproval: Bool {
-        toolName == "Bash" || ((suggestedRule ?? "").hasPrefix("Edit(") && !(suggestedRule ?? "").contains("/.vault-meta/worker/"))
+    public var bypassesApproval: Bool { bypassesApproval(jobDirectory: nil) }
+
+    /// Same, for a known job: a write rule is safe only inside that job's own folder
+    /// (`<vault>/.vault-meta/worker/<job-id>`), after `..` is resolved. Mirrors the core's
+    /// `gateBreakingReason`; the core refuses such a grant either way (decision 2026-10-04).
+    public func bypassesApproval(jobDirectory: String?) -> Bool {
+        if toolName == "Bash" { return true }
+        guard let rule = suggestedRule, rule.hasPrefix("Edit(") else { return false }
+        guard rule.hasPrefix("Edit(//"), rule.hasSuffix(")") else { return true }
+        let path = (String(rule.dropFirst("Edit(/".count).dropLast()) as NSString).standardizingPath
+        if let jobDirectory {
+            let dir = (jobDirectory as NSString).standardizingPath
+            return !(path == dir || path.hasPrefix(dir + "/"))
+        }
+        return (path + "/").range(of: #"/\.vault-meta/worker/[^/]+/"#, options: .regularExpression) == nil
     }
 
     public var display: String {

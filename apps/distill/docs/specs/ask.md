@@ -1,7 +1,7 @@
 ---
 title: Ask
 status: built
-updated: 2026-10-02
+updated: 2026-10-04
 ---
 
 # Ask
@@ -90,6 +90,11 @@ built; the client UI follows the canvas.
 
 ## Isolation
 
+- Vault: the request's `vaultPath`, the chat's vault, the active vault, or the
+  only vault, in that order. An explicit `vaultPath` need not be in Settings
+  (the root vault-resolution order allows `--vault`), but it must be a
+  claude-obsidian vault: `.claude-obsidian.json` **and** `wiki/` (decision
+  2026-10-04; before, only `wiki/` was checked).
 - Working directory: an empty Ask workspace, `<stateDir>/ask/workspace`, never
   the vault. Claude Code auto-approves reads inside its working directories,
   which would bypass the per-page `Read` rules of a filtered question. The

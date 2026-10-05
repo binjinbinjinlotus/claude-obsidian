@@ -83,7 +83,13 @@ The first built-in is **Folder**:
 
 - **Settings:**
   - the source folder (default `~/Distill Inbox`, created on first save if it
-    is missing);
+    is missing). It may not be the vault's queue folder or anywhere inside one
+    of the user's vaults (`invalid_request`): copying or moving out of a vault
+    would take files from `wiki/`, `.raw/` or `inbox/` outside any reviewed
+    transaction (decision 2026-10-04). A saved collector whose source later
+    falls inside a vault, or whose vault's queue folder is inside the vault
+    other than exactly `<vault>/inbox`, fails its run with that reason
+    (`failed`, code `other`) and copies nothing;
   - **Include subfolders** (on by default): each subfolder at the top of the
     source folder is collected as one folder item (see [Queue and
     batching](queue-and-batching.md), "Folder items");
@@ -239,7 +245,7 @@ job.
 | working directory | a fresh temporary folder (`$TMPDIR/distill-run-<id>`), deleted after the run |
 | stdin | closed (`/dev/null`) |
 | user | the logged-in user, with the user's permissions (never elevated) |
-| where to write | **only the queue folder**. Distill doesn't enforce this; it reports files that appeared in the queue during the run as "files added" |
+| where to write | **only the queue folder** (`DISTILL_QUEUE_DIR`). Distill doesn't enforce this; it reports files that appeared in the queue during the run as "files added". `DISTILL_VAULT` / `$1` is for reading only: a consented script must never write into the vault. When the queue folder is the vault's `inbox/`, write only new files there and never replace one already there (decision 2026-10-04). A run is refused (`failed`) while the queue folder is inside the vault other than exactly `<vault>/inbox` |
 | partial writes | write to a temporary name and rename it, or rely on the settle delay: a file still changing is not batched |
 | exit | `0` = success; anything else = failed. Files the script already wrote stay in the queue |
 | timeout | default 5 minutes, maximum 1 hour. At the timeout Distill sends SIGTERM to the process group, then SIGKILL 10 s later; the run is logged as "timed out" |
