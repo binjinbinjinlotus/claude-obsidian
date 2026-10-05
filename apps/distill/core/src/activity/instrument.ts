@@ -232,6 +232,7 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
     listJobs: 'read',
     getJob: 'read',
     jobResumeCommand: 'read',
+    listJobSteps: 'read',
     searchPages: 'read',
     listLabels: 'read',
     labelReview: 'read',

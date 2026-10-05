@@ -6,6 +6,7 @@ import { createAskService } from './ask/index.js';
 import { createRunnerAdmin } from './runners/admin.js';
 import { createActionsService, type ActionsService } from './actions/index.js';
 import { createCollectorsService, type CollectorsOptions } from './collectors/index.js';
+import { createStepLog, type StepLog } from './steps/index.js';
 import type { FetchLike } from './runners/model-api.js';
 import type { SecretStore } from './runners/secrets.js';
 import { statePaths } from './store/paths.js';
@@ -31,12 +32,24 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras &
   const paths = opts.paths ?? statePaths();
   // The actions service is created after the engine; the hook binds late.
   let actions: ActionsService | undefined;
+  // v7: the live log binds late too (it needs the merged event stream).
+  let steps: StepLog | undefined;
   const engine = createEngine({
     ...opts,
     paths,
     onJobApplied: async (job) => {
       await opts.onJobApplied?.(job);
       await actions?.findInJob(job);
+    },
+    steps: {
+      runnerStep: (jobId, step) => {
+        opts.steps?.runnerStep(jobId, step);
+        steps?.runnerStep(jobId, step);
+      },
+      labelFile: (jobId, file, state, labels) => {
+        opts.steps?.labelFile(jobId, file, state, labels);
+        steps?.labelFile(jobId, file, state, labels);
+      },
     },
   });
   // Events from services outside the engine (Ask history) join the engine's stream.
@@ -53,6 +66,15 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras &
     track(e);
     for (const l of extra) l(e);
   };
+  steps = createStepLog({
+    dir: path.join(paths.dir, 'steps'),
+    emit,
+    getJob: (id) => engine.getJob(id),
+    ...(opts.now ? { now: opts.now } : {}),
+  });
+  const stepLog = steps;
+  stepLog.prune(engine.listJobs().map((j) => j.id));
+  engine.subscribe((e) => stepLog.onEvent(e));
   const ask = createAskService({
     emit,
     getSettings: () => engine.getSettings(),
@@ -156,6 +178,10 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras &
     setConversationPinned: (id, pinned) => ask.setConversationPinned(id, pinned),
     cancelAsk: (id) => ask.cancelAsk(id),
     listProgress: async () => [...progress.values()],
+    async listJobSteps(id: string) {
+      if (!engine.getJob(id)) throw new CoreError('not_found', `Unknown job ${id}.`);
+      return stepLog.list(id);
+    },
     listRunners: () => admin.listRunners(),
     setRunnerSecret: (id, name, value) => admin.setRunnerSecret(id, name, value),
     subscribe(listener) {

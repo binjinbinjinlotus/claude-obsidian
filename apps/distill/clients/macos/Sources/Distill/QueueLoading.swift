@@ -11,6 +11,8 @@ struct BatchBanner: View {
     let job: Job
     /// History's job detail has its own Cancel in the footer.
     var showsCancel = true
+    /// v7 live log: "Show steps" on the Now line opens the batch's steps.
+    var onShowSteps: (() -> Void)? = nil
     /// Batches normally take minutes (the canvas shows 1:52 as normal), so
     /// "Still working" comes later than for Ask.
     static let slowAfter = 600
@@ -43,11 +45,32 @@ struct BatchBanner: View {
                     StepRow(steps: Self.steps(progress.steps), index: progress.stepIndex ?? 0)
                         .padding(.leading, 30)
                 }
+                if let onShowSteps {
+                    // v7: what it is doing now, in one line, without opening anything.
+                    HStack(spacing: 10) {
+                        (Text("Now  ").foregroundColor(Theme.faint) + Text(nowLine(progress)).foregroundColor(Theme.softInk))
+                            .font(Theme.body(12)).lineLimit(1).truncationMode(.middle)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        LinkButton(title: "Show steps", action: onShowSteps)
+                    }
+                    .padding(.top, 10)
+                    .overlay(alignment: .top) { Rectangle().fill(Color(hex: 0xD6E4FB)).frame(height: 1) }
+                    .padding(.leading, 30)
+                }
             }
         }
         .padding(.horizontal, 20).padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 20).fill(Theme.primaryTint))
+        .onAppear { engine.jobSteps.load(job.id) }
+    }
+
+    /// The Now line: the newest step from the live log, or the file being labeled, or the step name.
+    private func nowLine(_ p: CoreProgress?) -> String {
+        if let line = LiveLog.now(engine.jobSteps.steps[job.id] ?? []) { return line }
+        if let file = p?.current { return "Labeling “\(URL(fileURLWithPath: file).deletingPathExtension().lastPathComponent)”" }
+        if let p, let i = p.stepIndex, p.steps.indices.contains(i) { return p.steps[i] }
+        return "Starting"
     }
 
     /// The batch's steps, ending with "Finding actions (after you apply)" while the

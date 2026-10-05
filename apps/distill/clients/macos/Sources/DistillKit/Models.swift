@@ -1142,12 +1142,15 @@ public enum CoreEvent: Equatable, Sendable {
     case queueScanned(QueueScanResult)
     /// v6: a line was added to the activity log.
     case activity(ActivityEntry)
+    /// v7: a step of a job's live log, new or changed (same id = the same line).
+    case jobStep(jobId: String, step: JobStep)
     case unknown(type: String)
 
     private enum Keys: String, CodingKey {
         case type, entries, job, settings, level, message, requestID, notePath, labels, error, conversation, deleted, progress, action, connection
         case collector, run, collectorId, runId, stream, text, result, entry
         case install, installId
+        case jobId, step
     }
 
     /// Decodes the JSON of one `data:` line.
@@ -1192,6 +1195,12 @@ public enum CoreEvent: Equatable, Sendable {
             case "queue.scanned": event = .queueScanned(try c.decode(QueueScanResult.self, forKey: .result))
             // An entry this build can't read is a line it doesn't show, not a broken stream.
             case "activity": event = (try? c.decode(ActivityEntry.self, forKey: .entry)).map(CoreEvent.activity) ?? .unknown(type: type)
+            case "job.step":
+                if let step = try? c.decode(JobStep.self, forKey: .step), let jobId = c.lossy(String.self, .jobId) {
+                    event = .jobStep(jobId: jobId, step: step)
+                } else {
+                    event = .unknown(type: type)
+                }
             default: event = .unknown(type: type)
             }
         }

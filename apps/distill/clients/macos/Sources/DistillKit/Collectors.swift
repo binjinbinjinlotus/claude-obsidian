@@ -458,6 +458,10 @@ public struct CollectorRun: Codable, Hashable, Sendable, Identifiable {
     public var installId: String?
     /// v6, test runs: the scratch folder that stood in for the queue (`filesAdded` are its names).
     public var outputDir: String?
+    /// v7: both streams in the order they were printed (the last 64 KB). Empty for runs saved before.
+    public var outputLog: [CollectorOutputChunk] = []
+    /// v6: what ran the script ("python3 (.venv)" and its path).
+    public var runtime: CollectorRuntime?
 
     /// v6: a Test run (into a scratch folder, never the queue).
     public var isTest: Bool { trigger == "test" }
@@ -476,7 +480,7 @@ public struct CollectorRun: Codable, Hashable, Sendable, Identifiable {
 
     enum Keys: String, CodingKey {
         case id, collectorId, kind, vaultPath, trigger, startedAt, endedAt, durationMs, result, waiting, skipReason, error, files, counts,
-             filesAdded, exitCode, signal, sha256, stdoutTail, stderrTail, installId, outputDir
+             filesAdded, exitCode, signal, sha256, stdoutTail, stderrTail, installId, outputDir, outputLog, runtime
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -505,6 +509,8 @@ public struct CollectorRun: Codable, Hashable, Sendable, Identifiable {
         stderrTail = c.lossy(String.self, .stderrTail)
         installId = c.lossy(String.self, .installId)
         outputDir = c.lossy(String.self, .outputDir)
+        outputLog = c.lossyArray(CollectorOutputChunk.self, .outputLog)
+        runtime = c.lossy(CollectorRuntime.self, .runtime)
     }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: Keys.self)
@@ -530,6 +536,33 @@ public struct CollectorRun: Codable, Hashable, Sendable, Identifiable {
         try c.encodeIfPresent(stderrTail, forKey: .stderrTail)
         try c.encodeIfPresent(installId, forKey: .installId)
         try c.encodeIfPresent(outputDir, forKey: .outputDir)
+        if !outputLog.isEmpty { try c.encode(outputLog, forKey: .outputLog) }
+        try c.encodeIfPresent(runtime, forKey: .runtime)
+    }
+}
+
+/// v7: a piece of script output, its stream and when it came.
+public struct CollectorOutputChunk: Codable, Hashable, Sendable {
+    public var stream: String
+    public var text: String
+    public var at: Date
+
+    public init(stream: String, text: String, at: Date) {
+        self.stream = stream; self.text = text; self.at = at
+    }
+
+    enum Keys: String, CodingKey { case stream, text, at }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        stream = c.lossy(String.self, .stream) == "stderr" ? "stderr" : "stdout"
+        text = c.lossy(String.self, .text) ?? ""
+        at = c.lossyDate(.at) ?? Date(timeIntervalSince1970: 0)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Keys.self)
+        try c.encode(stream, forKey: .stream)
+        try c.encode(text, forKey: .text)
+        try c.encode(CoreDate.format(at), forKey: .at)
     }
 }
 
