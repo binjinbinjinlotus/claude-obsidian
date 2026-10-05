@@ -14,6 +14,14 @@ schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
 
 - Each vault profile has its own queue folder. Default:
   `~/Documents/Distill Queue/<vault name>`. It may also be the vault's `inbox/`.
+- **`inbox/` is create-only for Distill** (decision 2026-10-04).
+  claude-obsidian keeps `inbox/` outside its transactions: no operation
+  writes it, and files already there are the user's. Distill may add new
+  files there without a transaction (a batch moving items in, notes, drops,
+  pastes and collectors when the queue is the inbox). It never edits,
+  overwrites or automatically deletes a file already in `inbox/`. Every
+  `wiki/` and `.raw/` change still goes only through the reviewed
+  transaction.
 - Pending files: top-level, non-hidden regular files. Folders are left alone.
   Partial downloads are skipped (`.crdownload .part .download .tmp .partial`).
   **Built in the core 2026-10-04:** top-level folders are folder items and

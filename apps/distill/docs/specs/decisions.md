@@ -17,6 +17,24 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Distill may add new files to `inbox/`; it never edits one already there.**
+  Specs: [Architecture](architecture.md) rule 2, [Queue and
+  batching](queue-and-batching.md) → Queue folder. Owner-approved from the
+  compliance audit (item A).
+  - claude-obsidian keeps `inbox/` outside the transaction system:
+    `claude_obsidian/transaction.py` lets no operation write `inbox/` (only
+    setup writes `inbox/.gitkeep`), and `skills/wiki-ingest/SKILL.md` says
+    files already there "remain user-owned and read-only".
+  - **Decision:** Distill may ADD new files to `inbox/` without a
+    transaction, the way a user drops a file there by hand. It must never
+    edit, overwrite or automatically delete a file already there. Every
+    `wiki/` and `.raw/` change still goes only through the reviewed
+    transaction.
+  - Architecture rule 2 said "the vault is written only by the Python core",
+    and the `distill-note` skill promised nothing reaches the vault before
+    approval. Both were wrong when the queue is `inbox/`; both now name the
+    exception.
+
 - **A kept script saved in another editor is logged; a spec error never drops
   an entry.** Spec: [Activity log](activity-log.md) → Edits outside Distill.
   The owner's "Meeting Note" save at 22:41:07 had no activity entry.

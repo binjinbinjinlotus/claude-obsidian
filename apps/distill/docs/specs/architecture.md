@@ -1,7 +1,7 @@
 ---
 title: Architecture (core, CLI, plugin, clients)
 status: built
-updated: 2026-10-02
+updated: 2026-10-04
 ---
 
 # Architecture
@@ -44,8 +44,16 @@ apps/distill/
    switches to the API and must never run alongside the server. A lock file
    under `~/Library/Application Support/Distill/` keeps a second server from
    starting.
-2. **The vault is written only by the Python core**, through reviewed
-   transactions. The TS core orchestrates; it does not reimplement transactions.
+2. **`wiki/` and `.raw/` are written only by the Python core**, through
+   reviewed transactions. The TS core orchestrates; it does not reimplement
+   transactions. The one exception is `inbox/`, which claude-obsidian keeps
+   outside the transaction system (no operation may write it; it is the
+   user's intake). Distill may **add new files** there without a transaction,
+   the way a user drops a file in by hand: a batch moving queue items in, a
+   queue folder set to `inbox/`, a collector or a note writing into that
+   queue. It never edits, overwrites or automatically deletes a file already
+   in `inbox/`; label changes for a note that sits there are kept in Distill's
+   state instead (see [Notes composer](notes-composer.md)).
 3. **The approval gate stays with a person.** Approve/apply exist only in UI
    clients. The CLI exposes `ask` and `history` (read-only, plus deleting a
    chat), `note add` (queues a note, which still goes through Review) and
