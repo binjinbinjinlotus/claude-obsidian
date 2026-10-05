@@ -79,7 +79,8 @@ was logged.
   `GET …/script`, and before consent, Run now, Test run, a save, a `PATCH` and
   an install. A difference logs one `collector.script_changed_outside` and
   moves `knownFiles` on. The entry lands before the consent that covers the
-  change.
+  change. An edit made while the core was down is logged by the next core: its
+  first listing runs after the event logger subscribes (`createCore`).
 - **The entry:** source `scheduler` (Distill noticed it; the request that
   happened to look is not the author), "Changed script of “X” outside Distill
   (needs your OK before it runs)". Details: `changedOutside: true`,
