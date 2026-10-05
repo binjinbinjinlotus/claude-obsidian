@@ -41,6 +41,8 @@ interface JobLog {
   /** The review step waiting for the user, if any. */
   review?: string;
   turn: number;
+  /** v8: the apply in progress after Approve: its "starting" step (agent runs only) and its apply step. */
+  apply?: { start?: string; apply: string; runner: string };
 }
 
 export interface StepLog {
@@ -58,6 +60,61 @@ function vaultName(p: string): string {
 
 function plural(n: number, noun: string, many = `${noun}s`): string {
   return `${n} ${n === 1 ? noun : many}`;
+}
+
+/** "Claude", "Codex", or "The AI" for a runner id. */
+export function runnerName(id: string | null | undefined): string {
+  if (!id || id === 'claude-code') return 'Claude';
+  if (id === 'codex') return 'Codex';
+  return 'The AI';
+}
+
+/** "22 source pages, 3 concepts, 1 entity added · 6 pages updated", from the approved change's counts. */
+export function addedWords(job: Job): string {
+  const c = job.approvedChange;
+  if (!c) return `${plural(job.changedPaths.length, 'change')} applied`;
+  const added = [
+    c.sources ? plural(c.sources, 'source page') : '',
+    c.concepts ? plural(c.concepts, 'concept') : '',
+    c.entities ? plural(c.entities, 'entity', 'entities') : '',
+    c.otherPages ? plural(c.otherPages, c.sources || c.concepts || c.entities ? 'other page' : 'page') : '',
+  ].filter(Boolean);
+  const parts = [added.length ? `${added.join(', ')} added` : '', c.updated ? `${plural(c.updated, 'page')} updated` : ''].filter(Boolean);
+  return parts.length ? parts.join(' · ') : `${plural(c.changes, 'change')} applied`;
+}
+
+/** Why an approved apply did not add the change, in plain words, with what to do (Review's words). */
+export function notAddedWords(job: Job, runner: string): { text: string; hint: string } {
+  const since = job.approvedChange?.at ?? '';
+  const appTurns = job.turns.filter((t) => t.author === 'app' && t.date >= since).map((t) => t.text);
+  const last = appTurns.at(-1) ?? '';
+  const planError = job.approval?.planError ?? '';
+  if (/vault lock|LOCK_TIMEOUT/.test(last)) {
+    return { text: 'Not added: another app was changing your vault', hint: 'Nothing was changed. Approve again to try again.' };
+  }
+  if (/already used|OPERATION_ID_REUSED/.test(last + planError)) {
+    return { text: 'Not added: this change’s operation ID was already used', hint: 'It may already be in your vault. Check the vault log, then reply to have it rebuilt, or reject.' };
+  }
+  if (/vault changed after|exited 75/.test(last + planError) || job.pendingPart?.reason === 'stale') {
+    return {
+      text: 'Not added: the vault changed after you reviewed this batch',
+      hint: 'Nothing was changed. This batch’s own session rebuilds the change for the vault as it is now; it comes back here for your OK.',
+    };
+  }
+  if (/^Nothing recorded as applied|^Nothing was applied/.test(last)) {
+    return {
+      text: `Nothing recorded as applied: ${runner} didn’t report the approved change`,
+      hint: `Open Show steps to see what happened, or reply to ${runner}. Nothing is listed as added until the vault core confirms it.`,
+    };
+  }
+  if (job.state === 'failed') {
+    return { text: `Not added: ${clip(redact(job.error ?? 'the run failed'), 160)}`, hint: 'Nothing is listed as added. Approve again to try again, or reply.' };
+  }
+  if (job.state === 'cancelled') return { text: 'Cancelled before it was added', hint: 'Approve again to add it.' };
+  if (job.state === 'awaitingApproval' && /interrupted|restart/i.test(last)) {
+    return { text: 'Not added: Distill stopped while it was adding this batch', hint: 'Approve again; a change that was already applied is not applied twice.' };
+  }
+  return { text: `Not added: ${runner} came back without applying the change`, hint: 'Nothing was changed. Check what it says, then approve again or reply.' };
 }
 
 function duration(ms: number): string {
@@ -107,6 +164,13 @@ export function createStepLog(opts: StepLogOptions): StepLog {
       }
       const open = [...r.steps.values()].reverse().find((s) => s.state === 'review');
       if (open) l.review = open.id;
+      // An apply still open when the core stopped: settled by the next job event.
+      const applying = [...r.steps.values()].reverse().find((s) => s.phase === 'apply' && s.verb === 'apply' && (s.state === 'running' || s.state === 'waiting'));
+      if (applying) {
+        const start = applying.id.replace(/^apply-/, 'start-');
+        const st = r.steps.get(start);
+        l.apply = { apply: applying.id, runner: st?.text.match(/^(.*?) (?:is starting|resumed|couldn’t start)/)?.[1] ?? 'Claude', ...(st ? { start } : {}) };
+      }
       logs.set(jobId, l);
     }
     return l;
@@ -191,14 +255,67 @@ export function createStepLog(opts: StepLogOptions): StepLog {
     return { vaultPath: job.vaultPath, jobDir: path.join(job.vaultPath, '.vault-meta', 'worker', job.id), sources: job.files };
   }
 
-  function closeReview(jobId: string, text: string): void {
+  function closeReview(jobId: string, text: string, count?: string): void {
     const l = logFor(jobId);
     if (!l.review) return;
     const end = isoDate(now());
     // Blocked tools and questions were answered along with the review.
     for (const s of [...l.steps.values()]) if (s.state === 'review' && s.id !== l.review) change(jobId, s.id, { state: 'done', endedAt: end });
-    change(jobId, l.review, { state: 'done', verb: 'answer', text, endedAt: end });
+    change(jobId, l.review, { state: 'done', verb: 'answer', text, endedAt: end, ...(count ? { count } : {}) });
     l.review = undefined;
+  }
+
+  function approvedCount(job: Job | undefined): string | undefined {
+    const n = job?.approvedChange?.sourcesApproved;
+    return n ? plural(n, 'source') : undefined;
+  }
+
+  /** v8: the steps after Approve: "<runner> is starting" (agent runs) and "Applying N changes through the vault core". */
+  function openApply(jobId: string, agent: boolean, runnerID: string | undefined, message: string): void {
+    const l = logFor(jobId);
+    if (l.apply) return;
+    const job = opts.getJob(jobId) ?? l.last;
+    const runner = runnerName(runnerID ?? job?.runnerID);
+    const k = (l.seq += 1);
+    const n = job?.approvedChange?.changes;
+    const what = n !== undefined ? plural(n, 'change') : message.replace(/^Applying\s*/, '') || 'the changes';
+    const start = agent
+      ? step(jobId, { id: `start-${k}`, phase: 'apply', kind: 'step', state: 'running', verb: 'start', text: `${runner} is starting: resuming this batch’s session` })
+      : undefined;
+    const apply = step(jobId, { id: `apply-${k}`, phase: 'apply', kind: 'step', state: agent ? 'waiting' : 'running', verb: 'apply', text: `Applying ${what} through the vault core` });
+    l.apply = { apply, runner, ...(start ? { start } : {}) };
+  }
+
+  /** v8: the job left `running` after Approve: added, or why not (and what to do). */
+  function settleApply(job: Job): void {
+    const l = logFor(job.id);
+    const a = l.apply;
+    if (!a) return;
+    const end = isoDate(now());
+    const startStep = a.start ? l.steps.get(a.start) : undefined;
+    const startOpen = startStep?.state === 'running';
+    const applied = job.state === 'completed' && !!job.operationID && (!job.approvedChange || job.operationID === job.approvedChange.operationID);
+    if (applied) {
+      if (startOpen) change(job.id, a.start!, { state: 'done', text: `${a.runner} resumed this batch’s session`, endedAt: end });
+      change(job.id, a.apply, { state: 'done', text: 'Applied through the vault core', count: job.operationID!, endedAt: end });
+      step(job.id, { id: a.apply.replace(/^apply-/, 'added-'), phase: 'apply', kind: 'step', state: 'done', verb: 'added', text: `Added to ${vaultName(job.vaultPath)}: ${addedWords(job)}`, endedAt: end });
+    } else if (job.sessionUnavailable && startOpen) {
+      change(job.id, a.start!, {
+        state: 'failed',
+        text: 'This batch’s AI session isn’t available anymore',
+        hint: 'Nothing was changed. Continue starts a new session with this batch and the plan you approved.',
+        endedAt: end,
+      });
+    } else {
+      const w = notAddedWords(job, a.runner);
+      if (startOpen && job.state === 'failed') {
+        change(job.id, a.start!, { state: 'failed', text: `${a.runner} couldn’t start: ${clip(redact(job.error ?? 'the run failed'), 120)}`, hint: w.hint, endedAt: end });
+      } else {
+        if (startOpen) change(job.id, a.start!, { state: 'done', text: `${a.runner} resumed this batch’s session`, endedAt: end });
+        change(job.id, a.apply, { state: 'failed', text: w.text, hint: w.hint, endedAt: end });
+      }
+    }
+    l.apply = undefined;
   }
 
   function onJob(job: Job, deleted: boolean): void {
@@ -233,11 +350,17 @@ export function createStepLog(opts: StepLogOptions): StepLog {
     }
     const was = prev?.state;
     if (job.state === 'running' && was !== 'running') {
-      if (was === 'awaitingApproval' || was === 'cancelled' || was === 'failed') closeReview(job.id, 'You answered');
+      if (was === 'awaitingApproval' || was === 'cancelled' || was === 'failed') {
+        const lastTurn = job.turns.at(-1);
+        const approved = lastTurn?.author === 'user' && /^Approved /.test(lastTurn.text);
+        closeReview(job.id, approved ? 'You approved' : 'You answered', approved ? approvedCount(job) : undefined);
+      }
       l.turn += 1;
       l.tools.clear();
     }
     if (job.state !== 'running' && was === 'running') closeRunning(job.id, ['agent', 'check']);
+    const hadApply = !!l.apply;
+    if (job.state !== 'running' && l.apply) settleApply(job);
     if (job.state === was) {
       actionsStep(job, prev);
       return;
@@ -274,9 +397,8 @@ export function createStepLog(opts: StepLogOptions): StepLog {
         break;
       }
       case 'completed': {
-        const apply = [...l.steps.values()].reverse().find((s) => s.verb === 'apply' && s.state === 'running');
-        if (apply) {
-          change(job.id, apply.id, { state: 'done', endedAt: end, text: `Applied ${plural(job.changedPaths.length, 'change')} to ${vaultName(job.vaultPath)}`, ...(job.operationID ? { count: job.operationID } : {}) });
+        if (hadApply) {
+          /* settled above: Applied through the vault core, then Added */
         } else {
           closeReview(job.id, 'You answered');
           step(job.id, { phase: 'apply', kind: 'step', state: 'done', verb: 'done',
@@ -286,10 +408,12 @@ export function createStepLog(opts: StepLogOptions): StepLog {
       }
       case 'failed':
         for (const s of [...l.steps.values()]) if (s.state === 'running' || s.state === 'review') change(job.id, s.id, { state: 'done', endedAt: end });
+        if (hadApply) break;
         step(job.id, { phase: l.review ? 'review' : 'agent', kind: 'step', state: 'failed', verb: 'error', text: `Failed: ${clip(redact(job.error ?? 'unknown error'), 200)}` });
         break;
       case 'cancelled':
         for (const s of [...l.steps.values()]) if (s.state === 'running' || s.state === 'review') change(job.id, s.id, { state: 'done', endedAt: end });
+        if (hadApply) break;
         step(job.id, { phase: 'agent', kind: 'step', state: 'failed', verb: 'error', text: 'Cancelled' });
         break;
       case 'rejected':
@@ -339,14 +463,11 @@ export function createStepLog(opts: StepLogOptions): StepLog {
       if (!l.steps.has(id)) step(p.key, { id, phase: 'check', kind: 'step', state: 'running', verb: 'check', text: 'Checking the changes with the vault core' });
     }
     if (p.kind === 'apply' && !p.finished) {
-      closeReview(p.key, 'You approved');
-      if (![...l.steps.values()].some((s) => s.verb === 'apply' && s.state === 'running')) {
-        step(p.key, { phase: 'apply', kind: 'step', state: 'running', verb: 'apply', text: clip(p.message || 'Applying the changes', 120) });
-      }
+      closeReview(p.key, 'You approved', approvedCount(opts.getJob(p.key)));
+      openApply(p.key, !!p.runnerID, p.runnerID, p.message || '');
     }
-    if (p.kind === 'apply' && p.finished && p.error) {
-      const apply = [...l.steps.values()].reverse().find((s) => s.verb === 'apply' && s.state === 'running');
-      if (apply) change(p.key, apply.id, { state: 'failed', text: `Couldn’t apply: ${clip(redact(p.error), 160)}`, endedAt: isoDate(now()) });
+    if (p.kind === 'apply' && p.finished && p.error && l.apply) {
+      change(p.key, l.apply.apply, { state: 'failed', text: `Couldn’t apply: ${clip(redact(p.error), 160)}`, endedAt: isoDate(now()) });
     }
   }
 
@@ -371,6 +492,11 @@ export function createStepLog(opts: StepLogOptions): StepLog {
         }
         const w = s.kind === 'tool' ? toolWords(s, context(job)) : noteWords(s.text);
         if (!w) return;
+        if (l.apply) {
+          const a = l.apply;
+          if (a.start && l.steps.get(a.start)?.state === 'running') change(jobId, a.start, { state: 'done', text: `${a.runner} resumed this batch’s session`, endedAt: isoDate(now()) });
+          if (s.kind === 'tool' && w.verb === 'apply' && l.steps.get(a.apply)?.state === 'waiting') change(jobId, a.apply, { state: 'running', at: isoDate(now()) });
+        }
         const id = nextId(l, `a${l.turn}`);
         if (s.kind === 'tool' && s.id) l.tools.set(s.id, id);
         put(jobId, {

@@ -13,6 +13,10 @@ import {
   type AddNoteResult,
   type ApprovalRequest,
   type ApproveOptions,
+  type ApprovedChange,
+  type InboxCleanupPreview,
+  type InboxCleanupRequest,
+  type InboxCleanupResult,
   type RejectOptions,
   type JobPart,
   type PendingPart,
@@ -82,6 +86,7 @@ import {
 } from './job-kinds.js';
 import { CoreError } from './errors.js';
 import { searchVaultPages } from './pages.js';
+import { finderTrash, previewCleanup, renameTrash, runCleanup, type TrashMover } from './inbox-cleanup.js';
 import { noteFileFor, readManifest, validateNote, writeManifest, writeNote, type NoteLabelState } from './notes.js';
 import { NoteLabelStore } from './note-labels.js';
 import { DEFAULT_LABEL_CONCURRENCY, mapPool, QueueLabeler, suggestInputFor } from './queue-labels.js';
@@ -228,6 +233,11 @@ export interface EngineOptions {
   launch?: (opts: RunProcessOptions) => Promise<ProcessOutput>;
   /** Where removeQueueEntry moves files (default ~/.Trash). */
   trashDir?: string;
+  /**
+   * v8: how Clean up inbox moves files to the Trash. Default: Finder (Put Back works), falling back to a
+   * rename into ~/.Trash; with `trashDir` set (tests) a rename into it. Tests inject a fake.
+   */
+  trashMover?: TrashMover;
   /** v3: a batch (queue-consumer job) was applied: completed with changed paths. Runs once per transition. */
   onJobApplied?: (job: Job) => void | Promise<void>;
   /** v7: the live log (steps/). Gets each agent step of a turn and each file of the label pre-step. */
@@ -303,6 +313,7 @@ export function createEngine(opts: EngineOptions): Engine {
   const now = opts.now ?? (() => new Date());
   const launch = opts.launch ?? runProcess;
   const trashDir = opts.trashDir ?? path.join(os.homedir(), '.Trash');
+  const trashMover: TrashMover = opts.trashMover ?? (opts.trashDir ? renameTrash(opts.trashDir) : finderTrash(trashDir));
   const version = readVersion();
 
   const settingsStore = new SettingsStore(paths.settings);
@@ -1615,9 +1626,15 @@ export function createEngine(opts: EngineOptions): Engine {
         message: `Applying ${plural(plan.changed_paths.length, 'change')}`,
         ...(agent ? selectionFields({ runnerID: jobRunnerID(job), model: job.model }) : {}),
       });
+    const record = () =>
+      mutate(id, (j) => {
+        j.approvedChange = approvedChangeOf(j, plan);
+        delete j.reviewDoneAt;
+      });
     const approvedTurn = `Approved ${plan.operation_id} (${plan.approval_sha256.slice(0, 12)}…)${mode === 'later' && !approval.rebuilt ? ', labels left to review' : ''}`;
     const applyByCore = () => {
       applyingLabels.set(id, carries);
+      record();
       mutate(id, (j) => {
         j.state = 'running';
         delete j.error;
@@ -1644,6 +1661,7 @@ export function createEngine(opts: EngineOptions): Engine {
         return;
       }
       applyingLabels.set(id, carries);
+      record();
       continueInNewSession(id, 'approve', { userTurn: approvedTurn, plan, bundle });
       applying(true);
       return;
@@ -1655,7 +1673,11 @@ export function createEngine(opts: EngineOptions): Engine {
     // Only the exact approved command is permitted, and only for this turn.
     const applyRule = `Bash(${WorkerProtocol.applyCommand(ctx, plan, bundle)})`;
     applyingLabels.set(id, carries);
-    mutate(id, (j) => j.turns.push(newTurn('user', approvedTurn, now())));
+    mutate(id, (j) => {
+      j.approvedChange = approvedChangeOf(j, plan);
+      delete j.reviewDoneAt;
+      j.turns.push(newTurn('user', approvedTurn, now()));
+    });
     applying(true);
     const out = resumeBatchSession({
       job: findJob(id) ?? job,
@@ -1826,6 +1848,62 @@ export function createEngine(opts: EngineOptions): Engine {
   }
 
   /** Removes a finished job from the list (its job directory in the vault is kept). */
+  /** v8: counts of the approved change, from the plan and the vault as it is before the apply. */
+  function approvedChangeOf(job: Job, plan: TransactionPlan): ApprovedChange {
+    const c: ApprovedChange = { at: isoDate(now()), operationID: plan.operation_id, changes: plan.changed_paths.length, sources: 0, concepts: 0, entities: 0, otherPages: 0, updated: 0 };
+    for (const p of plan.changed_paths) {
+      if (!p.startsWith('wiki/') || !p.endsWith('.md')) continue;
+      if (fs.existsSync(path.join(job.vaultPath, p))) c.updated += 1;
+      else if (p.startsWith('wiki/sources/')) c.sources += 1;
+      else if (p.startsWith('wiki/concepts/')) c.concepts += 1;
+      else if (p.startsWith('wiki/entities/')) c.entities += 1;
+      else c.otherPages += 1;
+    }
+    const sources = job.approval?.sources?.filter((x) => !x.removed).length;
+    if (sources !== undefined && sources > 0) c.sourcesApproved = job.approval?.rebuilt ? job.approval.rebuilt.pages.length : sources;
+    return c;
+  }
+
+  /** v8: Done on an approved batch in Review: it is only in History from now on. */
+  async function finishReview(id: string): Promise<Job> {
+    const job = requireJob(id);
+    if (!job.approvedChange) throw new CoreError('invalid_state', `Job ${id} was not approved.`);
+    if (job.state === 'running') throw new CoreError('invalid_state', 'This batch is still being added to your vault.');
+    if (job.state === 'awaitingApproval') throw new CoreError('invalid_state', 'This batch still waits for your review.');
+    if (!job.reviewDoneAt) mutate(id, (j) => { j.reviewDoneAt = isoDate(now()); });
+    return clone(findJob(id)!);
+  }
+
+  /** v8: the scope of a clean-up: the vault, its jobs, and what the queue still holds when the queue is inbox/. */
+  function cleanupScope(o: { jobId?: string; vaultPath?: string } = {}) {
+    const job = o.jobId ? requireJob(o.jobId) : undefined;
+    const vault = job ? vaultProfileFor(job) : resolveVault(o.vaultPath);
+    let queuedRel: Set<string> | undefined;
+    if (queueIsInbox(vault)) {
+      const taken = claimedFiles(vault);
+      queuedRel = new Set(
+        queued
+          .map((e) => path.relative(vault.path, e.path).split(path.sep).join('/').normalize('NFC'))
+          .filter((r) => !taken.has(r)),
+      );
+    }
+    return { vaultPath: vault.path, jobs: clone(jobs), ...(o.jobId ? { jobId: o.jobId } : {}), ...(queuedRel ? { queued: queuedRel } : {}), now: now() };
+  }
+
+  async function previewInboxCleanup(o: { jobId?: string; vaultPath?: string } = {}): Promise<InboxCleanupPreview> {
+    refreshQueue();
+    return previewCleanup(cleanupScope(o));
+  }
+
+  async function cleanUpInbox(req: InboxCleanupRequest): Promise<InboxCleanupResult> {
+    if (!req || !Array.isArray(req.paths) || req.paths.some((p) => typeof p !== 'string')) throw new CoreError('invalid_request', 'paths must be an array of inbox paths.');
+    if (req.paths.some((p) => !p.startsWith('inbox/') || p.split('/').includes('..'))) throw new CoreError('invalid_request', 'Only paths inside inbox/ can be cleaned up.');
+    refreshQueue();
+    const result = await runCleanup(cleanupScope({ ...(req.jobId ? { jobId: req.jobId } : {}), ...(req.vaultPath ? { vaultPath: req.vaultPath } : {}) }), req.paths, trashMover);
+    if (result.moved.length > 0) refreshQueue();
+    return result;
+  }
+
   async function deleteJob(id: string): Promise<void> {
     const job = requireJob(id);
     if (!isFinished(job.state)) {
@@ -2687,6 +2765,9 @@ export function createEngine(opts: EngineOptions): Engine {
       return searchVaultPages(resolveVault(opts?.vaultPath).path, query, opts?.limit);
     },
     deleteJob,
+    finishReview,
+    previewInboxCleanup,
+    cleanUpInbox,
     jobResumeCommand,
     resumeBatchSession,
     removeQueueEntry,

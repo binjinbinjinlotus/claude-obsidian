@@ -89,7 +89,12 @@ const idle = (core: ReturnType<typeof createCore>) => (core as unknown as { when
 describe('job steps (live log)', () => {
   test('a batch: moved, labels per file, Claude’s steps in plain words, checked, waiting for review; then approved and applied', async () => {
     const h = setup((req, vault, jobId) => {
-      if ('resume' in req.session) return { result: { structured: { status: 'done', summary: 'Applied.', operation_id: 'op-1', changed_paths: PLAN.changed_paths } } };
+      if ('resume' in req.session) {
+        return {
+          steps: [{ kind: 'tool', id: 'ap1', tool: 'Bash', input: { command: `python3 /p/scripts/claude-obsidian.py transaction apply /b.json --vault ${vault} --approved-plan-sha256 ${'f'.repeat(64)}` } }],
+          result: { structured: { status: 'done', summary: 'Applied.', operation_id: 'op-1', changed_paths: PLAN.changed_paths } },
+        };
+      }
       const jobDir = path.join(vault, '.vault-meta/worker', jobId());
       return {
         steps: [
@@ -158,15 +163,55 @@ describe('job steps (live log)', () => {
     await idle(h.core);
     const after = (await h.core.listJobSteps!(job.id)).steps;
     assert.equal(after.find((s) => s.id === review.id)!.text, 'You approved');
-    const apply = after.filter((s) => s.verb === 'apply').at(-1)!;
+    // v8: Review after Approve: the AI starting, applying through the vault core, Added with plan counts.
+    const ap = after.filter((s) => s.phase === 'apply');
+    const start = ap.find((s) => s.verb === 'start')!;
+    assert.equal(start.state, 'done');
+    assert.equal(start.text, 'Claude resumed this batch’s session');
+    const apply = ap.find((s) => s.verb === 'apply')!;
     assert.equal(apply.state, 'done');
-    assert.equal(apply.text, 'Applied 2 changes to Research');
+    assert.equal(apply.text, 'Applied through the vault core');
     assert.equal(apply.count, 'op-1');
+    const added = ap.find((s) => s.verb === 'added')!;
+    assert.equal(added.text, 'Added to Research: 2 pages added');
+    assert.deepEqual(ap.map((s) => s.verb).slice(0, 3), ['start', 'apply', 'added']);
+    const applyEvents = h.events.filter((e): e is Extract<CoreEvent, { type: 'job.step' }> => e.type === 'job.step' && e.step.id === apply.id).map((e) => e.step.state);
+    assert.deepEqual(applyEvents, ['waiting', 'running', 'done']);
 
     // Kept on disk: a new core reads the same log.
     await h.core.stop();
     const again = createStepLog({ dir: path.join(h.state, 'steps'), emit: () => undefined, getJob: () => undefined });
     assert.deepEqual(again.list(job.id).steps.map((s) => s.id), after.map((s) => s.id));
+  });
+
+  test('v8: an apply turn that reports another operation: Nothing recorded as applied, with what to do; Done is refused until it is added', async () => {
+    const h = setup((req, vault, jobId) => {
+      if ('resume' in req.session) return { result: { structured: { status: 'done', summary: 'Applied.', operation_id: 'op-other', changed_paths: [] } } };
+      const jobDir = path.join(vault, '.vault-meta/worker', jobId());
+      return { result: { structured: { status: 'needs_approval', summary: 'Adds pages.', bundle_path: path.join(jobDir, 'bundle.json') } } };
+    });
+    fs.writeFileSync(path.join(h.vault, 'wiki', 'b.md'), '# B\n'); // exists: counted as updated
+    fs.writeFileSync(path.join(h.queue, 'a.md'), '# A\n');
+    const job = (await h.core.processQueue({ force: true }))!;
+    await idle(h.core);
+    await assert.rejects(h.core.finishReview!(job.id), /not approved/);
+    await h.core.approve(job.id);
+    const approved = h.core.getJob(job.id)!;
+    assert.equal(approved.approvedChange?.operationID, 'op-1');
+    assert.equal(approved.approvedChange?.changes, 2);
+    assert.equal(approved.approvedChange?.otherPages, 1);
+    assert.equal(approved.approvedChange?.updated, 1);
+    await idle(h.core);
+    const ap = (await h.core.listJobSteps!(job.id)).steps.filter((s) => s.phase === 'apply');
+    const apply = ap.find((s) => s.verb === 'apply')!;
+    assert.equal(apply.state, 'failed');
+    assert.equal(apply.text, 'Nothing recorded as applied: Claude didn’t report the approved change');
+    assert.match(apply.hint!, /Show steps/);
+    assert.equal(ap.some((s) => s.verb === 'added'), false);
+    // Completed (nothing recorded): Done takes it out of Review.
+    const done = await h.core.finishReview!(job.id);
+    assert.ok(done.reviewDoneAt);
+    await h.core.stop();
   });
 
   test('a job that ran before steps were kept says so; the HTTP route serves the log', async () => {
