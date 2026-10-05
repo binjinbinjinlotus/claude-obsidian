@@ -84,6 +84,62 @@ describe('redaction', () => {
     }
   });
 
+  // Paths on this Mac (2026-10-04): the Activity screen showed a script as "/[redacted].py" and the vault as "[redacted]".
+  const macPaths = [
+    '/Users/jinbinliu/Library/Application Support/Distill/collectors/scripts/col-3f2a9c1e-8d4b-4b2a-9c1e-8d4b4b2a9c1e/collector.py',
+    '~/Library/Application Support/Distill/collectors/scripts/col-3f2a9c1e-8d4b-4b2a-9c1e-8d4b4b2a9c1e/collector.py',
+    '/private/var/folders/1b/qpdk0gs15sl2jjwfmqcxvfjc0000gn/T/distill-activity-Xk9mQ2/state/collectors/scripts/col-a1b2/collector.py',
+    '/var/folders/1b/qpdk0gs15sl2jjwfmqcxvfjc0000gn/T/distill-activity-Xk9mQ2/Vault',
+    '/private/var/folders/1b/qpdk0gs15sl2jjwfmqcxvfjc0000gn/T/tmp.AbCdEf0123456789GhIjKlMnOpQrStUvWxYz/vault',
+    '/Users/jinbinliu/Library/Mobile Documents/iCloud~md~obsidian/Documents/Research Vault',
+    '/Users/jinbinliu/Distill Inbox/0123456789abcdef0123456789abcdef01234567/notes.md', // a folder named with 40 hex
+    '/tmp/3f2a9c1e8d4b4b2a9c1e8d4b4b2a9c1e/collector.py', // a UUID without dashes
+    '~/.Trash/export 2.zip',
+  ];
+
+  test('paths stay readable: long temp paths, Application Support, hex and UUID folder names', () => {
+    for (const p of macPaths) {
+      assert.equal(redactText(p), p);
+      assert.equal(redactText(p, { path: true }), p);
+      // inside text: an error message quoting the path, and a summary
+      const msg = `ENOENT: no such file or directory, open '${p}'`;
+      assert.equal(redactText(msg), msg);
+      const summary = `Couldn't read ${p} (gone)`;
+      assert.equal(redactText(summary), summary);
+    }
+    const d = redactDetails({ scriptFile: macPaths[0], vault: macPaths[3], folder: macPaths[6], changedPaths: [macPaths[2]] })!;
+    assert.equal(d.scriptFile, macPaths[0]);
+    assert.equal(d.vault, macPaths[3]);
+    assert.equal(d.folder, macPaths[6]);
+    assert.deepEqual(d.changedPaths, [macPaths[2]]);
+  });
+
+  test('secrets are still caught next to, inside and outside paths', () => {
+    const aws = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'; // AWS secret access key shape: 40 base64 chars with "/"
+    const b64 = 'Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MEFCQ0RFRkdISUpLTE1OT1A=';
+    const hex = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08';
+    for (const s of [aws, b64, hex]) {
+      const out = redactText(`secret ${s} here`);
+      assert.ok(!out.includes(s), `${s} survived: ${out}`);
+    }
+    // Precise shapes are caught even inside a path or a path-keyed detail.
+    const inPath = '/Users/jinbinliu/keys/sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789/x.py';
+    assert.ok(!redactText(inPath).includes('sk-ant-api03'));
+    assert.ok(!redactText(inPath, { path: true }).includes('sk-ant-api03'));
+    const d = redactDetails({ scriptFile: '/tmp/ATATT3xFfGF0abcdefghijklmnopqrstuvwxyz/run.py' })!;
+    assert.ok(!String(d.scriptFile).includes('ATATT3x'));
+    // A path next to a secret: the path stays, the secret goes.
+    const mixed = `Failed /Users/jinbinliu/Library/Application Support/Distill/collectors/scripts/col-a1b2/collector.py: Authorization: Bearer abcdefgh12345678 and ${aws}`;
+    const out = redactText(mixed);
+    assert.ok(out.includes('/Users/jinbinliu/Library/Application Support/Distill/collectors/scripts/col-a1b2/collector.py'), out);
+    assert.ok(!out.includes('abcdefgh12345678') && !out.includes(aws), out);
+    // URLs are not paths: credentials and tokens in them still go.
+    assert.equal(redactText('https://me:pa55@example.com/x'), `https://${REDACTED}@example.com/x`);
+    const url = `https://example.com/api/${b64}`;
+    assert.ok(!redactText(url).includes(b64));
+    assert.ok(!redactText('see eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U').includes('eyJhbGci'));
+  });
+
   test('details: secret-looking keys go, strings are clipped, lists capped', () => {
     const d = redactDetails({ token: 'abc', apiKey: 'x', note: 'ok', long: 'x'.repeat(1000), list: Array.from({ length: 30 }, (_, i) => `f${i}`), n: Number.NaN })!;
     assert.equal(d.token, REDACTED);

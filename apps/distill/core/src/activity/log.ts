@@ -121,7 +121,7 @@ export class ActivityLog {
     if (details && Object.keys(details).length > 0) entry.details = details;
     if (input.recovery) {
       entry.recovery =
-        input.recovery.kind === 'macosTrash' ? { kind: 'macosTrash', path: redactText(input.recovery.path) } : input.recovery;
+        input.recovery.kind === 'macosTrash' ? { kind: 'macosTrash', path: redactText(input.recovery.path, { path: true }) } : input.recovery;
     }
     return entry;
   }
