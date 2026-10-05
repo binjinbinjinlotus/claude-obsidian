@@ -150,6 +150,10 @@ are sent back unchanged. Untouched, `actionPreferences` is never written.
 ## Validation
 
 The core reports setup problems in `GET /v1/status` (`problems`: no vault, not
-a vault, missing `claude`, missing core script, queue inside `.raw/` or
-`.vault-meta/`, runner problems). They block batching and are listed at the
+a vault, missing `claude`, missing core script, a queue folder inside the
+vault other than exactly `<vault>/inbox` (`queueIsVaultInternal`: the vault
+root, `wiki/`, `.raw/`, `.vault-meta/` or a folder under `inbox/`; paths are
+compared after resolving symlinks), runner problems). The same check refuses
+notes and drops into such a queue folder (`invalid_state`) and fails collector
+runs (decision 2026-10-04). They block batching and are listed at the
 top of every Settings page. A core that cannot be reached shows there too, with Retry.

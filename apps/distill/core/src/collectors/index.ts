@@ -37,6 +37,7 @@ import { isoDate, writeFileAtomic } from '../store/json.js';
 import { asScheduler } from '../activity/context.js';
 import { checkSchedule, CronError, nextRun, parseCron, presetOf } from './cron.js';
 import { runFolder } from './folder.js';
+import { isWithin, queuePlacementProblem, realish } from '../engine/validator.js';
 import { backupFile, consentHash, hasDependencies, MANIFEST, packageCount, PACKAGES_DIR, ScriptFolders } from './files.js';
 import { InstallStore, nodeSearchPath, planInstall, probeNode, resolveRuntime, startInstall } from './packages.js';
 import { INLINE_EXTENSION, loginShellPath, scriptBytes, sha256Text, startScript, type ScriptHandle } from './script.js';
@@ -704,6 +705,17 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     return active.path;
   }
 
+  /**
+   * Why a Folder collector may not read `source`: it is inside one of the user's vaults. Copying or
+   * moving files out of a vault would take them from wiki/, .raw/ or inbox/ outside any reviewed
+   * transaction (decision 2026-10-04).
+   */
+  function sourceInVault(source: string): string | undefined {
+    const real = realish(source);
+    const vault = opts.getSettings().vaults.find((v) => isWithin(real, realish(v.path)));
+    return vault ? `The source folder ${source} is inside the vault ${vault.path}. Pick a folder outside your vaults.` : undefined;
+  }
+
   function validFolder(f: Partial<FolderCollectorSettings> | undefined, base: FolderCollectorSettings | undefined, vaultPath: string): FolderCollectorSettings {
     const source = expandHome((f?.source ?? base?.source ?? '~/Distill Inbox').trim());
     if (!path.isAbsolute(source)) throw new CoreError('invalid_request', 'The source folder must be an absolute path.');
@@ -711,6 +723,8 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     if (afterCollect !== 'copy' && afterCollect !== 'move') throw new CoreError('invalid_request', '"afterCollect" must be "copy" or "move".');
     const queue = vaultProfile(vaultPath)?.queueDirectory;
     if (queue && samePath(queue, source)) throw new CoreError('invalid_request', 'The source folder is the vault’s queue folder.');
+    const inVault = sourceInVault(source);
+    if (inVault) throw new CoreError('invalid_request', inVault);
     // New collectors include subfolders; a saved one without the field keeps reading as off.
     const includeSubfolders = f?.includeSubfolders ?? base?.includeSubfolders ?? (base ? undefined : true);
     if (includeSubfolders !== undefined && typeof includeSubfolders !== 'boolean') {
@@ -852,6 +866,13 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       run.error = { code: 'vaultMissing', message: `${c.vaultPath} is no longer one of your vaults.` };
       return;
     }
+    // A queue folder inside the vault other than exactly <vault>/inbox gets nothing (decision 2026-10-04).
+    const placement = queuePlacementProblem(vault.path, vault.queueDirectory);
+    if (placement && run.trigger !== 'test') {
+      run.result = 'failed';
+      run.error = { code: 'other', message: placement.message };
+      return;
+    }
     let queueDir = path.resolve(vault.queueDirectory);
     if (run.trigger === 'test') {
       // A scratch folder stands in for the queue; the previous test run's output is replaced.
@@ -861,6 +882,13 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       run.outputDir = queueDir;
     }
     if (c.kind === 'folder' && c.folder) {
+      // A saved collector whose source became invalid fails visibly in its run history.
+      const inVault = sourceInVault(c.folder.source);
+      if (inVault) {
+        run.result = 'failed';
+        run.error = { code: 'other', message: inVault };
+        return;
+      }
       const outcome = await runFolder({
         collectorId: c.id,
         folder: c.folder,

@@ -17,6 +17,31 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **Inside the vault, the queue may only be exactly `<vault>/inbox`, and a
+  Folder collector may not read from a vault.** Specs: [Vaults and
+  settings](vaults-and-settings.md) → Validation, [Queue and
+  batching](queue-and-batching.md) → Queue folder,
+  [Collectors](collectors.md) → Folder and the script contract. Audit item
+  A3.
+  - Before, the validator rejected only a queue under `.raw/` or
+    `.vault-meta/`. A queue set to the vault root or `wiki/` passed, and a
+    batch would then move `wiki/` pages into `inbox/`.
+  - **Decision:** `queuePlacementProblem` (in `engine/validator.ts`) resolves
+    symlinks and respects folder boundaries. It reports the existing
+    `queueIsVaultInternal` code for anything inside the vault except
+    exactly `<vault>/inbox`. DistillKit decodes problems as plain strings,
+    so a new code would also have worked, but reusing the code keeps
+    clients unchanged. Batches are blocked. `addNote` and `addQueueFiles`
+    refuse with `invalid_state`, and collector runs fail with code `other`
+    and the reason. The owner's sibling queue
+    (`~/Documents/Distill Queue/MyKnowledgeVault`) stays valid.
+  - A Folder collector source inside any configured vault is refused on
+    create and update. A saved one that becomes invalid fails its run
+    visibly (`failed`, code `other`); the scheduler does not skip it
+    silently.
+  - Script collectors keep `DISTILL_VAULT`. `collectors.md` now states that
+    a consented script must write only to `DISTILL_QUEUE_DIR`.
+
 - **Only the core removes queue files; the app's Trash fallback is gone.**
   Spec: [Queue and batching](queue-and-batching.md) → Remove.
   - `AppModel.removeFromQueue` used to move files to the Trash itself when

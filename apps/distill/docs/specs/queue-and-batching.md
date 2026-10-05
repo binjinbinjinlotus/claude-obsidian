@@ -56,7 +56,13 @@ schedule, not one by one. Code: `clients/macos/Sources/WorkerCore/Queue.swift`,
 - `status().queueCount` counts these rows, not files.
   The core re-emits the queue only when an entry changes (for example
   `settled` flips), so clients never need a ticking timer.
-- The queue may not be inside the vault's `.raw/` or `.vault-meta/`.
+- Inside the vault, the queue may only be exactly `<vault>/inbox`
+  (`queueIsVaultInternal`, decision 2026-10-04). Anything else inside the
+  vault (its root, `wiki/`, `.raw/`, `.vault-meta/`, a folder under `inbox/`)
+  blocks batches; a batch would otherwise move `wiki/` pages into `inbox/`.
+  `addNote` and `addQueueFiles` refuse to write there (`invalid_state`) and
+  collector runs fail. The default `~/Documents/Distill Queue/<vault name>`
+  is outside the vault and stays valid.
 - **Remove** (`removeQueueEntry(path)`, `DELETE /v1/queue/entries`): moves a
   pending file of the active queue folder to the user's Trash (`~/.Trash`,
   collisions become `name 2.ext`). Removing a note row moves its whole set

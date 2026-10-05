@@ -53,7 +53,9 @@ apps/distill/
    queue folder set to `inbox/`, a collector or a note writing into that
    queue. It never edits, overwrites or automatically deletes a file already
    in `inbox/`; label changes for a note that sits there are kept in Distill's
-   state instead (see [Notes composer](notes-composer.md)).
+   state instead (see [Notes composer](notes-composer.md)). Any other queue
+   folder inside the vault is refused (`queueIsVaultInternal`), and a Folder
+   collector may not read from inside a vault.
 3. **The approval gate stays with a person.** Approve/apply exist only in UI
    clients. The CLI exposes `ask` and `history` (read-only, plus deleting a
    chat), `note add` (queues a note, which still goes through Review) and

@@ -359,6 +359,17 @@ describe('addNote and labelNote', () => {
     await assert.rejects(engine.labelNote(r.requestID, ['x']), { code: 'invalid_state' });
   });
 
+  test('a queue folder inside the vault other than inbox/ gets no notes or drops, and blocks batches', async () => {
+    const vault = path.join(tmp, 'vault');
+    const { engine } = setup({ settings: { vaults: [{ path: vault, queueDirectory: path.join(vault, 'wiki') }] } });
+    await assert.rejects(engine.addNote({ title: 'N', text: 't', suggest: 'none' }), { code: 'invalid_state', message: /inside the vault/ });
+    const outside = path.join(tmp, 'drop.md');
+    fs.writeFileSync(outside, 'x');
+    await assert.rejects(engine.addQueueFiles([outside]), { code: 'invalid_state' });
+    assert.ok(!fs.existsSync(path.join(vault, 'wiki')) || fs.readdirSync(path.join(vault, 'wiki')).length === 0);
+    assert.ok((await engine.status()).problems.some((p) => p.code === 'queueIsVaultInternal'));
+  });
+
   test('queue = inbox/: labels and suggestions live in Distill state; the note files are never edited (decision 2026-10-04)', async () => {
     const vault = path.join(tmp, 'vault');
     const { engine, ingest } = setup({

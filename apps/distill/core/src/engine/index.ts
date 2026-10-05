@@ -101,7 +101,7 @@ import {
   type FolderWalk,
   type ScanEntry,
 } from './queue.js';
-import { setupProblems } from './validator.js';
+import { queuePlacementProblem, setupProblems } from './validator.js';
 
 /**
  * Tools an ingest turn can see. Allow rules still gate them; tools outside the
@@ -1046,9 +1046,16 @@ export function createEngine(opts: EngineOptions): Engine {
     return clone(settings);
   }
 
+  /** Nothing is written into a queue folder inside the vault other than exactly `<vault>/inbox`. */
+  function requireQueuePlacement(vault: VaultProfile): void {
+    const p = queuePlacementProblem(vault.path, vault.queueDirectory);
+    if (p) throw new CoreError('invalid_state', p.message);
+  }
+
   async function addQueueFiles(files: string[]): Promise<QueueEntry[]> {
     const vault = activeVault(settings);
     if (!vault) throw new CoreError('no_vault', 'No vault selected.');
+    requireQueuePlacement(vault);
     const copies = new Set(copyIntoQueue(files.map((f) => path.resolve(f)), vault.queueDirectory));
     refreshQueue();
     return queueEntries().filter((e) => copies.has(e.path));
@@ -1115,6 +1122,7 @@ export function createEngine(opts: EngineOptions): Engine {
 
   async function addNote(req: AddNoteRequest): Promise<AddNoteResult> {
     const vault = resolveVault(req.vaultPath);
+    requireQueuePlacement(vault);
     const { title } = validateNote(req); // fail before any AI spend
     const confirmed = req.labels !== undefined ? cleanLabels(req.labels) : undefined;
     const origin = req.origin === 'cli' ? 'cli' : 'app';
