@@ -17,6 +17,33 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+**Full reads, built (2026-10-05).** Spec: [Full reads](full-read.md),
+section "Built".
+
+- **Re-read groups are packed by tokens, not by 3.** This supersedes "Sources
+  per batch by default: 3" in the re-read entry below:
+  - `rereadSources` with no `perBatch` packs by the batch budget;
+  - `tokenBudget` (at least 1,000) overrides the budget;
+  - `perBatch` still groups by count, 1 to 10;
+  - `distill batch reread` takes `--tokens N` or `--per-batch N`.
+  Reason: three long transcripts can pass what one session reads, and three
+  short notes waste sessions.
+- **A missing source still fails its batch by name.** This also holds for an
+  archived `.raw/captured/<sha256>.<ext>` path whose bytes no longer match its
+  name. The long-line fact no longer says to name the lines in `skipped`: the
+  reading copy splits them.
+- **Batches route to a runner with verifiable reads** (`ingestSelection`).
+  The task's route list is unchanged, so the gate runs only where
+  `readCoverage` is.
+- **Back-fill counts only applied changes**, and **the repair skips any
+  source a live job or a waiting re-read holds**. The scan runs again after
+  each apply. Reason: the owner's re-read groups were still running when the
+  build first started.
+- **A refused resume of an automatic continuation starts a fresh session.**
+  Nobody is asked to replace the session.
+- **The manifest key of a re-read or repair bundle** is the original inbox
+  path (`.raw/.manifest.json` is keyed by it, and the core only merges).
+
 **Full reads, after the design review (2026-10-05).** Spec: [Full
 reads](full-read.md).
 

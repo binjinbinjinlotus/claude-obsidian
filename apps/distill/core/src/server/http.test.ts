@@ -203,6 +203,23 @@ describe('HTTP API', () => {
       const gone = await request(port, 'POST', '/v1/batches/reread', { body: { jobId: 'job-nope' } });
       assert.equal(gone.status, 404);
     });
+    it('POST /v1/batches/reread passes tokenBudget and reason; GET /v1/held; POST /v1/held/retry', async () => {
+      const ok = await request(port, 'POST', '/v1/batches/reread', { body: { files: ['inbox/a.md'], tokenBudget: 60000, reason: 'retry' } });
+      assert.equal(ok.status, 201);
+      assert.deepEqual(lastCall()?.args, [{ files: ['inbox/a.md'], tokenBudget: 60000, reason: 'retry' }]);
+      for (const body of [{ files: ['inbox/a.md'], tokenBudget: 1.5 }, { files: ['inbox/a.md'], reason: 'later' }]) {
+        assert.equal((await request(port, 'POST', '/v1/batches/reread', { body })).status, 400, JSON.stringify(body));
+      }
+      const held = await request(port, 'GET', '/v1/held?vault=%2Ftmp%2Fvault');
+      assert.equal(held.status, 200);
+      assert.equal(held.body.held[0].file, 'inbox/bad.md');
+      assert.deepEqual(lastCall()?.args, ['/tmp/vault']);
+      const retry = await request(port, 'POST', '/v1/held/retry', { body: { file: 'inbox/bad.md' } });
+      assert.equal(retry.status, 201);
+      assert.equal(retry.body.started[0].id, 'job-retry-1');
+      assert.equal((await request(port, 'POST', '/v1/held/retry', { body: {} })).status, 400);
+      assert.equal((await request(port, 'POST', '/v1/held/retry', { body: { file: 'inbox/other.md' } })).status, 404);
+    });
     it('GET /v1/status', async () => {
       const res = await request(port, 'GET', '/v1/status');
       assert.equal(res.status, 200);

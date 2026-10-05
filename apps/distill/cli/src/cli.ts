@@ -96,7 +96,7 @@ Usage:
   distill history rm <conversation-id> [--json]
   distill status [--json]
   distill queue scan [--json]
-  distill batch reread <inbox/file>... | --job JOB_ID [--per-batch N] [--instruction "..."]
+  distill batch reread <inbox/file>... | --job JOB_ID [--tokens N | --per-batch N] [--instruction "..."]
               [--vault PATH] [--json]
   distill actions list [--type T] [--history] [--json]
   distill actions add "<title>" [--type todo] [--body "..."] [--why "..."] [--due YYYY-MM-DD]
@@ -157,8 +157,11 @@ Commands:
                 vault-relative inbox paths, or --job JOB_ID for a finished batch's
                 sources (its files minus note manifests; a folder stays one source).
                 Files are read where they are in inbox/; nothing is moved or copied.
-                They go in batches of --per-batch sources (default 3, at most 10), each
-                with a fresh AI session, one at a time: the next starts when the one
+                They go in batches packed by estimated tokens of text (default: the
+                Batch size setting, Automatic = 30% of the model's context, at most
+                100K; --tokens N for another budget, at least 1000), or of --per-batch
+                sources (1 to 10) when given. Each batch gets a fresh AI session, one
+                at a time: the next starts when the one
                 before is ready for review. Each batch waits in Review for the user like
                 any other; this command approves nothing. --instruction adds words to
                 every batch's prompt. Prints the batches and the first one started.
@@ -850,7 +853,7 @@ async function queue(args: string[], io: CliIO, api: ApiFactory): Promise<number
 export function describeReread(r: RereadResult): string {
   const sources = r.groups.reduce((n, g) => n + g.files.filter((f) => !g.folders?.some((d) => f.startsWith(d + '/'))).length + (g.folders?.length ?? 0), 0);
   const lines = [
-    `Re-reading ${plural(sources, 'source')}${r.fromJob ? ` from ${r.fromJob}` : ''} in ${r.groups.length} ${r.groups.length === 1 ? 'batch' : 'batches'} of up to ${r.perBatch} (${r.id}).`,
+    `Re-reading ${plural(sources, 'source')}${r.fromJob ? ` from ${r.fromJob}` : ''} in ${r.groups.length} ${r.groups.length === 1 ? 'batch' : 'batches'} of up to ${r.perBatch > 0 ? r.perBatch : `about ${Math.round((r.tokenBudget ?? 0) / 1000)}K tokens`} (${r.id}).`,
   ];
   r.groups.forEach((g, i) => {
     const state = g.jobId ? `started as ${g.jobId}` : 'waits';
@@ -864,10 +867,11 @@ export function describeReread(r: RereadResult): string {
 
 async function batch(args: string[], io: CliIO, api: ApiFactory): Promise<number> {
   const [sub, ...rest] = args;
-  if (sub !== 'reread') throw usageError('usage: distill batch reread <inbox/file>... | --job JOB_ID [--per-batch N]');
+  if (sub !== 'reread') throw usageError('usage: distill batch reread <inbox/file>... | --job JOB_ID [--tokens N | --per-batch N]');
   const { values, positionals } = parse(rest, {
     job: { type: 'string' },
     'per-batch': { type: 'string' },
+    tokens: { type: 'string' },
     instruction: { type: 'string' },
     vault: { type: 'string' },
   });
@@ -879,6 +883,13 @@ async function batch(args: string[], io: CliIO, api: ApiFactory): Promise<number
     perBatch = Number(rawPer);
     if (!/^\d+$/.test(rawPer) || perBatch < 1 || perBatch > 10) throw usageError('--per-batch must be a whole number from 1 to 10');
   }
+  const rawTokens = str(values.tokens);
+  let tokenBudget: number | undefined;
+  if (rawTokens !== undefined) {
+    tokenBudget = Number(rawTokens);
+    if (!/^\d+$/.test(rawTokens) || tokenBudget < 1000) throw usageError('--tokens must be a whole number, at least 1000');
+    if (perBatch !== undefined) throw usageError('give --tokens or --per-batch, not both');
+  }
   const out = new Output(io, values.json === true);
   const vault = str(values.vault);
   const instruction = str(values.instruction);
@@ -887,6 +898,7 @@ async function batch(args: string[], io: CliIO, api: ApiFactory): Promise<number
   const res = await client.request<RereadResult>('POST', '/v1/batches/reread', {
     ...(jobId ? { jobId } : { files }),
     ...(perBatch !== undefined ? { perBatch } : {}),
+    ...(tokenBudget !== undefined ? { tokenBudget } : {}),
     ...(vault ? { vault: path.resolve(io.cwd, vault) } : {}),
     ...(instruction ? { instruction } : {}),
   });

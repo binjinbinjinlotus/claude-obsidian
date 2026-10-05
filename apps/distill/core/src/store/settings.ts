@@ -47,6 +47,8 @@ const KNOWN_KEYS = [
   'runnerOptions',
   'actionPreferences',
   'queueScanMinutes',
+  'batchSourceTokens',
+  'detailLevel',
 ] as const;
 
 /**
@@ -331,6 +333,17 @@ export function decodeSettings(raw: unknown): Settings {
   // v5: minutes between queue checks; 0 = Off. Absent or mistyped stays absent (= the default, 5).
   const scan = num(raw.queueScanMinutes);
   if (scan !== undefined && Number.isFinite(scan)) s.queueScanMinutes = Math.min(Math.max(0, Math.trunc(scan)), 24 * 60);
+  // v10 (full reads): the batch size in tokens (absent or null = Automatic), clamped to 10K–300K.
+  const tokens = num(raw.batchSourceTokens);
+  if (tokens !== undefined && Number.isFinite(tokens) && tokens > 0) s.batchSourceTokens = Math.min(300_000, Math.max(10_000, Math.round(tokens)));
+  // v10: detail level per source type; unknown values dropped.
+  if (raw.detailLevel && typeof raw.detailLevel === 'object' && !Array.isArray(raw.detailLevel)) {
+    const levels: NonNullable<Settings['detailLevel']> = {};
+    for (const [k, v] of Object.entries(raw.detailLevel as Record<string, unknown>)) {
+      if ((k === 'meeting' || k === 'conversation' || k === 'research' || k === 'other') && (v === 'highlights' || v === 'detailed' || v === 'nearComplete')) levels[k] = v;
+    }
+    if (Object.keys(levels).length > 0) s.detailLevel = levels;
+  }
   return s;
 }
 
@@ -374,6 +387,8 @@ export function encodeSettings(s: Settings, raw: JSONObject = {}): JSONObject {
   // Decoded with its unknown keys kept, so a plain deep copy round-trips.
   if (s.actionPreferences != null) out.actionPreferences = JSON.parse(JSON.stringify(s.actionPreferences)) as JSONObject;
   if (s.queueScanMinutes != null) out.queueScanMinutes = s.queueScanMinutes;
+  if (s.batchSourceTokens != null) out.batchSourceTokens = s.batchSourceTokens;
+  if (s.detailLevel != null && Object.keys(s.detailLevel).length > 0) out.detailLevel = { ...s.detailLevel };
   return out;
 }
 

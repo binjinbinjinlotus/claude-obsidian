@@ -172,6 +172,9 @@ describe('inbox clean-up', () => {
     ledger('inbox/a.md', 'a');
     fs.writeFileSync(path.join(state, 'settings.json'), JSON.stringify({ vaults: [{ path: vault, queueDirectory: queue }], activeVaultPath: vault, autoProcessEnabled: false }));
     fs.writeFileSync(path.join(state, 'jobs.json'), JSON.stringify([job('job-20261004-120000-aaaa', ['inbox/a.md'], 'completed')]));
+    // v10 (full reads): read in full by a batch that applied (the coverage index), and archived in .raw/captured/.
+    fs.mkdirSync(path.join(state, 'coverage'), { recursive: true });
+    fs.writeFileSync(path.join(state, 'coverage', 'sources.json'), JSON.stringify({ version: 1, sources: { [sha('a')]: { full: true, file: 'inbox/a.md', lines: 1, jobId: 'job-20261004-120000-aaaa', at: '2026-10-04' } } }));
     const t = fakeTrash();
     const core = createCore({ paths: statePaths(state), runners: createRunnerRegistry([]), trashMover: t.mover, tickMs: 60_000, secrets: new MemorySecretStore(), collectors: { homeDir: root, tmpDir: root } });
     const server = await startServer({ core, token: 'tttttttttttttttttttt' });
@@ -185,6 +188,11 @@ describe('inbox clean-up', () => {
       req.end(body === undefined ? undefined : JSON.stringify(body));
     });
     try {
+      // Not archived yet: it stays, with the reason.
+      const before = await core.previewInboxCleanup!({ jobId: 'job-20261004-120000-aaaa' });
+      assert.deepEqual(before.items, []);
+      assert.equal(before.stays[0]?.reason, 'notArchived');
+      file(`.raw/captured/${sha('a')}.md`, 'a');
       const viaHttp = await call('GET', '/v1/inbox/cleanup?job=job-20261004-120000-aaaa');
       assert.equal(viaHttp.status, 200);
       assert.deepEqual(viaHttp.body.items.map((i: { path: string }) => i.path), ['inbox/a.md']);
@@ -198,9 +206,9 @@ describe('inbox clean-up', () => {
       await assert.rejects(core.cleanUpInbox!({ paths: ['wiki/sources/a.md'] }), /inside inbox/);
       const page = await core.listActivity({ types: ['queue.inbox_cleaned'] });
       const ok = page.entries.find((e) => e.outcome === 'ok');
-      assert.equal(ok?.summary, 'Cleaned up inbox: 1 file to the Trash');
+      assert.equal(ok?.summary, 'Cleared 1 file from inbox · originals archived');
       assert.deepEqual(ok?.details?.moved, ['inbox/a.md']);
-      assert.equal(page.entries.find((e) => e.outcome === 'failed')?.summary, "Couldn't clean up inbox");
+      assert.equal(page.entries.find((e) => e.outcome === 'failed')?.summary, "Couldn't clear inbox");
     } finally {
       await server.close();
       await core.stop();

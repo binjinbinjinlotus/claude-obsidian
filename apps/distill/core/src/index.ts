@@ -50,6 +50,10 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras &
         opts.steps?.labelFile(jobId, file, state, labels);
         steps?.labelFile(jobId, file, state, labels);
       },
+      fullRead: (jobId, s) => {
+        opts.steps?.fullRead?.(jobId, s);
+        steps?.fullRead(jobId, s);
+      },
     },
   });
   // Events from services outside the engine (Ask history) join the engine's stream.

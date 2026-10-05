@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { CoreEvent, Job, JobStep, JobStepsPage, Progress, RunnerStep } from '../contracts.js';
+import type { FullReadStep } from '../engine/full-read.js';
 import { isoDate } from '../store/json.js';
 import { clip, noteWords, redact, titleOf, toolWords, type WordsContext } from './words.js';
 
@@ -49,6 +50,8 @@ export interface StepLog {
   onEvent(e: CoreEvent): void;
   runnerStep(jobId: string, step: RunnerStep): void;
   labelFile(jobId: string, file: string, state: 'running' | 'done' | 'failed', labels?: number): void;
+  /** v10: a full-read step (coverage, continuation, detail check, split, stop, archive). */
+  fullRead(jobId: string, s: FullReadStep): void;
   list(jobId: string): JobStepsPage;
   /** Remove the logs of jobs that are no longer listed. */
   prune(keep: Iterable<string>): void;
@@ -539,6 +542,28 @@ export function createStepLog(opts: StepLogOptions): StepLog {
         else step(jobId, { id, ...s });
       } catch {
         /* never break the label step */
+      }
+    },
+    fullRead(jobId, s) {
+      try {
+        if (!tracked(jobId)) return;
+        const l = logFor(jobId);
+        const fields = {
+          phase: 'check' as const,
+          kind: 'step' as const,
+          verb: s.verb,
+          state: s.state,
+          text: clip(s.text, 200),
+          ...(s.detail ? { detail: clip(s.detail, 300) } : {}),
+          ...(s.count ? { count: s.count } : {}),
+          ...(s.state !== 'running' && s.state !== 'waiting' ? { endedAt: isoDate(now()) } : {}),
+        };
+        // A step with an id (the detail check's progress) is updated in place.
+        const id = s.id ? `fr-${s.id}` : undefined;
+        if (id && l.steps.has(id)) change(jobId, id, fields);
+        else step(jobId, { ...(id ? { id } : {}), ...fields });
+      } catch {
+        /* the log must never break a batch */
       }
     },
     list(jobId) {

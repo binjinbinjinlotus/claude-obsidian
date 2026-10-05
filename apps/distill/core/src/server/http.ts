@@ -1009,14 +1009,46 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
         if (perBatch !== undefined && (typeof perBatch !== 'number' || !Number.isInteger(perBatch))) throw bad('"perBatch" must be a whole number');
         const instruction = o.instruction;
         if (instruction !== undefined && typeof instruction !== 'string') throw bad('"instruction" must be a string');
+        const tokenBudget = o.tokenBudget;
+        if (tokenBudget !== undefined && (typeof tokenBudget !== 'number' || !Number.isInteger(tokenBudget))) throw bad('"tokenBudget" must be a whole number');
+        const reason = o.reason;
+        if (reason !== undefined && reason !== 'manual' && reason !== 'repair' && reason !== 'retry') throw bad('"reason" must be manual, repair or retry');
         if (typeof jobId === 'string') requireJob(jobId);
         const res = await core.rereadSources({
           ...(files?.length ? { files } : {}),
           ...(typeof jobId === 'string' ? { jobId } : {}),
           ...(vault ? { vaultPath: vault } : {}),
           ...(perBatch !== undefined ? { perBatch } : {}),
+          ...(tokenBudget !== undefined ? { tokenBudget } : {}),
+          ...(reason !== undefined ? { reason } : {}),
           ...(instruction !== undefined ? { instruction } : {}),
         });
+        return { ...res, started: res.started.map(apiJob) };
+      },
+    },
+    {
+      // v10: sources held in inbox/ because they couldn't be read in full (full-read.md, Hard stop).
+      method: 'GET',
+      pattern: /^\/v1\/held$/,
+      handler: async ({ query }) => {
+        if (typeof core.listHeld !== 'function') throw new HttpError(501, 'not_implemented', 'listHeld: not implemented by this core');
+        const vaultPath = query.get('vault') ?? undefined;
+        return { held: await core.listHeld(vaultPath) };
+      },
+    },
+    {
+      // v10: Try again on a held source: re-checks its bytes, then reads it in a batch of its own.
+      method: 'POST',
+      pattern: /^\/v1\/held\/retry$/,
+      status: 201,
+      untyped: { status: 400, code: 'invalid_request' },
+      handler: async ({ body }) => {
+        if (typeof core.retryHeld !== 'function') throw new HttpError(501, 'not_implemented', 'retryHeld: not implemented by this core');
+        const o = asObject(await body(), false);
+        if (typeof o.file !== 'string' || o.file === '') throw bad('"file" must be the held source\'s path');
+        const vault = o.vault ?? o.vaultPath;
+        if (vault !== undefined && typeof vault !== 'string') throw bad('"vault" must be a vault path');
+        const res = await core.retryHeld(o.file, typeof vault === 'string' ? vault : undefined);
         return { ...res, started: res.started.map(apiJob) };
       },
     },

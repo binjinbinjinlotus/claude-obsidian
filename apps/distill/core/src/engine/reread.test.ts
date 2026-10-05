@@ -14,7 +14,7 @@ import { decodeJob, encodeJob, newJob } from '../store/jobs.js';
 import { statePaths } from '../store/paths.js';
 import { createEngine, type Engine } from './index.js';
 import { FULL_READ_PROMPT, IngestJobKind, JobContext } from './job-kinds.js';
-import { existingSourcePages, groupItems, inboxFileProblem, jobSourceItems, sourceSize } from './reread.js';
+import { existingSourcePages, groupItems, inboxFileProblem, jobSourceItems, packItems, sourceFileProblem, sourceSize } from './reread.js';
 
 /** Fake runner only: answers every first turn with a plan for its own bundle, records order and overlap. */
 class FakeRunner implements AgentRunner {
@@ -156,6 +156,30 @@ describe('re-read: grouping and expansion', () => {
     assert.equal(groupItems(Array.from({ length: 22 }, (_, i) => ({ files: [`inbox/${i}.md`] })), 3).length, 8);
   });
 
+  test('packed by tokens: in order, a group closes before it would pass the budget; one item over it gets a group alone', () => {
+    const sizes: Record<string, number> = { a: 30_000, b: 50_000, c: 40_000, d: 150_000, e: 10_000 };
+    const items = Object.keys(sizes).map((x) => ({ files: [`inbox/${x}.md`] }));
+    const groups = packItems(items, 100_000, (f) => sizes[path.posix.basename(f, '.md')]!);
+    assert.deepEqual(groups.map((g) => g.files.map((f) => path.posix.basename(f, '.md')).join('')), ['ab', 'c', 'd', 'e']);
+    // A folder stays one item, whatever it weighs.
+    const folder = packItems([{ files: ['inbox/T/x.md', 'inbox/T/y.md'], folder: 'inbox/T' }], 10, () => 100);
+    assert.deepEqual(folder, [{ files: ['inbox/T/x.md', 'inbox/T/y.md'], folders: ['inbox/T'] }]);
+  });
+
+  test('an archived original can be re-read when its bytes still match its name; a missing one is refused by name', () => {
+    const vault = path.join(tmp, 'v');
+    fs.mkdirSync(path.join(vault, '.raw', 'captured'), { recursive: true });
+    const body = 'archived\n';
+    const sum = createHash('sha256').update(body).digest('hex');
+    fs.writeFileSync(path.join(vault, '.raw', 'captured', `${sum}.md`), body);
+    fs.writeFileSync(path.join(vault, '.raw', 'captured', `${'0'.repeat(64)}.md`), body);
+    assert.equal(sourceFileProblem(vault, `.raw/captured/${sum}.md`), undefined);
+    assert.match(sourceFileProblem(vault, `.raw/captured/${'0'.repeat(64)}.md`)!, /no longer match/);
+    assert.match(sourceFileProblem(vault, `.raw/captured/${'1'.repeat(64)}.md`)!, /not in the archive/);
+    assert.match(sourceFileProblem(vault, '.raw/captured/notes.md')!, /not an archived source/);
+    assert.match(sourceFileProblem(vault, 'inbox/gone.md')!, /not in inbox/);
+  });
+
   test('--job expansion: a batch\'s files minus note manifests, each folder one item', () => {
     const job = finishedJob('/v', ['inbox/a.md', 'inbox/a.distill.json', 'inbox/T/x.md', 'inbox/b.md', 'inbox/T/y.md'], ['inbox/T']);
     const { items, skipped } = jobSourceItems(job);
@@ -257,6 +281,18 @@ describe('re-read: the prompt', () => {
   });
 });
 
+describe('re-read: long lines', () => {
+  test('a long line is split in the reading copy, never named as skipped', () => {
+    const job = newJob({ id: 'job-1', kind: 'ingest', vaultPath: '/v', files: ['inbox/a.md'], model: 'm', now: new Date() });
+    job.reread = { id: 'reread-1', group: 1, groups: 1 };
+    const settings = { productRoot: '/p', pythonPath: '/usr/bin/python3', extraAllowedTools: [] } as never;
+    const facts = { sources: [{ file: 'inbox/a.md', bytes: 9000, lines: 10, textBytes: 9000, imageLines: 0, longLines: 2, pages: [] }] };
+    const prompt = IngestJobKind.initialPrompt(new JobContext(job, { path: '/v', queueDirectory: '/q' }, settings, [], facts));
+    assert.match(prompt, /2 text line\(s\) over 1,900 characters, split in its reading copy/);
+    assert.doesNotMatch(prompt, /name them in .?skipped/);
+  });
+});
+
 describe('re-read: batches in sequence', () => {
   test('7 files in groups of 3: one batch at a time, each its own job and fresh session, files read in place', async () => {
     const h = setup();
@@ -270,7 +306,7 @@ describe('re-read: batches in sequence', () => {
     const inboxBefore = snapshot(path.join(h2.vault, 'inbox'));
     const queueBefore = snapshot(h2.queue);
 
-    const res = await h2.engine.rereadSources!({ jobId: source.id });
+    const res = await h2.engine.rereadSources!({ jobId: source.id, perBatch: 3 });
     assert.equal(res.groups.length, 3);
     assert.deepEqual(res.groups.map((g) => g.files.length), [3, 3, 1]);
     assert.deepEqual(res.skipped?.map((s) => s.path), ['inbox/a.distill.json']);
@@ -328,6 +364,21 @@ describe('re-read: batches in sequence', () => {
     await h.engine.whenIdle();
     assert.equal(h.runner.requests.length, 2);
     assert.match(h.runner.requests[1]!.prompt, /Note who owns each action\./);
+  });
+
+  test('by default the groups are packed by tokens: the result says the budget', async () => {
+    const h = setup();
+    const files = writeInbox(h.vault, ['a.md', 'b.md', 'c.md', 'd.md']);
+    const res = await h.engine.rereadSources!({ files });
+    assert.equal(res.perBatch, 0);
+    assert.ok((res.tokenBudget ?? 0) >= 10_000, 'a token budget');
+    assert.deepEqual(res.groups.map((g) => g.files), [files], 'four small notes fit in one batch');
+    await h.engine.whenIdle();
+    await assert.rejects(h.engine.rereadSources!({ files, tokenBudget: 10 }), /at least 1000/);
+    const sized = await h.engine.rereadSources!({ files, tokenBudget: 1000 });
+    assert.equal(sized.tokenBudget, 1000);
+    assert.equal(sized.groups.length, 1, 'small notes still fit');
+    await h.engine.whenIdle();
   });
 
   test('a batch still in Review is not a source; a running re-read keeps the next group waiting', async () => {

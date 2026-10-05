@@ -39,6 +39,8 @@ interface LedgerEntry {
 export interface Ledger {
   /** NFC locator → entries. */
   exact: Map<string, LedgerEntry[]>;
+  /** v10: content sha256 → entries (Option A: the locator is the archive path, so files are found by content). */
+  bySha: Map<string, LedgerEntry[]>;
   /** NFC, case-folded locator → entries. */
   folded: Map<string, LedgerEntry[]>;
 }
@@ -50,14 +52,15 @@ const fold = (s: string) => nfc(s).toLowerCase();
 export function readLedger(vaultPath: string): Ledger {
   const exact = new Map<string, LedgerEntry[]>();
   const folded = new Map<string, LedgerEntry[]>();
+  const bySha = new Map<string, LedgerEntry[]>();
   let raw: unknown;
   try {
     raw = JSON.parse(fs.readFileSync(path.join(vaultPath, LEDGER_PATH), 'utf8'));
   } catch {
-    return { exact, folded };
+    return { exact, folded, bySha };
   }
   const sources = raw && typeof raw === 'object' ? (raw as { sources?: unknown }).sources : undefined;
-  if (!sources || typeof sources !== 'object') return { exact, folded };
+  if (!sources || typeof sources !== 'object') return { exact, folded, bySha };
   for (const rec of Object.values(sources as Record<string, unknown>)) {
     if (!rec || typeof rec !== 'object') continue;
     const r = rec as Record<string, unknown>;
@@ -73,15 +76,16 @@ export function readLedger(vaultPath: string): Ledger {
     exact.set(k, [...(exact.get(k) ?? []), entry]);
     const f = fold(entry.locator);
     folded.set(f, [...(folded.get(f) ?? []), entry]);
+    if (entry.sha) bySha.set(entry.sha, [...(bySha.get(entry.sha) ?? []), entry]);
   }
-  return { exact, folded };
+  return { exact, folded, bySha };
 }
 
 export function sha256File(abs: string): string {
   return createHash('sha256').update(fs.readFileSync(abs)).digest('hex');
 }
 
-type FileCheck = { ok: true; entry: LedgerEntry } | { ok: false; reason: InboxStayReason; detail?: string };
+type FileCheck = { ok: true; entry: LedgerEntry; sha: string } | { ok: false; reason: InboxStayReason; detail?: string };
 
 /** The three checks for one vault-relative file. */
 export function checkFile(vaultPath: string, rel: string, ledger: Ledger, hash: (abs: string) => string = sha256File): FileCheck {
@@ -92,21 +96,27 @@ export function checkFile(vaultPath: string, rel: string, ledger: Ledger, hash: 
   } catch {
     return { ok: false, reason: 'unreadable' };
   }
-  let candidates = ledger.exact.get(nfc(rel)) ?? [];
-  let caseOnly = false;
-  if (candidates.length === 0) {
-    candidates = ledger.folded.get(fold(rel)) ?? [];
-    caseOnly = true;
+  // v10: by content first (Option A moves the locator to the archive path), then by locator.
+  // Only an archived record (or one naming this very file) matches by content alone.
+  const byContent = (ledger.bySha?.get(sha) ?? []).filter((e) => e.locator.startsWith('.raw/') || nfc(e.locator) === nfc(rel));
+  let entry: LedgerEntry | undefined = byContent.find((e) => nfc(e.locator) === nfc(rel)) ?? byContent[0];
+  if (!entry) {
+    let candidates = ledger.exact.get(nfc(rel)) ?? [];
+    let caseOnly = false;
+    if (candidates.length === 0) {
+      candidates = ledger.folded.get(fold(rel)) ?? [];
+      caseOnly = true;
+    }
+    if (candidates.length === 0) return { ok: false, reason: 'notAdded' };
+    // A case-only match counts only when one entry matches and its hash agrees.
+    if (caseOnly && candidates.length !== 1) return { ok: false, reason: 'notAdded' };
+    entry = candidates.find((e) => e.sha === sha);
+    if (!entry) return { ok: false, reason: 'changed' };
   }
-  if (candidates.length === 0) return { ok: false, reason: 'notAdded' };
-  // A case-only match counts only when one entry matches and its hash agrees.
-  if (caseOnly && candidates.length !== 1) return { ok: false, reason: 'notAdded' };
-  const entry = candidates.find((e) => e.sha === sha);
-  if (!entry) return { ok: false, reason: 'changed' };
   if (entry.pages.length === 0) return { ok: false, reason: 'pageMissing', detail: 'no page is listed for it' };
   const missing = entry.pages.find((p) => !fs.existsSync(path.join(vaultPath, p)));
   if (missing) return { ok: false, reason: 'pageMissing', detail: path.basename(missing, '.md') };
-  return { ok: true, entry };
+  return { ok: true, entry, sha };
 }
 
 export interface CleanupScope {
@@ -118,6 +128,11 @@ export interface CleanupScope {
   queued?: Set<string>;
   now?: Date;
   hash?: (abs: string) => string;
+  /**
+   * v10 (full reads): a file goes only when its content was read in full by a batch that applied,
+   * its original is archived in .raw/captured/, and it isn't held as unreadable. Absent = not checked.
+   */
+  fullRead?: { full(sha: string): boolean; archived(sha: string): boolean; held(rel: string, sha: string): boolean };
 }
 
 interface Unit {
@@ -249,7 +264,7 @@ function claimed(scope: CleanupScope): { files: Map<string, string>; folders: Ma
   return { files, folders };
 }
 
-const REASON_ORDER: InboxStayReason[] = ['inReview', 'inQueue', 'unreadable', 'changed', 'pageMissing', 'notAdded'];
+const REASON_ORDER: InboxStayReason[] = ['inReview', 'inQueue', 'held', 'unreadable', 'changed', 'pageMissing', 'notAdded', 'notReadInFull', 'notArchived'];
 
 const reasonNoun: Record<InboxStayReason, string> = {
   notAdded: 'not added yet',
@@ -258,6 +273,9 @@ const reasonNoun: Record<InboxStayReason, string> = {
   inReview: 'waiting in Review',
   inQueue: 'in the queue',
   unreadable: 'can’t be read',
+  notReadInFull: 'not read in full yet',
+  notArchived: 'not archived yet',
+  held: 'couldn’t be read',
 };
 
 /** What could move to the Trash now, and what stays and why. Read-only. */
@@ -288,7 +306,16 @@ export function previewCleanup(scope: CleanupScope): InboxCleanupPreview {
       stays.push({ path: u.path, kind: u.kind, reason: 'notAdded', detail: 'nothing in it was a source', fileCount: n });
       continue;
     }
-    const results = u.checks.map((c) => ({ file: c, r: checkFile(vaultPath, c, ledger, scope.hash) }));
+    const results = u.checks.map((c) => {
+      const r = checkFile(vaultPath, c, ledger, scope.hash);
+      // v10 (full reads): read in full by a batch that applied, archived in .raw/captured/, not held.
+      const fr = scope.fullRead;
+      if (!r.ok || !fr) return { file: c, r };
+      if (fr.held(c, r.sha)) return { file: c, r: { ok: false, reason: 'held' } as FileCheck };
+      if (!fr.full(r.sha)) return { file: c, r: { ok: false, reason: 'notReadInFull' } as FileCheck };
+      if (!fr.archived(r.sha)) return { file: c, r: { ok: false, reason: 'notArchived' } as FileCheck };
+      return { file: c, r };
+    });
     const bad = results.filter((x) => !x.r.ok) as { file: string; r: Extract<FileCheck, { ok: false }> }[];
     if (bad.length > 0) {
       const worst = REASON_ORDER.find((r) => bad.some((b) => b.r.reason === r)) ?? bad[0]!.r.reason;

@@ -1,7 +1,7 @@
 ---
 type: spec
 title: Full reads
-status: designed
+status: built
 created: 2026-10-05
 updated: 2026-10-05
 tags:
@@ -32,9 +32,72 @@ Canvas: row 11, board **FullRead**. Related specs:
 - [Clean up inbox](inbox-cleanup.md)
 - [Session continuity](session-continuity.md)
 
-The re-read entry point and the ingest prompt text are owned by the
-`reread-sources` work. This spec gives that work the facts it needs and does
-not edit the prompt.
+The re-read entry point and the ingest prompt text were built by the
+`reread-sources` work. The full-read build owns them now (see "Building on the
+re-read entry point").
+
+## Built (2026-10-05)
+
+Everything below ships, except where a line says otherwise.
+
+| Part | Where |
+| --- | --- |
+| Reading copy, sections, token estimate | `core/src/coverage/copy.ts` |
+| Coverage from stream-json; compaction | `core/src/coverage/stream.ts`, `coverage.ts` |
+| Coverage index, repair log, model windows, budget | `core/src/coverage/store.ts` (`<state>/coverage/`) |
+| Option A facts and checks | `core/src/coverage/archive.ts` |
+| Detail pass | `core/src/coverage/detail.ts` |
+| Gate, split, fresh session, stop, back-fill, repair, held | `core/src/engine/full-read.ts`, wired in `engine/index.ts` |
+| Mac | `clients/macos/.../FullRead.swift`, `FullReadViews.swift`, and the Review, Queue, Settings and Clean up views |
+
+**How the build differs from the design, and why.**
+
+- **Ingest routing.** `TASK_REQUIREMENTS.ingest` still lists both routes, so
+  runners without `readCoverage` (test fakes) keep the old path.
+  `ingestSelection()` puts batches on a `readCoverage` runner (Claude Code),
+  and the core says so once. The gate runs only on such a runner.
+- **Where coverage is kept.** The per-session record (events, ranges, rounds)
+  is `<job dir>/coverage.json`, not `jobs.json`. `job.coverage` carries only
+  the summary the app shows.
+- **A batch that moves to a new session** (`continueInNewSession`) keeps the
+  sources that were already read in full. The new session reads only what
+  was not.
+- **Long lines in back-fill.** Past jobs have no reading copy. Back-fill
+  counts the original's lines (image lines left out). A source with a line
+  over 1,900 characters is credited if the read returned that line.
+- **PDF.** A PDF is credited on one successful Read. Whether Read reports
+  which pages it returned is still unverified (open question 2).
+- **Rounds.** `coverage.rounds` counts every automatic continuation (lines,
+  partial wording, detail, archive). `coverage.continued` counts the sources
+  that needed more lines ("2 needed a second round"). Each source has its own
+  `rounds`.
+- **"Page didn't change" check.** It looks only at sources that were asked
+  for more lines.
+
+**The reviewer's build notes, as built.**
+
+1. **A refused resume under `autoContinue`.** `runTurn`'s catch checks
+   `extra.autoContinue` itself: `resumeFailure` on the `resume` target. A
+   `sessionNotFound` goes to `autoContinueRefused`, which starts a fresh
+   session for every source not yet added. It never reaches `fail()` or
+   SessionReplaceConfirm. Tested.
+2. **The split's ledger check.** `verifyRebuilt` also runs `ledgerProblems`.
+   The rebuilt bundle may hold no source-ledger record whose `content_sha256`
+   or locator belongs to a source left out. A record already in the vault,
+   unchanged, is not this change's. Tested, unit and end to end.
+3. **The 60% compaction signal.** The context of a main-thread assistant
+   message is input plus cache-read plus cache-creation tokens. These are
+   skipped: messages with `parent_tool_use_id` (subagents), and messages with
+   zero usage. The comparison runs between consecutive counted messages,
+   across the turns of one session: the last context is saved with the
+   record. On the owner's turns the lowest ratio was 1.000; a real compaction
+   is about 2%.
+4. **`.raw/.manifest.json`.** It is keyed by the original inbox path, and
+   the core only merges it (`transaction.py:2985-3000`). A first ingest, a
+   repair and a re-read bundle all use the **original inbox path** as the key.
+   For a source already archived (a `.raw/captured/` re-read), the key is the
+   locator of the record it replaces. `ArchiveFacts.manifestKey` gives this to
+   the prompt.
 
 ## What went wrong (2026-10-04, the owner's batch)
 
@@ -734,11 +797,37 @@ packs files with the same budget as normal batches.
 - Its bundle replaces the source page, archives the original into
   `.raw/captured/` and migrates the ledger record (section 4).
 
-**Back-fill from every job with stream turn files.** At first start, the
-build computes coverage from the saved `turn-*.json` of every past job whose
-turns ran with stream-json. It uses the same parser and the same session
-rule, and records the full-read results in the coverage index. The repair
-then re-reads only what is still uncovered.
+**Back-fill from every job with stream turn files.** At each start, the core
+computes coverage from the saved `turn-*.json` of past jobs. It uses the same
+parser and the same compaction rule, and records full reads in the coverage
+index. The repair then re-reads only what is still uncovered.
+
+**Back-fill counts only applied changes.** A source is recorded only when all
+of these hold:
+
+- the job is `completed` with an `operationID`;
+- the source's page is in an applied part (`job.parts[].pages`), or, for a
+  job with no parts, in the applied plan's `changedPaths`;
+- the source's sha256 now equals the ledger record's `content_sha256`, and
+  that record's locator is the file or its `.raw/captured/` copy.
+
+Rejected, cancelled and failed jobs never count. Jobs that are `running` or
+`awaitingApproval` are skipped: they are recorded by `recordApplied` when
+they apply.
+
+**The repair never takes a source a live job holds.** The scan skips a source
+when any of these hold:
+
+- its sha256 or inbox path is in a non-terminal job (running, or in Review,
+  including a pending part);
+- it is in a waiting group in `<state>/reread.json`;
+- it is already full in the index, was tried before (`repair.json`), or
+  stopped.
+
+The scan runs again after each apply, so a source a live job held is picked
+up once that job ends without reading it in full.
+
+The scan runs only while automatic processing is on.
 
 **What is on the owner's vault now:**
 
@@ -824,7 +913,7 @@ These are kept from `reread-sources` (the build owns them now):
 part (section 3), because the covered sources must reach Review together with
 their own bundle.
 
-## 7. The skill, for other hosts (proposed wording)
+## 7. The skill, for other hosts (built)
 
 Distill relies on the core. Other hosts follow the skill, so it should stop
 asking for tranches.
@@ -860,8 +949,8 @@ canonical pages, and stop it from thinning the source page. Proposed:
 > reasons, numbers, dates and names), so a reader need not open the source.
 > A short, already-searchable source may still need only its ledger record.
 
-These are claude-obsidian product changes. They need `make test` and the
-skills reviewer.
+These are claude-obsidian product changes, now in `skills/wiki-ingest/SKILL.md`.
+They pass `make test`. The skills reviewer has not seen them yet.
 
 ## Visible parts (canvas: FullRead)
 
@@ -887,18 +976,27 @@ skills reviewer.
 - **Settings → Batching:** Batch size and detail level.
 - **Clean up:** "Clear inbox", with its archive wording.
 
-## Contract (proposed, additive; `contracts.ts` is the lead's)
+## Contract (built, additive)
 
 | Area | Addition |
 | --- | --- |
-| Settings | `batchSourceTokens?`, `detailLevel?`, plus a cached `modelContext` per model id |
-| Job | `coverage?`, `stopped?: {file, reason, words}[]`, `batchOf?: {index, total}`, `detailCheck?` |
-| PendingPart | reasons `covered` and `unread`; the gate skips `covered` |
+| Settings | `batchSourceTokens?` (null = Automatic), `detailLevel?` per source type; model windows cached in `<state>/coverage/models.json` |
+| Job | `coverage?` (CoverageSummary), `stopped?: StoppedSource[]`, `batchOf?: {index, total}` |
+| CoverageSummary | `sources[]` (`file` vault-relative; `lines`, `read`, `state`, `reason?` lowercase with no final period, `images?`, `rounds?`), `full`, `of`, `lines`, `rounds`, `continued`, `state`, `detail? {checked, added, left, note?}`, `partialWording?`, `later?`, `archived?` |
+| PendingPart | reasons `covered` and `unread`; `unread?: string[]`. The gate skips `covered` and runs on `unread` |
+| ApprovalRequest | `rebuilt.reason` may be `covered` |
 | runTurn | option `autoContinue` |
-| Runner | capability `readCoverage` |
-| JobStep | verbs `coverage`, `continue`, `detail`, `stop` |
-| API | `GET /v1/jobs/:id/coverage` (ranges for Details); `POST /v1/batches/reread` takes `tokenBudget` and `reason` |
+| Runner | capability `readCoverage` (Claude Code) |
+| JobStep | phase `check`, verbs `coverage`, `continue`, `detail`, `split`, `stop`, `archive` |
+| Status | `batchBudget`, `heldCount` |
+| API | `POST /v1/batches/reread` takes `tokenBudget` and `reason`; `GET /v1/held`; `POST /v1/held/retry {file, vault?}` |
+| CLI | `distill batch reread … [--tokens N \| --per-batch N]`; the default packs by tokens |
+| Inbox cleanup | stay reasons `notReadInFull`, `notArchived`, `held` |
 | Activity | kinds `batch.read_stopped`, `batch.repair_queued` |
+| Event | `repair.queued` |
+
+Not built: `GET /v1/jobs/:id/coverage`. Details shows the ranges from the
+live log's step details instead.
 
 ## Open questions
 
@@ -918,9 +1016,9 @@ Settled by the reviewer and the CLI check (2026-10-05):
 Still open:
 
 1. **Compaction in `-p`.** Is the 60% usage-drop threshold right? It needs one
-   long solo batch to calibrate.
+   long solo batch to calibrate. `compact_boundary` in `-p` is still not seen.
 2. **PDF `pages` reads.** Does Read's result report which pages it returned?
-   This is unverified, so PDFs are credited only on a result that names its
-   pages.
-3. **The `--tools ''` and `--json-schema` combination** for the detail pass,
-   checked at build time.
+   This is unverified. The build credits a PDF on one successful Read.
+3. **The detail pass with no tools and `--json-schema`.** It is built with
+   `allowedTools` and `availableTools` empty and a JSON schema. It is tested
+   only with a fake runner, not against the real CLI.

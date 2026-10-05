@@ -25,7 +25,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [AI runners](docs/specs/ai-runners.md) | built (Codex sandbox unverified) |
 | [Claude runner](docs/specs/claude-runner.md) | built |
 | [Approval and review](docs/specs/approval-and-review.md) | built (labels in Review, pick/remove, approve-later, parts of a batch: core, API, macOS UI) |
-| [Queue and batching](docs/specs/queue-and-batching.md) | built (folder items, .gdoc waiting, queue scan: core, API, CLI and Mac UI; label gate and 0–24 h wait; full-read prompt and re-read sources: core, API, CLI, no UI) |
+| [Queue and batching](docs/specs/queue-and-batching.md) | built (folder items, .gdoc waiting, queue scan: core, API, CLI and Mac UI; label gate and 0–24 h wait; full-read prompt and re-read sources: core, API, CLI, no UI; re-reads pack by tokens) |
 | [Intake: paste and drop](docs/specs/intake-paste-drop.md) | built |
 | [Vaults and settings](docs/specs/vaults-and-settings.md) | built |
 | [Job kinds](docs/specs/job-kinds.md) | built |
@@ -45,7 +45,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Session continuity](docs/specs/session-continuity.md) | built (core, API, CLI, macOS UI; Review's approve, approve-later and parts of a batch go through it) |
 | [Live log](docs/specs/live-log.md) | built (core, API, macOS UI; no CLI) |
 | [Clean up inbox](docs/specs/inbox-cleanup.md) | built (core, API, macOS UI; no CLI) |
-| [Full reads](docs/specs/full-read.md) | designed |
+| [Full reads](docs/specs/full-read.md) | built (core, API, CLI, Mac UI; the wiki-ingest skill wording) |
 
 ## Layout
 

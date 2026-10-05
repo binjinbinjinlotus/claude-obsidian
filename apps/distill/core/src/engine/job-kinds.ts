@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { AITask, Job, LabelOrigin, Settings, TransactionPlan, VaultProfile, WorkerStatus } from '../contracts.js';
+import { DEFAULT_DETAIL_LEVELS, type AITask, type DetailLevel, type DetailSourceType, type Job, type LabelOrigin, type Settings, type TransactionPlan, type VaultProfile, type WorkerStatus } from '../contracts.js';
 import { yamlScalar } from '../labels/frontmatter.js';
 import { coreScriptPath } from '../store/settings.js';
 import { jobStateDirectory } from '../store/jobs.js';
@@ -26,7 +26,47 @@ export interface SourceLabels {
 /** What a re-read batch's first prompt says about each input (read-only facts the core found). */
 export interface RereadFacts {
   /** Per input: its size, and the existing source page(s) found through the ledger or `source_path`. */
-  sources: { file: string; bytes?: number; lines?: number; textBytes?: number; imageLines?: number; longLines?: number; imageAt?: number[]; pages: string[] }[];
+  sources: SourceFacts[];
+  /** v10: sources the core can't read as text: left out of this batch (full-read.md, Hard stop). */
+  unreadable?: { file: string; reason: string }[];
+  /** v10: the bundle to build when it isn't the job's bundle.json (a part read in a fresh session). */
+  bundlePath?: string;
+  /** v10: a word about this part ("The other sources of this batch were already added: …"). */
+  partNote?: string;
+}
+
+/** v10: what the core found about one input before the turn (full-read.md, sections 1, 2 and 4). */
+export interface SourceFacts {
+  file: string;
+  bytes?: number;
+  lines?: number;
+  textBytes?: number;
+  imageLines?: number;
+  longLines?: number;
+  imageAt?: number[];
+  pages: string[];
+  /** The reading copy, vault-relative (`.vault-meta/worker/<job>/read/<n>.md`). */
+  copy?: string;
+  /** Lines of the copy (source lines plus the split pieces after the last line). */
+  copyLines?: number;
+  sections?: [number, number][];
+  estTokens?: number;
+  sha256?: string;
+  /** Option A: the archive write this bundle must make, and the ledger migration it needs. */
+  archive?: ArchiveFacts;
+}
+
+export interface ArchiveFacts {
+  /** `.raw/captured/<sha256>.<ext>` */
+  path: string;
+  /** Already in the vault (byte for byte): the bundle doesn't write it again. */
+  exists: boolean;
+  /** The source ledger ID of the record whose locator is `path`. */
+  id: string;
+  /** Records for the same content under another locator (the inbox path): replaced by the new one. */
+  replaces: { id: string; locator: string; claims: number }[];
+  /** The `source_manifest_updates` key for this source (the original inbox path). */
+  manifestKey: string;
 }
 
 /** Everything a job kind needs to build prompts and permission rules. */
@@ -46,7 +86,7 @@ export class JobContext {
     return jobStateDirectory(this.job);
   }
   get bundlePath(): string {
-    return path.join(this.stateDirectory, 'bundle.json');
+    return this.reread?.bundlePath ?? path.join(this.stateDirectory, 'bundle.json');
   }
   /** The exact command prefix prompts tell the agent to use; permission rules match it. */
   get coreCommand(): string {
@@ -280,16 +320,102 @@ text: skip them, and read around them with \`offset\` (one such line can fill a 
 
 Process the files one at a time, in order: (1) read file N completely; (2) write or update its \
 source page draft, and note the entities, concepts and claims it adds, before opening the next \
-file; (3) move on to file N+1. After the last file, update the shared pages (index, entities, \
-concepts, ledgers) from your notes, then build the one bundle.
+file; (3) move on to file N+1. For a long file, write or update its draft after EACH section \
+you read, not only at the end, so nothing read is lost if the session's earlier context is \
+compacted. After the last file, update the shared pages (index, entities, concepts, ledgers) \
+from your notes, then build the one bundle.
 
-For a meeting note or transcript, the source page is detailed, not highlights: key points, \
-decisions and action items (with owners and dates), then a Discussion section per topic \
-(proposals, objections, the reasons given, numbers, dates and names) and Open questions. \
-Keep what a reader would need if they never open the transcript.
+For a meeting note or transcript, the source page is detailed, not highlights: Summary, Key \
+points, Decisions (who decided and why), Action items (owner and due date), then a Discussion \
+section per topic (proposals, objections, the reasons given, numbers, dates and names), Open \
+questions and People. Keep what a reader would need if they never open the transcript.
 
 Mark a page partial only if a file truly cannot be read, and say which lines and why; never to \
 save effort.`;
+
+const DETAIL_WORDS: Record<DetailLevel, string> = {
+  highlights: 'Highlights: key points, decisions and action items',
+  detailed: 'Detailed: also the discussion by topic (proposals, objections, reasons, numbers, dates, names) and open questions',
+  nearComplete: 'Near-complete: every topic, close to the source\'s own words, leaving out only small talk and repeats',
+};
+const DETAIL_TYPES: Record<DetailSourceType, string> = {
+  meeting: 'Meetings and calls (meeting notes, transcripts)',
+  conversation: 'Conversations and chats',
+  research: 'Articles, papers and research',
+  other: 'Anything else',
+};
+
+/** v10: how much of each source goes into its page, and the compilation-value gate's limit (full-read.md, section 5). */
+export function detailPrompt(settings: Settings): string {
+  const levels = { ...DEFAULT_DETAIL_LEVELS, ...(settings.detailLevel ?? {}) };
+  const lines = (Object.keys(DETAIL_TYPES) as DetailSourceType[]).map((k) => `- ${DETAIL_TYPES[k]}: ${DETAIL_WORDS[levels[k]] ?? DETAIL_WORDS.highlights}.`);
+  return `
+
+How much of each source goes into its source page (the user's setting; classify each input as \
+the skill says):
+${lines.join('\n')}
+
+This level is the requirement for the SOURCE page. The skill's compilation-value gate still \
+decides which concept and entity pages are created or expanded, but it never shortens a \
+source page below this level. Distill checks each page against its source before the user \
+sees it, and asks for what is missing.`;
+}
+
+/** v10: the reading copies and planned sections the core made (full-read.md, section 1). */
+export function readingPlanPrompt(ctx: JobContext): string {
+  const facts = ctx.reread?.sources.filter((s) => s.copy || s.sections?.length) ?? [];
+  const unreadable = ctx.reread?.unreadable ?? [];
+  if (facts.length === 0 && unreadable.length === 0) return '';
+  const out: string[] = [];
+  if (facts.length > 0) {
+    out.push(
+      '',
+      '',
+      'Reading copies (made by Distill). Read each source from its COPY, not the original: copy line n is \
+source line n; an embedded image is one placeholder line; a line over 1,900 characters ends with \
+`→ L<n>↪` and its other pieces are after the last line, each starting `L<n>↪`. Read the copy \
+from line 1 to its last line, section by section as listed (Read with offset and limit). Cite \
+and name the ORIGINAL path everywhere (`source_path`, ledgers, links), never the copy\'s path. \
+Distill counts the lines each Read returns and asks for any that never came back.',
+      '',
+    );
+    for (const s of facts) {
+      const secs = (s.sections ?? []).map(([a, b]) => `${a}–${b}`).join(', ');
+      out.push(`- ${s.file} → read ${s.copy ?? s.file} (${s.copyLines ?? s.lines ?? '?'} lines${s.estTokens ? `, about ${Math.round(s.estTokens / 1000)}K tokens` : ''})${secs ? `: sections ${secs}` : ''}`);
+    }
+  }
+  if (unreadable.length > 0) {
+    out.push(
+      '',
+      'Distill can\'t read these as text, so they are NOT part of this batch: write no page, ledger entry or archive write for them:',
+      ...unreadable.map((u) => `- ${u.file}: ${u.reason}`),
+    );
+  }
+  return out.join('\n');
+}
+
+/** v10 (Option A): each source's original goes into the vault's archive with this change (full-read.md, section 4). */
+export function archivePrompt(ctx: JobContext): string {
+  const facts = ctx.reread?.sources.filter((s) => s.archive) ?? [];
+  if (facts.length === 0) return '';
+  const lines = facts.map((s) => {
+    const a = s.archive!;
+    const write = a.exists
+      ? `already archived at ${a.path} (do not write it again)`
+      : `add the write {"path": "${a.path}", "mode": "create", "content_file": "${path.join(ctx.vault.path, s.file)}", "sha256": "${s.sha256}"}`;
+    const migrate = a.replaces.length > 0
+      ? `; its ledger record moves: remove ${a.replaces.map((r) => r.id).join(', ')} (locator ${a.replaces.map((r) => r.locator).join(', ')}) and add ${a.id} with \`supersedes: ${a.replaces[0]!.id}\` and the same \`pages\`${a.replaces.some((r) => r.claims > 0) ? `, and change every claim-ledger reference from the old ID to ${a.id}` : ''}`
+      : `; its source ledger record is ${a.id}`;
+    return `- ${s.file}: ${write}; ledger \`origin.locator\` = ${a.path}${migrate}; \`source_manifest_updates\` key "${a.manifestKey}".`;
+  });
+  return `
+
+Archive the originals with this change (the vault's immutable source store; create-only, byte \
+for byte). For each source:
+${lines.join('\n')}
+The source page's \`source_path\` stays the inbox path. Exactly one source ledger record per \
+content sha256: Distill checks this after inspect.`;
+}
 
 function kb(bytes: number): string {
   return bytes < 1024 ? `${bytes} bytes` : `${Math.round(bytes / 1024)} KB`;
@@ -303,7 +429,7 @@ function rereadSourceLine(s: RereadFacts['sources'][number]): string {
     const at = s.imageAt?.length ? ` at line${s.imageAt.length === 1 ? '' : 's'} ${s.imageAt.join(', ')}${s.imageLines > s.imageAt.length ? ', …' : ''}` : '';
     facts.push(`${s.imageLines} embedded base64 image line(s)${at}, ${kb((s.bytes ?? 0) - (s.textBytes ?? 0))}: image data, not text; skip them`);
   }
-  if (s.longLines) facts.push(`${s.longLines} text line(s) over 2000 characters, which the Read tool cuts: name them in \`skipped\` if you could not read them whole`);
+  if (s.longLines) facts.push(`${s.longLines} text line(s) over 1,900 characters, split in its reading copy (the pieces are after its last line)`);
   const page = s.pages.length === 0
     ? 'no source page found by the core: look it up in the source ledger and by `source_path`; create one only if none exists'
     : s.pages.length === 1
@@ -380,7 +506,7 @@ Agreed scope: exactly these ${ctx.job.files.length} local file(s); no network \
 egress; the source budget is the full size of these files; ${pageBudget}. Media \
 you cannot read must be reported as unsupported, not invented.
 
-${FULL_READ_PROMPT}${rereadPrompt(ctx)}${manifestPrompt(ctx)}${folderPrompt(ctx)}${labelsPrompt(ctx.labelPlan)}
+${FULL_READ_PROMPT}${detailPrompt(ctx.settings)}${readingPlanPrompt(ctx)}${rereadPrompt(ctx)}${manifestPrompt(ctx)}${folderPrompt(ctx)}${labelsPrompt(ctx.labelPlan)}${archivePrompt(ctx)}${ctx.reread?.partNote ? `\n\n${ctx.reread.partNote}` : ''}
 
 Build ONE \`claude-obsidian.transaction.v1\` ingest bundle for the whole batch \
 at ${ctx.bundlePath}, then run:

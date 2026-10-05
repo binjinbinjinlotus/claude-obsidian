@@ -153,6 +153,8 @@ export class ClaudeCodeRunner implements AgentRunner {
     'structuredOutput',
     'effort',
     'vision',
+    // v10: stream-json carries each Read's returned line span (tool_use_result.file).
+    'readCoverage',
   ]);
   readonly models: ModelOption[] = [
     { id: 'haiku', label: 'Haiku', note: 'Fastest and lightest' },

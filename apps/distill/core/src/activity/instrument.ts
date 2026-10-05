@@ -234,6 +234,7 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
     jobResumeCommand: 'read',
     listJobSteps: 'read',
     previewInboxCleanup: 'read',
+    listHeld: 'read',
     searchPages: 'read',
     listLabels: 'read',
     labelReview: 'read',
@@ -257,6 +258,7 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
     // ── logged from events ──
     processQueue: 'event', // batch.started (also scheduled batches)
     rereadSources: 'event', // batch.started with details.reread, once per group as it starts
+    retryHeld: 'event', // batch.started with details.reread (reason retry)
     scanQueue: 'event', // queue.scanned (also the window scan and the periodic check)
     runCollector: 'event', // collector.run when it finishes (also scheduled runs)
     testCollector: 'event', // collector.test_run when it finishes
@@ -429,9 +431,10 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
         return {
           type: 'queue.inbox_cleaned',
           object: { kind: 'queue', id: req.jobId ?? 'inbox', name: req.jobId ? 'inbox/ (one batch)' : 'inbox/' },
+          // v10 (full reads): only originals archived in .raw/captured/ are cleared from inbox/.
           summary: r.moved.length === 0
-            ? `Cleaned up inbox: nothing moved${stayed ? `, ${plural(stayed, 'item')} stayed` : ''}`
-            : `Cleaned up inbox: ${plural(files, 'file')} to the Trash${stayed ? `, ${stayed} stayed` : ''}`,
+            ? `Cleared inbox: nothing cleared${stayed ? `, ${plural(stayed, 'item')} stayed` : ''}`
+            : `Cleared ${plural(files, 'file')} from inbox · originals archived${stayed ? ` · ${stayed} stayed` : ''}`,
           details: {
             moved: r.moved.map((m) => m.path),
             stayed: [...r.stayed.map((x) => `${x.path} (${x.reason})`), ...r.failed.map((f) => `${f.path} (couldn't move)`)],
@@ -442,7 +445,7 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
           recovery: { kind: 'macosTrash', path: '~/.Trash' },
         };
       },
-      fail: ([req]) => ({ type: 'queue.inbox_cleaned', object: { kind: 'queue', id: req?.jobId ?? 'inbox', name: 'inbox/' }, summary: "Couldn't clean up inbox" }),
+      fail: ([req]) => ({ type: 'queue.inbox_cleaned', object: { kind: 'queue', id: req?.jobId ?? 'inbox', name: 'inbox/' }, summary: "Couldn't clear inbox" }),
     },
     deleteJob: {
       before: (id) => (getJob(id) ? structuredClone(getJob(id)) : undefined),
@@ -851,8 +854,8 @@ function runSummary(name: string, run: CollectorRun): string {
 
 /** Log what happens without a direct request: batches moving on, runs, retention, queue scans. */
 export function createEventLogger(deps: EventLoggerDeps, seedJobs: Job[]): (event: CoreEvent) => void {
-  const jobs = new Map<string, { state: Job['state']; actions?: string }>();
-  for (const j of seedJobs) jobs.set(j.id, { state: j.state, ...(j.actionsFound?.status ? { actions: j.actionsFound.status } : {}) });
+  const jobs = new Map<string, { state: Job['state']; actions?: string; stopped?: number }>();
+  for (const j of seedJobs) jobs.set(j.id, { state: j.state, ...(j.actionsFound?.status ? { actions: j.actionsFound.status } : {}), stopped: j.stopped?.length ?? 0 });
   const write = (d: Described, source: ActivitySource, outcome: 'ok' | 'failed' = 'ok', error?: string) =>
     deps.log.record({ ...d, source, outcome, ...(error ? { error } : {}) });
 
@@ -867,9 +870,23 @@ export function createEventLogger(deps: EventLoggerDeps, seedJobs: Job[]): (even
             return;
           }
           const seen = jobs.get(job.id);
-          jobs.set(job.id, { state: job.state, ...(job.actionsFound?.status ? { actions: job.actionsFound.status } : {}) });
+          jobs.set(job.id, { state: job.state, ...(job.actionsFound?.status ? { actions: job.actionsFound.status } : {}), stopped: job.stopped?.length ?? 0 });
           const source = currentSource();
           const object = jobObject(job.id, job);
+          // v10 (full reads): a source that couldn't be read in full is left out of the change.
+          const stoppedNow = job.stopped ?? [];
+          if (stoppedNow.length > (seen?.stopped ?? 0)) {
+            const added = stoppedNow.slice(seen?.stopped ?? 0);
+            write(
+              {
+                type: 'batch.read_stopped',
+                object,
+                summary: `${plural(added.length, 'source')} in ${jobName(job)} couldn't be read in full: left out of the change`,
+                details: { files: added.map((s) => s.file), reasons: added.map((s) => s.reason) },
+              },
+              'core',
+            );
+          }
           if (!seen && method !== 'suggestLabelsForPages' && method !== 'confirmLabels') {
             const reread = job.reread ? { reread: true, rereadID: job.reread.id, rereadGroup: job.reread.group, rereadGroups: job.reread.groups, ...(job.reread.fromJob ? { fromJob: job.reread.fromJob } : {}) } : {};
             const summary = job.reread ? `Started ${jobName(job)} (re-read ${job.reread.group} of ${job.reread.groups})` : `Started ${jobName(job)}`;
@@ -1031,6 +1048,18 @@ export function createEventLogger(deps: EventLoggerDeps, seedJobs: Job[]): (even
               details: { place: event.place, reason: event.reason ?? null },
             },
             currentSource(),
+          );
+          return;
+        }
+        case 'repair.queued': {
+          write(
+            {
+              type: 'batch.repair_queued',
+              object: { kind: 'batch', id: event.rereadId, name: 'Full-read repair' },
+              summary: `Reading ${plural(event.sources, 'source')} again in ${plural(event.batches, 'batch', 'batches')}: never read in full`,
+              details: { files: event.files, ...(event.missing?.length ? { missing: event.missing } : {}) },
+            },
+            'core',
           );
           return;
         }

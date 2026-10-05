@@ -365,9 +365,9 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
     },
     async rereadSources(req) {
       record('rereadSources', req);
-      // The fake expands a job to its files and groups them like the real core (default 3).
+      // The fake expands a job to its files; by count when perBatch is given, else one batch by tokens.
       const files = req.jobId ? (fake.jobs.find((j) => j.id === req.jobId)?.files ?? []).filter((f) => !f.endsWith('.distill.json')) : (req.files ?? []);
-      const per = req.perBatch ?? 3;
+      const per = req.perBatch ?? Math.max(1, files.length);
       const groups = [];
       for (let i = 0; i < files.length; i += per) groups.push({ files: files.slice(i, i + per) });
       const reread = { id: 'reread-20261005-120000-abcd', group: 1, groups: groups.length, ...(req.jobId ? { fromJob: req.jobId } : {}) };
@@ -376,12 +376,23 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       return {
         id: reread.id,
         vaultPath: req.vaultPath ?? '/tmp/vault',
-        perBatch: per,
+        perBatch: req.perBatch ?? 0,
+        ...(req.perBatch === undefined ? { tokenBudget: req.tokenBudget ?? 100_000 } : {}),
         ...(req.jobId ? { fromJob: req.jobId } : {}),
         groups,
         started: groups.length ? [first] : [],
         waiting: Math.max(0, groups.length - 1),
       };
+    },
+    async listHeld(vaultPath) {
+      record('listHeld', vaultPath);
+      return [{ file: 'inbox/bad.md', reason: 'it isn’t valid UTF-8 text from line 412', at: '2026-10-05T10:40:00Z', jobId: 'job-1', size: 1200 }];
+    },
+    async retryHeld(file, vaultPath) {
+      record('retryHeld', file, vaultPath);
+      if (file !== 'inbox/bad.md') throw new CoreError('not_found', `Not held: ${file}`);
+      const job = sampleJob({ id: 'job-retry-1', state: 'running', files: [file] });
+      return { id: 'reread-retry', vaultPath: vaultPath ?? '/tmp/vault', perBatch: 0, tokenBudget: 100_000, groups: [{ files: [file], jobId: job.id }], started: [job], waiting: 0 };
     },
     async addNote(req: AddNoteRequest): Promise<AddNoteResult> {
       record('addNote', req);

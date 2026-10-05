@@ -60,7 +60,25 @@ export interface Settings {
    * (Refresh, the window-active scan and batches still scan). Clients offer 1, 5, 15, 60 and Off.
    */
   queueScanMinutes?: number | null;
+  /**
+   * v10 (full reads): how much source text one batch takes, in estimated tokens. Absent/null =
+   * Automatic (30% of the ingest model's context window, at most 100K). Clamped to 10K–300K and
+   * to half the model's window.
+   */
+  batchSourceTokens?: number | null;
+  /** v10: how much of each source goes into its page, per source type. Absent = DEFAULT_DETAIL_LEVELS. */
+  detailLevel?: Partial<Record<DetailSourceType, DetailLevel>> | null;
 }
+
+/** v10: Settings → Batching → "How much of each source goes into its page". */
+export type DetailLevel = 'highlights' | 'detailed' | 'nearComplete';
+export type DetailSourceType = 'meeting' | 'conversation' | 'research' | 'other';
+export const DEFAULT_DETAIL_LEVELS: Record<DetailSourceType, DetailLevel> = {
+  meeting: 'detailed',
+  conversation: 'detailed',
+  research: 'highlights',
+  other: 'highlights',
+};
 
 /** Settings → Batching → "Check the queue folder for changes": every 5 minutes. */
 export const DEFAULT_QUEUE_SCAN_MINUTES = 5;
@@ -176,7 +194,7 @@ export interface ApprovalRequest {
    * v6: this plan was rebuilt in the batch's session (part of the batch, what is left, or after the vault changed) and checked
    * against what the user approved: approve it once more. `pages` = the source pages it holds, unchanged byte for byte.
    */
-  rebuilt?: { reason: 'partial' | 'remaining' | 'stale'; pages: string[]; labels: 'confirm' | 'later' } | null;
+  rebuilt?: { reason: 'partial' | 'remaining' | 'stale' | 'covered'; pages: string[]; labels: 'confirm' | 'later' } | null;
   /**
    * v6: these sources of the batch have no change to approve yet: the user discarded the rebuilt change for them (what
    * is left after a part applied, or the change rebuilt after the vault changed), or the session that would rebuild it
@@ -265,6 +283,64 @@ export interface Job {
   reviewDoneAt?: string | null;
   /** v9 (2026-10-05): this batch re-reads sources already ingested (POST /v1/batches/reread); absent on other batches. */
   reread?: JobReread | null;
+  /** v10 (full reads): what this batch's session read, counted by the core from the tool results. */
+  coverage?: CoverageSummary | null;
+  /** v10: sources that couldn't be read in full: left out of the change, never approvable. */
+  stopped?: StoppedSource[];
+  /** v10: this batch is one of several the queue was split into by size ("Batch 1 of 3"). */
+  batchOf?: { index: number; total: number; tokens: number } | null;
+}
+
+/** v10: one source's coverage as clients show it ("647 lines · read in full"). */
+export interface CoverageSourceSummary {
+  file: string;
+  /** Lines that had to be read (image placeholder lines left out); 1 for a PDF or image. */
+  lines: number;
+  read: number;
+  state: 'full' | 'partial' | 'unreadable' | 'stopped' | 'later';
+  reason?: string;
+  /** Embedded images in it (not text, not read). */
+  images?: number;
+  /** Automatic continuations that asked for lines of this source; absent when the first pass read it all. */
+  rounds?: number;
+}
+
+/** v10: a batch's coverage (full-read.md). Information for the owner, never a decision. */
+export interface CoverageSummary {
+  sources: CoverageSourceSummary[];
+  /** Sources read in full, of the readable ones. */
+  full: number;
+  of: number;
+  lines: number;
+  /** Automatic continuations sent in this session (all kinds: lines, partial wording, detail, archive). */
+  rounds: number;
+  /** Sources that needed at least one more round of reading ("2 needed a second round"). */
+  continued: number;
+  /** reading = still being read; complete = every source in the change read in full; split = some go to a fresh session next; stopped = some couldn't be read. */
+  state: 'reading' | 'complete' | 'split' | 'stopped';
+  /** The detail pass: what the pages missed and was added before Review, and what was left (information). */
+  detail?: { checked: number; added: number; left: number; note?: string } | null;
+  /** Pages that still say they are partial although every line was read (information). */
+  partialWording?: string[];
+  /** Sources taken out of this change to be read next in a fresh session. */
+  later?: string[];
+  /** Originals archived in .raw/captured/ by this change. */
+  archived?: number;
+}
+
+/** v10: a source that couldn't be read in full (the hard stop). */
+export interface StoppedSource {
+  file: string;
+  sha256?: string;
+  /** Plain words: "it isn’t valid UTF-8 text from line 412". */
+  reason: string;
+  at: string;
+}
+
+/** v10: a stopped source still in inbox/, not read in full by any later batch ("Held in inbox/"). */
+export interface HeldSource extends StoppedSource {
+  jobId: string;
+  size?: number;
 }
 
 /** v9: which re-read a batch belongs to: group `group` of `groups` (1-based). */
@@ -276,6 +352,8 @@ export interface JobReread {
   fromJob?: string | null;
   /** Extra words from the user for every group's prompt. */
   instruction?: string | null;
+  /** v10: why it runs: the owner or CLI asked, the automatic repair, or Try again on a held source. */
+  reason?: 'manual' | 'repair' | 'retry' | null;
 }
 
 /**
@@ -287,9 +365,13 @@ export interface RereadRequest {
   vaultPath?: string;
   files?: string[];
   jobId?: string;
-  /** Sources per batch (default 3, 1-10). Each batch is its own job with a fresh AI session. */
+  /** Sources per batch (1-10). When given, groups hold this many sources. Each batch is its own job with a fresh AI session. */
   perBatch?: number;
+  /** v10: pack groups by estimated tokens instead (default: the batch size, Settings → Batching). */
+  tokenBudget?: number;
   instruction?: string;
+  /** v10: why it runs (default manual). */
+  reason?: 'manual' | 'repair' | 'retry';
 }
 
 export interface RereadGroup {
@@ -302,7 +384,10 @@ export interface RereadGroup {
 export interface RereadResult {
   id: string;
   vaultPath: string;
+  /** Sources per group when grouped by count; 0 when packed by tokens. */
   perBatch: number;
+  /** v10: the token budget the groups were packed by, when packed by tokens. */
+  tokenBudget?: number;
   fromJob?: string | null;
   groups: RereadGroup[];
   /** Batches started by this call (at most one: one runs at a time per vault). */
@@ -376,8 +461,14 @@ export interface JobPart {
 }
 
 export interface PendingPart {
-  /** partial = the user approved some sources; remaining = what is left after a part applied; stale = the vault changed after review. */
-  reason: 'partial' | 'remaining' | 'stale';
+  /**
+   * partial = the user approved some sources; remaining = what is left after a part applied; stale = the vault changed after review;
+   * v10: covered = the sources read in full, split from those one session couldn't finish (the gate skips it);
+   * unread = those sources, read again in a fresh session.
+   */
+  reason: 'partial' | 'remaining' | 'stale' | 'covered' | 'unread';
+  /** v10 (covered): the sources left out to be read next in a fresh session, after this part applies. */
+  unread?: string[];
   /** Source pages the rebuilt change must hold, with the sha256 of the content the user saw. */
   expected: Record<string, string>;
   /** Source pages that must not be in it (not picked, removed). */
@@ -444,7 +535,9 @@ export type RunnerCapability =
   | 'sessionResume'
   | 'structuredOutput'
   | 'effort'
-  | 'vision';
+  | 'vision'
+  /** v10: its tool results say which lines each read returned (full reads can be checked). */
+  | 'readCoverage';
 
 export interface ModelOption {
   id: string;
@@ -544,6 +637,8 @@ export function runnerSupports(runner: AgentRunner, task: AITask): boolean {
 /** What each task requires (mirror of Swift `AITask.requiredCapabilities`). */
 export const TASK_REQUIREMENTS: Record<AITask, RunnerCapability[][]> = {
   // any one inner list satisfies the task
+  // v10 (owner decision 2026-10-05): batches run only on runners whose reads can be verified
+  // (`readCoverage`); the engine routes ingest there (engine `ingestSelection`). Codex is deferred.
   ingest: [
     ['agentTools', 'toolPermissions', 'sessionResume', 'structuredOutput'],
     ['agentTools', 'sandboxedWrites', 'sessionResume', 'structuredOutput'],
@@ -1691,7 +1786,9 @@ export type CoreEvent =
   /** v6: an AI session that was gone was replaced by a new one after the user's OK (never content). */
   | { type: 'session.replaced'; place: SessionPlace; reason?: SessionUnavailableReason; objectID: string; name?: string }
   // v7: a step of a job's live log, new or changed (older Mac builds decode it as `.unknown`).
-  | { type: 'job.step'; jobId: string; step: JobStep };
+  | { type: 'job.step'; jobId: string; step: JobStep }
+  // v10: the automatic repair queued re-reads of sources never read in full (full-read.md, section 6).
+  | { type: 'repair.queued'; vaultPath: string; rereadId: string; sources: number; batches: number; files: string[]; missing?: string[] };
 
 // ───────────────────────────── The core facade ─────────────────────────────
 
@@ -1707,6 +1804,10 @@ export interface StatusResponse {
   /** v5: the last full queue scan of any kind ("checked at 3:41 AM"), and the next queue check (null when Off). */
   lastQueueScanAt?: string | null;
   nextQueueScanAt?: string | null;
+  /** v10: the batch size in force (tokens), the model's context window it comes from, and whether it is Automatic. */
+  batchBudget?: { tokens: number; contextWindow: number; model: string; automatic: boolean } | null;
+  /** v10: sources held in inbox/ because they couldn't be read in full. */
+  heldCount?: number;
 }
 
 /**
@@ -1754,6 +1855,10 @@ export interface DistillCore {
    * fresh session each, one after another). Updates the existing pages through Review as usual.
    */
   rereadSources?(req: RereadRequest): Promise<RereadResult>;
+  /** v10: sources held in inbox/ because they couldn't be read in full (GET /v1/held). */
+  listHeld?(vaultPath?: string): Promise<HeldSource[]>;
+  /** v10: Try again on a held source: re-checks its bytes, then reads it in a batch of its own (POST /v1/held/retry). */
+  retryHeld?(file: string, vaultPath?: string): Promise<RereadResult>;
   /** Vault pages for the note picker (`[[`), best matches first. */
   searchPages(query: string, opts?: { vaultPath?: string; limit?: number }): Promise<{ path: string; title: string }[]>;
   /**
@@ -1916,7 +2021,7 @@ export interface StatePaths {
 // ───────────────────────────── Inbox clean-up (v8) ─────────────────────────────
 
 /** Why a file stays in inbox/. */
-export type InboxStayReason = 'notAdded' | 'changed' | 'pageMissing' | 'inReview' | 'inQueue' | 'unreadable';
+export type InboxStayReason = 'notAdded' | 'changed' | 'pageMissing' | 'inReview' | 'inQueue' | 'unreadable' | 'notReadInFull' | 'notArchived' | 'held';
 
 /** One thing that can go to the Trash: a file, a note (with its manifest and images), or a folder item as one. */
 export interface InboxCleanupItem {

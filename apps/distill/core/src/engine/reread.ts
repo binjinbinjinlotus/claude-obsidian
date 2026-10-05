@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Job, RereadGroup } from '../contracts.js';
@@ -13,7 +13,10 @@ import { NOTE_MANIFEST_SUFFIX, type SourceLabels } from './job-kinds.js';
  * Distill): nothing here writes into the vault. Everything in this file only reads the vault.
  */
 
-/** Sources per batch by default: one session holds about 3 full meeting transcripts (decision 2026-10-05). */
+/**
+ * Sources per batch when a count is asked for. Superseded as the default by packing by tokens
+ * (decision 2026-10-05, full reads); kept for `perBatch` requests and plans saved before.
+ */
 export const DEFAULT_REREAD_PER_BATCH = 3;
 export const MAX_REREAD_PER_BATCH = 10;
 
@@ -28,7 +31,12 @@ export interface RereadPlan {
   id: string;
   vaultPath: string;
   createdAt: string;
+  /** Sources per group when grouped by count; 0 when packed by tokens. */
   perBatch: number;
+  /** v10: the token budget the groups were packed by. */
+  tokenBudget?: number;
+  /** v10: why it runs; a repair's next group starts only after the previous one applied or ended. */
+  reason?: 'manual' | 'repair' | 'retry';
   fromJob?: string;
   instruction?: string;
   groups: RereadGroup[];
@@ -51,6 +59,33 @@ export function groupItems(items: RereadItem[], perBatch: number): RereadGroup[]
     out.push(g);
   }
   return out;
+}
+
+/**
+ * v10 (decision 2026-10-05, full reads): items packed by estimated tokens, in order; an item over
+ * the budget alone gets a group of its own. Replaces the default group of 3.
+ */
+export function packItems(items: RereadItem[], budget: number, estimate: (file: string) => number): RereadGroup[] {
+  const chunks: RereadItem[][] = [];
+  let current: RereadItem[] = [];
+  let used = 0;
+  for (const item of items) {
+    const tokens = item.files.reduce((n, f) => n + estimate(f), 0);
+    if (current.length > 0 && used + tokens > budget) {
+      chunks.push(current);
+      current = [];
+      used = 0;
+    }
+    current.push(item);
+    used += tokens;
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks.map((chunk) => {
+    const g: RereadGroup = { files: chunk.flatMap((c) => c.files) };
+    const folders = chunk.flatMap((c) => (c.folder ? [c.folder] : []));
+    if (folders.length > 0) g.folders = folders;
+    return g;
+  });
 }
 
 /**
@@ -104,6 +139,35 @@ export function inboxFileProblem(vaultPath: string, rel: string): string | undef
     return 'not readable';
   }
   return undefined;
+}
+
+/**
+ * v10: why a source can't be re-read in place: an inbox/ file as before, or (Option A) its archived
+ * original `.raw/captured/<sha256>.<ext>`, which must hash to its name. A missing file is still
+ * refused by name, never skipped.
+ */
+export function sourceFileProblem(vaultPath: string, rel: string): string | undefined {
+  if (typeof rel === 'string' && rel.startsWith('.raw/captured/')) {
+    const name = rel.slice('.raw/captured/'.length);
+    const sha = /^([0-9a-f]{64})(\.[a-z0-9]+)?$/.exec(name)?.[1];
+    if (!sha || name.includes('/')) return 'not an archived source (.raw/captured/<sha256>.<ext>)';
+    const abs = path.join(vaultPath, rel);
+    let st: fs.Stats;
+    try {
+      st = fs.lstatSync(abs);
+    } catch {
+      return 'not in the archive (.raw/captured/) any more';
+    }
+    if (st.isSymbolicLink() || !st.isFile()) return 'not a file';
+    try {
+      const got = createHash('sha256').update(fs.readFileSync(abs)).digest('hex');
+      if (got !== sha) return 'changed in the archive (its bytes no longer match its name)';
+    } catch {
+      return 'not readable';
+    }
+    return undefined;
+  }
+  return inboxFileProblem(vaultPath, rel);
 }
 
 /** Size of a source as the AI will read it: embedded base64 images are not text and are left out. */
@@ -270,6 +334,8 @@ function decodePlan(v: unknown): RereadPlan | undefined {
   };
   if (typeof v.fromJob === 'string') plan.fromJob = v.fromJob;
   if (typeof v.instruction === 'string') plan.instruction = v.instruction;
+  if (typeof v.tokenBudget === 'number') plan.tokenBudget = v.tokenBudget;
+  if (v.reason === 'manual' || v.reason === 'repair' || v.reason === 'retry') plan.reason = v.reason;
   return plan;
 }
 

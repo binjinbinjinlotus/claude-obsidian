@@ -14,6 +14,7 @@ import {
   type ApprovalRequest,
   type ApproveOptions,
   type ApprovedChange,
+  type HeldSource,
   type InboxCleanupPreview,
   type InboxCleanupRequest,
   type InboxCleanupResult,
@@ -86,13 +87,14 @@ import {
   WorkerProtocol,
   type ParsedStatus,
   type RereadFacts,
+  type SourceFacts,
   type SourceLabels,
 } from './job-kinds.js';
 import {
-  DEFAULT_REREAD_PER_BATCH,
   existingSourcePages,
   groupItems,
-  inboxFileProblem,
+  packItems,
+  sourceFileProblem,
   jobSourceItems,
   makeRereadID,
   MAX_REREAD_PER_BATCH,
@@ -102,6 +104,9 @@ import {
   type RereadPlan,
 } from './reread.js';
 import { CoreError } from './errors.js';
+import { createFullRead, type FullReadStep } from './full-read.js';
+import { archivedCopy, ledgerRecords } from '../coverage/archive.js';
+import { estimateTokens } from '../coverage/copy.js';
 import { searchVaultPages } from './pages.js';
 import { finderTrash, previewCleanup, renameTrash, runCleanup, type TrashMover } from './inbox-cleanup.js';
 import { noteFileFor, readManifest, validateNote, writeManifest, writeNote, type NoteLabelState } from './notes.js';
@@ -265,6 +270,8 @@ export interface EngineOptions {
 export interface EngineStepSink {
   runnerStep(jobId: string, step: RunnerStep): void;
   labelFile(jobId: string, file: string, state: 'running' | 'done' | 'failed', labels?: number): void;
+  /** v10: a full-read step (coverage, continuation, detail check, split, stop). */
+  fullRead?(jobId: string, step: FullReadStep): void;
 }
 
 export type { Settings };
@@ -385,6 +392,55 @@ export function createEngine(opts: EngineOptions): Engine {
   const revising = new Set<string>();
   /** v9: re-reads whose groups have not all started (reread.ts); kept in <state>/reread.json. */
   const rereads = new RereadStore(path.join(paths.dir, 'reread.json'));
+  /** v10: full reads (full-read.md): reading copies, coverage, the gate, the repair. */
+  const fullRead = createFullRead({
+    paths,
+    now,
+    settings: () => settings,
+    runners,
+    jobs: () => jobs,
+    findJob: (id) => findJob(id),
+    mutate: (id, change) => mutate(id, change),
+    runTurn: (id, prompt, extra) => runTurn(id, prompt, extra),
+    sessionGone: (job) => checkResume(resumeTarget(job, 'resume')) !== null,
+    vaultProfileFor: (job) => vaultProfileFor(job),
+    log: (level, message) => log(level, message),
+    emit: (e) => emit(e),
+    signalOf: (id) => controllers.get(id)?.signal,
+    step: (jobId, s) => opts.steps?.fullRead?.(jobId, s),
+    readingPrompt: (job, files, facts) => {
+      const vault = vaultProfileFor(job);
+      const labelPlan = savedLabelPlan(jobStateDirectory(job)).filter((l) => files.includes(l.file));
+      const existing = job.reread ? existingSourcePages(vault.path, files) : undefined;
+      const sources = facts.sources.map((s) => ({ ...s, pages: existing?.get(s.file)?.pages ?? s.pages }));
+      const ctx = new JobContext({ ...clone(job), files }, vault, settings, labelPlan, { ...facts, sources });
+      return queueConsumer().initialPrompt(ctx);
+    },
+    rereadSources: (req) => rereadSources(req),
+    waitingRereadFiles: (vaultPath) => new Set(rereads.plans.filter((p) => p.vaultPath === vaultPath).flatMap((p) => p.groups.filter((g) => !g.jobId).flatMap((g) => g.files))),
+    nextPartBundle: (dir) => path.join(dir, `bundle-part-${nextPartBundle(dir)}.json`),
+  });
+  /**
+   * v10 (owner decision 2026-10-05): batches run only on runners whose reads can be verified
+   * (`readCoverage`). A saved choice of another runner (Codex) runs on one that can, and the core
+   * says so once. A registry with no such runner at all keeps the choice.
+   */
+  let warnedIngestRunner = false;
+  function ingestSelection(): ModelSelection {
+    const sel = selectionFor(settings, queueConsumer().task);
+    const chosen = runners.get(sel.runnerID);
+    if (chosen?.capabilities.has('readCoverage')) return sel;
+    const verifiable = runners.all().filter((r) => r.capabilities.has('readCoverage') && runnerSupports(r, 'ingest'));
+    if (verifiable.length === 0) return sel;
+    const use = verifiable.find((r) => settings.enabledRunners.includes(r.id)) ?? verifiable[0]!;
+    if (!warnedIngestRunner) {
+      warnedIngestRunner = true;
+      log('warn', `${chosen?.displayName ?? sel.runnerID} can't show which lines it read, so batches run on ${use.displayName} (Codex batches are deferred).`);
+    }
+    return { runnerID: use.id, model: use.defaultModel, effort: null };
+  }
+  /** v10: the queue was split by size: which batch of how many is running now. */
+  let overflow: { index: number; total: number } | undefined;
 
   // ───────────── events & persistence ─────────────
 
@@ -551,6 +607,15 @@ export function createEngine(opts: EngineOptions): Engine {
     if (job.reread && job.state === 'cancelled') dropReread(job.reread.id, `${job.id} was cancelled`);
     // A batch that stops running frees its vault: the next re-read group may start (after this change settles).
     if (job.state !== 'running' && rereads.pending()) track(Promise.resolve().then(() => pumpRereads()));
+    // v10: the queue was split by size: the next batch starts as soon as this one leaves `running`.
+    if (job.state !== 'running' && job.batchOf && job.batchOf.index < job.batchOf.total && overflow && overflow.index === job.batchOf.index) {
+      track(Promise.resolve().then(() => processQueue({ overflow: true })).then(() => undefined).catch((err: unknown) => log('warn', `Next batch: ${(err as Error).message}`)));
+    }
+    // v10: pages applied: record what was read in full, then look for sources never read in full.
+    if (!wasCompleted && job.state === 'completed' && job.kind === queueConsumer().id && job.operationID) {
+      const vault = vaultProfileFor(job);
+      track(Promise.resolve().then(() => fullRead.repairScan(vault, { force: true })).then(() => undefined));
+    }
     if (!wasCompleted && job.state === 'completed' && job.kind === queueConsumer().id && job.changedPaths.length > 0 && opts.onJobApplied) {
       const hook = opts.onJobApplied;
       const applied = clone(job);
@@ -720,6 +785,11 @@ export function createEngine(opts: EngineOptions): Engine {
       applyPlan?: TransactionPlan;
       /** A resume through resumeBatchSession: what to restore when the runner says the session is gone. */
       resumeOf?: ResumeOf;
+      /**
+       * v10: an automatic continuation of the full-read gate. The job stays `running`; a refused
+       * resume never opens SessionReplaceConfirm: the sources go to a fresh session instead.
+       */
+      autoContinue?: boolean;
     } = {},
   ): void {
     const job = findJob(id);
@@ -783,12 +853,16 @@ export function createEngine(opts: EngineOptions): Engine {
           }
           await handle(result, id, vault, extra.applyPlan);
         } catch (err) {
-          const gone = extra.resumeOf && !extra.first ? resumeFailure(extra.resumeOf.target, err) : null;
+          const target = extra.resumeOf?.target ?? (extra.autoContinue ? resumeTarget(job, 'resume') : undefined);
+          const gone = target && !extra.first ? resumeFailure(target, err) : null;
           if (isCancelled(err) || controller.signal.aborted) {
             mutate(id, (j) => {
               j.state = 'cancelled';
               j.turns.push(newTurn('app', 'Cancelled. Reply to resume the session.', now()));
             });
+          } else if (gone && extra.autoContinue && !extra.resumeOf) {
+            // v10: nobody to ask: what isn't added yet is read again in a fresh session.
+            fullRead.autoContinueRefused(id);
           } else if (gone && extra.resumeOf) {
             // The runner refused the resume: put the job back as it was and ask the user (SessionReplaceConfirm).
             const marker: SessionUnavailable = { ...gone };
@@ -814,6 +888,12 @@ export function createEngine(opts: EngineOptions): Engine {
       if (result.sessionID) j.sessionID = result.sessionID;
       j.turns.push(newTurn('worker', summary, now(), result.costUSD));
     });
+    // v10 (full reads): before anything reaches Review, the core checks every line was read.
+    try {
+      if (await fullRead.gate(id, status ?? undefined, result, applyPlan !== undefined)) return;
+    } catch (err) {
+      log('warn', `Full-read check of ${id}: ${(err as Error).message}`);
+    }
     if (!status) {
       if (result.isError) fail(id, result.resultText);
       else await requestDecision(id, { status: 'needs_input', summary, questions: [], changed_paths: [], skipped: [] }, result, vault);
@@ -853,7 +933,17 @@ export function createEngine(opts: EngineOptions): Engine {
             j.turns.push(newTurn('app', 'Nothing was applied: this turn had no approved plan to apply.', now()));
           }
         });
-        if (applyPlan && status.status === 'done' && status.operation_id === applyPlan.operation_id) continueAfterPart(id, applyPlan.operation_id);
+        if (applyPlan && status.status === 'done' && status.operation_id === applyPlan.operation_id) {
+          const applied = findJob(id);
+          if (applied) {
+            try {
+              fullRead.recordApplied(applied, applyPlan.changed_paths, applying?.bundlePath ?? undefined);
+            } catch (err) {
+              log('warn', `Full reads: could not record ${id}: ${(err as Error).message}`);
+            }
+          }
+          continueAfterPart(id, applyPlan.operation_id);
+        }
         return;
       case 'needs_approval':
       case 'needs_input':
@@ -895,7 +985,13 @@ export function createEngine(opts: EngineOptions): Engine {
       }
     }
     const part = findJob(id)?.pendingPart;
-    const confirm = part ? checkRebuiltPart(id, request, part) : request.plan?.valid && request.bundlePath ? attachReviewSources(id, request) : false;
+    let confirm: boolean;
+    if (part && (part.reason === 'covered' || part.reason === 'unread')) {
+      // v10: the split's parts: checked (pages and ledger), then reviewed like any batch (labels too).
+      confirm = checkSplitPart(id, request, part) && request.plan?.valid && request.bundlePath ? attachReviewSources(id, request) : false;
+    } else {
+      confirm = part ? checkRebuiltPart(id, request, part) : request.plan?.valid && request.bundlePath ? attachReviewSources(id, request) : false;
+    }
     mutate(id, (j) => {
       j.state = 'awaitingApproval';
       j.approval = request;
@@ -1249,6 +1345,7 @@ export function createEngine(opts: EngineOptions): Engine {
       shown: clone(keep),
     };
     if (reason === 'partial') part.before = clone(approval);
+    if (job.pendingPart?.unread?.length) part.unread = [...job.pendingPart.unread];
     part.bundlePath = path.join(dir, `bundle-part-${n}.json`);
     const prompt = partPrompt({
       reason,
@@ -1336,12 +1433,16 @@ export function createEngine(opts: EngineOptions): Engine {
       .map((s) => ({ page: s.page, source: s.source ?? null, contentFile: part.restFiles?.[s.page] ?? '', sha256: part.restExpected?.[s.page] ?? '' }))
       .filter((k) => k.contentFile && k.sha256);
     if (keep.length === 0) {
+      const unread = part.unread ?? [];
       mutate(id, (j) => {
         delete j.pendingPart;
       });
+      // v10: what one session couldn't finish is read again in a fresh session, after this part applied.
+      if (unread.length > 0) fullRead.startUnreadPart(id, unread);
       return;
     }
     const next: PendingPart = {
+      ...(part.unread?.length ? { unread: [...part.unread] } : {}),
       reason: 'remaining',
       expected: Object.fromEntries(keep.map((k) => [k.page, k.sha256])),
       excluded: [...(job.parts ?? []).flatMap((p) => p.pages), ...(part.removed ?? []).map((s) => s.page)],
@@ -1369,6 +1470,42 @@ export function createEngine(opts: EngineOptions): Engine {
     );
   }
 
+  /**
+   * v10: a part of the full-read split. `covered`: the covered pages byte for byte, nothing (page or
+   * ledger record) for the sources left out. `unread` (a fresh session): nothing for the parts
+   * already applied or the stopped sources. On a match the part is reviewed like a batch.
+   */
+  function checkSplitPart(id: string, request: ApprovalRequest, part: PendingPart): boolean {
+    const job = findJob(id);
+    if (!job || !request.plan?.valid || !request.bundlePath) return false;
+    const b = readBundle(request.bundlePath);
+    const out = fullRead.excludedOf(job);
+    const stopped = (job.stopped ?? []).map((s) => s.file);
+    const stoppedShas = (job.stopped ?? []).flatMap((s) => (s.sha256 ? [s.sha256] : []));
+    let current: unknown;
+    try {
+      current = JSON.parse(fs.readFileSync(path.join(job.vaultPath, 'wiki', 'meta', 'ledgers', 'source-ledger.json'), 'utf8'));
+    } catch {
+      current = undefined;
+    }
+    const problems = b
+      ? verifyRebuilt(b, part.reason === 'covered' ? part.expected : {}, part.excluded, [...new Set([...out.files, ...stopped])], [...new Set([...out.sha256, ...stoppedShas])], current)
+      : ['its bundle could not be read'];
+    if (problems.length > 0) {
+      delete request.plan;
+      request.planError =
+        `The change doesn't hold exactly the sources that were read in full (${problems.slice(0, 5).join('; ')}${problems.length > 5 ? '; …' : ''}). ` +
+        'Nothing was applied. Reply to Claude to try again, or reject.';
+      return false;
+    }
+    if (part.reason === 'unread') {
+      mutate(id, (j) => {
+        delete j.pendingPart;
+      });
+    }
+    return true;
+  }
+
   /** A change the session rebuilt for a part: checked against what the user approved before it is shown. Never starts a label revision. */
   function checkRebuiltPart(id: string, request: ApprovalRequest, part: PendingPart): boolean {
     if (!request.plan?.valid || !request.bundlePath) return false;
@@ -1381,7 +1518,7 @@ export function createEngine(opts: EngineOptions): Engine {
         'Nothing was applied. Reply to Claude to try again, or reject.';
       return false;
     }
-    request.rebuilt = { reason: part.reason, pages: Object.keys(part.expected), labels: part.labels };
+    request.rebuilt = { reason: part.reason === 'unread' ? 'covered' : part.reason, pages: Object.keys(part.expected), labels: part.labels };
     request.sources = clone(part.shown ?? []);
     request.labels =
       part.labels === 'confirm'
@@ -1399,7 +1536,7 @@ export function createEngine(opts: EngineOptions): Engine {
     if (pages.length === 0) return;
     const part: JobPart = { operationID, pages, labels, at: isoDate(now()) };
     j.parts = [...(j.parts ?? []), part];
-    if (!(j.pendingPart?.rest?.length)) delete j.pendingPart;
+    if (!(j.pendingPart?.rest?.length) && !(j.pendingPart?.unread?.length)) delete j.pendingPart;
   }
 
   function mergedPaths(j: Job, changed: string[]): string[] {
@@ -1470,6 +1607,12 @@ export function createEngine(opts: EngineOptions): Engine {
     for (const plan of [...rereads.plans]) {
       const group = plan.groups.find((g) => !g.jobId);
       if (!group) continue;
+      // v10: a repair's next batch starts when the previous one has APPLIED (or ended), never while it waits in
+      // Review, so no repair bundle goes stale against another.
+      if (plan.reason === 'repair') {
+        const prev = plan.groups.filter((g) => g.jobId).map((g) => findJob(g.jobId!));
+        if (prev.some((j) => j && (j.state === 'running' || j.state === 'awaitingApproval'))) continue;
+      }
       const vault = settings.vaults.find((v) => v.path === plan.vaultPath);
       if (!vault) continue;
       if (batchBlocker(vault)) continue;
@@ -1481,7 +1624,7 @@ export function createEngine(opts: EngineOptions): Engine {
 
   function startRereadGroup(plan: RereadPlan, group: RereadGroup, vault: VaultProfile): Job {
     const kind = queueConsumer();
-    const selection = selectionFor(settings, kind.task);
+    const selection = ingestSelection();
     const index = plan.groups.indexOf(group) + 1;
     const job = newJob({ id: makeJobID(now()), kind: kind.id, vaultPath: vault.path, files: [...group.files], model: selection.model, now: now() });
     if (group.folders?.length) job.folders = [...group.folders];
@@ -1493,9 +1636,10 @@ export function createEngine(opts: EngineOptions): Engine {
       groups: plan.groups.length,
       ...(plan.fromJob ? { fromJob: plan.fromJob } : {}),
       ...(plan.instruction ? { instruction: plan.instruction } : {}),
+      ...(plan.reason && plan.reason !== 'manual' ? { reason: plan.reason } : {}),
     };
     group.jobId = job.id;
-    const missing = group.files.map((f) => ({ f, why: inboxFileProblem(vault.path, f) })).filter((x) => x.why);
+    const missing = group.files.map((f) => ({ f, why: sourceFileProblem(vault.path, f) })).filter((x) => x.why);
     job.turns.push(
       newTurn(
         'app',
@@ -1509,26 +1653,34 @@ export function createEngine(opts: EngineOptions): Engine {
       fail(job.id, `Can't re-read: ${missing.map((m) => `${m.f} is ${m.why}`).join('; ')}.`);
       return clone(findJob(job.id) ?? job);
     }
-    const { facts, labels } = rereadFacts(vault.path, job.files);
+    const { facts: sizes, labels } = rereadFacts(vault.path, job.files);
     try {
       writeFileAtomic(path.join(jobStateDirectory(job), 'labels.json'), encodeJSON(labels));
     } catch {
       /* a debugging aid, and what a new session reuses */
     }
     jobSteps.set(job.id, batchSteps(false));
-    const current = findJob(job.id)!;
     const items = job.files.filter((f) => !job.folders?.some((d) => f.startsWith(d + '/'))).length + (job.folders?.length ?? 0);
-    startTurnProgress(current, 'Read sources', `Re-reading ${plural(items, 'source')} in ${vaultName(vault.path)}`);
+    startTurnProgress(findJob(job.id)!, 'Read sources', `Re-reading ${plural(items, 'source')} in ${vaultName(vault.path)}`);
+    // v10: the reading copies and this session's coverage record, with the pages each source has.
+    const pagesOf = new Map(sizes.sources.map((s) => [s.file, { pages: s.pages }]));
+    const prepared = fullRead.prepare(findJob(job.id)!, vault, job.files, { existing: pagesOf });
+    const facts: RereadFacts = { sources: prepared.sources, unreadable: prepared.unreadable };
+    const current = findJob(job.id)!;
     runTurn(job.id, kind.initialPrompt(new JobContext(clone(current), vault, settings, labels, facts)), { first: true });
     return clone(findJob(job.id) ?? job);
   }
 
   async function rereadSources(req: RereadRequest): Promise<RereadResult> {
     if (!req || typeof req !== 'object' || Array.isArray(req)) throw new CoreError('invalid_request', 'Expected a re-read request.');
-    const perBatch = req.perBatch ?? DEFAULT_REREAD_PER_BATCH;
-    if (!Number.isInteger(perBatch) || perBatch < 1 || perBatch > MAX_REREAD_PER_BATCH) {
+    // v10 (decision 2026-10-05, full reads): groups are packed by tokens unless a count is asked for.
+    const perBatch = req.perBatch;
+    if (perBatch !== undefined && (!Number.isInteger(perBatch) || perBatch < 1 || perBatch > MAX_REREAD_PER_BATCH)) {
       throw new CoreError('invalid_request', `perBatch must be a whole number from 1 to ${MAX_REREAD_PER_BATCH}.`);
     }
+    if (req.tokenBudget !== undefined && (!Number.isInteger(req.tokenBudget) || req.tokenBudget < 1000)) throw new CoreError('invalid_request', 'tokenBudget must be a whole number of tokens (at least 1000).');
+    if (req.reason !== undefined && req.reason !== 'manual' && req.reason !== 'repair' && req.reason !== 'retry') throw new CoreError('invalid_request', 'reason must be manual, repair or retry.');
+    const tokenBudget = perBatch === undefined ? (req.tokenBudget ?? fullRead.budget(ingestSelection().model).tokens) : undefined;
     if (req.instruction !== undefined && typeof req.instruction !== 'string') throw new CoreError('invalid_request', 'instruction must be text.');
     const hasFiles = Array.isArray(req.files) && req.files.length > 0;
     if (hasFiles === (req.jobId !== undefined)) throw new CoreError('invalid_request', 'Give either files (inbox paths) or jobId.');
@@ -1566,7 +1718,7 @@ export function createEngine(opts: EngineOptions): Engine {
     if (!isVault(vault.path)) throw new CoreError('invalid_state', problem.notAVault(vault.path).message);
     // Every file must still be in inbox/: a missing one is an error, never a silent partial re-read.
     const unreadable = items.flatMap((i) => i.files).flatMap((f) => {
-      const why = inboxFileProblem(vault.path, f);
+      const why = sourceFileProblem(vault.path, f);
       return why ? [`${f}: ${why}`] : [];
     });
     if (unreadable.length > 0) {
@@ -1577,14 +1729,16 @@ export function createEngine(opts: EngineOptions): Engine {
       id: makeRereadID(now()),
       vaultPath: vault.path,
       createdAt: isoDate(now()),
-      perBatch,
-      groups: groupItems(items, perBatch),
+      perBatch: perBatch ?? 0,
+      groups: perBatch !== undefined ? groupItems(items, perBatch) : packItems(items, tokenBudget!, (f: string) => estimateTokens(path.join(vault.path, f))),
       ...(fromJob ? { fromJob } : {}),
       ...(req.instruction?.trim() ? { instruction: req.instruction.trim() } : {}),
+      ...(tokenBudget !== undefined ? { tokenBudget } : {}),
+      ...(req.reason ? { reason: req.reason } : {}),
     };
     rereads.plans.push(plan);
     saveRereads();
-    log('info', `Re-read ${plan.id}: ${plural(items.length, 'source')} in ${plan.groups.length} batch(es) of up to ${perBatch}.`);
+    log('info', `Re-read ${plan.id}: ${plural(items.length, 'source')} in ${plan.groups.length} batch(es) ${perBatch !== undefined ? `of up to ${perBatch}` : `of up to about ${Math.round(tokenBudget! / 1000)}K tokens`}.`);
     const before = new Set(jobs.map((j) => j.id));
     pumpRereads();
     const started = plan.groups
@@ -1593,7 +1747,8 @@ export function createEngine(opts: EngineOptions): Engine {
     const result: RereadResult = {
       id: plan.id,
       vaultPath: plan.vaultPath,
-      perBatch,
+      perBatch: perBatch ?? 0,
+      ...(tokenBudget !== undefined ? { tokenBudget } : {}),
       groups: clone(plan.groups),
       started: started.map((j) => clone(j)),
       waiting: plan.groups.filter((g) => !g.jobId).length,
@@ -1606,7 +1761,48 @@ export function createEngine(opts: EngineOptions): Engine {
 
   // ───────────── public API ─────────────
 
-  async function processQueue(o: { force?: boolean } = {}): Promise<Job | null> {
+  /**
+   * v10 (full reads): ready items packed by estimated tokens, oldest first; items are atomic (a note
+   * with its manifest and images, a folder item); an item over the budget alone gets its own batch.
+   */
+  function packReady(ready: ScanEntry[], budgetTokens: number): { take: ScanEntry[]; groups: number; tokens: number } {
+    const sets = noteSets(ready);
+    const memberOf = new Map<string, string>();
+    for (const s of sets) for (const f of [s.manifest, ...s.images]) memberOf.set(f, s.note);
+    const items: { entries: ScanEntry[]; tokens: number; at: number }[] = [];
+    const byPath = new Map(ready.map((e) => [e.path, e]));
+    for (const e of ready) {
+      if (memberOf.has(e.path)) continue;
+      const set = sets.find((s) => s.note === e.path);
+      const entries = set ? [e, ...[set.manifest, ...set.images].flatMap((p) => (byPath.has(p) ? [byPath.get(p)!] : []))] : [e];
+      const tokens = entries.reduce((n, x) => {
+        if (x.path.endsWith(NOTE_MANIFEST_SUFFIX)) return n;
+        if (x.folder) return n + Math.ceil(x.folder.sourceBytes / 2.6);
+        return n + estimateTokens(x.path);
+      }, 0);
+      items.push({ entries, tokens, at: e.modifiedMs });
+    }
+    items.sort((a, b) => a.at - b.at);
+    const take: ScanEntry[] = [];
+    let used = 0;
+    let groups = 0;
+    let current = 0;
+    for (const item of items) {
+      if (current > 0 && current + item.tokens > budgetTokens) {
+        groups += 1;
+        current = 0;
+      }
+      current += item.tokens;
+      if (groups === 0) {
+        take.push(...item.entries);
+        used += item.tokens;
+      }
+    }
+    if (current > 0) groups += 1;
+    return { take, groups: Math.max(1, groups), tokens: used };
+  }
+
+  async function processQueue(o: { force?: boolean; overflow?: boolean } = {}): Promise<Job | null> {
     const blocker = batchBlocker();
     if (blocker) {
       if (o.force) log('warn', blocker);
@@ -1620,9 +1816,18 @@ export function createEngine(opts: EngineOptions): Engine {
     // Notes written by addNote skip the wait; files the core can't read stay behind.
     // Folders are walked again here (never from the cache), so the wait follows the newest change inside them.
     const held = labelGate(o.force === true);
-    const ready = readyFiles(scanActive(vault, true), settle, now()).filter((e) => !held.has(e.path));
+    const allReady = readyFiles(scanActive(vault, true), settle, now()).filter((e) => !held.has(e.path));
     if (held.size > 0) log('info', `${plural(held.size, 'file')} still ${held.size === 1 ? 'waits' : 'wait'} for labels; ${held.size === 1 ? 'it goes' : 'they go'} in the next batch.`);
-    if (ready.length === 0) return null;
+    if (allReady.length === 0) {
+      overflow = undefined;
+      return null;
+    }
+    // v10 (full reads): a batch takes only as much text as one session can read in full.
+    const budget = fullRead.budget(ingestSelection().model);
+    const packed = packReady(allReady, budget.tokens);
+    const ready = packed.take;
+    const batchOf = o.overflow && overflow ? { index: overflow.index + 1, total: Math.max(overflow.total, overflow.index + packed.groups) } : { index: 1, total: packed.groups };
+    overflow = batchOf.total > 1 ? { index: batchOf.index, total: batchOf.total } : undefined;
     let files: string[];
     let folders: string[];
     try {
@@ -1635,11 +1840,12 @@ export function createEngine(opts: EngineOptions): Engine {
     refreshQueue();
     if (files.length === 0) return null;
     const kind = queueConsumer();
-    const selection = selectionFor(settings, kind.task);
+    const selection = ingestSelection();
     const job = newJob({ id: makeJobID(now()), kind: kind.id, vaultPath: vault.path, files, model: selection.model, now: now() });
     if (folders.length > 0) job.folders = folders;
     job.runnerID = selection.runnerID;
     if (selection.effort) job.effort = selection.effort;
+    if (batchOf.total > 1) job.batchOf = { ...batchOf, tokens: packed.tokens };
     // A folder item is one source: its files are listed once under it, and they get no per-file AI labels.
     const inFolder = (f: string) => folders.some((d) => f.startsWith(d + '/'));
     const loose = files.filter((f) => !inFolder(f));
@@ -1670,7 +1876,9 @@ export function createEngine(opts: EngineOptions): Engine {
       const current = findJob(job.id);
       if (!current) return;
       startTurnProgress(current, 'Read sources', reading);
-      runTurn(job.id, kind.initialPrompt(new JobContext(clone(current), vault, settings, plan)), { first: true });
+      // v10: the reading copies and this session's coverage record, before the first turn.
+      const facts = fullRead.prepare(current, vault, current.files);
+      runTurn(job.id, kind.initialPrompt(new JobContext(clone(findJob(job.id) ?? current), vault, settings, plan, facts)), { first: true });
     };
     if (draft.pending.length === 0) {
       start(draft.plan);
@@ -1791,6 +1999,10 @@ export function createEngine(opts: EngineOptions): Engine {
       return;
     }
     if (!approval?.plan || !approval.plan.valid || !approval.bundlePath) throw new CoreError('invalid_state', `Job ${id} has no valid plan to approve.`);
+    // v10 (full reads): a source that couldn't be read in full is never part of what is approved.
+    const stoppedFiles = new Set((job.stopped ?? []).map((s) => s.file));
+    const stoppedPage = (approval.sources ?? []).find((s) => s.source && stoppedFiles.has(s.source) && !s.removed);
+    if (stoppedPage) throw new CoreError('invalid_state', `${stoppedPage.source} couldn't be read in full, so its page can't be approved.`);
     const labelState = approval.labels?.state;
     if (labelState === 'suggesting') {
       throw new CoreError('invalid_state', 'Labels are still being suggested for this batch. Approve when they are in, so you approve the labels you see.');
@@ -2095,7 +2307,21 @@ export function createEngine(opts: EngineOptions): Engine {
           .filter((r) => !taken.has(r)),
       );
     }
-    return { vaultPath: vault.path, jobs: clone(jobs), ...(o.jobId ? { jobId: o.jobId } : {}), ...(queuedRel ? { queued: queuedRel } : {}), now: now() };
+    const heldShas = new Set(jobs.flatMap((j) => (j.stopped ?? []).flatMap((s) => (s.sha256 ? [s.sha256] : []))));
+    const heldFiles = new Set(jobs.filter((j) => j.vaultPath === vault.path).flatMap((j) => (j.stopped ?? []).map((s) => s.file.normalize('NFC'))));
+    return {
+      vaultPath: vault.path,
+      jobs: clone(jobs),
+      ...(o.jobId ? { jobId: o.jobId } : {}),
+      ...(queuedRel ? { queued: queuedRel } : {}),
+      now: now(),
+      // v10 (full reads): only what a batch that applied read in full, with its original archived.
+      fullRead: {
+        full: (sha: string) => fullRead.index.isFull(sha),
+        archived: (sha: string) => archivedCopy(vault.path, sha) !== undefined,
+        held: (rel: string, sha: string) => heldShas.has(sha) && heldFiles.has(rel.normalize('NFC')) && !fullRead.index.isFull(sha),
+      },
+    };
   }
 
   async function previewInboxCleanup(o: { jobId?: string; vaultPath?: string } = {}): Promise<InboxCleanupPreview> {
@@ -2288,7 +2514,11 @@ export function createEngine(opts: EngineOptions): Engine {
     } else {
       pending = WorkerProtocol.replyPrompt(o.text ?? '');
     }
-    const seedFacts = fresh.reread ? rereadFacts(vault.path, fresh.files).facts : undefined;
+    // v10: a new session gets a new coverage record; sources this batch already read in full stay full.
+    const carryFull = (fresh.coverage?.sources ?? []).filter((s) => s.state === 'full').map((s) => s.file);
+    const pagesOf = fresh.reread ? new Map(rereadFacts(vault.path, fresh.files).facts.sources.map((s) => [s.file, { pages: s.pages }])) : undefined;
+    const prepared = fullRead.prepare(fresh, vault, fresh.files, { carryFull, ...(pagesOf ? { existing: pagesOf } : {}) });
+    const seedFacts: RereadFacts = { sources: prepared.sources, unreadable: prepared.unreadable };
     const seedCtx = new JobContext({ ...before, sessionID: fresh.sessionID, grantedTools: fresh.grantedTools }, vault, settings, labelPlan, seedFacts);
     emit({ type: 'session.replaced', place: 'batch', objectID: id, ...(known ? { reason: known.reason } : {}) });
     runTurn(id, newSessionPrompt(kind, seedCtx, pending), extra);
@@ -2901,6 +3131,11 @@ export function createEngine(opts: EngineOptions): Engine {
       nextBatchAt: nextBatchAt ? isoDate(nextBatchAt) : null,
       lastQueueScanAt: lastQueueScanAt ? isoDate(lastQueueScanAt) : null,
       nextQueueScanAt: nextQueueScanAt ? isoDate(nextQueueScanAt) : null,
+      batchBudget: fullRead.budget(ingestSelection().model),
+      heldCount: (() => {
+        const v = activeVault(settings);
+        return v ? fullRead.listHeld(v.path).length : 0;
+      })(),
       runners: runners.all().map((r) => ({
         id: r.id,
         displayName: r.displayName,
@@ -2929,6 +3164,16 @@ export function createEngine(opts: EngineOptions): Engine {
       timer = setInterval(asScheduler(tick), tickMs);
       // v9: re-read groups that waited when the core stopped go on (one at a time per vault).
       if (rereads.pending()) asScheduler(pumpRereads)();
+      // v10 (full reads): past batches' coverage from their saved turns, then sources never read in full.
+      track(
+        Promise.resolve()
+          .then(() => fullRead.backfill())
+          .then(async () => {
+            const v = activeVault(settings);
+            if (v) await asScheduler(() => fullRead.repairScan(v))();
+          })
+          .catch((err: unknown) => log('warn', `Full reads at start: ${(err as Error).message}`)),
+      );
     },
     async stop() {
       if (timer) clearInterval(timer);
@@ -2980,6 +3225,15 @@ export function createEngine(opts: EngineOptions): Engine {
     previewInboxCleanup,
     cleanUpInbox,
     rereadSources,
+    async listHeld(vaultPath?: string): Promise<HeldSource[]> {
+      return fullRead.listHeld(resolveVault(vaultPath).path);
+    },
+    async retryHeld(file: string, vaultPath?: string) {
+      const vault = resolveVault(vaultPath);
+      const held = fullRead.listHeld(vault.path).find((h) => h.file === file.normalize('NFC'));
+      if (!held) throw new CoreError('not_found', `${file} is not held in inbox/ (read in full since, or removed).`);
+      return rereadSources({ vaultPath: vault.path, files: [held.file], perBatch: 1, reason: 'retry' });
+    },
     jobResumeCommand,
     resumeBatchSession,
     removeQueueEntry,

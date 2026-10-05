@@ -243,8 +243,17 @@ export function contentFileFor(b: LoadedBundle, page: string, scratchDir: string
  * exact content they saw, and no page of an excluded source (not picked, removed) is in it.
  * Returns the problems; [] = it matches.
  */
-export function verifyRebuilt(b: LoadedBundle, expected: Record<string, string>, excluded: string[], excludedSources: string[] = []): string[] {
-  const problems: string[] = [];
+export function verifyRebuilt(
+  b: LoadedBundle,
+  expected: Record<string, string>,
+  excluded: string[],
+  excludedSources: string[] = [],
+  /** v10 (full reads): content sha256 of sources that must have no source ledger record in it. */
+  excludedShas: string[] = [],
+  /** v10: the vault's source ledger as it is now (records it already holds unchanged are fine). */
+  currentLedger?: unknown,
+): string[] {
+  const problems: string[] = [...ledgerProblems(b, excludedSources, excludedShas, currentLedger)];
   const shas = pageShas(b);
   for (const [page, sha] of Object.entries(expected)) {
     const got = shas.get(page);
@@ -258,6 +267,39 @@ export function verifyRebuilt(b: LoadedBundle, expected: Record<string, string>,
     for (const p of sourcePages(b)) {
       if (p.source && out.has(p.source) && !(p.page in expected)) problems.push(`${p.page} (from ${p.source}) should not be in it`);
     }
+  }
+  return problems;
+}
+
+/**
+ * v10: a source left out of a change must have no source ledger record in it either: none whose
+ * `origin.locator` is the source (or its archive path) or whose `content_sha256` is its content.
+ * Only the bundle's own write of the ledger is checked, and only records it adds or changes.
+ */
+export function ledgerProblems(b: LoadedBundle, files: string[], shas: string[], current?: unknown): string[] {
+  if (files.length === 0 && shas.length === 0) return [];
+  const w = b.writes.find((x) => x.path === 'wiki/meta/ledgers/source-ledger.json');
+  if (!w) return [];
+  const text = contentOf(b, w);
+  if (text === undefined) return ['its source ledger could not be read'];
+  let v: unknown;
+  try {
+    v = JSON.parse(text);
+  } catch {
+    return ['its source ledger is not valid JSON'];
+  }
+  const sources = isObject(v) && isObject(v.sources) ? v.sources : {};
+  const outFiles = new Set(files.map((f) => f.normalize('NFC')));
+  const outShas = new Set(shas.map((s) => s.toLowerCase()));
+  const problems: string[] = [];
+  const before = isObject(current) && isObject(current.sources) ? current.sources : {};
+  for (const [id, rec] of Object.entries(sources)) {
+    if (!isObject(rec)) continue;
+    // A record the vault already holds, unchanged, is not this change adding the source.
+    if (id in before && JSON.stringify(before[id]) === JSON.stringify(rec)) continue;
+    const locator = isObject(rec.origin) && typeof rec.origin.locator === 'string' ? rec.origin.locator.normalize('NFC') : '';
+    const sha = typeof rec.content_sha256 === 'string' ? rec.content_sha256.toLowerCase() : '';
+    if (outFiles.has(locator) || (sha && outShas.has(sha))) problems.push(`source ledger record ${id} (${locator || sha}) should not be in it`);
   }
   return problems;
 }
