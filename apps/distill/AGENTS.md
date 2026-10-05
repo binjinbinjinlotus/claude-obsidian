@@ -43,6 +43,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Collectors](docs/specs/collectors.md) | built (core, API, CLI, macOS UI incl. script files, TypeScript, packages and Test run; queue rows don't name the collector yet) |
 | [Activity log and trash](docs/specs/activity-log.md) | built (core, API, CLI, macOS UI) |
 | [Session continuity](docs/specs/session-continuity.md) | designed |
+| [Live log](docs/specs/live-log.md) | built (core, API, macOS UI; no CLI) |
 
 ## Layout
 

@@ -77,6 +77,13 @@ describe('detection: positive evidence only', () => {
     await assert.rejects(runner.run(request({ resume: SID }), settingsFor()), (e: unknown) => e instanceof RunnerError && e.code === 'sessionNotFound');
     // The same text on a first turn is not about a resume.
     await assert.rejects(runner.run(request({ start: SID }), settingsFor()), (e: unknown) => e instanceof RunnerError && e.code === 'nonZeroExit');
+    // Live log (stream-json): stdout also carries an error result event; still sessionNotFound.
+    const streamLine = JSON.stringify({ type: 'result', subtype: 'error_during_execution', is_error: true, num_turns: 0, session_id: SID, errors: [CLAUDE_NOT_FOUND] });
+    const streaming = new ClaudeCodeRunner(async () => out(1, streamLine + '\n', CLAUDE_NOT_FOUND + '\n'));
+    await assert.rejects(
+      streaming.run({ ...request({ resume: SID }), onStep: () => undefined }, settingsFor()),
+      (e: unknown) => e instanceof RunnerError && e.code === 'sessionNotFound',
+    );
     const auth = new ClaudeCodeRunner(async () => out(1, '', 'Invalid API key · Please run /login'));
     await assert.rejects(auth.run(request({ resume: SID }), settingsFor()), (e: unknown) => e instanceof RunnerError && e.code === 'nonZeroExit');
   });

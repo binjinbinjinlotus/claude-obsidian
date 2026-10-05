@@ -641,7 +641,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
 
   function summary(run: CollectorRun | undefined): CollectorRun | null {
     if (!run) return null;
-    const { files: _f, stdoutTail: _o, stderrTail: _e, ...rest } = run;
+    const { files: _f, stdoutTail: _o, stderrTail: _e, outputLog: _l, ...rest } = run;
     return clone(rest);
   }
 
@@ -1025,6 +1025,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       run.signal = o.signal;
       run.stdoutTail = o.stdoutTail;
       run.stderrTail = o.stderrTail;
+      if (o.outputLog.length > 0) run.outputLog = o.outputLog;
       const after = queueNames(queueDir);
       run.filesAdded = [...after].filter((n) => !before.has(n)).sort();
       run.counts = { ...emptyCounts(), added: run.filesAdded.length };

@@ -11,7 +11,8 @@
  "layouts": {
   "list-detail": "{header}<div style=\"flex-grow: 1; display: flex; gap: 24px; padding: 20px 28px 0 20px; min-height: 0; overflow: hidden; position: relative\"><div style=\"width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 2px\">{list}</div><div style=\"flex-grow: 1; min-width: 0; overflow: hidden; padding: 2px 2px 20px\">{detail}</div></div>",
   "pane": "{header}<div style=\"flex-grow: 1; min-height: 0; overflow: hidden\">{detail}</div>",
-  "list-detail-narrow": "{header}<div style=\"flex-grow: 1; display: flex; gap: 24px; padding: 20px 28px 0 20px; min-height: 0; overflow: hidden; position: relative\"><div style=\"width: 240px; flex-shrink: 0; display: flex; flex-direction: column; gap: 2px\">{list}</div><div style=\"flex-grow: 1; min-width: 0; overflow: hidden; padding: 2px 2px 20px\">{detail}</div></div>"
+  "list-detail-narrow": "{header}<div style=\"flex-grow: 1; display: flex; gap: 24px; padding: 20px 28px 0 20px; min-height: 0; overflow: hidden; position: relative\"><div style=\"width: 240px; flex-shrink: 0; display: flex; flex-direction: column; gap: 2px\">{list}</div><div style=\"flex-grow: 1; min-width: 0; overflow: hidden; padding: 2px 2px 20px\">{detail}</div></div>",
+  "pushed": "<div style=\"flex-grow: 1; min-height: 0; overflow: hidden\">{detail}</div>"
  },
  "lists": {
   "collectors": [
@@ -994,6 +995,79 @@
    "body": {
     "frag": "card-add-4"
    }
+  },
+  {
+   "id": "collectors-log-live",
+   "base": "collectors",
+   "label": "Log \u00b7 Show log on a running script: every line as it comes, stderr marked in peach; it follows the newest line",
+   "set": {
+    "sidebar.collectorsAlert": "2",
+    "list": {
+     "list": "collectors-pocket-running",
+     "row": "CollectorRow",
+     "selected": 1
+    },
+    "detail": {
+     "frag": "log-live"
+    }
+   }
+  },
+  {
+   "id": "collectors-log-install",
+   "base": "collectors",
+   "label": "Log \u00b7 a package install (npm), live; the run waits for it",
+   "set": {
+    "list": {
+     "list": "collectors-files-installing",
+     "row": "CollectorRow",
+     "selected": 2
+    },
+    "detail": {
+     "frag": "log-install"
+    }
+   }
+  },
+  {
+   "id": "collectors-log-test",
+   "base": "collectors",
+   "label": "Log \u00b7 a Test run, finished: the whole output stays, with Reveal in Finder",
+   "set": {
+    "list": {
+     "list": "collectors-files-test",
+     "row": "CollectorRow",
+     "selected": 1
+    },
+    "detail": {
+     "frag": "log-test"
+    }
+   }
+  },
+  {
+   "id": "collectors-log-past",
+   "base": "collectors",
+   "label": "Log \u00b7 from All runs (Open log): a run saved before lines were kept in order shows Output, then stderr",
+   "set": {
+    "sidebar.collectorsAlert": "2",
+    "list.selected": 2,
+    "detail": {
+     "frag": "log-past"
+    }
+   }
+  },
+  {
+   "id": "collectors-log-narrow",
+   "base": "collectors",
+   "label": "Log \u00b7 890 pt window: the log takes the whole window (\u2039 goes back to the collector)",
+   "set": {
+    "window.width": 890,
+    "layout": "pushed",
+    "sidebar.collectorsAlert": "2",
+    "list": null,
+    "header": null,
+    "detail": {
+     "frag": "log-narrow"
+    }
+   }
   }
  ],
  "boards": [
@@ -1160,6 +1234,37 @@
       "collectors-card-delete"
      ],
      "cols": 3
+    }
+   ]
+  },
+  {
+   "file": "CollectorsLog.dc.html",
+   "title": "Live log \u00b7 collector runs, installs and Test runs",
+   "heading": "Live log \u00b7 collector runs, installs and Test runs",
+   "intro": "\u201cIs it possible to see the live log when a collector is running?\u201d The status card keeps its last lines; <b>Show log</b> opens the whole output in place of the detail (\u2039 goes back): while a script runs, while packages install, after Run now or a Test run, and from <b>All runs</b> (Open log in an opened run). Lines come in the order the script printed them, stdout in white, stderr in peach with a peach gutter, the command and Distill\u2019s own lines in grey, a faint time when the second changes. It follows the newest line; scroll up and Jump to latest appears (as for batches). Copy takes the whole output. After the run the same view shows what was kept: the last 64 KB, in order. Runs saved before this show Output, then stderr.",
+   "row": 31000,
+   "width": 2520,
+   "sections": [
+    {
+     "row": [
+      "collectors-script-running",
+      "collectors-log-live"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "row": [
+      "collectors-log-install",
+      "collectors-log-test"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "row": [
+      "collectors-log-past",
+      "collectors-log-narrow"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
     }
    ]
   }

@@ -307,8 +307,12 @@ struct RunLogEntry: View {
     var outputKind: String = "files"
     var lines: [String] = []
     var expanded = false
+    /// What ran the script, shown quietly in an opened run: "python3 (.venv) · ~/…/bin/python3".
+    var runtime: String = ""
     var width: CGFloat? = nil
     var onToggle: (() -> Void)? = nil
+    /// v7: Open log, the whole saved output in the log view.
+    var onOpenLog: (() -> Void)? = nil
 
     private var dot: (Color, Color, String?) {
         switch result {
@@ -381,12 +385,21 @@ struct RunLogEntry: View {
             HStack(spacing: 6) {
                 Text(outputKind == "stderr" ? "STDERR" : "OUTPUT").font(Theme.body(10, .heavy)).kerning(0.6)
                     .foregroundStyle(outputKind == "stderr" ? Theme.peachInk : Theme.faint)
-                Spacer()
+                if !runtime.isEmpty {
+                    Text(runtime).font(Theme.body(11)).foregroundStyle(Theme.faint).lineLimit(1).truncationMode(.middle)
+                        .padding(.leading, 4)
+                }
+                Spacer(minLength: 8)
                 Button {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
                 } label: { Text("Copy output").font(Theme.body(11, .semibold)).foregroundStyle(Theme.primary) }
                 .buttonStyle(.plain)
+                if let onOpenLog {
+                    Button(action: onOpenLog) { Text("Open log").font(Theme.body(11, .semibold)).foregroundStyle(Theme.primary) }
+                        .buttonStyle(.plain)
+                        .padding(.leading, 6)
+                }
             }
             TerminalLines(lines: lines, stderr: outputKind == "stderr")
         }

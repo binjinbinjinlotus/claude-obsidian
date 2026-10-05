@@ -7,6 +7,7 @@ import type {
   RunResult,
   RunSession,
   RunnerCapability,
+  RunnerStep,
   Settings,
   SessionStoreStatus,
   SetupProblem,
@@ -31,6 +32,8 @@ export interface ClaudeInvocation {
   outputSchema?: string;
   appendSystemPrompt?: string;
   environment: Record<string, string>;
+  /** v7: stream events (`--output-format stream-json --verbose`) for the live log. */
+  stream?: boolean;
 }
 
 /**
@@ -38,7 +41,8 @@ export interface ClaudeInvocation {
  * as `--allowedTools`. One argv entry per rule: a comma inside a rule must not split it.
  */
 export function claudeArguments(inv: ClaudeInvocation): string[] {
-  const args = ['-p', '--output-format', 'json', '--model', inv.model];
+  const args = inv.stream ? ['-p', '--output-format', 'stream-json', '--verbose'] : ['-p', '--output-format', 'json'];
+  args.push('--model', inv.model);
   if (inv.effort) args.push('--effort', inv.effort);
   if ('start' in inv.session) args.push('--session-id', inv.session.start);
   else args.push('--resume', inv.session.resume);
@@ -84,6 +88,52 @@ export function parseClaudeJSON(raw: string): RunResult {
   if (typeof obj.session_id === 'string') result.sessionID = obj.session_id;
   if ('structured_output' in obj) result.structured = obj.structured_output;
   return result;
+}
+
+/**
+ * `--output-format stream-json`: one JSON event per line. The last `result` event carries the same
+ * fields as the `json` envelope (result, is_error, total_cost_usd, session_id, structured_output,
+ * permission_denials), so it decodes through parseClaudeJSON. `raw` stays the whole stream.
+ */
+export function parseClaudeStream(raw: string): RunResult {
+  let last: string | undefined;
+  for (const line of raw.split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('{')) continue;
+    try {
+      const obj: unknown = JSON.parse(t);
+      if (isObj(obj) && obj.type === 'result') last = t;
+    } catch {
+      /* a partial or foreign line */
+    }
+  }
+  if (last === undefined) throw new RunnerError(`Unreadable runner output: ${raw.slice(-500)}`, 'malformedOutput');
+  return { ...parseClaudeJSON(last), raw };
+}
+
+/** The steps in one stream-json line: tool calls and text from the assistant, tool results from the user. */
+export function claudeStreamSteps(line: string): RunnerStep[] {
+  let obj: unknown;
+  try {
+    obj = JSON.parse(line);
+  } catch {
+    return [];
+  }
+  if (!isObj(obj) || !isObj(obj.message) || !Array.isArray(obj.message.content)) return [];
+  // Steps of a subagent (Task) carry parent_tool_use_id; the parent's own call already shows.
+  if (typeof obj.parent_tool_use_id === 'string') return [];
+  const steps: RunnerStep[] = [];
+  for (const c of obj.message.content) {
+    if (!isObj(c)) continue;
+    if (obj.type === 'assistant' && c.type === 'tool_use' && typeof c.name === 'string') {
+      steps.push({ kind: 'tool', tool: c.name, input: isObj(c.input) ? c.input : {}, ...(typeof c.id === 'string' ? { id: c.id } : {}) });
+    } else if (obj.type === 'assistant' && c.type === 'text' && typeof c.text === 'string' && c.text.trim()) {
+      steps.push({ kind: 'message', text: c.text });
+    } else if (obj.type === 'user' && c.type === 'tool_result' && typeof c.tool_use_id === 'string') {
+      steps.push({ kind: 'toolDone', id: c.tool_use_id, ...(c.is_error === true ? { isError: true } : {}) });
+    }
+  }
+  return steps;
 }
 
 export type ProcessLauncher = (opts: RunProcessOptions) => Promise<ProcessOutput>;
@@ -148,6 +198,7 @@ export class ClaudeCodeRunner implements AgentRunner {
     if (request.pluginDirectory !== undefined) inv.pluginDirectory = request.pluginDirectory;
     if (request.outputSchema !== undefined) inv.outputSchema = request.outputSchema;
     if (request.systemPrompt !== undefined) inv.appendSystemPrompt = request.systemPrompt;
+    if (request.onStep) inv.stream = true;
     return inv;
   }
 
@@ -161,15 +212,31 @@ export class ClaudeCodeRunner implements AgentRunner {
       environment: inv.environment,
     };
     if (request.signal) opts.signal = request.signal;
+    const onStep = request.onStep;
+    if (onStep) {
+      opts.onStdoutLine = (line) => {
+        for (const step of claudeStreamSteps(line)) {
+          try {
+            onStep(step);
+          } catch {
+            /* the live log must never break a run */
+          }
+        }
+      };
+    }
     const output = await this.launch(opts);
+    // A refused resume: exit 1 and "No conversation found with session ID: <id>" on stderr. With
+    // stream-json, stdout also carries an error `result` event (verified 2026-10-05), so this is
+    // checked before stdout is parsed.
+    if (output.status !== 0 && 'resume' in inv.session) {
+      const gone = sessionNotFoundError(output.stderr.toString('utf8'), inv.session.resume);
+      if (gone) throw gone;
+    }
     if (output.stdout.length === 0 && output.status !== 0) {
-      if ('resume' in inv.session) {
-        const gone = sessionNotFoundError(output.stderr.toString('utf8'), inv.session.resume);
-        if (gone) throw gone;
-      }
       throw new RunnerError(`Exited ${output.status}: ${output.stderr.toString('utf8').slice(-2000)}`, 'nonZeroExit');
     }
-    return parseClaudeJSON(output.stdout.toString('utf8'));
+    const text = output.stdout.toString('utf8');
+    return inv.stream ? parseClaudeStream(text) : parseClaudeJSON(text);
   }
 
   resumeCommand(sessionID: string, model: string, settings: Settings): string[] {

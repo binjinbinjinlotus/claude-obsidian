@@ -51,6 +51,34 @@ export interface RunProcessOptions {
   stdin?: string | Buffer;
   environment?: Record<string, string>;
   signal?: AbortSignal;
+  /** v7: each complete stdout line as it arrives (stdout is still collected in full). */
+  onStdoutLine?: (line: string) => void;
+}
+
+/** Splits a byte stream into lines (UTF-8 safe across chunks); `flush` returns the last partial line. */
+export class LineSplitter {
+  private rest = Buffer.alloc(0);
+  constructor(private readonly onLine: (line: string) => void) {}
+  push(chunk: Buffer): void {
+    let buf = this.rest.length ? Buffer.concat([this.rest, chunk]) : chunk;
+    let i: number;
+    while ((i = buf.indexOf(10)) >= 0) {
+      this.emit(buf.subarray(0, i));
+      buf = buf.subarray(i + 1);
+    }
+    this.rest = Buffer.from(buf);
+  }
+  flush(): void {
+    if (this.rest.length) this.emit(this.rest);
+    this.rest = Buffer.alloc(0);
+  }
+  private emit(b: Buffer): void {
+    try {
+      this.onLine(b.toString('utf8').replace(/\r$/, ''));
+    } catch {
+      /* a line handler must not break the run */
+    }
+  }
 }
 
 /**
@@ -82,7 +110,11 @@ export function runProcess(opts: RunProcessOptions): Promise<ProcessOutput> {
       child.kill('SIGTERM');
     };
     opts.signal?.addEventListener('abort', onAbort, { once: true });
-    child.stdout.on('data', (b: Buffer) => out.push(b));
+    const lines = opts.onStdoutLine ? new LineSplitter(opts.onStdoutLine) : undefined;
+    child.stdout.on('data', (b: Buffer) => {
+      out.push(b);
+      lines?.push(b);
+    });
     child.stderr.on('data', (b: Buffer) => err.push(b));
     child.stdin.on('error', () => {
       /* child exited before reading stdin; reported via exit status */
@@ -101,6 +133,7 @@ export function runProcess(opts: RunProcessOptions): Promise<ProcessOutput> {
         reject(cancelledError());
         return;
       }
+      lines?.flush();
       resolve({ status: code ?? (signal ? 128 : 1), stdout: Buffer.concat(out), stderr: Buffer.concat(err) });
     });
     child.stdin.end(opts.stdin ?? '');

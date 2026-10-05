@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { AgentRunner, ModelOption, RunRequest, RunResult, RunnerCapability, SessionStoreStatus, Settings, SetupProblem } from '../contracts.js';
+import type { AgentRunner, ModelOption, RunRequest, RunResult, RunnerCapability, RunnerStep, SessionStoreStatus, Settings, SetupProblem } from '../contracts.js';
 import { codexHome, codexRolloutStatus, sessionNotFoundError } from './session.js';
 import { runProcess, RunnerError, type ProcessOutput, type RunProcessOptions } from './process.js';
 import { parseStructured, prepareSchema, runnerOption, type PreparedSchema } from './model-api.js';
@@ -162,6 +162,66 @@ export function parseCodexEvents(raw: string): CodexEvents {
 }
 
 /**
+ * v7: the live-log steps in `codex exec --json` lines, read as they arrive. Commands, file changes,
+ * web searches and MCP calls become tool steps; agent messages become notes, except the final
+ * structured answer (JSON). Keeps the ids it has seen so an item reported only on completion still shows.
+ */
+export function codexStepReader(): (line: string) => RunnerStep[] {
+  const started = new Set<string>();
+  return (line) => {
+    const t = line.trim();
+    if (!t.startsWith('{')) return [];
+    let ev: unknown;
+    try {
+      ev = JSON.parse(t);
+    } catch {
+      return [];
+    }
+    if (!isObj(ev) || !isObj(ev.item) || (ev.type !== 'item.started' && ev.type !== 'item.completed')) return [];
+    const item = ev.item;
+    const id = typeof item.id === 'string' ? item.id : undefined;
+    const done = ev.type === 'item.completed';
+    let tool: { tool: string; input: Record<string, unknown> } | undefined;
+    switch (item.type) {
+      case 'command_execution':
+        if (typeof item.command === 'string') tool = { tool: 'Bash', input: { command: item.command } };
+        break;
+      case 'file_change': {
+        const changes = Array.isArray(item.changes) ? item.changes.filter(isObj) : [];
+        const first = changes.find((c) => typeof c.path === 'string');
+        if (first) tool = { tool: first.kind === 'add' ? 'Write' : 'Edit', input: { file_path: first.path, files: changes.length } };
+        break;
+      }
+      case 'web_search':
+        tool = { tool: 'WebSearch', input: { query: typeof item.query === 'string' ? item.query : '' } };
+        break;
+      case 'mcp_tool_call':
+        tool = { tool: `${typeof item.server === 'string' ? item.server : 'mcp'}.${typeof item.tool === 'string' ? item.tool : 'tool'}`, input: {} };
+        break;
+      case 'agent_message': {
+        const text = typeof item.text === 'string' ? item.text.trim() : '';
+        // The final answer is the structured JSON; it is the result, not a note.
+        if (done && text && !text.startsWith('{')) return [{ kind: 'message', text }];
+        return [];
+      }
+      default:
+        return [];
+    }
+    if (!tool) return [];
+    const steps: RunnerStep[] = [];
+    if (!id || !started.has(id)) {
+      steps.push({ kind: 'tool', ...tool, ...(id ? { id } : {}) });
+      if (id) started.add(id);
+    }
+    if (done && id) {
+      const failed = item.status === 'failed' || (typeof item.exit_code === 'number' && item.exit_code !== 0);
+      steps.push({ kind: 'toolDone', id, ...(failed ? { isError: true } : {}) });
+    }
+    return steps;
+  };
+}
+
+/**
  * OpenAI Codex CLI (`codex exec`). An agent that reads files and runs
  * commands, confined by its sandbox rather than per-command rules: writes go
  * only to the job directory; the core runs the approved transaction itself
@@ -249,14 +309,28 @@ export class CodexRunner implements AgentRunner {
         environment: request.environment ?? {},
       };
       if (request.signal) opts.signal = request.signal;
+      const onStep = request.onStep;
+      if (onStep) {
+        const read = codexStepReader();
+        opts.onStdoutLine = (line) => {
+          for (const step of read(line)) {
+            try {
+              onStep(step);
+            } catch {
+              /* the live log must never break a run */
+            }
+          }
+        };
+      }
       const output = await this.launch(opts);
       const raw = output.stdout.toString('utf8');
       const events = parseCodexEvents(raw);
+      // A refused resume: exit 1, "no rollout found for thread id <id>" (stderr or an error event).
+      if (output.status !== 0 && inv.sessionResume !== undefined && events.lastMessage === undefined) {
+        const gone = sessionNotFoundError(`${events.error ?? ''}\n${output.stderr.toString('utf8')}`, inv.sessionResume);
+        if (gone) throw gone;
+      }
       if (events.threadID === undefined && events.lastMessage === undefined && output.status !== 0) {
-        if (inv.sessionResume !== undefined) {
-          const gone = sessionNotFoundError(`${events.error ?? ''}\n${output.stderr.toString('utf8')}`, inv.sessionResume);
-          if (gone) throw gone;
-        }
         throw new RunnerError(`Exited ${output.status}: ${(events.error ?? output.stderr.toString('utf8')).slice(-2000)}`, 'nonZeroExit');
       }
       const result: RunResult = {

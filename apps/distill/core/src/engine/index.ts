@@ -27,6 +27,7 @@ import {
   type SessionOptions,
   type SessionUnavailable,
   type RunRequest,
+  type RunnerStep,
   type RunResult,
   type RunnerRegistry,
   type Settings,
@@ -132,7 +133,7 @@ export type ActionsOwned =
   | 'listConnections' | 'connect' | 'signInURL' | 'disconnect';
 export type AskOwned = 'ask' | 'listConversations' | 'getConversation' | 'deleteConversation' | 'setConversationPinned' | 'cancelAsk';
 /** Implemented in index.ts from the merged event stream. */
-export type CompositionOwned = 'listProgress';
+export type CompositionOwned = 'listProgress' | 'listJobSteps';
 export type RunnerAdminOwned = 'listRunners' | 'setRunnerSecret';
 
 /**
@@ -208,6 +209,14 @@ export interface EngineOptions {
   trashDir?: string;
   /** v3: a batch (queue-consumer job) was applied: completed with changed paths. Runs once per transition. */
   onJobApplied?: (job: Job) => void | Promise<void>;
+  /** v7: the live log (steps/). Gets each agent step of a turn and each file of the label pre-step. */
+  steps?: EngineStepSink;
+}
+
+/** v7: where the engine reports what the live log can't see in events. */
+export interface EngineStepSink {
+  runnerStep(jobId: string, step: RunnerStep): void;
+  labelFile(jobId: string, file: string, state: 'running' | 'done' | 'failed', labels?: number): void;
 }
 
 export type { Settings };
@@ -663,6 +672,8 @@ export function createEngine(opts: EngineOptions): Engine {
       environment: { CLAUDE_OBSIDIAN_VAULT: vault.path },
       signal: controller.signal,
     };
+    const stepSink = opts.steps;
+    if (stepSink) request.onStep = (step) => stepSink.runnerStep(id, step);
     const settingsSnapshot = clone(settings);
     const stateDir = jobStateDirectory(job);
     const turnIndex = job.turns.length;
@@ -885,6 +896,7 @@ export function createEngine(opts: EngineOptions): Engine {
         stepIndex: steps.indexOf('Suggesting labels'),
         done: 0,
         total: draft.pending.length,
+        ...(draft.pending[0] ? { current: draft.pending[0].entry.file } : {}),
         ...selectionFields(labelSuggestSelection(settings)),
       });
       track(
@@ -895,6 +907,7 @@ export function createEngine(opts: EngineOptions): Engine {
           const existing = await existingLabels(vault.path).catch(() => [] as string[]);
           for (const { entry, input } of draft.pending) {
             if (controller.signal.aborted) break;
+            opts.steps?.labelFile(job.id, entry.file, 'running');
             try {
               const out = await suggestLabels(input, {
                 runners,
@@ -905,12 +918,15 @@ export function createEngine(opts: EngineOptions): Engine {
               });
               cost += out.costUSD;
               entry.labels = out.labels.map((l) => l.name);
+              opts.steps?.labelFile(job.id, entry.file, 'done', entry.labels.length);
             } catch (err) {
               if (controller.signal.aborted) break;
+              opts.steps?.labelFile(job.id, entry.file, 'failed');
               failures.push(`${entry.file}: ${(err as Error).message}`);
             }
             done += 1;
-            updateProgress(job.id, { done });
+            const next = draft.pending[done]?.entry.file;
+            updateProgress(job.id, { done, ...(next ? { current: next } : {}) });
           }
           if (controllers.get(job.id) === controller) controllers.delete(job.id);
           if (controller.signal.aborted) {

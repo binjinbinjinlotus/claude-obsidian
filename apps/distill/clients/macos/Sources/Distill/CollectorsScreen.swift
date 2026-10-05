@@ -16,6 +16,8 @@ struct CollectorsScreen: View {
 private struct CollectorsScreenContent: View {
     @EnvironmentObject var engine: AppModel
     @ObservedObject var store: CollectorsStore
+    /// The content is under 760 pt (an 890 pt window): a log takes the whole width.
+    @State private var narrowWindow = false
 
     var body: some View {
         Group {
@@ -43,6 +45,10 @@ private struct CollectorsScreenContent: View {
                         CollectorsEmpty(store: store)
                         Spacer(minLength: 0)
                     }
+                } else if store.logTarget != nil, let c = store.current, narrowWindow {
+                    // v7, an 890 pt window: the log takes the whole window (‹ goes back).
+                    CollectorLogView(store: store, collector: c, target: store.logTarget!)
+                        .padding(.horizontal, 28).padding(.top, 26)
                 } else {
                     VStack(spacing: 0) {
                         header(add: true)
@@ -60,6 +66,7 @@ private struct CollectorsScreenContent: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(GeometryReader { g in Color.clear.onAppear { narrowWindow = g.size.width < 760 }.onChange(of: g.size.width) { narrowWindow = g.size.width < 760 } })
         .onAppear {
             if store.phase == .idle { store.load() } else if let id = store.current?.id { store.refresh(id); store.loadRuns(id) }
         }
@@ -162,6 +169,17 @@ struct CollectorDetailPane: View {
     @ObservedObject var store: CollectorsStore
 
     var body: some View {
+        if let c = store.current, let target = store.logTarget {
+            // v7: the log scrolls itself (it follows the newest line).
+            CollectorLogView(store: store, collector: c, target: target)
+                .padding(.top, 8).padding(.leading, 10).padding(.trailing, 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else {
+            pane
+        }
+    }
+
+    private var pane: some View {
         ScrollView(.vertical) {
             Group {
                 if let c = store.current {
@@ -612,9 +630,11 @@ struct RunLine: View {
                     time: text.runTime(run.startedAt, previous: previous, now: store.now),
                     summary: text.runSummary(run, now: store.now), meta: text.runMeta(run),
                     outputKind: kind, lines: lines, expanded: store.openRuns.contains(run.id),
+                    runtime: run.runtime?.line() ?? "",
                     onToggle: {
                         if store.openRuns.contains(run.id) { store.openRuns.remove(run.id) } else { store.openRuns.insert(run.id) }
-                    })
+                    },
+                    onOpenLog: collector.isScript ? { store.openLog(.run(collectorId: collector.id, runId: run.id)) } : nil)
     }
 }
 
