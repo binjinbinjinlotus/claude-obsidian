@@ -32,12 +32,12 @@ import {
   type VaultProfile,
 } from '../contracts.js';
 import type { CollectorsOwned } from '../engine/index.js';
-import { isoDate } from '../store/json.js';
+import { isoDate, writeFileAtomic } from '../store/json.js';
 import { asScheduler } from '../activity/context.js';
 import { checkSchedule, CronError, nextRun, parseCron, presetOf } from './cron.js';
 import { runFolder } from './folder.js';
 import { backupFile, consentHash, hasDependencies, MANIFEST, packageCount, PACKAGES_DIR, ScriptFolders } from './files.js';
-import { InstallStore, planInstall, resolveRuntime, startInstall } from './packages.js';
+import { InstallStore, nodeSearchPath, planInstall, probeNode, resolveRuntime, startInstall } from './packages.js';
 import { INLINE_EXTENSION, loginShellPath, scriptBytes, sha256Text, startScript, type ScriptHandle } from './script.js';
 import {
   clampTimeout,
@@ -81,6 +81,11 @@ export interface CollectorsOptions {
   homeDir?: string;
   /** The PATH scripts run with (default: the login shell's PATH). */
   loginPath?: () => Promise<string>;
+  /**
+   * v6: the Node that runs JavaScript and TypeScript scripts, and whose npm installs package.json (default
+   * process.execPath: the Node the core itself runs on). Its folder comes first on those runs' PATH.
+   */
+  nodePath?: string;
   /** The environment scripts start from (default process.env). Distill's own DISTILL_* variables are removed. */
   baseEnv?: NodeJS.ProcessEnv;
   /** Where run folders go (default os.tmpdir()). */
@@ -440,8 +445,14 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     hooks.onHandle?.(entry.stop);
     try {
       if (clean) folders.removePackages(c.id, m.name);
-      const searchPath = await loginPath();
-      const plan = planInstall(m.name, folder, searchPath);
+      const node = nodePath();
+      const npm = m.name === 'package.json';
+      const searchPath = npm ? nodeSearchPath(node, await loginPath()) : await loginPath();
+      const plan = planInstall(m.name, folder, searchPath, node);
+      if (npm && !('error' in plan)) {
+        const info = await probeNode(node, scriptEnv(searchPath, {}));
+        rec.runtime = info ? { label: `Node ${info.version}`, path: node, version: info.version } : { label: 'Node', path: node };
+      }
       if ('error' in plan) {
         rec.result = 'failed';
         rec.error = { code: 'interpreterMissing', message: plan.error };
@@ -487,6 +498,19 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     } catch (err) {
       rec.result = 'failed';
       rec.error = { code: 'other', message: (err as Error).message };
+    }
+    // An install never changes what the owner allowed: npm 6 (and some npm 7+ cases) rewrite package.json
+    // (key order, formatting, normalized fields). Put the exact bytes back, whatever the outcome. Saves are
+    // refused while an install runs (and deleting is), so nothing else wrote the manifest meanwhile. A file
+    // that is gone stays gone: npm never deletes it, and a restore must never recreate a removed folder.
+    try {
+      const nowBytes = find(c.id) && fs.existsSync(m.path) ? fs.readFileSync(m.path) : null;
+      if (nowBytes && !nowBytes.equals(m.bytes)) writeFileAtomic(m.path, m.bytes, fs.statSync(m.path).mode & 0o777);
+    } catch (err) {
+      if (rec.result === 'success') {
+        rec.result = 'failed';
+        rec.error = { code: 'other', message: `Couldn't restore ${m.name} after the install: ${(err as Error).message}` };
+      }
     }
     const end = now();
     rec.endedAt = isoDate(end);
@@ -840,12 +864,15 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       }
     }
     const folder = isManaged(script) ? folders.folder(c.id) : null;
-    const runtime = await resolveRuntime(script.interpreter, folder, searchPath, scriptEnv(searchPath, {}));
+    const onNode = script.interpreter === 'node' || script.interpreter === 'typescript';
+    const runPath = onNode ? nodeSearchPath(nodePath(), searchPath) : searchPath;
+    const runtime = await resolveRuntime(script.interpreter, folder, runPath, scriptEnv(runPath, {}), nodePath());
     if ('error' in runtime) {
       run.result = 'failed';
       run.error = { code: 'interpreterMissing', message: runtime.error };
       return;
     }
+    run.runtime = runtime.runtime;
     if (entry.stopRequested) {
       run.result = 'stopped';
       return;
@@ -862,7 +889,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       scriptPath = script.source.file;
     }
     const before = queueNames(queueDir);
-    const env = scriptEnv(searchPath, {
+    const env = scriptEnv(runPath, {
       DISTILL_VAULT: path.resolve(vault.path),
       DISTILL_QUEUE_DIR: queueDir,
       DISTILL_COLLECTOR_ID: c.id,
@@ -956,6 +983,11 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       },
       flush,
     };
+  }
+
+  /** The Node that runs JavaScript and TypeScript scripts and npm installs: Distill's own (see CollectorsOptions.nodePath). */
+  function nodePath(): string {
+    return opts.nodePath ?? process.execPath;
   }
 
   async function loginPath(): Promise<string> {

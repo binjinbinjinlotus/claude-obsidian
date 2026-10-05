@@ -1,7 +1,7 @@
 /**
  * v6: script files, languages and packages (temp state dirs only).
  *
- * Package installs use fake `npm` and `python3` executables on the injected login PATH (success, failure,
+ * Package installs use a fake `npm` next to the injected Distill Node and a fake `python3` on the login PATH (success, failure,
  * timeout, Stop, masking). One real `npm install` runs offline with a `file:` dependency; real registry and
  * PyPI downloads are not exercised here (they need the network).
  */
@@ -13,7 +13,7 @@ import { after, describe, test } from 'node:test';
 import { CoreError, type Collector, type CollectorRun, type CoreEvent, type Settings } from '../contracts.js';
 import { consentHash, hasDependencies, packageCount, ScriptFolders, TRASH_KEEP_DAYS } from './files.js';
 import { createCollectorsService, type CollectorsOptions, type CollectorsService } from './index.js';
-import { planInstall, redact, typescriptFlags } from './packages.js';
+import { npmFor, planInstall, redact, resolveRuntime, typescriptFlags } from './packages.js';
 import { findOnPath, sha256Text } from './script.js';
 
 const roots: string[] = [];
@@ -64,6 +64,8 @@ function setup(extra: Partial<CollectorsOptions> = {}): Env {
       killGraceMs: 300,
       homeDir: root,
       loginPath: async () => `${bin}:${process.env.PATH ?? '/usr/bin:/bin'}`,
+      // Distill's Node, seen from `bin`: the npm next to it is the fake (or real) npm a test puts in `bin`.
+      nodePath: path.join(bin, 'node'),
       tmpDir: root,
       baseEnv: { HOME: root, PATH: process.env.PATH, DISTILL_STATE_DIR: '/secret/should-not-leak' },
       ...extra,
@@ -260,6 +262,142 @@ describe('script files (v6)', () => {
     assert.deepEqual(typescriptFlags({ version: '23.1.0', typescript: null }), ['--experimental-strip-types', '--disable-warning=ExperimentalWarning']);
     assert.equal(typescriptFlags({ version: '22.5.1', typescript: null }), undefined);
     assert.equal(typescriptFlags({ version: '20.18.0', typescript: null }), undefined);
+  });
+
+  test('an old node first on the login PATH: TypeScript and ESM JavaScript run on Distill’s Node, and the run says which', async (t) => {
+    // The owner's Mac: `zsh -l` finds /usr/local/bin/node v14 before nvm's 22. A fake old node stands in for it.
+    const env = setup({ nodePath: process.execPath });
+    fs.rmSync(path.join(env.bin, 'node'));
+    exe(path.join(env.bin, 'node'), '#!/bin/sh\necho ran > "$HOME/old-node-ran"\necho v14.16.0\nexit 1\n');
+    const want = { label: `Node ${process.versions.node}`, path: process.execPath, version: process.versions.node };
+
+    // ESM JavaScript that also spawns `node` itself: it finds Distill's Node too (its folder is first on PATH).
+    const js = await env.svc.createCollector({
+      kind: 'script',
+      script: {
+        source: { inline: 'import fs from "node:fs"; import { execFileSync } from "node:child_process"; fs.writeFileSync(process.argv[3] + "/js.md", execFileSync("node", ["-p", "process.versions.node"]).toString().trim());' },
+        interpreter: 'node',
+      },
+    });
+    await allow(env, js);
+    const jsRun = await runAndWait(env.svc, js.id);
+    assert.equal(jsRun.result, 'success', JSON.stringify(jsRun));
+    assert.equal(fs.readFileSync(path.join(env.queue, 'js.md'), 'utf8'), process.versions.node, 'a child `node` is Distill’s Node');
+    assert.deepEqual(jsRun.runtime, want);
+
+    const ts = await env.svc.createCollector({
+      kind: 'script',
+      script: { source: { inline: 'import fs from "node:fs";\nconst n: number = 2;\nfs.writeFileSync(`${process.argv[3]}/ts.md`, String(n));' }, interpreter: 'typescript' },
+    });
+    await allow(env, ts);
+    const tsRun = await runAndWait(env.svc, ts.id);
+    if (!typescriptFlags({ version: process.versions.node, typescript: null }) && !(process.features as { typescript?: unknown }).typescript) {
+      t.skip(`the test's Node ${process.versions.node} can't strip types`);
+      return;
+    }
+    assert.equal(tsRun.result, 'success', JSON.stringify(tsRun));
+    assert.equal(fs.readFileSync(path.join(env.queue, 'ts.md'), 'utf8'), '2');
+    assert.deepEqual(tsRun.runtime, want);
+    assert.ok(!fs.existsSync(path.join(env.root, 'old-node-ran')), 'the login shell’s old node never ran');
+
+    // The run's details keep the runtime across a restart.
+    const reopened = env.make();
+    assert.deepEqual((await reopened.listCollectorRuns(ts.id))[0]!.runtime, want);
+    await reopened.stop();
+  });
+
+  test('resolveRuntime: tsx in the folder runs on Distill’s Node; zsh and python3 still come from the login PATH', async () => {
+    const env = setup();
+    const folder = path.join(env.root, 'tsx-folder');
+    fs.mkdirSync(path.join(folder, 'node_modules', 'tsx', 'dist'), { recursive: true });
+    fs.writeFileSync(path.join(folder, 'node_modules', 'tsx', 'dist', 'cli.mjs'), '');
+    const node = path.join(env.bin, 'node');
+    const viaTsx = await resolveRuntime('typescript', folder, '/nowhere', {}, node);
+    assert.ok(!('error' in viaTsx));
+    assert.equal(viaTsx.command, node);
+    assert.deepEqual(viaTsx.args, [path.join(folder, 'node_modules', 'tsx', 'dist', 'cli.mjs')]);
+    assert.equal(viaTsx.runtime.label, `Node ${process.versions.node} with tsx`);
+    const zsh = await resolveRuntime('zsh', null, '/bin', {}, node);
+    assert.deepEqual(zsh, { command: '/bin/zsh', args: [], runtime: { label: 'zsh', path: '/bin/zsh' } });
+    const gone = await resolveRuntime('node', null, '/bin', {}, path.join(env.root, 'no-node'));
+    assert.ok('error' in gone && /Distill's Node/.test(gone.error));
+  });
+
+  test('npmFor: npm-cli.js next to Distill’s Node runs with that Node, never through its shebang', () => {
+    const env = setup();
+    // Layout of an nvm / official install: bin/node, bin/npm → ../lib/node_modules/npm/bin/npm-cli.js
+    const rt = path.join(env.root, 'rt');
+    const cli = path.join(rt, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js');
+    fs.mkdirSync(path.dirname(cli), { recursive: true });
+    fs.mkdirSync(path.join(rt, 'bin'));
+    fs.writeFileSync(cli, '#!/usr/bin/env node\n');
+    fs.symlinkSync(process.execPath, path.join(rt, 'bin', 'node'));
+    fs.symlinkSync('../lib/node_modules/npm/bin/npm-cli.js', path.join(rt, 'bin', 'npm'));
+    assert.deepEqual(npmFor(path.join(rt, 'bin', 'node')), { command: path.join(rt, 'bin', 'node'), args: [cli] });
+    // bin/npm linking to a .js elsewhere (no lib/ beside bin/).
+    const other = path.join(env.root, 'other');
+    fs.mkdirSync(path.join(other, 'bin'), { recursive: true });
+    fs.symlinkSync(process.execPath, path.join(other, 'bin', 'node'));
+    fs.symlinkSync(cli, path.join(other, 'bin', 'npm'));
+    assert.deepEqual(npmFor(path.join(other, 'bin', 'node')), { command: path.join(other, 'bin', 'node'), args: [fs.realpathSync(cli)] });
+    // A plain executable npm (the fakes here): run as is. None at all: undefined.
+    fakeNpm(env);
+    assert.deepEqual(npmFor(path.join(env.bin, 'node')), { command: path.join(env.bin, 'npm'), args: [] });
+    assert.equal(npmFor(path.join(env.root, 'nowhere', 'node')), undefined);
+    const plan = planInstall('package.json', env.root, '/nowhere', path.join(rt, 'bin', 'node'));
+    assert.ok(!('error' in plan));
+    assert.deepEqual(plan.steps, [{ command: path.join(rt, 'bin', 'node'), args: [cli, 'install', '--no-audit', '--no-fund'], label: 'npm install --no-audit --no-fund' }]);
+  });
+
+  test('npm rewriting package.json (npm 6) never changes what was allowed: same bytes, ready, consent unchanged', async () => {
+    const env = setup();
+    const manifest = '{"name":"x","type":"module","dependencies":{"leftpad":"^1.0.0"}}';
+    // npm 6 style: reorders keys, reindents, adds a trailing newline; then installs (or fails, from $HOME/npm-mode).
+    fs.writeFileSync(path.join(env.root, 'npm-mode'), 'ok');
+    exe(
+      path.join(env.bin, 'npm'),
+      [
+        '#!/bin/zsh',
+        'print -r -- "$*" > "$HOME/npm-args"',
+        'print -r -- \'{\n  "dependencies": {\n    "leftpad": "^1.0.0"\n  },\n  "name": "x",\n  "type": "module"\n}\' > package.json',
+        'mkdir -p node_modules/leftpad && print -r -- "export default (s) => \'  \' + s;" > node_modules/leftpad/index.js',
+        'print -r -- \'{"name":"leftpad","type":"module","main":"index.js"}\' > node_modules/leftpad/package.json',
+        '[[ $(<"$HOME/npm-mode") == fail ]] && exit 1',
+        'exit 0',
+      ].join('\n'),
+    );
+    const c = await env.svc.createCollector({
+      kind: 'script',
+      script: { source: { inline: 'import pad from "leftpad"; import fs from "node:fs"; fs.writeFileSync(process.argv[3] + "/p.md", pad("y"));' }, interpreter: 'node', manifest },
+    });
+    const file = path.join(env.state, 'collectors', 'scripts', c.id, 'package.json');
+    const before = fs.readFileSync(file);
+    const modeBefore = fs.statSync(file).mode & 0o777;
+    const allowed = await allow(env, c);
+    await env.svc.whenIdle();
+    const done = (await env.svc.getCollectorInstall(c.id))!;
+    assert.equal(done.result, 'success', JSON.stringify(done));
+    assert.match(done.outputTail!, /^\$ npm install --no-audit --no-fund\n/, 'the banner names npm, not node + npm-cli.js');
+    assert.deepEqual(done.runtime, { label: `Node ${process.versions.node}`, path: path.join(env.bin, 'node'), version: process.versions.node });
+    assert.ok(fs.readFileSync(file).equals(before), 'package.json is byte for byte what was allowed');
+    assert.equal(fs.statSync(file).mode & 0o777, modeBefore);
+    const status = (await env.svc.getCollector(c.id))!.status!;
+    assert.equal(status.script!.manifest!.state, 'ready');
+    assert.equal(status.script!.manifest!.needsInstall, false);
+    assert.equal(status.currentSha256, allowed.script!.allowedSha256, 'the consent hash didn’t move');
+    assert.equal(status.needsConsent, false);
+    assert.equal(status.script!.changes, undefined);
+    const run = await runAndWait(env.svc, c.id);
+    assert.equal(run.result, 'success', JSON.stringify(run));
+    assert.equal(run.installId, undefined, 'no second install');
+
+    // A failing install that rewrote package.json first is put back too.
+    fs.writeFileSync(path.join(env.root, 'npm-mode'), 'fail');
+    await env.svc.installCollectorPackages(c.id, { clean: true });
+    await env.svc.whenIdle();
+    assert.equal((await env.svc.getCollectorInstall(c.id))!.result, 'failed');
+    assert.ok(fs.readFileSync(file).equals(before));
+    assert.equal((await env.svc.getCollector(c.id))!.status!.currentSha256, allowed.script!.allowedSha256);
   });
 
   test('the manifest is part of consent; without one the hash is the script’s own', async () => {

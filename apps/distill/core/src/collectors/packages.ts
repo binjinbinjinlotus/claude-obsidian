@@ -1,22 +1,24 @@
 /**
  * v6: how a script runs (its runtime), and package installs for Distill-managed scripts.
  *
- * Runtimes, all found on the login shell's PATH:
- * - zsh, node: as before.
- * - python3: the folder's .venv/bin/python3 once packages were installed there, else python3.
- * - typescript: node with its built-in type stripping (on by default from Node 22.18 / 23.6; Node 22.6–22.17
- *   needs --experimental-strip-types). When the folder has tsx installed (a devDependency the user added),
- *   tsx runs it instead, for syntax stripping can't handle (enum, namespace). Older Node: a clear error.
+ * Runtimes:
+ * - zsh: from the login shell's PATH.
+ * - python3: the folder's .venv/bin/python3 once packages were installed there, else python3 from the login PATH.
+ * - node: Distill's own Node (the one the core runs on, process.execPath), never the login shell's node.
+ * - typescript: Distill's Node with its built-in type stripping (on by default from Node 22.18 / 23.6; Node
+ *   22.6–22.17 needs --experimental-strip-types). When the folder has tsx installed (a devDependency the user
+ *   added), tsx runs it instead (on the same Node), for syntax stripping can't handle (enum, namespace).
  *
  * Installs (cwd = the script's folder, same environment as a run, 10-minute timeout, Stop):
- * - package.json: `npm install --no-audit --no-fund` with the npm next to the node that runs scripts.
+ * - package.json: `npm install --no-audit --no-fund` with the npm that ships with Distill's Node, run by that
+ *   Node. If npm rewrote package.json, the caller puts the approved bytes back.
  * - requirements.txt: `python3 -m venv .venv` (when missing), then `.venv/bin/python3 -m pip install -r requirements.txt`.
  * Output is stdout and stderr interleaved, last 64 KB, with URL credentials and auth tokens masked.
  */
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { CollectorInstall, CollectorInterpreter, CollectorManifestName } from '../contracts.js';
+import type { CollectorInstall, CollectorInterpreter, CollectorManifestName, CollectorRuntime } from '../contracts.js';
 import { decodeInstall } from './store.js';
 import { findOnPath, startProcess, Tail, type ScriptHandle } from './script.js';
 import { encodeJSON, isObject, readJSON, str, writeFileAtomic } from '../store/json.js';
@@ -24,7 +26,9 @@ import { encodeJSON, isObject, readJSON, str, writeFileAtomic } from '../store/j
 export const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
 const PROBE_TTL_MS = 10 * 60 * 1000;
 
-export type Runtime = { command: string; args: string[] } | { error: string };
+export type RuntimeInfo = CollectorRuntime;
+
+export type Runtime = { command: string; args: string[]; runtime: RuntimeInfo } | { error: string };
 
 interface NodeInfo {
   version: string;
@@ -34,6 +38,10 @@ const nodeProbes = new Map<string, { at: number; info: NodeInfo | null }>();
 
 /** `node -p` for its version and process.features.typescript; cached 10 minutes per node binary. */
 export function probeNode(node: string, env: NodeJS.ProcessEnv): Promise<NodeInfo | null> {
+  if (node === process.execPath) {
+    const features = process.features as { typescript?: unknown };
+    return Promise.resolve({ version: process.versions.node, typescript: typeof features.typescript === 'string' ? features.typescript : null });
+  }
   const hit = nodeProbes.get(node);
   if (hit && Date.now() - hit.at < PROBE_TTL_MS) return Promise.resolve(hit.info);
   const code = 'JSON.stringify({v: process.versions.node, ts: (process.features && process.features.typescript) || null})';
@@ -62,31 +70,74 @@ export function typescriptFlags(info: NodeInfo): string[] | undefined {
   return undefined;
 }
 
+/**
+ * The PATH a JavaScript or TypeScript run (or an npm install) gets: Distill's Node's folder first, so a script
+ * that spawns `node`, a `#!/usr/bin/env node` bin and npm's lifecycle scripts find the same Node, never an
+ * older one earlier on the login shell's PATH.
+ */
+export function nodeSearchPath(nodePath: string, searchPath: string): string {
+  const dir = path.dirname(nodePath);
+  return [dir, ...searchPath.split(':').filter((d) => d && d !== dir)].join(':');
+}
+
+/**
+ * zsh and python3 come from the login shell's PATH (python3 from the folder's .venv once packages are
+ * installed). JavaScript and TypeScript always run on `nodePath`, the Node Distill's core runs on
+ * (process.execPath): Distill already needs that Node, npm installs packages with it (native addons are built
+ * for the Node that installs them), and an older node earlier on the login PATH can't import ESM or strip types.
+ */
 export async function resolveRuntime(
   interpreter: CollectorInterpreter,
   folder: string | null,
   searchPath: string,
   env: NodeJS.ProcessEnv,
+  nodePath: string = process.execPath,
 ): Promise<Runtime> {
   if (interpreter === 'python3' && folder) {
     const venv = path.join(folder, '.venv', 'bin', 'python3');
-    if (isExecutable(venv)) return { command: venv, args: [] };
+    if (isExecutable(venv)) return { command: venv, args: [], runtime: { label: 'python3 (.venv)', path: venv } };
   }
-  const binary = interpreter === 'typescript' ? 'node' : interpreter;
-  const found = findOnPath(binary, searchPath);
-  if (!found) return { error: interpreter === 'typescript' ? `node isn't on your PATH (TypeScript runs on Node).` : `${interpreter} isn't on your PATH.` };
-  if (interpreter !== 'typescript') return { command: found, args: [] };
+  if (interpreter === 'zsh' || interpreter === 'python3') {
+    const found = findOnPath(interpreter, searchPath);
+    if (!found) return { error: `${interpreter} isn't on your PATH.` };
+    return { command: found, args: [], runtime: { label: interpreter, path: found } };
+  }
+  if (!isExecutable(nodePath)) return { error: `Distill's Node (${nodePath}) isn't there any more.` };
+  const info = await probeNode(nodePath, env);
+  if (!info) return { error: `Couldn't ask ${nodePath} for its version.` };
+  const runtime: RuntimeInfo = { label: `Node ${info.version}`, path: nodePath, version: info.version };
+  if (interpreter === 'node') return { command: nodePath, args: [], runtime };
   if (folder) {
     const tsx = path.join(folder, 'node_modules', 'tsx', 'dist', 'cli.mjs');
-    if (fs.existsSync(tsx)) return { command: found, args: [tsx] };
+    if (fs.existsSync(tsx)) return { command: nodePath, args: [tsx], runtime: { ...runtime, label: `${runtime.label} with tsx` } };
   }
-  const info = await probeNode(found, env);
-  if (!info) return { error: `Couldn't ask ${found} for its version.` };
   const flags = typescriptFlags(info);
   if (!flags) {
-    return { error: `TypeScript needs Node 22.6 or later; ${found} is ${info.version}. Update Node, or add tsx to package.json and Install.` };
+    return {
+      error: `TypeScript needs Node 22.6 or later; Distill runs on Node ${info.version} (${nodePath}). Choose a newer Node for Distill, or add tsx to package.json and Install.`,
+    };
   }
-  return { command: found, args: flags };
+  return { command: nodePath, args: flags, runtime };
+}
+
+/**
+ * The npm that ships with `nodePath`, run by that Node: `<bin>/../lib/node_modules/npm/bin/npm-cli.js`, or what
+ * `<bin>/npm` links to when that is a .js file. Never through npm's `#!/usr/bin/env node` shebang, which finds
+ * whichever node comes first on PATH. Last resort: `<bin>/npm` itself (the install puts `<bin>` first on PATH).
+ */
+export function npmFor(nodePath: string): { command: string; args: string[] } | undefined {
+  const dir = path.dirname(nodePath);
+  const cli = path.resolve(dir, '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js');
+  if (fs.existsSync(cli)) return { command: nodePath, args: [cli] };
+  const sibling = path.join(dir, 'npm');
+  let real: string;
+  try {
+    real = fs.realpathSync(sibling);
+  } catch {
+    return undefined;
+  }
+  if (real.endsWith('.js')) return { command: nodePath, args: [real] };
+  return isExecutable(sibling) ? { command: sibling, args: [] } : undefined;
 }
 
 function isExecutable(p: string): boolean {
@@ -103,17 +154,23 @@ function isExecutable(p: string): boolean {
 export interface InstallStep {
   command: string;
   args: string[];
+  /** The banner line in the output when it isn't `<command's name> <args>` (npm run by its Node). */
+  label?: string;
 }
 
 /** What an install runs, or why it can't. Steps for Python are computed after a clean removed .venv. */
-export function planInstall(name: CollectorManifestName, folder: string, searchPath: string): { display: string; steps: InstallStep[] } | { error: string } {
+export function planInstall(
+  name: CollectorManifestName,
+  folder: string,
+  searchPath: string,
+  nodePath: string = process.execPath,
+): { display: string; steps: InstallStep[] } | { error: string } {
   if (name === 'package.json') {
-    const node = findOnPath('node', searchPath);
-    const sibling = node ? path.join(path.dirname(node), 'npm') : undefined;
-    const npm = sibling && isExecutable(sibling) ? sibling : findOnPath('npm', searchPath);
-    if (!npm) return { error: `npm isn't on your PATH.` };
+    const npm = npmFor(nodePath);
+    if (!npm) return { error: `There's no npm next to Distill's Node (${nodePath}).` };
     const args = ['install', '--no-audit', '--no-fund'];
-    return { display: `npm ${args.join(' ')}`, steps: [{ command: npm, args }] };
+    const display = `npm ${args.join(' ')}`;
+    return { display, steps: [{ command: npm.command, args: [...npm.args, ...args], label: display }] };
   }
   const venvPython = path.join(folder, '.venv', 'bin', 'python3');
   const steps: InstallStep[] = [];
@@ -165,7 +222,7 @@ export function startInstall(input: {
     let last: InstallOutcome = { exitCode: 0, signal: null, timedOut: false, stopped: false, outputTail: '' };
     for (const step of input.steps) {
       if (stopped) return { ...last, stopped: true, outputTail: redact(tail.text()) };
-      const banner = Buffer.from(`$ ${path.basename(step.command)} ${step.args.join(' ')}\n`);
+      const banner = Buffer.from(`$ ${step.label ?? `${path.basename(step.command)} ${step.args.join(' ')}`}\n`);
       tail.push(banner);
       input.onOutput?.(banner.toString('utf8'));
       current = startProcess({

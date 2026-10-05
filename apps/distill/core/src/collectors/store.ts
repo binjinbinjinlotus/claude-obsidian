@@ -22,6 +22,7 @@ import type {
   CollectorRun,
   CollectorRunFile,
   CollectorRunResult,
+  CollectorRuntime,
   CollectorTrigger,
   SchedulePreset,
   ScriptSource,
@@ -94,6 +95,8 @@ export function decodeInstall(v: unknown, now = new Date()): CollectorInstall | 
   const duration = num(v.durationMs);
   if (duration !== undefined) out.durationMs = duration;
   if (v.clean === true) out.clean = true;
+  const runtime = decodeRuntime(v.runtime);
+  if (runtime) out.runtime = runtime;
   if (v.exitCode === null || typeof v.exitCode === 'number') out.exitCode = v.exitCode as number | null;
   const signal = nullableStr(v.signal);
   if (signal !== undefined) out.signal = signal;
@@ -299,7 +302,19 @@ export function decodeRun(v: unknown, now = new Date()): CollectorRun | undefine
     const x = str(v[k]);
     if (x !== undefined) run[k] = x;
   }
+  const runtime = decodeRuntime(v.runtime);
+  if (runtime) run.runtime = runtime;
   return run;
+}
+
+/** v6: what ran a script or an install ({label, path, version?}). */
+export function decodeRuntime(v: unknown): CollectorRuntime | undefined {
+  if (!isObject(v)) return undefined;
+  const label = str(v.label);
+  const p = str(v.path);
+  if (!label || !p) return undefined;
+  const version = str(v.version);
+  return { label, path: p, ...(version ? { version } : {}) };
 }
 
 /** Keep runs newer than 30 days, and always the newest 200. `runs` is oldest first. */

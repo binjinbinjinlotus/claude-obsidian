@@ -17,6 +17,46 @@ supersede it with a new entry.
 
 ## 2026-10-04
 
+- **JavaScript and TypeScript collectors run on Distill's own Node, and npm
+  installs never change `package.json` (core built).** Spec:
+  [Collectors](collectors.md) → "Languages" ("Which Node") and "Packages".
+  - **Found on the owner's Mac:** `zsh -l` puts `/usr/local/bin/node`
+    v14.16.0 (npm 6.14) ahead of nvm's 22.22.1. The core took `node` and
+    `npm` from the login shell's PATH, but the app runs the core on 22.22.1.
+    - TypeScript failed ("needs Node 22.6").
+    - The JavaScript starter template's `import` failed.
+    - npm 6 rewrote `package.json` during the install. The manifest hash
+      moved, so a successful install read `needsInstall` again, and the
+      script read "changed since you allowed it".
+  - **Rule:** JavaScript and TypeScript always run on the core's own Node,
+    `process.execPath` (the app's `settings.nodePath` or highest nvm Node).
+    npm is the copy that ships with it, run by it:
+    `../lib/node_modules/npm/bin/npm-cli.js`, never through the shebang.
+    That Node's folder comes first on PATH for those runs and for installs.
+    - We rejected "the login shell's node when it is new enough".
+      Distill already requires its own Node, so this needs nothing new, and
+      one rule is easier to predict than a version check per language.
+    - npm builds native addons for the Node that installs them, so install
+      and run must use the same Node. The login-shell rule would break that
+      whenever the two differ.
+    - zsh and Python are unchanged.
+  - **Which Node ran is recorded:** `run.runtime` / `install.runtime`
+    (`{label: "Node 22.22.1", path, version}`), in the Activity details as
+    `runtime`. The Mac app doesn't show it yet; that needs a canvas pass.
+  - **Installs put `package.json` back byte for byte** when npm rewrote it,
+    whatever the outcome. This works for any npm version. `--no-save` would
+    also stop lockfile writes and depends on npm's behaviour. The consent
+    hash stays bound to what the owner read.
+  - **Before → after on the owner's setup** (a temp state dir, the real
+    login shell PATH):
+    - A TypeScript run went from failed ("/usr/local/bin/node is 14.16.0")
+      to success on "Node 22.22.1".
+    - A `file:`-dependency install went from success but `needsInstall`,
+      consent moved and the next run `notTrusted`, to success, `ready`, the
+      same bytes and consent, and the next run succeeding.
+    - Forcing Distill's Node to v14 (real npm 6): the install still ends
+      `ready` with the same bytes.
+
 - **Activity log fixes from the Mac Activity screen: settings in Settings'
   words, readable paths, scripts written in Distill (core built; Mac
   DistillKit reads the new keys).** Spec: [Activity log and

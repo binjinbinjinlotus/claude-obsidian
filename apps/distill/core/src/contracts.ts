@@ -997,6 +997,8 @@ export interface CollectorInstall {
   manifestSha256: string;
   /** node_modules / .venv was removed first. */
   clean?: boolean;
+  /** package.json: the Node whose npm ran the install (Distill's own Node). */
+  runtime?: CollectorRuntime;
   exitCode?: number | null;
   signal?: string | null;
   error?: { code: CollectorErrorCode; message: string };
@@ -1157,6 +1159,17 @@ export interface CollectorRun {
   installId?: string;
   /** v6, test runs: the scratch folder that stood in for the queue folder (filesAdded are its names). Kept until the next test run, at most 7 days. */
   outputDir?: string;
+  /** Script: what ran it (JavaScript and TypeScript run on Distill's own Node, never the login shell's node). */
+  runtime?: CollectorRuntime;
+}
+
+/** What ran a script or an npm install: label "Node 22.22.1", "Node 22.22.1 with tsx", "python3 (.venv)", "python3", "zsh". */
+export interface CollectorRuntime {
+  label: string;
+  /** The interpreter's absolute path. */
+  path: string;
+  /** Node's version (Node only). */
+  version?: string;
 }
 
 /** One entry of a vault's ledger: a file a Folder collector took (name, size, times, hash; never content). */
