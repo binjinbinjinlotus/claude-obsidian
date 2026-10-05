@@ -49,11 +49,42 @@ struct AddDraft: Equatable {
     var includeSubfolders = true
     var scriptInline = true
     var scriptFile = ""
-    var code = "#!/bin/zsh\n# Write files into the queue folder ($2, or $DISTILL_QUEUE_DIR).\n"
+    var code = ScriptTemplates.code(.zsh)
     var interpreter: CollectorInterpreter = .zsh
+    /// v6: the package manifest's text (package.json / requirements.txt), kept by Distill next to the script.
+    var manifest = ""
     var schedule = ScheduleDraft()
     var vaultPath = ""
     var name = ""
+
+    /// v6: "Kept by Distill" (a managed file written from `code`) or "Your own file".
+    var managed: Bool {
+        get { scriptInline }
+        set { scriptInline = newValue }
+    }
+
+    /// The language picker: an untouched template follows the language.
+    mutating func setLanguage(_ i: CollectorInterpreter) {
+        if code == ScriptTemplates.code(interpreter) || code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { code = ScriptTemplates.code(i) }
+        if interpreter.manifestName != i.manifestName { manifest = "" }
+        interpreter = i
+    }
+}
+
+/// Starting code for a new script Distill keeps, per language (it writes into the queue folder, `$2`).
+enum ScriptTemplates {
+    static func code(_ i: CollectorInterpreter) -> String {
+        switch i.rawValue {
+        case "python3":
+            return "import sys, pathlib\n# Write files into the queue folder (argv[2], or DISTILL_QUEUE_DIR).\nqueue = pathlib.Path(sys.argv[2])\n"
+        case "node":
+            return "import { writeFile } from 'node:fs/promises';\n// Write files into the queue folder (argv[3], or DISTILL_QUEUE_DIR).\nconst queue = process.argv[3];\n"
+        case "typescript":
+            return "import { writeFile } from 'node:fs/promises';\n// Write files into the queue folder (argv[3], or DISTILL_QUEUE_DIR).\nconst queue: string = process.argv[3];\n"
+        default:
+            return "#!/bin/zsh\n# Write files into the queue folder ($2, or $DISTILL_QUEUE_DIR).\n"
+        }
+    }
 }
 
 /// The settings form (Edit), in place of the read-only block.
@@ -70,6 +101,16 @@ struct CollectorDraft: Equatable {
     var timeoutSeconds = 300
     var advancedOpen = false
 
+    // v6 (a core with script files: `status.script`). The script field is "Kept by Distill" (`managed`,
+    // code and manifest edited here and saved with PUT …/script) or "Your own file" (a path).
+    var v6 = false
+    var managed = false
+    /// The files as loaded (GET …/script); nil until they arrive. Their hashes guard the save.
+    var loaded: CollectorScriptFiles?
+    var manifest = ""
+    /// "Schedule and Advanced" opened in a script's form.
+    var scheduleOpen = false
+
     init() {}
 
     init(_ c: Collector, text: CollectorText) {
@@ -84,11 +125,53 @@ struct CollectorDraft: Equatable {
             code = s.source.inlineCode ?? ""
             interpreter = s.interpreter
             timeoutSeconds = s.timeoutSeconds
+            v6 = c.status?.script != nil
+            managed = c.isManaged
+            if managed { scriptFile = "" }
         }
+    }
+
+    /// Take the files as loaded: the editor starts from them (and saves against their hashes).
+    mutating func take(_ files: CollectorScriptFiles) {
+        loaded = files
+        if managed {
+            code = files.code ?? ""
+            manifest = files.manifest?.text ?? ""
+        }
+    }
+
+    /// The language picker. The manifest follows the language's kind: the loaded one when it is that
+    /// kind, else empty (the new kind's file is read after Save).
+    mutating func setLanguage(_ i: CollectorInterpreter) {
+        let before = interpreter.manifestName
+        interpreter = i
+        guard before != i.manifestName else { return }
+        manifest = loaded?.manifest?.name == i.manifestName ? (loaded?.manifest?.text ?? "") : ""
+    }
+
+    /// The code or manifest differs from what was loaded.
+    var codeChanged: Bool { managed && loaded != nil && code != (loaded?.code ?? "") }
+    var manifestChanged: Bool { managed && loaded != nil && manifest != (loaded?.manifest?.text ?? "") }
+
+    /// v6: the PUT for a script that stays kept by Distill: only what changed, with the loaded hashes.
+    func scriptUpdate(stillManaged: Bool) -> CollectorScriptUpdate? {
+        guard v6, managed, stillManaged, let loaded else { return nil }
+        var u = CollectorScriptUpdate()
+        if code != (loaded.code ?? "") { u.code = code; u.baseSha256 = loaded.sha256 }
+        if let m = loaded.manifest, manifest != (m.text ?? "") {
+            let empty = manifest.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            // An emptied manifest that never existed sends nothing; one that existed is removed.
+            if !(empty && m.text == nil) {
+                u.manifest = .some(empty ? nil : manifest)
+                u.baseManifestSha256 = .some(m.sha256)
+            }
+        }
+        return u.isEmpty ? nil : u
     }
 
     /// Only what changed.
     func patch(from c: Collector, text: CollectorText) -> CollectorPatch {
+        if v6, c.isScript { return patchV6(from: c, text: text) }
         var p = CollectorPatch()
         if vaultPath != c.vaultPath { p.vaultPath = vaultPath }
         if schedule.cron != c.schedule.cron || schedule.preset != (c.schedule.preset ?? ScheduleDraft(c.schedule).preset) { p.schedule = schedule.schedule }
@@ -109,6 +192,38 @@ struct CollectorDraft: Equatable {
             if sp != ScriptPatch() { p.script = sp }
         }
         return p
+    }
+
+    /// v6 scripts: language, timeout, schedule, vault, and switching between kept by Distill and your own
+    /// file. Code a kept script already has never goes through PATCH (PUT …/script carries it with the
+    /// loaded hash, so an edit made in another editor isn't overwritten).
+    private func patchV6(from c: Collector, text: CollectorText) -> CollectorPatch {
+        var p = CollectorPatch()
+        if vaultPath != c.vaultPath { p.vaultPath = vaultPath }
+        if schedule.cron != c.schedule.cron || schedule.preset != (c.schedule.preset ?? ScheduleDraft(c.schedule).preset) { p.schedule = schedule.schedule }
+        guard let s = c.script else { return p }
+        var sp = ScriptPatch()
+        if managed != c.isManaged {
+            // To your own file: its path. To kept by Distill: the core writes this code to a new managed file.
+            sp.source = managed ? .inline(code) : .file(text.expand(scriptFile))
+        } else if !managed, text.expand(scriptFile) != (s.source.filePath ?? "") {
+            sp.source = .file(text.expand(scriptFile))
+        }
+        if interpreter != s.interpreter { sp.interpreter = interpreter }
+        if timeoutSeconds != s.timeoutSeconds { sp.timeoutSeconds = timeoutSeconds }
+        if sp != ScriptPatch() { p.script = sp }
+        return p
+    }
+
+    /// Saving asks for the OK again (a new script, language or manifest).
+    func asksAgain(from c: Collector, text: CollectorText) -> Bool {
+        guard c.isScript else { return false }
+        if v6 {
+            return codeChanged || manifestChanged || managed != c.isManaged || interpreter != c.script?.interpreter
+                || (!managed && text.expand(scriptFile) != (c.script?.source.filePath ?? ""))
+        }
+        return scriptInline != (c.script?.source.inlineCode != nil) || (scriptInline && code != c.script?.source.inlineCode)
+            || (!scriptInline && text.expand(scriptFile) != c.script?.source.filePath) || interpreter != c.script?.interpreter
     }
 }
 
@@ -160,6 +275,25 @@ final class CollectorsStore: ObservableObject {
     @Published var busy: [String: String] = [:]
     @Published var clock = Date()
 
+    // v6: packages, Test run, the manual run's result.
+    /// The newest install per collector (events, or `GET …/install` for a failed one's output).
+    @Published var installs: [String: CollectorInstall] = [:]
+    /// Live install output by install id (the last 64 KB).
+    @Published var installOutput: [String: String] = [:]
+    /// The run the user started here (Run now, Allow and run, Test run) per collector: its result
+    /// shows in the status card until Hide or a newer run.
+    @Published var shown: [String: String] = [:]
+    /// Test runs whose output is open in the status card.
+    @Published var testOutputOpen: Set<String> = []
+    /// Saving the editor met a file changed on disk (409): the message, per collector.
+    @Published var conflict: [String: String] = [:]
+    /// The files a consent card shows (code and manifest), per collector and hash.
+    @Published var consentFiles: [String: CollectorScriptFiles] = [:]
+    /// Snapshots: file sizes for a test run's files (the app stats the scratch folder).
+    var fixtureSizes: [String: Int]?
+    /// Snapshots: the Add sheet's managed path shows this state dir.
+    var stateDir: String?
+
     /// Snapshots: fixed clock, home and in-place menus.
     var fixtureNow: Date?
     var fixtureMenu = false
@@ -179,7 +313,7 @@ final class CollectorsStore: ObservableObject {
     }
 
     var now: Date { fixtureNow ?? clock }
-    private var client: CoreClient? { engine?.client }
+    var client: CoreClient? { engine?.client }
 
     // MARK: Derived
 
@@ -206,6 +340,22 @@ final class CollectorsStore: ObservableObject {
     func recentRuns(_ c: Collector) -> [CollectorRun] {
         let list = runs[c.id] ?? c.lastRun.map { [$0] } ?? []
         return list.filter { !$0.result.isActive }
+    }
+
+    /// The newest finished run the app knows, Test runs included (for the list row).
+    func latestRun(_ c: Collector) -> CollectorRun? {
+        let list = recentRuns(c)
+        let test = c.status?.script?.lastTestRun
+        guard let first = list.first else { return test }
+        if let test, test.startedAt > first.startedAt { return test }
+        return first
+    }
+
+    /// The finished run whose result the status card shows (started here, not hidden, nothing newer).
+    func shownRun(_ c: Collector) -> CollectorRun? {
+        guard let id = shown[c.id], let run = runs[c.id]?.first(where: { $0.id == id }), !run.result.isActive else { return nil }
+        if let newer = recentRuns(c).first, newer.id != run.id, newer.startedAt > run.startedAt { return nil }
+        return run
     }
 
     // MARK: Loading
@@ -254,8 +404,10 @@ final class CollectorsStore: ObservableObject {
         refresh(id)
     }
 
-    private func upsert(_ c: Collector) {
+    func upsert(_ c: Collector) {
         if let i = collectors.firstIndex(where: { $0.id == c.id }) { collectors[i] = c } else { collectors.append(c) }
+        // A failed install's card shows its output, which only GET …/install carries.
+        if installFailedNeedsOutput(c) { loadInstall(c.id) }
     }
 
     /// One-second clock while something runs (elapsed time in rows and the status card).
@@ -265,7 +417,7 @@ final class CollectorsStore: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard let self else { return }
-                if self.collectors.contains(where: \.isRunning) { self.clock = Date() }
+                if self.collectors.contains(where: { $0.isRunning || $0.isInstalling }) { self.clock = Date() }
             }
         }
     }
@@ -306,12 +458,13 @@ final class CollectorsStore: ObservableObject {
         runs[run.collectorId] = list
         output[run.id] = nil
         busy[run.collectorId] = nil
-        if run.result == .success || run.result == .failed { refresh(run.collectorId) }
+        // The status (lastRun, lastTestRun, the sidebar count) follows the run.
+        refresh(run.collectorId)
     }
 
     // MARK: Commands
 
-    private func perform(_ id: String, _ what: String, _ op: @escaping (CoreClient) async throws -> Void) {
+    func perform(_ id: String, _ what: String, _ op: @escaping (CoreClient) async throws -> Void) {
         guard let client else { return }
         busy[id] = what
         Task {
@@ -329,15 +482,26 @@ final class CollectorsStore: ObservableObject {
         }
     }
 
+    /// Run now. A script that waits for the user's OK is "Allow and run" instead.
     func runNow(_ c: Collector) {
+        if c.needsConsent { allowAndRun(c); return }
         perform(c.id, "run") { [weak self] client in
             let run = try await client.runCollector(c.id)
-            if run.result.isActive { self?.runStarted(run) } else { self?.runFinished(run) }
+            self?.started(run)
         }
     }
 
+    /// Stop: the run, and while packages install, the install too (and the run waiting for it).
     func stop(_ c: Collector) {
-        perform(c.id, "stop") { client in _ = try await client.stopCollector(c.id) }
+        let installing = c.isInstalling
+        perform(c.id, "stop") { client in
+            if installing {
+                _ = try await client.stopCollectorInstall(c.id)
+                _ = try? await client.stopCollector(c.id) // the run that waited for it, if any
+            } else {
+                _ = try await client.stopCollector(c.id)
+            }
+        }
     }
 
     /// Allow the script's current version (the core's hash; never one computed here).
@@ -361,15 +525,71 @@ final class CollectorsStore: ObservableObject {
         page = .overview
         editing = CollectorDraft(c, text: text)
         editing?.advancedOpen = c.isScript && advancedOpen
+        conflict[c.id] = nil
+        if editing?.v6 == true { loadEditorFiles(c) }
+    }
+
+    /// The editor's files (code, manifest and their hashes) for a v6 script.
+    func loadEditorFiles(_ c: Collector, keepText: Bool = false) {
+        guard let client else { return }
+        Task { [weak self] in
+            guard let files = try? await client.collectorScript(c.id) else { return }
+            guard let self, self.editing != nil, self.current?.id == c.id else { return }
+            if keepText {
+                // Keep editing: the user's text stays; the hashes move to what is on disk now.
+                self.editing?.loaded = files
+            } else {
+                self.editing?.take(files)
+            }
+        }
     }
 
     func save(_ c: Collector) {
         guard let draft = editing else { return }
         let patch = draft.patch(from: c, text: text)
-        if patch.isEmpty { editing = nil; return }
-        perform(c.id, "save") { [weak self] client in
-            let updated = try await client.updateCollector(c.id, patch)
-            self?.upsert(updated)
+        let stillManaged = draft.managed && c.isManaged
+        let update = draft.scriptUpdate(stillManaged: stillManaged)
+        if patch.isEmpty && update == nil { editing = nil; return }
+        conflict[c.id] = nil
+        guard let client else { return }
+        busy[c.id] = "save"
+        Task { [weak self] in
+            defer { if self?.busy[c.id] == "save" { self?.busy[c.id] = nil } }
+            do {
+                if !patch.isEmpty { self?.upsert(try await client.updateCollector(c.id, patch)) }
+            } catch {
+                self?.engine?.report(error)
+                return
+            }
+            var update = update
+            // A language change renames the script (same bytes, same hash). When the manifest kind changes
+            // with it (requirements.txt ↔ package.json), the manifest typed here goes to the new kind's
+            // file, against that file's hash on disk.
+            if stillManaged, let old = c.script?.interpreter, old.manifestName != draft.interpreter.manifestName {
+                update?.manifest = nil
+                update?.baseManifestSha256 = nil
+                let typed = draft.manifest.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !typed.isEmpty, draft.interpreter.manifestName != nil, let files = try? await client.collectorScript(c.id) {
+                    var u = update ?? CollectorScriptUpdate()
+                    u.manifest = .some(draft.manifest)
+                    u.baseManifestSha256 = .some(files.manifest?.sha256)
+                    update = u
+                }
+                if update?.isEmpty == true { update = nil }
+            }
+            if let update {
+                do {
+                    _ = try await client.saveCollectorScript(c.id, update)
+                    if let fresh = try? await client.collector(c.id) { self?.upsert(fresh) }
+                } catch let e as CoreClientError where e.status == 409 {
+                    // Changed on disk since the editor loaded it: say so and keep the draft (Reload or Keep editing).
+                    self?.conflict[c.id] = e.description
+                    return
+                } catch {
+                    self?.engine?.report(error)
+                    return
+                }
+            }
             self?.editing = nil
         }
     }
@@ -522,7 +742,10 @@ final class CollectorsStore: ObservableObject {
         } else {
             let source: ScriptSource = d.scriptInline ? .inline(d.code) : .file(text.expand(d.scriptFile))
             input.name = d.name.isEmpty ? (d.scriptInline ? "Script" : ((d.scriptFile as NSString).lastPathComponent as NSString).deletingPathExtension) : d.name
-            input.script = .init(source: source, interpreter: d.interpreter)
+            // A script Distill keeps gets its package manifest at creation; its packages install on Allow.
+            let manifest = d.manifest.trimmingCharacters(in: .whitespacesAndNewlines)
+            input.script = .init(source: source, interpreter: d.interpreter,
+                                 manifest: d.managed && d.interpreter.manifestName != nil && !manifest.isEmpty ? d.manifest : nil)
         }
         guard let client else { return }
         busy["add"] = "add"

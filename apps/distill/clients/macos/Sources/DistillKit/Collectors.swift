@@ -39,7 +39,39 @@ public struct CollectorInterpreter: RawStringValue {
     public static let zsh = CollectorInterpreter("zsh")
     public static let python3 = CollectorInterpreter("python3")
     public static let node = CollectorInterpreter("node")
-    public static let all: [CollectorInterpreter] = [.zsh, .python3, .node]
+    /// v6: runs on the login shell's node with its built-in type stripping.
+    public static let typescript = CollectorInterpreter("typescript")
+    public static let all: [CollectorInterpreter] = [.zsh, .python3, .node, .typescript]
+
+    /// The language picker's name: zsh, Python, JavaScript, TypeScript (unknown values as they are).
+    public var language: String {
+        switch rawValue {
+        case "zsh": return "zsh"
+        case "python3": return "Python"
+        case "node": return "JavaScript"
+        case "typescript": return "TypeScript"
+        default: return rawValue
+        }
+    }
+    /// The managed file's extension (a migrated node script may keep `.mjs`; the core's path is the truth).
+    public var fileExtension: String {
+        switch rawValue {
+        case "python3": return "py"
+        case "node": return "js"
+        case "typescript": return "ts"
+        default: return "zsh"
+        }
+    }
+    /// The package manifest this language uses in a managed folder; nil for zsh.
+    public var manifestName: String? {
+        switch rawValue {
+        case "python3": return "requirements.txt"
+        case "node", "typescript": return "package.json"
+        default: return nil
+        }
+    }
+    /// What actually runs the file (TypeScript runs on node).
+    public var command: String { rawValue == "typescript" ? "node" : rawValue }
 }
 
 /// `SchedulePreset`: every15 / hourly / daily / weekdays / custom.
@@ -87,6 +119,8 @@ public struct CollectorErrorCode: RawStringValue {
     public static let notAllowed = CollectorErrorCode("notAllowed")
     public static let scriptChanged = CollectorErrorCode("scriptChanged")
     public static let interrupted = CollectorErrorCode("interrupted")
+    /// v6: the install before the run failed.
+    public static let installFailed = CollectorErrorCode("installFailed")
     public static let other = CollectorErrorCode("other")
 }
 
@@ -175,33 +209,47 @@ public enum ScriptSource: Codable, Hashable, Sendable {
 
 public struct ScriptCollectorSettings: Codable, Hashable, Sendable {
     public var source: ScriptSource
+    /// v6: `source.managed`: a script Distill keeps in its own folder (`{file, managed: true}`).
+    public var managed: Bool
     public var interpreter: CollectorInterpreter
     public var timeoutSeconds: Int
     public var allowedSha256: String?
     public var allowedAt: Date?
+    /// v6: the hash of each file the consent covered.
+    public var allowedFiles: AllowedFiles?
 
-    public init(source: ScriptSource, interpreter: CollectorInterpreter, timeoutSeconds: Int = 300,
-                allowedSha256: String? = nil, allowedAt: Date? = nil) {
-        self.source = source; self.interpreter = interpreter; self.timeoutSeconds = timeoutSeconds
-        self.allowedSha256 = allowedSha256; self.allowedAt = allowedAt
+    public init(source: ScriptSource, managed: Bool = false, interpreter: CollectorInterpreter, timeoutSeconds: Int = 300,
+                allowedSha256: String? = nil, allowedAt: Date? = nil, allowedFiles: AllowedFiles? = nil) {
+        self.source = source; self.managed = managed; self.interpreter = interpreter; self.timeoutSeconds = timeoutSeconds
+        self.allowedSha256 = allowedSha256; self.allowedAt = allowedAt; self.allowedFiles = allowedFiles
     }
 
-    enum Keys: String, CodingKey { case source, interpreter, timeoutSeconds, allowedSha256, allowedAt }
+    enum Keys: String, CodingKey { case source, interpreter, timeoutSeconds, allowedSha256, allowedAt, allowedFiles }
+    private enum SourceKeys: String, CodingKey { case managed }
+    private struct ManagedSource: Encodable { let file: String; let managed: Bool }
+
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
         source = c.lossy(ScriptSource.self, .source) ?? .inline("")
+        managed = (try? c.nestedContainer(keyedBy: SourceKeys.self, forKey: .source))?.lossy(Bool.self, .managed) ?? false
         interpreter = c.lossy(CollectorInterpreter.self, .interpreter) ?? .zsh
         timeoutSeconds = c.lossyInt(.timeoutSeconds) ?? 300
         allowedSha256 = c.lossy(String.self, .allowedSha256)
         allowedAt = c.lossyDate(.allowedAt)
+        allowedFiles = c.lossy(AllowedFiles.self, .allowedFiles)
     }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: Keys.self)
-        try c.encode(source, forKey: .source)
+        if managed, let path = source.filePath {
+            try c.encode(ManagedSource(file: path, managed: true), forKey: .source)
+        } else {
+            try c.encode(source, forKey: .source)
+        }
         try c.encode(interpreter, forKey: .interpreter)
         try c.encode(timeoutSeconds, forKey: .timeoutSeconds)
         try c.encodeIfPresent(allowedSha256, forKey: .allowedSha256)
         try c.encodeIfPresent(allowedAt.map(CoreDate.format), forKey: .allowedAt)
+        try c.encodeIfPresent(allowedFiles, forKey: .allowedFiles)
     }
 }
 
@@ -214,16 +262,19 @@ public struct CollectorStatus: Codable, Hashable, Sendable {
     public var scriptProblem: String?
     public var needsConsent: Bool
     public var collectedCount: Int?
+    /// v6, scripts: where the script lives and its packages (absent from an older core).
+    public var script: CollectorScriptStatus?
     public var needsAttention: Bool
 
     public init(running: Bool = false, nextRunAt: Date? = nil, lastRun: CollectorRun? = nil, currentSha256: String? = nil,
-                scriptProblem: String? = nil, needsConsent: Bool = false, collectedCount: Int? = nil, needsAttention: Bool = false) {
+                scriptProblem: String? = nil, needsConsent: Bool = false, collectedCount: Int? = nil, script: CollectorScriptStatus? = nil,
+                needsAttention: Bool = false) {
         self.running = running; self.nextRunAt = nextRunAt; self.lastRun = lastRun; self.currentSha256 = currentSha256
         self.scriptProblem = scriptProblem; self.needsConsent = needsConsent; self.collectedCount = collectedCount
-        self.needsAttention = needsAttention
+        self.script = script; self.needsAttention = needsAttention
     }
 
-    enum Keys: String, CodingKey { case running, nextRunAt, lastRun, currentSha256, scriptProblem, needsConsent, collectedCount, needsAttention }
+    enum Keys: String, CodingKey { case running, nextRunAt, lastRun, currentSha256, scriptProblem, needsConsent, collectedCount, script, needsAttention }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
         running = c.lossy(Bool.self, .running) ?? false
@@ -233,6 +284,7 @@ public struct CollectorStatus: Codable, Hashable, Sendable {
         scriptProblem = c.lossy(String.self, .scriptProblem)
         needsConsent = c.lossy(Bool.self, .needsConsent) ?? false
         collectedCount = c.lossyInt(.collectedCount)
+        script = c.lossy(CollectorScriptStatus.self, .script)
         needsAttention = c.lossy(Bool.self, .needsAttention) ?? false
     }
     public func encode(to encoder: Encoder) throws {
@@ -244,6 +296,7 @@ public struct CollectorStatus: Codable, Hashable, Sendable {
         try c.encodeIfPresent(scriptProblem, forKey: .scriptProblem)
         try c.encode(needsConsent, forKey: .needsConsent)
         try c.encodeIfPresent(collectedCount, forKey: .collectedCount)
+        try c.encodeIfPresent(script, forKey: .script)
         try c.encode(needsAttention, forKey: .needsAttention)
     }
 }
@@ -308,6 +361,16 @@ public struct Collector: Codable, Hashable, Sendable, Identifiable {
     public var needsConsent: Bool { status?.needsConsent ?? false }
     public var needsAttention: Bool { status?.needsAttention ?? false }
     public var lastRun: CollectorRun? { status?.lastRun }
+    /// v6: a script Distill keeps in its own folder (the record's `managed`, or the status's).
+    public var isManaged: Bool { script?.managed == true || status?.script?.managed == true }
+    public var manifest: CollectorManifestStatus? { status?.script?.manifest }
+    /// v6: packages are being installed (not counted in `status.running`).
+    public var isInstalling: Bool { manifest?.installing == true || manifest?.state == "installing" }
+    /// The script file that runs: the status's path, else the record's file.
+    public var scriptPath: String? {
+        if let p = status?.script?.path, !p.isEmpty { return p }
+        return script?.source.filePath
+    }
 }
 
 public struct CollectorRunError: Codable, Hashable, Sendable {
@@ -391,22 +454,29 @@ public struct CollectorRun: Codable, Hashable, Sendable, Identifiable {
     public var sha256: String?
     public var stdoutTail: String?
     public var stderrTail: String?
+    /// v6: the install this run did first.
+    public var installId: String?
+    /// v6, test runs: the scratch folder that stood in for the queue (`filesAdded` are its names).
+    public var outputDir: String?
+
+    /// v6: a Test run (into a scratch folder, never the queue).
+    public var isTest: Bool { trigger == "test" }
 
     public init(id: String, collectorId: String, kind: CollectorKind = .folder, vaultPath: String = "", trigger: String = "schedule",
                 startedAt: Date, endedAt: Date? = nil, durationMs: Double? = nil, result: CollectorRunResult,
                 waiting: String? = nil, skipReason: String? = nil, error: CollectorRunError? = nil, files: [CollectorRunFile]? = nil,
                 counts: CollectorRunCounts = CollectorRunCounts(), filesAdded: [String] = [], exitCode: Int? = nil, signal: String? = nil,
-                sha256: String? = nil, stdoutTail: String? = nil, stderrTail: String? = nil) {
+                sha256: String? = nil, stdoutTail: String? = nil, stderrTail: String? = nil, installId: String? = nil, outputDir: String? = nil) {
         self.id = id; self.collectorId = collectorId; self.kind = kind; self.vaultPath = vaultPath; self.trigger = trigger
         self.startedAt = startedAt; self.endedAt = endedAt; self.durationMs = durationMs; self.result = result
         self.waiting = waiting; self.skipReason = skipReason; self.error = error; self.files = files; self.counts = counts
         self.filesAdded = filesAdded; self.exitCode = exitCode; self.signal = signal; self.sha256 = sha256
-        self.stdoutTail = stdoutTail; self.stderrTail = stderrTail
+        self.stdoutTail = stdoutTail; self.stderrTail = stderrTail; self.installId = installId; self.outputDir = outputDir
     }
 
     enum Keys: String, CodingKey {
         case id, collectorId, kind, vaultPath, trigger, startedAt, endedAt, durationMs, result, waiting, skipReason, error, files, counts,
-             filesAdded, exitCode, signal, sha256, stdoutTail, stderrTail
+             filesAdded, exitCode, signal, sha256, stdoutTail, stderrTail, installId, outputDir
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -433,6 +503,8 @@ public struct CollectorRun: Codable, Hashable, Sendable, Identifiable {
         sha256 = c.lossy(String.self, .sha256)
         stdoutTail = c.lossy(String.self, .stdoutTail)
         stderrTail = c.lossy(String.self, .stderrTail)
+        installId = c.lossy(String.self, .installId)
+        outputDir = c.lossy(String.self, .outputDir)
     }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: Keys.self)
@@ -456,6 +528,8 @@ public struct CollectorRun: Codable, Hashable, Sendable, Identifiable {
         try c.encodeIfPresent(sha256, forKey: .sha256)
         try c.encodeIfPresent(stdoutTail, forKey: .stdoutTail)
         try c.encodeIfPresent(stderrTail, forKey: .stderrTail)
+        try c.encodeIfPresent(installId, forKey: .installId)
+        try c.encodeIfPresent(outputDir, forKey: .outputDir)
     }
 }
 
@@ -533,8 +607,10 @@ public struct NewCollectorInput: Encodable, Hashable, Sendable {
         public var source: ScriptSource
         public var interpreter: CollectorInterpreter
         public var timeoutSeconds: Int?
-        public init(source: ScriptSource, interpreter: CollectorInterpreter, timeoutSeconds: Int? = nil) {
-            self.source = source; self.interpreter = interpreter; self.timeoutSeconds = timeoutSeconds
+        /// v6: the package manifest's text for a managed script (package.json / requirements.txt).
+        public var manifest: String?
+        public init(source: ScriptSource, interpreter: CollectorInterpreter, timeoutSeconds: Int? = nil, manifest: String? = nil) {
+            self.source = source; self.interpreter = interpreter; self.timeoutSeconds = timeoutSeconds; self.manifest = manifest
         }
     }
     public var kind: CollectorKind
