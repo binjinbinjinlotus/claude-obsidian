@@ -46,7 +46,9 @@ the app became a client of the core (2026-10-01).
 `--output-format json` returns an envelope. `parseClaudeJSON` reads
 `session_id`, `result`, `is_error`, `total_cost_usd`, `structured_output`, and
 `permission_denials` (`tool_name`, `tool_input`). The raw envelope of each turn is
-saved as `<vault>/.vault-meta/worker/<job-id>/turn-<n>.json`.
+saved as `<vault>/.vault-meta/worker/<job-id>/turn-<n>.json`. For a
+streamed batch turn (below) that file holds the whole stream, one JSON
+event per line (`parseClaudeStream` keeps it as `raw`).
 
 **Batch turns stream (v7, 2026-10-05).** When the request has `onStep`, as a
 batch turn does for the [live log](live-log.md), the runner passes
