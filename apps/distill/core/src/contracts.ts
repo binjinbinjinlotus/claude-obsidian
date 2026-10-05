@@ -350,7 +350,19 @@ export interface RunRequest {
   /** Absolute paths of images to attach (vision runners). */
   images?: string[];
   signal?: AbortSignal;
+  /**
+   * v7 (live log): called for each step the agent takes while it runs (a tool it calls, a tool that
+   * finished, a status message). Claude Code then streams (`stream-json`); the result is unchanged.
+   * Runners without a tool loop never call it.
+   */
+  onStep?: (step: RunnerStep) => void;
 }
+
+/** v7: one thing an agent did, as the runner saw it (Claude Code stream-json, Codex --json). */
+export type RunnerStep =
+  | { kind: 'tool'; id?: string; tool: string; input: Record<string, unknown> }
+  | { kind: 'toolDone'; id: string; isError?: boolean }
+  | { kind: 'message'; text: string };
 
 export interface RunResult {
   sessionID?: string;
@@ -716,6 +728,49 @@ export interface Progress {
   model?: string;
   finished?: boolean;
   error?: string;
+  /** v7, batches: the file being worked on now, e.g. the file whose labels are being suggested. */
+  current?: string;
+}
+
+// ───────────────────────────── Live log (job steps) ─────────────────────────────
+
+/**
+ * v7: one line of a job's live log (spec live-log.md). Plain words for people, plus a short raw
+ * `detail` (tool and target only). Never file contents, tool results, a draft's text or secrets.
+ * A step is sent again when it changes (running → done); `id` is stable.
+ */
+export interface JobStep {
+  id: string;
+  at: string; // ISO-8601, when it started
+  endedAt?: string;
+  /** Where it belongs: getting ready, the AI's steps, the core's check, your review, applying. */
+  phase: 'prepare' | 'agent' | 'check' | 'review' | 'apply';
+  /** note = the AI's own short status message. */
+  kind: 'step' | 'note';
+  state: 'done' | 'running' | 'waiting' | 'review' | 'failed';
+  /**
+   * What sort of step, so clients can fold repeats ("Read 22 sources"): move, labels, label, read,
+   * readPage, readRef, search, command, write, edit, skill, plan, web, agent, tool, note, check, review,
+   * answer, apply, actions, done, error.
+   */
+  verb: string;
+  text: string;
+  detail?: string;
+  /** A short trailing count or fact: "3 labels", "31 changes". */
+  count?: string;
+  /** The file or page it was about (a name, never a path outside the vault). */
+  file?: string;
+  /** A step inside another (a file inside "Suggesting labels"). */
+  parent?: string;
+}
+
+export interface JobStepsPage {
+  jobId: string;
+  steps: JobStep[];
+  /** False when the job ran before steps were kept (or its log was removed). */
+  kept: boolean;
+  /** True when the job had more steps than are kept (2,000). */
+  truncated?: boolean;
 }
 
 // ───────────────────────────── Errors ─────────────────────────────
@@ -1283,12 +1338,21 @@ export interface CollectorRun {
   /** Script: the last 64 KB of each stream. */
   stdoutTail?: string;
   stderrTail?: string;
+  /** v7: both streams in the order they were printed, the last 64 KB, consecutive output of one stream merged. */
+  outputLog?: CollectorOutputChunk[];
   /** v6: the install this run did first (the manifest changed since the last install). */
   installId?: string;
   /** v6, test runs: the scratch folder that stood in for the queue folder (filesAdded are its names). Kept until the next test run, at most 7 days. */
   outputDir?: string;
   /** Script: what ran it (JavaScript and TypeScript run on Distill's own Node, never the login shell's node). */
   runtime?: CollectorRuntime;
+}
+
+/** v7: a piece of script output and when it came. */
+export interface CollectorOutputChunk {
+  stream: 'stdout' | 'stderr';
+  text: string;
+  at: string; // ISO-8601
 }
 
 /** What ran a script or an npm install: label "Node 22.22.1", "Node 22.22.1 with tsx", "python3 (.venv)", "python3", "zsh". */
@@ -1474,7 +1538,9 @@ export type CoreEvent =
   // v5: a queue scan finished (Refresh, window, periodic). A `queue` event precedes it when the list changed.
   | { type: 'queue.scanned'; result: QueueScanResult }
   // v6: a line was added to the activity log (older Mac builds decode unknown events as `.unknown`).
-  | { type: 'activity'; entry: ActivityEntry };
+  | { type: 'activity'; entry: ActivityEntry }
+  // v7: a step of a job's live log, new or changed (older Mac builds decode it as `.unknown`).
+  | { type: 'job.step'; jobId: string; step: JobStep };
 
 // ───────────────────────────── The core facade ─────────────────────────────
 
@@ -1520,6 +1586,8 @@ export interface DistillCore {
   deleteJob(id: string): Promise<void>;
   /** argv that reopens the job's session interactively; null when the runner has none. */
   jobResumeCommand(id: string): Promise<string[] | null>;
+  /** v7: the job's live log, as kept (GET /v1/jobs/:id/steps); not_found for an unknown job. */
+  listJobSteps?(id: string): Promise<JobStepsPage>;
   /** Vault pages for the note picker (`[[`), best matches first. */
   searchPages(query: string, opts?: { vaultPath?: string; limit?: number }): Promise<{ path: string; title: string }[]>;
   /**

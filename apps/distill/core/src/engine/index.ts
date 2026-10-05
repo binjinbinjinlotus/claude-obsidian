@@ -28,6 +28,7 @@ import {
   type ReviewLabels,
   type ReviewSource,
   type RunRequest,
+  type RunnerStep,
   type RunResult,
   type RunnerRegistry,
   type Settings,
@@ -144,7 +145,7 @@ export type ActionsOwned =
   | 'listConnections' | 'connect' | 'signInURL' | 'disconnect';
 export type AskOwned = 'ask' | 'listConversations' | 'getConversation' | 'deleteConversation' | 'setConversationPinned' | 'cancelAsk';
 /** Implemented in index.ts from the merged event stream. */
-export type CompositionOwned = 'listProgress';
+export type CompositionOwned = 'listProgress' | 'listJobSteps';
 export type RunnerAdminOwned = 'listRunners' | 'setRunnerSecret';
 
 /**
@@ -191,6 +192,14 @@ export interface EngineOptions {
   trashDir?: string;
   /** v3: a batch (queue-consumer job) was applied: completed with changed paths. Runs once per transition. */
   onJobApplied?: (job: Job) => void | Promise<void>;
+  /** v7: the live log (steps/). Gets each agent step of a turn and each file of the label pre-step. */
+  steps?: EngineStepSink;
+}
+
+/** v7: where the engine reports what the live log can't see in events. */
+export interface EngineStepSink {
+  runnerStep(jobId: string, step: RunnerStep): void;
+  labelFile(jobId: string, file: string, state: 'running' | 'done' | 'failed', labels?: number): void;
 }
 
 export type { Settings };
@@ -661,6 +670,8 @@ export function createEngine(opts: EngineOptions): Engine {
       environment: { CLAUDE_OBSIDIAN_VAULT: vault.path },
       signal: o.signal,
     };
+    const stepSink = opts.steps;
+    if (stepSink) request.onStep = (step) => stepSink.runnerStep(job.id, step);
     try {
       return { kind: 'result', result: await runner.run(request, clone(settings)) };
     } catch (err) {
@@ -1373,6 +1384,7 @@ export function createEngine(opts: EngineOptions): Engine {
         stepIndex: steps.indexOf('Suggesting labels'),
         done: 0,
         total: draft.pending.length,
+        ...(draft.pending[0] ? { current: draft.pending[0].entry.file } : {}),
         ...selectionFields(labelSuggestSelection(settings)),
       });
       track(
@@ -1387,8 +1399,12 @@ export function createEngine(opts: EngineOptions): Engine {
             if (controller.signal.aborted) return;
             const abs = path.join(vault.path, entry.file);
             const known = queueLabeler.lookup(abs);
+            opts.steps?.labelFile(job.id, entry.file, 'running');
+            // The progress line names the file that just started (up to 3 run at once).
+            updateProgress(job.id, { current: entry.file });
             if (known?.suggestedLabels && known.suggestedLabels.length > 0) {
               entry.labels = known.suggestedLabels.map((l) => l.name);
+              opts.steps?.labelFile(job.id, entry.file, 'done', entry.labels.length);
             } else {
               const key = `label:${job.id}:${entry.file}`;
               const item = path.posix.basename(entry.file);
@@ -1412,9 +1428,13 @@ export function createEngine(opts: EngineOptions): Engine {
                 cost += out.costUSD;
                 entry.labels = out.labels.map((l) => l.name);
                 if (entry.origin === 'queue-folder') queueLabeler.remember(abs, { labels: out.labels });
+                opts.steps?.labelFile(job.id, entry.file, 'done', entry.labels.length);
               } catch (err) {
                 error = controller.signal.aborted ? 'Stopped.' : (err as Error).message;
-                if (!controller.signal.aborted) failures.push(`${entry.file}: ${error}`);
+                if (!controller.signal.aborted) {
+                  opts.steps?.labelFile(job.id, entry.file, 'failed');
+                  failures.push(`${entry.file}: ${error}`);
+                }
               } finally {
                 finishProgress(key, error ? { error } : {});
               }

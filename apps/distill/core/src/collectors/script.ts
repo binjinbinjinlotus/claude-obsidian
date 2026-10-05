@@ -10,7 +10,8 @@ import { spawn, execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { CollectorInterpreter, ScriptSource } from '../contracts.js';
+import { StringDecoder } from 'node:string_decoder';
+import type { CollectorInterpreter, CollectorOutputChunk, ScriptSource } from '../contracts.js';
 
 export const TAIL_BYTES = 64 * 1024;
 export const DEFAULT_KILL_GRACE_MS = 10_000;
@@ -47,6 +48,46 @@ export class Tail {
   text(): string {
     this.compact();
     return this.chunks[0]?.toString('utf8') ?? '';
+  }
+}
+
+/**
+ * v7: both streams in the order they came, the last `limit` bytes. Output of one stream within
+ * the same second joins the previous chunk, so a chunk's time stays meaningful.
+ */
+export class OrderedTail {
+  private chunks: CollectorOutputChunk[] = [];
+  private size = 0;
+  private readonly decoders = { stdout: new StringDecoder('utf8'), stderr: new StringDecoder('utf8') };
+  constructor(
+    private readonly limit = TAIL_BYTES,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
+  push(stream: 'stdout' | 'stderr', chunk: Buffer): void {
+    const text = this.decoders[stream].write(chunk);
+    if (!text) return;
+    const at = this.now().toISOString();
+    const last = this.chunks[this.chunks.length - 1];
+    if (last && last.stream === stream && last.at.slice(0, 19) === at.slice(0, 19)) last.text += text;
+    else this.chunks.push({ stream, text, at });
+    this.size += Buffer.byteLength(text);
+    while (this.size > this.limit && this.chunks.length > 0) {
+      const first = this.chunks[0]!;
+      const bytes = Buffer.byteLength(first.text);
+      const over = this.size - this.limit;
+      if (bytes <= over) {
+        this.chunks.shift();
+        this.size -= bytes;
+        continue;
+      }
+      const keep = Buffer.from(first.text).subarray(over).toString('utf8').replace(/^\uFFFD+/, '');
+      this.size -= bytes - Buffer.byteLength(keep);
+      first.text = keep;
+      break;
+    }
+  }
+  chunksCopy(): CollectorOutputChunk[] {
+    return this.chunks.map((c) => ({ ...c }));
   }
 }
 
@@ -99,6 +140,8 @@ export interface ScriptRunOutcome {
   spawnError?: string;
   stdoutTail: string;
   stderrTail: string;
+  /** v7: both streams in order, the last 64 KB. */
+  outputLog: CollectorOutputChunk[];
 }
 
 export interface ScriptHandle {
@@ -127,6 +170,7 @@ export function startProcess(input: ProcessInput): ScriptHandle {
   const grace = input.killGraceMs ?? DEFAULT_KILL_GRACE_MS;
   const stdout = new Tail();
   const stderr = new Tail();
+  const ordered = new OrderedTail();
   let timedOut = false;
   let stopped = false;
   let exited = false;
@@ -162,10 +206,12 @@ export function startProcess(input: ProcessInput): ScriptHandle {
 
   child.stdout.on('data', (c: Buffer) => {
     stdout.push(c);
+    ordered.push('stdout', c);
     input.onOutput?.('stdout', c);
   });
   child.stderr.on('data', (c: Buffer) => {
     stderr.push(c);
+    ordered.push('stderr', c);
     input.onOutput?.('stderr', c);
   });
 
@@ -177,11 +223,11 @@ export function startProcess(input: ProcessInput): ScriptHandle {
 
   const done = new Promise<ScriptRunOutcome>((resolve) => {
     let settled = false;
-    const finish = (o: Omit<ScriptRunOutcome, 'stdoutTail' | 'stderrTail' | 'timedOut' | 'stopped'>) => {
+    const finish = (o: Omit<ScriptRunOutcome, 'stdoutTail' | 'stderrTail' | 'outputLog' | 'timedOut' | 'stopped'>) => {
       if (settled) return;
       settled = true;
       if (timeoutTimer) clearTimeout(timeoutTimer);
-      resolve({ ...o, timedOut, stopped, stdoutTail: stdout.text(), stderrTail: stderr.text() });
+      resolve({ ...o, timedOut, stopped, stdoutTail: stdout.text(), stderrTail: stderr.text(), outputLog: ordered.chunksCopy() });
     };
     child.once('error', (err) => {
       exited = true;

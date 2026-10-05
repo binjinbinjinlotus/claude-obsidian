@@ -18,6 +18,7 @@ enum StatesSnapshot {
         case actions = "6 · Actions from your notes"
         case collectors = "7 · Collectors"
         case activity = "8 · Activity"
+        case liveLog = "9 · Live log"
     }
 
     nonisolated static let mainSize = CGSize(width: 1200, height: 760)
@@ -52,6 +53,7 @@ enum StatesSnapshot {
         actionsStates()
         collectorsStates()
         activityStates()
+        liveLogStates()
         settingsNavStates()
         writeManifest()
     }

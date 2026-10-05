@@ -40,6 +40,8 @@ public struct CollectorInstall: Codable, Hashable, Sendable, Identifiable {
     public var error: CollectorRunError?
     /// Interleaved stdout and stderr, the last 64 KB (only from `GET …/install` and the finished event).
     public var outputTail: String?
+    /// The Node whose npm ran the install (package.json).
+    public var runtime: CollectorRuntime?
 
     public var isRunning: Bool { result == "running" }
 
@@ -54,7 +56,7 @@ public struct CollectorInstall: Codable, Hashable, Sendable, Identifiable {
 
     enum Keys: String, CodingKey {
         case id, collectorId, trigger, startedAt, endedAt, durationMs, result, command, manifestName, manifestSha256, clean, exitCode, signal, error,
-             outputTail
+             outputTail, runtime
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -76,6 +78,7 @@ public struct CollectorInstall: Codable, Hashable, Sendable, Identifiable {
         signal = c.lossy(String.self, .signal)
         error = c.lossy(CollectorRunError.self, .error)
         outputTail = c.lossy(String.self, .outputTail)
+        runtime = c.lossy(CollectorRuntime.self, .runtime)
     }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: Keys.self)
@@ -94,6 +97,40 @@ public struct CollectorInstall: Codable, Hashable, Sendable, Identifiable {
         try c.encodeIfPresent(signal, forKey: .signal)
         try c.encodeIfPresent(error, forKey: .error)
         try c.encodeIfPresent(outputTail, forKey: .outputTail)
+        try c.encodeIfPresent(runtime, forKey: .runtime)
+    }
+}
+
+/// What ran a script or an install: "Node 22.22.1", "Node 22.22.1 with tsx", "python3 (.venv)", "python3", "zsh".
+public struct CollectorRuntime: Codable, Hashable, Sendable {
+    public var label: String
+    /// The interpreter's absolute path.
+    public var path: String
+    public var version: String?
+
+    public init(label: String, path: String, version: String? = nil) {
+        self.label = label; self.path = path; self.version = version
+    }
+
+    enum Keys: String, CodingKey { case label, path, version }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        guard let label = c.lossy(String.self, .label), !label.isEmpty else {
+            throw DecodingError.dataCorruptedError(forKey: .label, in: c, debugDescription: "a runtime needs a label")
+        }
+        self.label = label
+        path = c.lossy(String.self, .path) ?? ""
+        version = c.lossy(String.self, .version)
+    }
+
+    /// "python3 (.venv) · ~/…/.venv/bin/python3": the label and where it is, home as `~`, long paths shortened.
+    public func line(home: String = NSHomeDirectory()) -> String {
+        guard !path.isEmpty else { return label }
+        var p = path
+        if !home.isEmpty, p.hasPrefix(home + "/") { p = "~" + p.dropFirst(home.count) }
+        let parts = p.split(separator: "/", omittingEmptySubsequences: true)
+        if parts.count > 4 { p = (p.hasPrefix("~") ? "~/…/" : "/…/") + parts.suffix(3).joined(separator: "/") }
+        return "\(label) · \(p)"
     }
 }
 

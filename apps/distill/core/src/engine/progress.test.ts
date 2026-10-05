@@ -212,8 +212,11 @@ describe('batch progress', () => {
     await h.engine.whenIdle();
     const list = progressOf(h.events, job.id);
     assert.deepEqual(list[0]!.steps, ['Moved to inbox', 'Suggesting labels', 'Read sources', 'Drafting page changes', 'Ready for review']);
+    // Each file that starts also names itself as `current` (same counts), so repeats are folded here.
+    const rows = list.map((p) => JSON.stringify([p.stepIndex, p.done ?? null, p.total ?? null, p.model ?? null, !!p.finished]));
+    assert.ok(list.some((p) => p.stepIndex === 1 && typeof p.current === 'string' && p.current.startsWith('inbox/')));
     assert.deepEqual(
-      list.map((p) => [p.stepIndex, p.done ?? null, p.total ?? null, p.model ?? null, !!p.finished]),
+      rows.filter((r, i) => r !== rows[i - 1]).map((r) => JSON.parse(r) as unknown[]),
       [
         [1, 0, 2, 'tiny', false],
         [1, 1, 2, 'tiny', false],
@@ -223,7 +226,7 @@ describe('batch progress', () => {
       ],
     );
     assert.equal(list[0]!.message, 'Suggesting labels for 2 sources');
-    assert.match(list[3]!.message, /^Reading \d+ sources into Research$/); // the count includes the notes' manifests (pre-existing)
+    assert.match(list.find((p) => p.stepIndex === 2)!.message, /^Reading \d+ sources into Research$/); // the count includes the notes' manifests (pre-existing)
     assertOneFinished(list);
   });
 

@@ -49,6 +49,20 @@ session. Code: `core/src/runners/claude-code.ts` (TypeScript core) and
 `permission_denials` (`tool_name`, `tool_input`). The raw envelope of each turn is
 saved as `<vault>/.vault-meta/worker/<job-id>/turn-<n>.json`.
 
+**Batch turns stream (v7, 2026-10-05).** When the request has `onStep`, as a
+batch turn does for the [live log](live-log.md), the runner passes
+`--output-format stream-json --verbose` instead and reads stdout line by line:
+
+- `tool_use` and `text` from assistant messages, and `tool_result` from user
+  messages, become steps. A subagent's own calls (`parent_tool_use_id`) are
+  left out.
+- The final `result` event carries the same fields as the envelope and
+  decodes through the same parser. The structured output was identical in
+  both modes with the real CLI.
+- `turn-<n>.json` then holds the whole stream (JSONL). Only
+  `dev/run-once.ts` reads it.
+- Ask, labels and actions don't pass `onStep` and keep `json`.
+
 ## Structured status
 
 `--json-schema` forces every turn to end with

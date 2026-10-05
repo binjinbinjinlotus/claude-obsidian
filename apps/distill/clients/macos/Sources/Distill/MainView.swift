@@ -362,21 +362,30 @@ struct QueueView: View {
     @State private var confirmRemoval: QueueEntry?
     /// Snapshots: folder rows whose tree starts open.
     private let expandedPaths: Set<String>
+    /// v7: the running batch's steps, open in place of the queue (‹ Queue).
+    @State private var stepsJob: String?
+    private let stepsOptions: StepsSnapshot
 
     /// `targeted` starts true only in snapshots (the drop hover state).
-    init(targeted: Bool = false, expandedPaths: Set<String> = []) {
+    init(targeted: Bool = false, expandedPaths: Set<String> = [], stepsJob: String? = nil, stepsOptions: StepsSnapshot = StepsSnapshot()) {
         _targeted = State(initialValue: targeted)
         self.expandedPaths = expandedPaths
+        _stepsJob = State(initialValue: stepsJob)
+        self.stepsOptions = stepsOptions
     }
 
     var body: some View {
         if addMode == .note {
             ComposeScreen(mode: $addMode) // Write a note (ComposeView.swift)
+        } else if let id = stepsJob, let job = engine.job(id) {
+            JobStepsView(store: engine.jobSteps, job: job, back: "Queue", title: stepsTitle(job), startDetails: stepsOptions.details,
+                         startFollowing: stepsOptions.following, startExpanded: stepsOptions.expanded) { stepsJob = nil }
+                .padding(.horizontal, 44).padding(.top, 30)
         } else {
             Scrolling {
                 VStack(alignment: .leading, spacing: 26) {
                     header
-                    if let batch = engine.runningBatch { BatchBanner(job: batch) }
+                    if let batch = engine.runningBatch { BatchBanner(job: batch, onShowSteps: { stepsJob = batch.id }) }
                     dropPanel
                     if engine.isStarting { StartingPlaceholder() } else { fileList }
                 }
@@ -390,6 +399,11 @@ struct QueueView: View {
                 Text("The whole folder (\(QueueRows.count(entry.fileCount ?? 0, "file"))) leaves the queue. You can put it back from the Trash.")
             }
         }
+    }
+
+    private func stepsTitle(_ job: Job) -> String {
+        let n = job.files.count
+        return "Batch · \(n == 1 ? "1 file" : "\(n) files")"
     }
 
     private var removalTitle: String {
@@ -918,11 +932,15 @@ struct JobDetailView: View {
     /// behind a button below `narrowWidth`.
     var collapsesConversation = true
     @State private var summaryOpen = false
+    /// v7: the batch's steps, open in place of the detail (‹ the batch).
+    @State private var showSteps: Bool
+    private let stepsOptions: StepsSnapshot
 
     /// `reply` / `allowed` / the review state start non-empty only in snapshots.
     init(jobID: String, reply: String = "", allowed: Set<String> = [], openFolders: Set<String> = [],
          unpicked: Set<String> = [], editing: (page: String, labels: [String])? = nil, labelError: String? = nil,
-         openGroups: [String: Bool] = [:], menuOpen: Bool = false, hoverPage: String? = nil, collapsesConversation: Bool = true) {
+         openGroups: [String: Bool] = [:], menuOpen: Bool = false, hoverPage: String? = nil, collapsesConversation: Bool = true,
+         showSteps: Bool = false, stepsOptions: StepsSnapshot = StepsSnapshot()) {
         self.jobID = jobID
         self.collapsesConversation = collapsesConversation
         self.openFolders = openFolders
@@ -935,10 +953,17 @@ struct JobDetailView: View {
         _labelError = State(initialValue: labelError)
         _groupOverrides = State(initialValue: openGroups)
         _menuOpen = State(initialValue: menuOpen)
+        _showSteps = State(initialValue: showSteps)
+        self.stepsOptions = stepsOptions
     }
 
     var body: some View {
-        if let job = engine.job(jobID) {
+        if showSteps, let job = engine.job(jobID) {
+            JobStepsView(store: engine.jobSteps, job: job, back: job.displayTitle, title: "Steps", startDetails: stepsOptions.details,
+                         startFollowing: stepsOptions.following, startExpanded: stepsOptions.expanded) { showSteps = false }
+                .padding(.horizontal, Self.sidePadding).padding(.top, 26)
+                .onChange(of: jobID) { showSteps = false }
+        } else if let job = engine.job(jobID) {
             VStack(spacing: 0) {
                 GeometryReader { geo in
                     // The details keep at least ~360 pt; the conversation takes what is left, between 220
@@ -1001,6 +1026,10 @@ struct JobDetailView: View {
             HStack(spacing: 10) {
                 Pill(text: style.label, fill: style.fill, ink: style.ink)
                 Text(job.historyTime).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.tail)
+                if job.kind != "labels" {
+                    Text("·").font(Theme.body(12)).foregroundStyle(Theme.faint)
+                    LinkButton(title: "Show steps") { showSteps = true }.fixedSize()
+                }
                 Spacer(minLength: 0)
                 if narrow {
                     SoftButton(title: "Conversation · \(job.turns.count)", size: .small) { showConversation.toggle() }
@@ -1072,7 +1101,7 @@ struct JobDetailView: View {
                              text: "In this batch’s own \(runnerName(job)) session (the one that read these notes). Your source pages and their labels stay exactly as you saw them; the index, log, hot cache, overview and ledgers are written again for just these.",
                              busy: true)
             } else {
-                BatchBanner(job: job, showsCancel: false)
+                BatchBanner(job: job, showsCancel: false, onShowSteps: { showSteps = true })
             }
         }
         if job.state == .completed, let parts = job.parts, !parts.isEmpty {

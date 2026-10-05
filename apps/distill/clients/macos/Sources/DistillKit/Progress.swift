@@ -23,19 +23,21 @@ public struct CoreProgress: Codable, Equatable, Sendable, Identifiable {
     public var item: String?
     /// v6: the group it belongs to (a batch's job id).
     public var group: String?
+    /// v7, batches: the file being worked on now (labels being suggested).
+    public var current: String?
 
     public var id: String { key }
 
     enum CodingKeys: String, CodingKey {
-        case key, kind, message, steps, stepIndex, done, total, startedAt, runnerID, model, finished, error, item, group
+        case key, kind, message, steps, stepIndex, done, total, startedAt, runnerID, model, finished, error, item, group, current
     }
 
     public init(key: String, kind: String, message: String, steps: [String] = [], stepIndex: Int? = nil, done: Int? = nil,
                 total: Int? = nil, startedAt: Date = Date(), runnerID: String? = nil, model: String? = nil,
-                finished: Bool = false, error: String? = nil) {
+                finished: Bool = false, error: String? = nil, current: String? = nil) {
         self.key = key; self.kind = kind; self.message = message; self.steps = steps; self.stepIndex = stepIndex
         self.done = done; self.total = total; self.startedAt = startedAt; self.runnerID = runnerID; self.model = model
-        self.finished = finished; self.error = error
+        self.finished = finished; self.error = error; self.current = current
     }
 
     public init(from decoder: Decoder) throws {
@@ -54,6 +56,7 @@ public struct CoreProgress: Codable, Equatable, Sendable, Identifiable {
         error = c.lossy(String.self, .error)
         item = c.lossy(String.self, .item)
         group = c.lossy(String.self, .group)
+        current = c.lossy(String.self, .current)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -72,6 +75,7 @@ public struct CoreProgress: Codable, Equatable, Sendable, Identifiable {
         try c.encodeIfPresent(error, forKey: .error)
         try c.encodeIfPresent(item, forKey: .item)
         try c.encodeIfPresent(group, forKey: .group)
+        try c.encodeIfPresent(current, forKey: .current)
     }
 
     /// Progress key for an Ask turn.

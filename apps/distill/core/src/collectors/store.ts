@@ -13,6 +13,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type {
+  CollectorOutputChunk,
   CollectedFile,
   Collector,
   CollectorInstall,
@@ -305,6 +306,16 @@ export function decodeRun(v: unknown, now = new Date()): CollectorRun | undefine
   }
   const runtime = decodeRuntime(v.runtime);
   if (runtime) run.runtime = runtime;
+  // v7: both streams in order.
+  if (Array.isArray(v.outputLog)) {
+    const log = v.outputLog.flatMap((c): CollectorOutputChunk[] => {
+      if (!isObject(c) || (c.stream !== 'stdout' && c.stream !== 'stderr')) return [];
+      const text = str(c.text);
+      const at = str(c.at);
+      return text !== undefined && at ? [{ stream: c.stream, text, at }] : [];
+    });
+    if (log.length > 0) run.outputLog = log;
+  }
   return run;
 }
 

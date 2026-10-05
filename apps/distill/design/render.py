@@ -463,7 +463,8 @@ def build_all(H=None):
     for f, (html, W, title) in states_boards(comps, H).items():
         out[f] = (html, W, title, COMPONENT_ROW_Y, 'states')
     for f, (html, W, title, kind) in screen_boards(screens, comps, H).items():
-        row = next((s.get('row') for s in screens if any(b['file'] == f for b in s.get('boards', []))), None)
+        # A board may sit in another flow's row ("row" on the board), e.g. a Collectors board in the Live log row.
+        row = next((b.get('row', s.get('row')) for s in screens for b in s.get('boards', []) if b['file'] == f), None)
         out[f] = (html, W, title, row, kind)
     return out
 

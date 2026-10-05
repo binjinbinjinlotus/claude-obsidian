@@ -4857,6 +4857,11 @@
           "default": false
         },
         {
+          "name": "runtime",
+          "type": "text",
+          "default": ""
+        },
+        {
           "name": "width",
           "type": "text",
           "default": ""
@@ -4866,7 +4871,7 @@
         "file": "RunLogEntryStates.dc.html",
         "title": "Run log entry states",
         "heading": "RunLogEntry",
-        "intro": "One run of a collector in its run history: result, start time, what it did, duration (and exit code for scripts). Click to expand: Folder runs list each file (Copied, or Moved when the collector is set to move; Skipped · already collected; Waiting · still changing); script runs show their output, stderr in peach. No Swift view yet: add <b>RunLogEntry</b>. Props: result (success | nothing | failed | timedout | skipped | running), time, summary, meta, outputKind (files | stdout | stderr), lines (“What — name” items separated by |), expanded, width.",
+        "intro": "One run of a collector in its run history: result, start time, what it did, duration (and exit code for scripts). Click to expand: Folder runs list each file (Copied, or Moved when the collector is set to move; Skipped · already collected; Waiting · still changing); script runs show their output, stderr in peach, with what ran it (<b>runtime</b>: “python3 (.venv) · ~/…/bin/python3”), Copy output and <b>Open log</b> (the whole saved output in the log view). No Swift view yet: add <b>RunLogEntry</b>. Props: result (success | nothing | failed | timedout | skipped | running), time, summary, meta, outputKind (files | stdout | stderr), lines (“What — name” items separated by |), expanded, runtime, width.",
         "width": 1280,
         "cols": 2,
         "wrap": "<div style=\"width: 580px; padding: 10px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
@@ -4943,7 +4948,8 @@
             "meta": "exit 0 · 2.4 s",
             "outputKind": "stdout",
             "lines": "$ python3 ~/Scripts/pocket-export.py|Fetched 4 new articles since Oct 3|Wrote 4 files to /Users/mei/Documents/Distill Queue/Research",
-            "expanded": true
+            "expanded": true,
+            "runtime": "python3 (.venv) · ~/…/col-3f2a/.venv/bin/python3"
           },
           "size": [
             "560px",
@@ -4959,7 +4965,8 @@
             "meta": "exit 1 · 0.8 s",
             "outputKind": "stderr",
             "lines": "$ node ~/Scripts/slack-saved.mjs|Error: SLACK_TOKEN is not set|    at main (slack-saved.mjs:12:11)",
-            "expanded": true
+            "expanded": true,
+            "runtime": "Node 22.22.1 · ~/…/v22.22.1/bin/node"
           },
           "size": [
             "560px",
@@ -4976,7 +4983,8 @@
             "meta": "timeout · 5:00",
             "outputKind": "stdout",
             "lines": "$ zsh ~/Scripts/kindle.sh|Syncing highlights… 2 of 40",
-            "expanded": true
+            "expanded": true,
+            "runtime": "zsh · /bin/zsh"
           },
           "size": [
             "560px",
@@ -5009,6 +5017,325 @@
             "560px",
             "40px"
           ]
+        }
+      ]
+    },
+    {
+      "name": "LogLine",
+      "title": "Log line",
+      "swift": "clients/macos/Sources/Distill/LiveLog.swift",
+      "preview": [
+        560,
+        32
+      ],
+      "props": [
+        {
+          "name": "kind",
+          "type": "enum",
+          "default": "step",
+          "options": [
+            "step",
+            "group",
+            "note",
+            "phase",
+            "output"
+          ]
+        },
+        {
+          "name": "state",
+          "type": "enum",
+          "default": "done",
+          "options": [
+            "done",
+            "running",
+            "waiting",
+            "review",
+            "failed"
+          ]
+        },
+        {
+          "name": "text",
+          "type": "text",
+          "default": "Read “AI FE Platform Sync · Sep 29”"
+        },
+        {
+          "name": "time",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "count",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "progress",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "detail",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "name": "showDetail",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "stream",
+          "type": "enum",
+          "default": "stdout",
+          "options": [
+            "stdout",
+            "stderr",
+            "cmd",
+            "system"
+          ]
+        },
+        {
+          "name": "level",
+          "type": "enum",
+          "default": "0",
+          "options": [
+            "0",
+            "1"
+          ]
+        },
+        {
+          "name": "expanded",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "width",
+          "type": "text",
+          "default": ""
+        }
+      ],
+      "board": {
+        "file": "LogLineStates.dc.html",
+        "title": "Log line states",
+        "heading": "LogLine",
+        "intro": "One line of the live log (batch steps, collector output, package installs, Test runs). Steps are plain words with a quiet status mark: a lime check when done, a spinner while running, a faint ring while waiting, peach for failed or for “waiting for you”. The time shows only when the minute changes. A <b>group</b> folds repeated steps (“Read 22 sources”, “Suggesting labels · 14 of 22” with a thin bar) and opens to one line per file (<b>level</b> 1). A <b>note</b> is the AI’s own short status message, in italics, at most 280 characters. <b>Details</b> adds the raw line under each step: tool and target only (path, line range, the first line of a command), never file contents, tool results or a draft’s text. <b>output</b> lines are script output on the dark terminal surface: stderr in peach with a peach gutter, the command and Distill’s own lines in grey. Swift: <b>LogLine</b> in LiveLog.swift. Props: kind (step | group | note | phase | output), state (done | running | waiting | review | failed), text, time, count, progress (“done/total”), detail, showDetail, stream (stdout | stderr | cmd | system), level (0 | 1), expanded, width.",
+        "width": 1280,
+        "cols": 2,
+        "wrap": "<div style=\"width: 580px; padding: 8px 10px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"
+      },
+      "states": [
+        {
+          "name": "Step, done",
+          "props": {
+            "kind": "step",
+            "state": "done",
+            "text": "Read “Telus – Daily Stand-up · Sep 29”",
+            "time": "11:37 PM",
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "32px"
+          ],
+          "caption": "Plain words: the file name, never its contents."
+        },
+        {
+          "name": "Step, running",
+          "props": {
+            "kind": "step",
+            "state": "running",
+            "text": "Writing a draft (s09.md)",
+            "time": "11:40 PM",
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "32px"
+          ],
+          "caption": "The newest line while the AI is on it."
+        },
+        {
+          "name": "Group, running, open",
+          "props": {
+            "kind": "group",
+            "state": "running",
+            "text": "Suggesting labels",
+            "count": "14 of 22",
+            "progress": "14/22",
+            "expanded": true,
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "44px"
+          ],
+          "caption": "Labels are suggested one file at a time before the AI starts; the bar is done/total."
+        },
+        {
+          "name": "File in a group, done",
+          "props": {
+            "kind": "step",
+            "state": "done",
+            "text": "AIDR – Product & Engineering Quick Sync · Sep 28",
+            "count": "3 labels",
+            "level": "1",
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "28px"
+          ],
+          "caption": "Level 1: one line per file inside a group."
+        },
+        {
+          "name": "File in a group, waiting",
+          "props": {
+            "kind": "step",
+            "state": "waiting",
+            "text": "Jin / Anant · Sep 29",
+            "level": "1",
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "28px"
+          ],
+          "caption": "Not reached yet: faint."
+        },
+        {
+          "name": "Group, done, closed",
+          "props": {
+            "kind": "group",
+            "state": "done",
+            "text": "Read 22 sources",
+            "time": "11:37 PM",
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "32px"
+          ],
+          "caption": "Twenty-two reads in a row become one line; open it for the list."
+        },
+        {
+          "name": "The AI’s own words",
+          "props": {
+            "kind": "note",
+            "text": "Still reading sources: 8 of 22 are done. For the rest I’m reading the Gemini notes sections at the top of each file.",
+            "time": "11:37 PM",
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "52px"
+          ],
+          "caption": "Its status messages, shortened to 280 characters."
+        },
+        {
+          "name": "Details on",
+          "props": {
+            "kind": "step",
+            "state": "done",
+            "text": "Read “Telus – Daily Stand-up · Sep 30”",
+            "detail": "Read · inbox/2026-09-30 Telus - Daily Stand-up … Notes by Gemini.md · lines 1–110",
+            "showDetail": true,
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "50px"
+          ],
+          "caption": "The raw line: tool and target only."
+        },
+        {
+          "name": "Waiting for you",
+          "props": {
+            "kind": "step",
+            "state": "review",
+            "text": "Waiting for your review",
+            "time": "11:52 PM",
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "32px"
+          ],
+          "caption": "The batch stops here until you approve, reply or reject."
+        },
+        {
+          "name": "Failed",
+          "props": {
+            "kind": "step",
+            "state": "failed",
+            "text": "Couldn’t check the changes: a source in the plan has no ledger entry",
+            "time": "11:51 PM",
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "32px"
+          ],
+          "caption": "The core’s own error, in peach."
+        },
+        {
+          "name": "Phase heading",
+          "props": {
+            "kind": "phase",
+            "text": "GETTING READY",
+            "time": "11:33 PM",
+            "width": 560
+          },
+          "size": [
+            "560px",
+            "36px"
+          ],
+          "caption": "Getting ready · Claude’s steps · Your review · Applying."
+        },
+        {
+          "name": "Output: stdout",
+          "props": {
+            "kind": "output",
+            "stream": "stdout",
+            "text": "Fetched 4 new articles since Oct 3",
+            "time": "10:14:03",
+            "width": 544
+          },
+          "size": [
+            "544px",
+            "20px"
+          ],
+          "caption": "Script output, as it comes; the time is faint on the right.",
+          "wrap": "<div style=\"width: 560px; padding: 10px 8px; border-radius: 10px; background: #1F1E1C; box-sizing: border-box\">{import}</div>"
+        },
+        {
+          "name": "Output: stderr",
+          "props": {
+            "kind": "output",
+            "stream": "stderr",
+            "text": "requests.exceptions.HTTPError: 401 Unauthorized",
+            "width": 544
+          },
+          "size": [
+            "544px",
+            "20px"
+          ],
+          "caption": "stderr: peach text and a peach gutter.",
+          "wrap": "<div style=\"width: 560px; padding: 10px 8px; border-radius: 10px; background: #1F1E1C; box-sizing: border-box\">{import}</div>"
+        },
+        {
+          "name": "Output: the command",
+          "props": {
+            "kind": "output",
+            "stream": "cmd",
+            "text": "$ python3 ~/Scripts/pocket-export.py",
+            "width": 544
+          },
+          "size": [
+            "544px",
+            "20px"
+          ],
+          "caption": "The command and Distill’s own lines (“[stopped by Distill after 5:00]”) are grey.",
+          "wrap": "<div style=\"width: 560px; padding: 10px 8px; border-radius: 10px; background: #1F1E1C; box-sizing: border-box\">{import}</div>"
         }
       ]
     },

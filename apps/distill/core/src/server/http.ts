@@ -933,6 +933,16 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
       },
     },
     {
+      // v7: the job's live log as kept (spec live-log.md).
+      method: 'GET',
+      pattern: /^\/v1\/jobs\/([^/]+)\/steps$/,
+      handler: async ({ params }) => {
+        requireJob(params[0]!);
+        if (typeof core.listJobSteps !== 'function') throw new HttpError(501, 'not_implemented', 'listJobSteps: not implemented by this core');
+        return core.listJobSteps(params[0]!);
+      },
+    },
+    {
       method: 'GET',
       pattern: /^\/v1\/jobs\/([^/]+)\/resume$/,
       handler: async ({ params }) => {
