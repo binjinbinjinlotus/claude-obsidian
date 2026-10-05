@@ -64,8 +64,13 @@ for you, or failed.
 - **Your review**: "Waiting for your review". Once you act it becomes "You
   approved", "You answered" or "You rejected the changes". Blocked tools
   and questions appear here too.
-- **Applying**: "Applied 31 changes to Research · op-…", then "Found 5
-  actions to confirm".
+- **Applying** (2026-10-05, [Approval and review](approval-and-review.md) →
+  After you approve): "You approved · 22 sources", "Claude is starting:
+  resuming this batch's session" (agent runs), "Applying 31 changes through
+  the vault core" (waiting until the AI runs the apply command), "Added to
+  Research: 22 source pages, 3 concepts, 1 entity added · 6 pages updated"
+  (counts from `job.approvedChange`), then "Found 5 actions to confirm". A
+  failed apply step says why and carries a `hint` (what to do next).
 
 The time shows only when the minute changes. **Details** adds the raw line
 under each step: the tool and its target, such as a path, a line range, a
@@ -162,6 +167,10 @@ model API, because those runners have no tools and so give no steps.
     `agent_message`. The final JSON answer is not a note.
 - `Progress.current`: the file being labeled. It rides on the existing
   batch progress events, so no extra events are sent.
+- v8: `JobStep.hint` (a failed apply step's next step); apply-phase ids
+  `start-k`, `apply-k`, `added-k` for one approval, verbs `start`, `apply`,
+  `added`. An apply still open when the core stops is settled by the next job
+  event.
 - `JobStep` / `JobStepsPage`; the event `{type: 'job.step', jobId, step}`,
   sent for a new step or a changed one (same id); `GET /v1/jobs/:id/steps` →
   `{jobId, steps, kept, truncated?}`.

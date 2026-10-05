@@ -18,6 +18,8 @@ struct ReviewGroupsView: View {
     @Binding var overrides: [String: Bool]
     /// Snapshots: a source row drawn hovered.
     var hoverPage: String? = nil
+    /// v8: the change is in the vault (Review after Approve): new pages show Open.
+    var openable = false
     let open: (String) -> Void
 
     private var pending: Bool { job.state == .awaitingApproval }
@@ -37,7 +39,7 @@ struct ReviewGroupsView: View {
                     if open {
                         ForEach(newPages, id: \.self) { path in
                             ReviewChangeRow(title: ReviewSummary.pageName(path), change: .new, kind: ReviewSummary.kind(path),
-                                            directory: ReviewSummary.directory(path), onOpen: { self.open(path) })
+                                            directory: ReviewSummary.directory(path), openable: openable, onOpen: { self.open(path) })
                         }
                     }
                 }

@@ -63,6 +63,8 @@ struct ReviewChangeRow: View {
     var kind: String = ""
     var note: String = ""
     var directory: String = ""
+    /// v8: the page is in the vault now (Review after Approve): an Open link opens it.
+    var openable = false
     /// Snapshots: drawn hovered.
     var hover = false
     var onOpen: (() -> Void)? = nil
@@ -86,6 +88,10 @@ struct ReviewChangeRow: View {
                 Text(note).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
                 Spacer(minLength: 8)
                 Text(directory).font(Theme.body(12)).foregroundStyle(Theme.faint).lineLimit(1).fixedSize()
+                if openable {
+                    Text("Open").font(Theme.body(12, .semibold)).foregroundStyle(Theme.primary).padding(.horizontal, 8).fixedSize()
+                        .accessibilityLabel("Open \(title)")
+                }
             }
             .padding(.horizontal, 10).padding(.vertical, 7)
             .background(RoundedRectangle(cornerRadius: 12).fill(hover || hovering ? Theme.panel : .clear))
@@ -93,7 +99,7 @@ struct ReviewChangeRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help("Open the page as it will be")
+        .help(openable ? "Open the page in Obsidian" : "Open the page as it will be")
     }
 
     private var kindFill: Color { kind == "entity" ? Color(hex: 0xFFF4D6) : kind == "concept" ? Color(hex: 0xEFE9FF) : Theme.panel }

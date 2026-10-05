@@ -6366,8 +6366,7 @@
         {
           "name": "openable",
           "type": "boolean",
-          "default": false,
-          "swiftPending": "Review after Approve (2026-10-05): once the change is in the vault, a new page opens from its row"
+          "default": false
         },
         {
           "name": "hover",
@@ -6836,7 +6835,7 @@
     {
       "name": "ApplyProgress",
       "title": "Apply progress",
-      "swift": null,
+      "swift": "clients/macos/Sources/Distill/ApplyProgress.swift",
       "preview": [
         640,
         214
@@ -6939,14 +6938,16 @@
         {
           "name": "width",
           "type": "text",
-          "default": ""
+          "default": "",
+          "swift": false,
+          "why": "the card fills its column"
         }
       ],
       "board": {
         "file": "ApplyProgressStates.dc.html",
         "title": "Apply progress states",
         "heading": "ApplyProgress",
-        "intro": "What Review shows after you approve, until every approved file is in your knowledge base (designed 2026-10-05). Five steps, with the live log’s marks: <b>You approved</b>; the AI <b>starting</b> (resuming this batch’s own session); <b>applying through the vault core</b>; <b>Added</b>, with counts taken from the checked plan, never from the AI (“22 source pages, 3 concepts, 1 entity added · 6 pages updated”); and the follow-up, <b>finding actions</b>. These are the batch’s live-log steps (<code>job.step</code>), so <b>Show steps</b> opens the same log in full. A failed step turns peach and says what to do, in the words Review already uses (the vault changed after review, the vault was busy, the session is gone). Finding actions is a follow-up: if it fails, the batch is still added, so it stays a quiet line. A batch the core applies itself (labels, runners without tool permissions) has no AI step. Swift: none yet. Props: stage (approved | starting | applying | applied | finding | done), failedAt (none | starting | applying | finding), core, runner, vault, sources, changes, added, operation, actions, error, help, heading, part, times (one per row, split by “|”), width.",
+        "intro": "What Review shows after you approve, until every approved file is in your knowledge base (designed 2026-10-05). Five steps, with the live log’s marks: <b>You approved</b>; the AI <b>starting</b> (resuming this batch’s own session); <b>applying through the vault core</b>; <b>Added</b>, with counts taken from the checked plan, never from the AI (“22 source pages, 3 concepts, 1 entity added · 6 pages updated”); and the follow-up, <b>finding actions</b>. These are the batch’s live-log steps (<code>job.step</code>), so <b>Show steps</b> opens the same log in full. A failed step turns peach and says what to do, in the words Review already uses (the vault changed after review, the vault was busy, the session is gone). Finding actions is a follow-up: if it fails, the batch is still added, so it stays a quiet line. A batch the core applies itself (labels, runners without tool permissions) has no AI step. Swift: <b>ApplyProgress</b> (ApplyProgress.swift), built from DistillKit’s ApplyTimeline. Props: stage (approved | starting | applying | applied | finding | done), failedAt (none | starting | applying | finding), core, runner, vault, sources, changes, added, operation, actions, error, help, heading, part, times (one per row, split by “|”), width.",
         "width": 1440,
         "cols": 2,
         "wrap": "<div style=\"width: 680px; padding: 10px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; box-sizing: border-box\">{import}</div>"

@@ -21,7 +21,9 @@ schedule, not one by one. Code: `core/src/engine/queue.ts`,
   writes it, and files already there are the user's. Distill may add new
   files there without a transaction (a batch moving items in, notes, drops,
   pastes and collectors when the queue is the inbox). It never edits,
-  overwrites or automatically deletes a file already in `inbox/`. Every
+  overwrites or automatically deletes a file already in `inbox/`. (Since
+  2026-10-05 the user can move files that are safely in the knowledge base to
+  the Trash themselves: [Clean up inbox](inbox-cleanup.md).) Every
   `wiki/` and `.raw/` change still goes only through the reviewed
   transaction.
 - Pending files: top-level, non-hidden regular files. Folders are left alone.

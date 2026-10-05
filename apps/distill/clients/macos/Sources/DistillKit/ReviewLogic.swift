@@ -294,6 +294,7 @@ public enum ReviewBatches {
 
     /// A tab's subtitle: "14 left" after a part applied, otherwise "3 sources".
     public static func tabSubtitle(_ job: Job) -> String {
+        if let after = ApplyTimeline.tabSubtitle(job) { return after }
         if let sources = job.approval?.sources {
             let n = sources.filter { !$0.removed }.count
             if !(job.parts ?? []).isEmpty { return "\(n) left" }

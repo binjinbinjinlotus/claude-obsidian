@@ -365,6 +365,7 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, kind, vaultPath, files, sessionID, runnerID, model, effort, state, createdAt, updatedAt
         case approval, turns, grantedTools, operationID, changedPaths, error, actionsFound, folders, parts, pendingPart, sessionUnavailable
+        case approvedChange, reviewDoneAt
     }
 
     public var id: String
@@ -395,6 +396,10 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
     /// v6: the batch's AI session was found gone when a turn tried to resume it (session continuity).
     /// The app shows SessionReplaceConfirm from it; the next turn clears it. nil on older cores.
     public var sessionUnavailable: SessionUnavailable?
+    /// v8: what the user approved (plan counts), recorded when Approve starts the apply. nil on older cores.
+    public var approvedChange: ApprovedChange?
+    /// v8: Done was pressed on this approved batch in Review; it is only in History now.
+    public var reviewDoneAt: Date?
 
     public var totalCostUSD: Double { turns.reduce(0) { $0 + $1.costUSD } }
     public var selection: ModelSelection { ModelSelection(runnerID: runnerID ?? "claude-code", model: model, effort: effort) }
@@ -447,6 +452,8 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
         parts = c.lossy([Lossy<JobPart>].self, .parts).map { $0.compactMap(\.value) }
         pendingPart = c.lossy(PendingPart.self, .pendingPart)
         sessionUnavailable = c.lossy(SessionUnavailable.self, .sessionUnavailable)
+        approvedChange = c.lossy(ApprovedChange.self, .approvedChange)
+        reviewDoneAt = c.lossyDate(.reviewDoneAt)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -473,6 +480,67 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
         try c.encodeIfPresent(parts, forKey: .parts)
         try c.encodeIfPresent(pendingPart, forKey: .pendingPart)
         try c.encodeIfPresent(sessionUnavailable, forKey: .sessionUnavailable)
+        try c.encodeIfPresent(approvedChange, forKey: .approvedChange)
+        try c.encodeIfPresent(reviewDoneAt.map(CoreDate.format), forKey: .reviewDoneAt)
+    }
+}
+
+/// v8: the approved change's counts, from the checked plan and the vault before the apply (never the model).
+public struct ApprovedChange: Codable, Equatable, Sendable {
+    public var at: Date
+    public var operationID: String
+    public var changes: Int
+    public var sources: Int
+    public var concepts: Int
+    public var entities: Int
+    public var otherPages: Int
+    public var updated: Int
+    public var sourcesApproved: Int?
+
+    public init(at: Date = Date(), operationID: String, changes: Int, sources: Int = 0, concepts: Int = 0, entities: Int = 0,
+                otherPages: Int = 0, updated: Int = 0, sourcesApproved: Int? = nil) {
+        self.at = at; self.operationID = operationID; self.changes = changes; self.sources = sources; self.concepts = concepts
+        self.entities = entities; self.otherPages = otherPages; self.updated = updated; self.sourcesApproved = sourcesApproved
+    }
+
+    enum Keys: String, CodingKey { case at, operationID, changes, sources, concepts, entities, otherPages, updated, sourcesApproved }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        at = c.lossyDate(.at) ?? Date(timeIntervalSince1970: 0)
+        operationID = c.lossy(String.self, .operationID) ?? ""
+        changes = c.lossy(Int.self, .changes) ?? 0
+        sources = c.lossy(Int.self, .sources) ?? 0
+        concepts = c.lossy(Int.self, .concepts) ?? 0
+        entities = c.lossy(Int.self, .entities) ?? 0
+        otherPages = c.lossy(Int.self, .otherPages) ?? 0
+        updated = c.lossy(Int.self, .updated) ?? 0
+        sourcesApproved = c.lossy(Int.self, .sourcesApproved)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Keys.self)
+        try c.encode(CoreDate.format(at), forKey: .at)
+        try c.encode(operationID, forKey: .operationID)
+        try c.encode(changes, forKey: .changes)
+        try c.encode(sources, forKey: .sources)
+        try c.encode(concepts, forKey: .concepts)
+        try c.encode(entities, forKey: .entities)
+        try c.encode(otherPages, forKey: .otherPages)
+        try c.encode(updated, forKey: .updated)
+        try c.encodeIfPresent(sourcesApproved, forKey: .sourcesApproved)
+    }
+
+    /// "22 source pages, 3 concepts, 1 entity added · 6 pages updated" (the core's Added step says the same).
+    public var addedWords: String {
+        func n(_ v: Int, _ one: String, _ many: String) -> String { v == 1 ? "1 \(one)" : "\(v) \(many)" }
+        var added: [String] = []
+        if sources > 0 { added.append(n(sources, "source page", "source pages")) }
+        if concepts > 0 { added.append(n(concepts, "concept", "concepts")) }
+        if entities > 0 { added.append(n(entities, "entity", "entities")) }
+        if otherPages > 0 { added.append(sources + concepts + entities > 0 ? n(otherPages, "other page", "other pages") : n(otherPages, "page", "pages")) }
+        var parts: [String] = []
+        if !added.isEmpty { parts.append(added.joined(separator: ", ") + " added") }
+        if updated > 0 { parts.append(n(updated, "page", "pages") + " updated") }
+        return parts.isEmpty ? n(changes, "change", "changes") + " applied" : parts.joined(separator: " · ")
     }
 }
 

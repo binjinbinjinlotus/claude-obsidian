@@ -84,8 +84,7 @@ extension AppModel {
         }
     }
 
-    /// Review lists the batches waiting for you and a batch whose part is being rebuilt, oldest first.
-    var reviewJobs: [Job] {
-        ReviewBatches.ordered(jobs.filter { $0.state == .awaitingApproval || ($0.state == .running && $0.pendingPart != nil) })
-    }
+    /// Review lists the batches waiting for you and a batch whose part is being rebuilt, oldest first; then
+    /// (v8) approved batches until you press Done: being added, added, or not added.
+    var reviewJobs: [Job] { ApplyTimeline.reviewList(jobs) }
 }
