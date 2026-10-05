@@ -124,6 +124,17 @@ isn't.
   - Lesson: when a teammate changes how a runner is invoked, probe the edge
     cases again rather than trusting the earlier result.
 
+### 2026-10-05
+- **A rehearsal touched the owner's real AI session.** To test the reinstall,
+  a teammate copied the owner's pending batch and called approve with the real
+  runners. That resumed the owner's real Claude session and added one turn to
+  its transcript (Claude refused, because the vault didn't match). The real
+  vault was unchanged.
+  - *Change:* the e2e skill now says copied jobs must use an inert runner or
+    a fresh session ID.
+  - *Lesson:* copying a record also copies the pointers inside it, such as
+    session IDs and paths. Cut those links before exercising the copy.
+
 ### 2026-10-04
 - **An audit handoff worked well as a spec, but it listed symptoms, not every
   reader.** A compliance audit found where Distill broke claude-obsidian's

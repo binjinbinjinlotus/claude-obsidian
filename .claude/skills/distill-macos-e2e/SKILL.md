@@ -205,6 +205,12 @@ user runs.**
   v14 before nvm's v22, while the core itself runs on v22. Check what
   `zsh -lc 'which -a node python3'` returns before trusting a green test that
   ran under your own PATH.
+- **A copied job still points at the owner's AI session.** A job record holds
+  a real `sessionID`. Driving a copy through the real runners (approve,
+  reply, allow) resumes the owner's real Claude session and appends to their
+  transcript; this happened once. When you rehearse on a copied job, use an
+  inert runner that throws if called, or give the copy a fresh session ID.
+  Never call approve, reply or allow on it with real runners.
 - **The session scratchpad is shared.** Other teammates use it at the same
   time, and one overwrote another's helper script. Work in your own
   subfolder, or use `mktemp -d`, and never reuse a path you didn't create.
