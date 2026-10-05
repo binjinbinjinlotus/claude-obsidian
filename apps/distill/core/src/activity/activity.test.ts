@@ -480,6 +480,33 @@ describe('instrumentCore', () => {
     assert.equal(log.list().entries.length, 3);
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  test('a spec that throws never drops the entry, and never replaces the core\'s error (2026-10-04)', async (t) => {
+    const dir = tmp('distill-activity-spec-error-');
+    const log = new ActivityLog({ dir });
+    const trash = new Trash({ dir: path.join(dir, 'trash') });
+    const warnings: string[] = [];
+    t.mock.method(console, 'warn', (m: string) => warnings.push(m));
+    const fake = createFakeCore();
+    // A save whose result the spec can't read (`files.path` of null): the save still gets its line.
+    (fake as unknown as Record<string, unknown>).writeCollectorScript = async () => null;
+    (fake as unknown as Record<string, unknown>).connect = async () => {
+      throw new Error('the core said no');
+    };
+    const core = instrumentCore(fake, { log, trash, askDir: path.join(dir, 'ask') });
+    await runWithSource('app', () => core.writeCollectorScript('col-1', { code: 'print(1)\n' }));
+    // A failure whose spec throws (no request object): the caller still gets the core's error.
+    await assert.rejects(runWithSource('app', () => core.connect('jira', undefined as never)), /the core said no/);
+    const entries = log.list().entries.reverse();
+    assert.deepEqual(entries.map((e) => [e.type, e.source, e.outcome]), [
+      ['collector.script_saved', 'app', 'ok'],
+      ['core.connect', 'app', 'failed'],
+    ]);
+    assert.match(String(entries[0]!.details?.describeError), /null|undefined/);
+    assert.equal(entries[1]!.error, 'the core said no');
+    assert.equal(warnings.length, 2, warnings.join('\n'));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });
 
 // ───────────── the event stream ─────────────
@@ -718,6 +745,8 @@ describe('activity through the core and the API', () => {
     assert.equal(last('collector.install')?.outcome, 'ok');
     assert.equal(last('collector.install')?.details?.runtime, `Node ${process.versions.node}`, 'which Node installed it');
     assert.ok(fs.existsSync(path.join(dir, 'node_modules', 'dep')));
+    await request('GET', '/v1/collectors');
+    assert.equal(last('collector.script_changed_outside'), undefined, 'an install (npm in the folder) is not an outside edit');
     const savedEntry = last('collector.script_saved')!;
     assert.equal(savedEntry.details?.scriptBytes, Buffer.byteLength(body));
     assert.equal(String(savedEntry.details?.scriptSha256).length, 12);
@@ -756,8 +785,101 @@ describe('activity through the core and the API', () => {
     assert.equal((await request('POST', `/v1/collectors/${id}/run`)).status, 200);
     for (let i = 0; i < 200 && !fs.existsSync(path.join(queue, 'r.md')); i += 1) await new Promise((r) => setTimeout(r, 25));
     assert.equal(fs.readFileSync(path.join(queue, 'r.md'), 'utf8').trim(), 'restored');
+    await request('GET', '/v1/collectors');
+    assert.equal(last('collector.script_changed_outside'), undefined, 'delete, restore, reinstall, language change and run: all the core\'s own');
     const text = fs.readFileSync(path.join(state, 'activity', 'activity.jsonl'), 'utf8');
     assert.ok(!text.includes('hunter2'), 'no script text in the log');
+  });
+
+  test('the owner\'s save (2026-10-04): a kept python3 script edited in another editor is logged once, before its consent', async () => {
+    // The owner's collector: created from inline code (kept by Distill), renamed, allowed, test-run.
+    const first = 'import os\nprint("first")\n';
+    const created = await request('POST', '/v1/collectors', { kind: 'script', name: 'Script', script: { source: { inline: first }, interpreter: 'python3' } });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const id = created.body.id as string;
+    const file = created.body.script.source.file as string;
+    assert.equal(created.body.script.source.managed, true);
+    assert.equal((await request('PATCH', `/v1/collectors/${id}`, { name: 'Meeting Note' })).status, 200);
+    assert.equal((await request('POST', `/v1/collectors/${id}/consent`, { sha256: created.body.status.currentSha256 })).status, 200);
+    assert.equal((await request('POST', `/v1/collectors/${id}/test`)).status, 200);
+    await core.whenIdle?.();
+    const outside = () => readLog(state).filter((e) => e.type === 'collector.script_changed_outside');
+    assert.equal(outside().length, 0, 'nothing Distill wrote reads as an outside edit');
+
+    // "Open in editor" opened it in IDLE, which saved it in place: no request reached the core.
+    const replaced = 'import os\nTOKEN = "ya29.a0AfH6SMBsupersecretvalue1234567890"\nprint("replaced")\n';
+    fs.writeFileSync(file, replaced);
+    for (let i = 0; i < 3; i += 1) assert.equal((await request('GET', '/v1/collectors')).status, 200);
+    assert.equal((await request('GET', `/v1/collectors/${id}`)).status, 200);
+    assert.equal(outside().length, 1, 'one entry, however often it is read');
+    const entry = outside()[0]!;
+    assert.equal(entry.source, 'scheduler', 'Distill noticed it; the app only asked for the list');
+    assert.equal(entry.object.name, 'Meeting Note');
+    assert.match(entry.summary, /^Changed script of “Meeting Note” outside Distill/);
+    assert.deepEqual(entry.details?.changes, ['script']);
+    assert.equal(entry.details?.changedOutside, true);
+    assert.equal(entry.details?.scriptManaged, undefined, 'not "written in Distill"');
+    assert.equal(entry.details?.scriptBytes, Buffer.byteLength(replaced));
+    assert.equal(entry.details?.scriptLines, 3);
+    assert.equal(entry.details?.scriptSha256, (await request('GET', `/v1/collectors/${id}/script`)).body.sha256.slice(0, 12));
+    assert.equal(entry.details?.file, file);
+
+    // Allowing it logs after the change it covers.
+    const sha = (await request('GET', `/v1/collectors/${id}`)).body.status.currentSha256 as string;
+    assert.equal((await request('POST', `/v1/collectors/${id}/consent`, { sha256: sha })).status, 200);
+    const types = readLog(state).map((e) => e.type);
+    assert.ok(types.lastIndexOf('collector.consented') > types.indexOf('collector.script_changed_outside'));
+
+    // A save in Distill's own editor (PUT …/script) is one script_saved, never also an outside edit.
+    const saved = await request('PUT', `/v1/collectors/${id}/script`, { code: 'print("in Distill")\n', baseSha256: (await request('GET', `/v1/collectors/${id}/script`)).body.sha256 });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    await request('GET', '/v1/collectors');
+    assert.equal(readLog(state).filter((e) => e.type === 'collector.script_saved').length, 1);
+    assert.equal(outside().length, 1);
+
+    // A manifest edited outside Distill.
+    fs.writeFileSync(path.join(path.dirname(file), 'requirements.txt'), 'requests==2.32.0\n');
+    await request('GET', `/v1/collectors/${id}/script`);
+    assert.equal(outside().length, 2);
+    const manifest = outside()[1]!;
+    assert.deepEqual(manifest.details?.changes, ['manifest']);
+    assert.equal(manifest.details?.manifest, 'requirements.txt');
+    assert.equal(manifest.details?.manifestBytes, 17);
+    assert.equal(String(manifest.details?.manifestSha256).length, 12);
+    assert.match(manifest.summary, /^Changed requirements\.txt of “Meeting Note” outside Distill/);
+
+    // A restart sees the same files: nothing new. Never the text.
+    const before = readLog(state).length;
+    await server.close();
+    await core.stop();
+    core = createCore({ paths: statePaths(state), trashDir: path.join(root, 'trash'), secrets: new MemorySecretStore(), collectors: { homeDir: root, tmpDir: root } });
+    server = await startServer({ core, token: TOKEN });
+    await request('GET', '/v1/collectors');
+    assert.equal(readLog(state).length, before);
+    const text = fs.readFileSync(path.join(state, 'activity', 'activity.jsonl'), 'utf8');
+    assert.ok(!text.includes('supersecret') && !text.includes('replaced'), 'no script text in the log');
+  });
+
+  test('collectors saved before knownFiles start from what is on disk (no entry on upgrade)', async () => {
+    const created = await request('POST', '/v1/collectors', { kind: 'script', name: 'Old', script: { source: { inline: 'print(1)\n' }, interpreter: 'python3' } });
+    const id = created.body.id as string;
+    await server.close();
+    await core.stop();
+    const file = path.join(state, 'collectors.json');
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const list = (Array.isArray(raw) ? raw : raw.collectors) as { id: string; script: Record<string, unknown> }[];
+    const record = list.find((c) => c.id === id)!;
+    assert.ok(record.script.knownFiles, 'the core keeps knownFiles');
+    delete record.script.knownFiles;
+    fs.writeFileSync(file, JSON.stringify(raw));
+    fs.writeFileSync(created.body.script.source.file, 'print(2)\n');
+    core = createCore({ paths: statePaths(state), trashDir: path.join(root, 'trash'), secrets: new MemorySecretStore(), collectors: { homeDir: root, tmpDir: root } });
+    server = await startServer({ core, token: TOKEN });
+    await request('GET', '/v1/collectors');
+    assert.equal(readLog(state).filter((e) => e.type === 'collector.script_changed_outside').length, 0);
+    fs.writeFileSync(created.body.script.source.file, 'print(3)\n');
+    await request('GET', '/v1/collectors');
+    assert.equal(readLog(state).filter((e) => e.type === 'collector.script_changed_outside').length, 1);
   });
 
   test('a delete is refused when the trash copy cannot be written', async () => {

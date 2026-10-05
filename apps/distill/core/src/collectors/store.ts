@@ -157,6 +157,7 @@ export function decodeCollector(v: unknown, now = new Date()): Collector | undef
     else if (isObject(s.allowedFiles) && typeof s.allowedFiles.script === 'string') {
       c.script.allowedFiles = { script: s.allowedFiles.script, manifest: str(s.allowedFiles.manifest) ?? null };
     }
+    if (isObject(s.knownFiles)) c.script.knownFiles = { script: str(s.knownFiles.script) ?? null, manifest: str(s.knownFiles.manifest) ?? null };
   }
   return c;
 }

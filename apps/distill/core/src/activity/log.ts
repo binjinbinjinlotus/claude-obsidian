@@ -96,7 +96,9 @@ export class ActivityLog {
         }
       }
       return entry;
-    } catch {
+    } catch (err) {
+      // Never thrown to the change it records, but never silent either (server.log).
+      console.warn(`distill activity: couldn't write ${input.type}: ${err instanceof Error ? err.message : String(err)}`);
       return undefined;
     }
   }

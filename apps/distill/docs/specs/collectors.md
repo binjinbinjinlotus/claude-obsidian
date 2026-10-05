@@ -778,6 +778,11 @@ it; otherwise a Test run makes the next real run find nothing new.
 - `script.allowedFiles {script, manifest}` records each file's hash at
   Allow, so `status.script.changes` can say what changed since ("script",
   "manifest", or both).
+- `script.knownFiles {script, manifest}` (2026-10-04) records each file's
+  hash as the core last wrote or saw it. A difference means another program
+  saved it (Open in editor), and the core logs it once as
+  `collector.script_changed_outside` ([Activity log](activity-log.md) →
+  Edits outside Distill).
 - **Not covered:** `package-lock.json` (npm writes it during install) and
   versions a range resolves to at install time. Installs only happen when
   the manifest changed or the user asks.

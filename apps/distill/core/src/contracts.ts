@@ -907,6 +907,25 @@ export interface ScriptCollectorSettings {
   allowedAt?: string | null;
   /** v6: the sha256 of each file the consent covered, so the app can say what changed since ("package.json"). */
   allowedFiles?: { script: string; manifest: string | null } | null;
+  /**
+   * v6, a script Distill keeps: the sha256 of the script and its manifest as the core last wrote or saw
+   * them. Files that hash differently were edited outside Distill (an editor opened with "Open in
+   * editor"); the core logs that once (`collector.script.changed_outside`) and moves this on. Internal.
+   */
+  knownFiles?: { script: string | null; manifest: string | null } | null;
+}
+
+/** v6: a kept script's files changed outside Distill (seen at a read, a tick or before consent and runs). */
+export interface CollectorOutsideChange {
+  collectorId: string;
+  name: string;
+  interpreter: CollectorInterpreter;
+  /** Which files changed. */
+  changes: ('script' | 'manifest')[];
+  /** The script now: null when it is gone. Sizes and hashes only, never the text. */
+  script: { path: string; bytes: number; lines: number; sha256: string; modifiedAt: string } | null;
+  /** The manifest now (requirements.txt / package.json), when one changed: null when it is gone. */
+  manifest?: { name: string; bytes: number; sha256: string; modifiedAt: string } | null;
 }
 
 /** Computed by the core on every read; ignored on input. */
@@ -1341,6 +1360,8 @@ export type CoreEvent =
   | { type: 'collector.install.started'; install: CollectorInstall }
   | { type: 'collector.install.output'; collectorId: string; installId: string; text: string }
   | { type: 'collector.install.finished'; install: CollectorInstall }
+  /** A kept script or its manifest was edited outside Distill (older Mac builds decode it as `.unknown`). */
+  | { type: 'collector.script.changed_outside'; change: CollectorOutsideChange }
   // v5: a queue scan finished (Refresh, window, periodic). A `queue` event precedes it when the list changed.
   | { type: 'queue.scanned'; result: QueueScanResult }
   // v6: a line was added to the activity log (older Mac builds decode unknown events as `.unknown`).
