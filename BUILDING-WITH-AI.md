@@ -90,6 +90,17 @@ isn't.
 
 ### 2026-10-05
 
+- **"Build directly" didn't pass through to the teammates.** The owner told
+  the lead "please design and build directly". Both teammates' permission
+  checks still refused to build: one refused the Swift build and a decisions
+  line saying the owner pre-approved it, and the other refused `make test`.
+  The reason was that the approval reached them as an agent message.
+  - *Change:* the owner said "yes, build both" to the lead directly. The lead
+    then ran the gates and built the panes itself, from the teammate's draft.
+  - *Lesson:* a teammate can design and draft, but an approval given to the
+    lead mid-task doesn't carry over to it. Plan for the lead to do the
+    approved build steps.
+
 - **Full reads are checked by the core, not by the owner.** The first
   design leaned on a Review badge for partial reads. The owner rejected it:
   "relying on human is wrong". The final design computes coverage from the
