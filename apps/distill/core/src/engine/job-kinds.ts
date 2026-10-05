@@ -268,18 +268,25 @@ ${plan.map(labelLines).join('\n')}`;
  * transcripts out ("a bounded first tranche"); the owner found out only by reading a page.
  */
 export const FULL_READ_PROMPT = `Source budget: the full size of every file listed. Read each file completely, \
-including any transcript, from the first line to the last. When a file is long, read it in \
-consecutive sections until you reach its end: Read with \`offset\` and \`limit\` (a few \
-hundred lines at a time). The Read tool can return fewer lines than asked without an error \
-(it stops at 2000 lines or at a size cap); when it does, continue from the last line it \
-returned. Do not stop early, sample, or choose a first tranche. Lines that are only \
-embedded base64 image data (\`[image1]: <data:image/png;base64,...>\`) are not text: skip \
-them, and read around them with \`offset\` (one such line can fill a whole Read).
+including any transcript, from the first line to the last, and read sources only with the \
+Read tool (not \`cat\`, \`sed\`, \`head\` or other shell commands), so the reads are on record. \
+When a file is long, read it in consecutive sections until you reach its end: Read with \
+\`offset\` and \`limit\` (a few hundred lines at a time). The Read tool can return fewer lines \
+than asked without an error (it stops at 2000 lines or at a size cap); when it does, continue \
+from the last line it returned. Do not stop early, sample, or choose a first tranche. Lines \
+that are only embedded base64 image data (\`[image1]: <data:image/png;base64,...>\`, often \
+tens of thousands of characters at the end of a meeting note) are image attachments, not \
+text: skip them, and read around them with \`offset\` (one such line can fill a whole Read).
 
 Process the files one at a time, in order: (1) read file N completely; (2) write or update its \
 source page draft, and note the entities, concepts and claims it adds, before opening the next \
 file; (3) move on to file N+1. After the last file, update the shared pages (index, entities, \
 concepts, ledgers) from your notes, then build the one bundle.
+
+For a meeting note or transcript, the source page is detailed, not highlights: key points, \
+decisions and action items (with owners and dates), then a Discussion section per topic \
+(proposals, objections, the reasons given, numbers, dates and names) and Open questions. \
+Keep what a reader would need if they never open the transcript.
 
 Mark a page partial only if a file truly cannot be read, and say which lines and why; never to \
 save effort.`;
@@ -296,7 +303,7 @@ function rereadSourceLine(s: RereadFacts['sources'][number]): string {
     const at = s.imageAt?.length ? ` at line${s.imageAt.length === 1 ? '' : 's'} ${s.imageAt.join(', ')}${s.imageLines > s.imageAt.length ? ', …' : ''}` : '';
     facts.push(`${s.imageLines} embedded base64 image line(s)${at}, ${kb((s.bytes ?? 0) - (s.textBytes ?? 0))}: image data, not text; skip them`);
   }
-  if (s.longLines) facts.push(`${s.longLines} text line(s) over 2000 characters: the Read tool cuts them, so read those with Grep`);
+  if (s.longLines) facts.push(`${s.longLines} text line(s) over 2000 characters, which the Read tool cuts: name them in \`skipped\` if you could not read them whole`);
   const page = s.pages.length === 0
     ? 'no source page found by the core: look it up in the source ledger and by `source_path`; create one only if none exists'
     : s.pages.length === 1

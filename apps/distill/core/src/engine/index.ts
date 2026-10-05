@@ -763,6 +763,9 @@ export function createEngine(opts: EngineOptions): Engine {
     };
     const stepSink = opts.steps;
     if (stepSink) request.onStep = (step) => stepSink.runnerStep(id, step);
+    // Ingest turns always stream (stream-json), so which tool calls read the sources is on record
+    // even without a live-log sink (decision 2026-10-05, full reads).
+    else if (kind.consumesQueue) request.onStep = () => {};
     const settingsSnapshot = clone(settings);
     const stateDir = jobStateDirectory(job);
     const turnIndex = job.turns.length;

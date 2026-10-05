@@ -222,6 +222,9 @@ describe('re-read: the prompt', () => {
     assert.ok(!prompt.includes('RE-READ'));
     assert.match(prompt, /Process the files one at a time, in order/);
     assert.match(prompt, /never to\s+save effort/);
+    assert.match(prompt, /read sources only with the\s+Read tool \(not `cat`/);
+    assert.match(prompt, /image attachments, not\s+text: skip them/);
+    assert.match(prompt, /a Discussion section per topic/);
   });
 
   test('a re-read adds: ingested before, read completely, update the existing page, no duplicates, keep labels', () => {
@@ -299,6 +302,7 @@ describe('re-read: batches in sequence', () => {
       assert.ok(readyAt >= 0 && createdAt > readyAt, `group ${i + 1} started after group ${i} was ready`);
     }
     for (const r of h2.runner.requests) assert.match(r.prompt, /RE-READ \(group \d of 3/);
+    assert.ok(h2.runner.requests.every((r) => typeof r.onStep === 'function'), 'ingest turns always stream, so the reads are on record');
     assert.equal(fs.existsSync(path.join(h2.state, 'reread.json')), false, 'nothing left waiting');
 
     // Approve them all (apply turns): still nothing in inbox/ or the queue changes.

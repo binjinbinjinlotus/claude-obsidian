@@ -90,6 +90,26 @@ isn't.
 
 ### 2026-10-05
 
+- **A batch read its sources only in part, and said so only inside a page.**
+  The owner's 22 Gemini meeting notes (each a summary plus a transcript of up to
+  about 130 KB) went in one batch. The ingest skill says to set a budget and,
+  for a large batch, to choose "a bounded first tranche". The AI read the
+  summaries and only 8 files in full. It wrote that it would "record the
+  transcript tails as not fully read", and the change still looked complete
+  in Review. The owner found out only by opening a page that said "the
+  transcript was read only up to the first few minutes". The Read tool also
+  stops early without an error: a 64–316K-character base64 image line at the
+  end of a note fills one Read.
+  - *Lesson:* a limit the model picks for itself is invisible unless the
+    product names it. "Read everything" has to be in the prompt, along with
+    how to read a long file with the tool that cuts it. A partial read has to
+    show up where the user decides, not only in the page text.
+  - *Change:* every ingest prompt now asks for full reads, one file at a time,
+    using only the Read tool, and detailed meeting pages. `distill batch reread`
+    re-reads a batch's sources in groups of 3, each in a fresh session, and
+    updates the existing pages through Review. An automatic coverage check is
+    next (the `full-read` teammate).
+
 - **A batch looked frozen for four minutes.** One of the owner's batches
   started at 03:33:13Z and Claude's first step came at 03:37:08Z. The app
   showed nothing in between, while labels were suggested one file at a time.
