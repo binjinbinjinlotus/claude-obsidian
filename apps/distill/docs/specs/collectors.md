@@ -690,7 +690,7 @@ collector.ts` instead.
   - **An install never changes what was allowed.** The core keeps the
     manifest bytes from the start of the install. npm 6, and npm 7+ in some
     cases, rewrites `package.json`: key order, indentation, normalized
-    fields. When the bytes differ afterwards, or the file is gone, the core
+    fields. When the bytes differ afterwards, the core
     writes the kept bytes back atomically with the same file mode, whatever
     the outcome (success, failed, stopped, timed out). So the manifest hash,
     the consent hash and `installedSha256` stay put, and a successful

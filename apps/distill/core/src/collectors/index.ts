@@ -501,13 +501,11 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     }
     // An install never changes what the owner allowed: npm 6 (and some npm 7+ cases) rewrite package.json
     // (key order, formatting, normalized fields). Put the exact bytes back, whatever the outcome. Saves are
-    // refused while an install runs, so nothing else wrote the manifest meanwhile.
+    // refused while an install runs (and deleting is), so nothing else wrote the manifest meanwhile. A file
+    // that is gone stays gone: npm never deletes it, and a restore must never recreate a removed folder.
     try {
-      const nowBytes = fs.existsSync(m.path) ? fs.readFileSync(m.path) : null;
-      if (!nowBytes || !nowBytes.equals(m.bytes)) {
-        const mode = fs.existsSync(m.path) ? fs.statSync(m.path).mode & 0o777 : 0o600;
-        writeFileAtomic(m.path, m.bytes, mode);
-      }
+      const nowBytes = find(c.id) && fs.existsSync(m.path) ? fs.readFileSync(m.path) : null;
+      if (nowBytes && !nowBytes.equals(m.bytes)) writeFileAtomic(m.path, m.bytes, fs.statSync(m.path).mode & 0o777);
     } catch (err) {
       if (rec.result === 'success') {
         rec.result = 'failed';
