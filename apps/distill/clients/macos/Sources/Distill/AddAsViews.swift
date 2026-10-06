@@ -128,8 +128,15 @@ struct AddAsPanel: View {
                 Spacer(minLength: 0)
             }
             row("Title") {
-                TextField("Title", text: Binding(get: { store.addingAs[item.id]?.title ?? "" }, set: { store.addingAs[item.id]?.title = $0 }))
-                    .textFieldStyle(.roundedBorder).font(Theme.body(13))
+                // A long title wraps (up to three lines) so the whole title shows.
+                TextField("Title", text: Binding(get: { store.addingAs[item.id]?.title ?? "" }, set: { store.addingAs[item.id]?.title = $0 }),
+                          axis: .vertical)
+                    .lineLimit(AddAs.titleLines)
+                    // .roundedBorder keeps a macOS field on one line; a drawn border lets it wrap.
+                    .textFieldStyle(.plain).font(Theme.body(13))
+                    .padding(.horizontal, 7).padding(.vertical, 4)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.white))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.border))
             }
             ForEach(type.fields.filter { $0.kind != "markdown" }, id: \.key) { spec in
                 row(spec.label + (spec.required ? " *" : "")) { field(spec) }

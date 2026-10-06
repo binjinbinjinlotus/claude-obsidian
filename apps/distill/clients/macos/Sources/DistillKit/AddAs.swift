@@ -98,6 +98,9 @@ public enum AddAs {
         "Return adds as \(typeWords(item.type, types: types)) · ⌥Return opens Add as…"
     }
 
+    /// The panel's Title field grows to this many lines, so a long title is never cut off.
+    public static let titleLines: ClosedRange<Int> = 1...3
+
     /// The body's label in the panel.
     public static func bodyLabel(_ type: ActionTypeInfo) -> String {
         switch type.id {

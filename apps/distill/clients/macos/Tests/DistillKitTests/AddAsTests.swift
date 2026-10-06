@@ -74,6 +74,7 @@ final class AddAsTests: XCTestCase {
         XCTAssertNil(AddAs.blockReason(s, type: Self.slack))
         XCTAssertEqual(AddAs.blockReason(s, type: Self.slack, unknownName: true), "Fill in who it goes to")
         XCTAssertEqual(AddAs.bodyLabel(Self.slack), "Text")
+        XCTAssertEqual(AddAs.titleLines, 1...3, "a long title wraps instead of being cut off")
     }
 
     func testReturnAddsAndOptionReturnOpensTheMenu() {
