@@ -17,6 +17,32 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**Whose items Distill handles is built (2026-10-06).** The ActionsRouting design is now in
+the core and the Mac app (spec [actions-routing.md](actions-routing.md)). Choices made while
+building:
+- A promise to you goes to Pending even from someone whose items you handle. The canvas puts
+  Aditya's ticket links in Pending while you handle his to-dos.
+- A name that fits two people is unclear and asks "Whose is this?".
+- Routing stays off until you have a name or an alias. Until then every item goes to your
+  lists, so no list empties on the first batch after an update.
+- Ask finds are not routed.
+- Pending items are a `route` on the action, not a new status, because `pending` already
+  means To confirm.
+
+**Others' actions reach the wiki inside the next ingest batch, not a job of their own
+(2026-10-06).** A core-built job like Confirm labels would hold the vault while it waits in
+Review (`holdsVault(awaitingApproval)`) and stop the queue until you act. So when an ingest
+batch starts, its prompt carries the exact "## Others' actions" section for up to 10 pages
+whose section differs from what Highlights says. The section reaches the page in that batch's
+bundle, which you approve. Distill compares instead of tracking, so a skipped or rejected
+batch leaves the page due for the next one, and It's mine removes the line the same way. This
+replaces "Highlights reads the wiki; it adds only Others' actions" as the how; the what is
+unchanged.
+
+**Pending only suggests that something arrived is built (2026-10-06).** A later batch sees the
+open promises and can mark one "Looks received in <note>"; the item stays open until you press
+Mark received.
+
 **The design canvas moves to a fresh artifact; no explicit canvas pages
 (2026-10-06).** The old canvas (`VSqHFPZjcqY2bMqFEnPqpG`) went blank: the
 toolbar loads but no board draws, even with a canvas.json that draws
