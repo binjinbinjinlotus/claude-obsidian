@@ -76,6 +76,8 @@ export function pageFacts(text: string, fallbackTitle: string): PageFacts {
   if (date) facts.date = date;
   if (fm.fields.duration) facts.duration = fm.fields.duration;
   let section: string | null = null;
+  // Only a "## Others' actions" heading is the section Distill keeps (withOthersSection's rule).
+  let inOthers = false;
   let firstParagraph: string | undefined;
   let summarySection: string[] = [];
   let paragraph: string[] = [];
@@ -92,13 +94,15 @@ export function pageFacts(text: string, fallbackTitle: string): PageFacts {
       if (h[1] === '#') {
         if (!fm.fields.title) facts.title = plainLine(h[2]!);
         section = null;
+        inOthers = false;
         continue;
       }
       section = plainLine(h[2]!);
-      if (OTHERS_RE.test(line)) facts.others = [];
+      inOthers = OTHERS_RE.test(line);
+      if (inOthers) facts.others = [];
       continue;
     }
-    if (section !== null && OTHERS_RE.test(`## ${section}`)) {
+    if (inOthers) {
       if (line) facts.others!.push(raw.trimEnd());
       continue;
     }
