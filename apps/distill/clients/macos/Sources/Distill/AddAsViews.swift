@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import DistillKit
 
@@ -254,7 +255,8 @@ struct AddAsDetailKeys: ViewModifier {
             .focusable()
             .focusEffectDisabled()
             .onKeyPress(keys: [.return]) { press in
-                guard store.addingAs[item.id] == nil else { return .ignored }
+                // A text field being typed in (the panel's, or any other) keeps its Return.
+                guard store.addingAs[item.id] == nil, !(NSApp.keyWindow?.firstResponder is NSTextView) else { return .ignored }
                 switch AddAs.addAsKey(press) {
                 case nil: return .ignored
                 case .add?:

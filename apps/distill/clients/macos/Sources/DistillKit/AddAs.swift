@@ -118,9 +118,6 @@ public enum AddAs {
         if other || (option && command) { return nil }
         return option ? .openMenu : .add
     }
-    public static func detailKey(returnWithOption option: Bool, typing: Bool, panelOpen: Bool) -> Key? {
-        typing || panelOpen ? nil : key(returnWithOption: option)
-    }
 }
 
 /// `as` in `POST /v1/actions/confirm`.
