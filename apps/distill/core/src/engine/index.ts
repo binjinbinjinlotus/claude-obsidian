@@ -787,7 +787,45 @@ export function createEngine(opts: EngineOptions): Engine {
     return result;
   }
 
+  /**
+   * A plan applied outside Distill (Open in Terminal): the vault's own journal for the plan's operation
+   * says `complete` with the same `approval_sha256`, so the batch is recorded as applied, exactly as an
+   * approved apply in the app would be (operation, changed paths from the journal, full reads, actions).
+   */
+  function adoptOutsideApplies(): void {
+    for (const job of jobs) {
+      const plan = job.approval?.plan;
+      if (job.state !== 'awaitingApproval' || !plan) continue;
+      const journal = readJournal(job.vaultPath, plan.operation_id);
+      if (!journal || journal.state !== 'complete' || journal.approval_sha256 !== plan.approval_sha256) continue;
+      const paths = journal.changed_paths.length > 0 ? journal.changed_paths : plan.changed_paths;
+      const applying = clone(job.approval!);
+      mutate(job.id, (j) => {
+        const prior = j.approvedChange;
+        j.approvedChange = prior && prior.operationID === plan.operation_id ? { ...prior, appliedOutside: true } : { ...approvedChangeOf(j, plan), appliedOutside: true };
+        delete j.reviewDoneAt;
+        j.state = 'completed';
+        delete j.approval;
+        addPart(j, plan.operation_id, applying);
+        j.operationID = plan.operation_id;
+        j.changedPaths = mergedPaths(j, paths);
+        j.turns.push(newTurn('app', `Applied ${plan.operation_id} outside Distill (found in the vault's journal):\n` + paths.map((p) => `- ${p}`).join('\n'), now()));
+      });
+      log('info', `Job ${job.id}: ${plan.operation_id} was applied outside Distill; recorded as applied.`);
+      const applied = findJob(job.id);
+      if (applied) {
+        try {
+          fullRead.recordApplied(applied, paths, applying.bundlePath ?? undefined);
+        } catch (err) {
+          log('warn', `Full reads: could not record ${job.id}: ${(err as Error).message}`);
+        }
+      }
+      continueAfterPart(job.id, plan.operation_id);
+    }
+  }
+
   function tick(): void {
+    adoptOutsideApplies();
     if (nextQueueScanAt && now() >= nextQueueScanAt) scanQueueNow('periodic');
     else refreshQueue();
     if (rereads.pending()) pumpRereads();
@@ -2310,7 +2348,7 @@ export function createEngine(opts: EngineOptions): Engine {
   /** Removes a finished job from the list (its job directory in the vault is kept). */
   /** v8: counts of the approved change, from the plan and the vault as it is before the apply. */
   function approvedChangeOf(job: Job, plan: TransactionPlan): ApprovedChange {
-    const c: ApprovedChange = { at: isoDate(now()), operationID: plan.operation_id, changes: plan.changed_paths.length, sources: 0, concepts: 0, entities: 0, otherPages: 0, updated: 0 };
+    const c: ApprovedChange = { at: isoDate(now()), operationID: plan.operation_id, changes: plan.changed_paths.length, sources: 0, concepts: 0, entities: 0, otherPages: 0, updated: 0, approvalSha256: plan.approval_sha256 };
     for (const p of plan.changed_paths) {
       if (!p.startsWith('wiki/') || !p.endsWith('.md')) continue;
       if (fs.existsSync(path.join(job.vaultPath, p))) c.updated += 1;
@@ -3191,6 +3229,7 @@ export function createEngine(opts: EngineOptions): Engine {
 
     async start() {
       refreshQueue();
+      adoptOutsideApplies();
       for (const j of jobs) {
         const st = j.approval?.labels?.state;
         if (j.state === 'awaitingApproval' && (st === undefined || st === 'confirming' || st === 'suggesting')) {
@@ -3316,5 +3355,25 @@ export function createEngine(opts: EngineOptions): Engine {
       while (inflight.size > 0) await Promise.allSettled([...inflight]);
     },
   };
+}
+
+/** The vault's transaction journal for an operation (`.vault-meta/transactions/<op>/journal.json`). */
+export function readJournal(vaultPath: string, operationID: string): { state: string; approval_sha256: string; changed_paths: string[] } | undefined {
+  if (!/^[A-Za-z0-9._-]+$/.test(operationID)) return undefined;
+  const dir = path.join(vaultPath, '.vault-meta', 'transactions', operationID);
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(dir, 'journal.json'), 'utf8')) as Record<string, unknown>;
+    let changed: string[] = [];
+    try {
+      const c = JSON.parse(fs.readFileSync(path.join(dir, 'changed-paths.json'), 'utf8')) as Record<string, unknown>;
+      if (Array.isArray(c.changed_paths)) changed = c.changed_paths.filter((p): p is string => typeof p === 'string');
+    } catch {
+      // No changed-paths file: the plan's paths are used.
+    }
+    if (typeof j.state !== 'string' || typeof j.approval_sha256 !== 'string') return undefined;
+    return { state: j.state, approval_sha256: j.approval_sha256, changed_paths: changed };
+  } catch {
+    return undefined;
+  }
 }
 

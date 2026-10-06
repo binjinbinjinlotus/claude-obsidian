@@ -514,6 +514,10 @@ public struct ApprovedChange: Codable, Equatable, Sendable {
     public var otherPages: Int
     public var updated: Int
     public var sourcesApproved: Int?
+    /// The approved plan's hash: a rebuilt plan in Review has a different one.
+    public var approvalSha256: String?
+    /// The vault's journal showed it applied outside Distill (in Terminal).
+    public var appliedOutside: Bool = false
 
     public init(at: Date = Date(), operationID: String, changes: Int, sources: Int = 0, concepts: Int = 0, entities: Int = 0,
                 otherPages: Int = 0, updated: Int = 0, sourcesApproved: Int? = nil) {
@@ -521,7 +525,7 @@ public struct ApprovedChange: Codable, Equatable, Sendable {
         self.entities = entities; self.otherPages = otherPages; self.updated = updated; self.sourcesApproved = sourcesApproved
     }
 
-    enum Keys: String, CodingKey { case at, operationID, changes, sources, concepts, entities, otherPages, updated, sourcesApproved }
+    enum Keys: String, CodingKey { case at, operationID, changes, sources, concepts, entities, otherPages, updated, sourcesApproved, approvalSha256, appliedOutside }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
         at = c.lossyDate(.at) ?? Date(timeIntervalSince1970: 0)
@@ -533,6 +537,8 @@ public struct ApprovedChange: Codable, Equatable, Sendable {
         otherPages = c.lossy(Int.self, .otherPages) ?? 0
         updated = c.lossy(Int.self, .updated) ?? 0
         sourcesApproved = c.lossy(Int.self, .sourcesApproved)
+        approvalSha256 = c.lossy(String.self, .approvalSha256)
+        appliedOutside = c.lossy(Bool.self, .appliedOutside) ?? false
     }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: Keys.self)
@@ -545,6 +551,8 @@ public struct ApprovedChange: Codable, Equatable, Sendable {
         try c.encode(otherPages, forKey: .otherPages)
         try c.encode(updated, forKey: .updated)
         try c.encodeIfPresent(sourcesApproved, forKey: .sourcesApproved)
+        try c.encodeIfPresent(approvalSha256, forKey: .approvalSha256)
+        if appliedOutside { try c.encode(true, forKey: .appliedOutside) }
     }
 
     /// "22 source pages, 3 concepts, 1 entity added · 6 pages updated" (the core's Added step says the same).

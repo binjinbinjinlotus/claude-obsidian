@@ -370,3 +370,33 @@ Bundle shape (page rewrites only; a frontmatter edit keeps every other byte):
   that already applied replays as a no-op).
 - When a new job needs approval the main window switches to Review and the
   floating icon and Dock show a count.
+
+## After a failed apply: the conversation and Terminal (2026-10-05)
+
+An approved apply can fail, for example on exit 75 when another batch changed
+the same pages first. There are two ways to recover, and Review keeps the status
+correct for both.
+
+- **Rebuilt in the conversation.** Each approval records its plan's
+  `approval_sha256` (`ApprovedChange.approvalSha256`). Review may later show a
+  plan with a different hash: Claude rebuilt it after exit 75, or rebuilt it
+  after a reply. In that case the old "Not added to your vault" card is history
+  and is hidden, and the batch reads as ready to approve.
+  - Older jobs have no stored hash. For them the "Approved <op> (<first
+    12>…)" turn gives the approved hash.
+- **Applied in Terminal.** The core checks each batch in Review, at start and on
+  every tick, against the vault's journal,
+  `.vault-meta/transactions/<op>/journal.json`. When the journal says `state:
+  complete` with the same `approval_sha256` as the batch's plan, the batch is
+  recorded as applied, exactly as an approved apply in the app:
+  - its operation;
+  - its changed paths, taken from the journal (`changed-paths.json`);
+  - its parts, its full-read coverage, and the actions found;
+  - an app turn: "Applied <op> outside Distill".
+
+  `ApprovedChange.appliedOutside` marks it. The apply card then shows it added,
+  even though an earlier attempt failed.
+- **Send reply and Approve** are no longer left disabled after an apply came
+  back to Review: the app clears its "applying" mark as soon as Claude answers.
+  A reply stays in its box until the core takes it.
+

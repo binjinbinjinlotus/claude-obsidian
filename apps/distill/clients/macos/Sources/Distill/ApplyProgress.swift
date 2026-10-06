@@ -97,7 +97,8 @@ struct ApplyProgressCard: View {
 
     var body: some View {
         Group {
-            if ApplyTimeline.approvalIsLatest(job), let t = ApplyTimeline.make(job: job, steps: store.steps[job.id] ?? []),
+            if ApplyTimeline.approvalIsLatest(job), !ApplyTimeline.planReplaced(job),
+               let t = ApplyTimeline.make(job: job, steps: store.steps[job.id] ?? []),
                job.state != .awaitingApproval || t.isFailed {
                 ApplyProgress(t, folded: t.stage == .done && !t.isFailed && job.state == .completed, part: partLabel, onShowSteps: onShowSteps)
             }

@@ -352,3 +352,29 @@ final class FullReadTests: XCTestCase {
         XCTAssertEqual(FullReadWords.heldCaption, "A held file counts in the sidebar until it is read in full or you remove it. Clean up never clears it.")
     }
 }
+
+/// The "Not added" card after a failed apply: gone once a rebuilt plan replaces the approved one,
+/// and "added" when the vault's journal shows the plan applied in Terminal.
+final class ApplyRecoveryTests: XCTestCase {
+    private func job(_ json: String) throws -> Job { try JSONDecoder().decode(Job.self, from: Data(json.utf8)) }
+
+    func testARebuiltPlanReplacesTheApprovedOne() throws {
+        let base = #""id":"j","vaultPath":"/v","state":"awaitingApproval","approvedChange":{"at":"2026-10-06T01:55:00Z","operationID":"op","changes":3"#
+        let same = try job("{\(base),\"approvalSha256\":\"aaaa1111\"},\"approval\":{\"plan\":{\"operation_id\":\"op\",\"approval_sha256\":\"aaaa1111\"}}}")
+        XCTAssertFalse(ApplyTimeline.planReplaced(same))
+        let rebuilt = try job("{\(base),\"approvalSha256\":\"aaaa1111\"},\"approval\":{\"plan\":{\"operation_id\":\"op\",\"approval_sha256\":\"bbbb2222\"}}}")
+        XCTAssertTrue(ApplyTimeline.planReplaced(rebuilt))
+    }
+
+    func testOlderJobsUseTheApprovedTurn() throws {
+        let j = try job(#"{"id":"j","vaultPath":"/v","state":"awaitingApproval","approvedChange":{"at":"2026-10-06T01:55:00Z","operationID":"op","changes":3},"approval":{"plan":{"operation_id":"op","approval_sha256":"bbbb2222cccc3333"}},"turns":[{"id":"t","date":"2026-10-06T01:55:00Z","author":"user","text":"Approved op (aaaa1111bbbb…)"}]}"#)
+        XCTAssertTrue(ApplyTimeline.planReplaced(j))
+    }
+
+    func testAppliedInTerminalShowsAddedDespiteTheFailedStep() throws {
+        let j = try job(#"{"id":"j","vaultPath":"/v","kind":"ingest","state":"completed","operationID":"op","changedPaths":["wiki/a.md"],"approvedChange":{"at":"2026-10-06T01:55:00Z","operationID":"op","changes":1,"appliedOutside":true}}"#)
+        let failed = JobStep(id: "apply-1", at: Date(timeIntervalSince1970: 1_791_252_000), phase: "apply", state: "failed", verb: "apply", text: "Not added")
+        let t = try XCTUnwrap(ApplyTimeline.make(job: j, steps: [failed]))
+        XCTAssertFalse(t.isFailed)
+    }
+}

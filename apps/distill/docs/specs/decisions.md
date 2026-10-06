@@ -17,6 +17,19 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+**Review status after a failed apply follows the plan, and a Terminal apply is
+found in the vault's journal (2026-10-05).** The owner asked for the status to
+update correctly "if the user fixes the issue with the conversation or opens the
+terminal directly".
+
+- **A rebuilt plan replaces the failure card.** The approved plan's hash is
+  stored; a different plan in Review means the failure is history.
+- **The vault's transaction journal is the evidence of an apply made outside
+  Distill.** The model's word is not used; the plan's operation and hash must
+  match a `complete` journal.
+- **Send reply never stays disabled after an apply returned to Review,** and a
+  reply's text is kept until the core takes it.
+
 **Action buttons and script commands: designed, defaults proposed (2026-10-05).** Spec:
 [Action buttons and script commands](action-buttons.md). Canvas: row 15, board
 ScriptActions. Status designed; the owner has not confirmed these yet.

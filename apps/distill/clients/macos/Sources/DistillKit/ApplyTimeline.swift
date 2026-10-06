@@ -79,12 +79,14 @@ public struct ApplyTimeline: Equatable, Sendable {
                               operation: change.operationID, actions: actionsWords(job.actionsFound))
         let actionsTime = actionsStep?.endedAt ?? actionsStep?.at
         t.times = [approvedStep?.endedAt ?? change.at] + (core ? [] : [start?.at]) + [apply?.at, addedStep?.at, actionsTime]
-        let addedNow = addedStep != nil || (job.state == .completed && job.operationID == change.operationID && apply == nil)
-        if let start, start.state == "failed" {
+        // Applied in Terminal after an attempt here failed: the vault's journal is the evidence, not the old steps.
+        let outside = change.appliedOutside && job.state == .completed && job.operationID == change.operationID
+        let addedNow = outside || addedStep != nil || (job.state == .completed && job.operationID == change.operationID && apply == nil)
+        if !outside, let start, start.state == "failed" {
             t.failedAt = .starting; t.stage = .starting; t.error = start.text; t.help = start.hint ?? ""
             return t
         }
-        if let apply, apply.state == "failed" {
+        if !outside, let apply, apply.state == "failed" {
             t.failedAt = .applying; t.stage = .applying; t.error = apply.text; t.help = apply.hint ?? ""
             return t
         }
@@ -110,6 +112,19 @@ public struct ApplyTimeline: Equatable, Sendable {
             return t
         }
         return nil
+    }
+
+    /// Review shows a plan other than the one approved: Claude rebuilt it after the apply didn't go in
+    /// (exit 75), or the owner fixed it in the conversation. The old "Not added" card is history then.
+    /// Older jobs have no stored hash: the "Approved <op> (<first 12>…)" turn gives it.
+    public static func planReplaced(_ job: Job) -> Bool {
+        guard job.state == .awaitingApproval, let current = job.approval?.plan?.approvalSHA256, !current.isEmpty,
+              let change = job.approvedChange else { return false }
+        if let approved = change.approvalSha256, !approved.isEmpty { return approved != current }
+        guard let turn = job.turns.last(where: { $0.author == .user && $0.text.hasPrefix("Approved ") })?.text,
+              let open = turn.firstIndex(of: "("), let close = turn[open...].firstIndex(of: "…") else { return false }
+        let prefix = String(turn[turn.index(after: open)..<close])
+        return prefix.count >= 8 && !current.hasPrefix(prefix)
     }
 
     /// The job's latest user turn was the approval (a reply after it starts something else).

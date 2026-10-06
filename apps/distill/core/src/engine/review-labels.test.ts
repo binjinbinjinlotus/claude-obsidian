@@ -642,3 +642,36 @@ describe('review-labels helpers', () => {
     assert.deepEqual(rev.changed, [first], 'keep mode touches only the edited page');
   });
 });
+
+describe('a plan applied outside Distill (Open in Terminal)', () => {
+  test('the vault journal shows the approved plan complete: the batch is recorded as applied', async () => {
+    const s = seed();
+    const plan = JSON.parse(fs.readFileSync(path.join(s.state, 'jobs.json'), 'utf8'))[0].approval.plan;
+    const tx = path.join(s.vault, '.vault-meta/transactions', plan.operation_id);
+    fs.mkdirSync(tx, { recursive: true });
+    fs.writeFileSync(path.join(tx, 'journal.json'), JSON.stringify({ state: 'complete', approval_sha256: plan.approval_sha256, operation_id: plan.operation_id }));
+    fs.writeFileSync(path.join(tx, 'changed-paths.json'), JSON.stringify({ approval_sha256: plan.approval_sha256, changed_paths: plan.changed_paths }));
+    const e = start(s, sessionRunner(s));
+    await e.start();
+    await e.whenIdle();
+    const job = e.getJob(s.jobID)!;
+    assert.equal(job.state, 'completed');
+    assert.equal(job.operationID, plan.operation_id);
+    assert.deepEqual([...job.changedPaths].sort(), [...plan.changed_paths].sort());
+    assert.equal(job.approvedChange?.appliedOutside, true);
+    assert.equal(job.approvedChange?.approvalSha256, plan.approval_sha256);
+    assert.match(job.turns.at(-1)!.text, /outside Distill/);
+  });
+
+  test('a journal for a different plan, or not complete, changes nothing', async () => {
+    const s = seed();
+    const plan = JSON.parse(fs.readFileSync(path.join(s.state, 'jobs.json'), 'utf8'))[0].approval.plan;
+    const tx = path.join(s.vault, '.vault-meta/transactions', plan.operation_id);
+    fs.mkdirSync(tx, { recursive: true });
+    fs.writeFileSync(path.join(tx, 'journal.json'), JSON.stringify({ state: 'complete', approval_sha256: 'f'.repeat(64) }));
+    const e = start(s, sessionRunner(s));
+    await e.start();
+    await e.whenIdle();
+    assert.equal(e.getJob(s.jobID)!.state, 'awaitingApproval');
+  });
+});

@@ -415,6 +415,10 @@ export interface ApprovedChange {
   updated: number;
   /** Source pages in this approval (a part of a batch approves some). */
   sourcesApproved?: number;
+  /** The approved plan's `approval_sha256`: Review tells a rebuilt plan from the one approved. */
+  approvalSha256?: string;
+  /** Set when the vault's journal showed the plan applied outside Distill (in Terminal). */
+  appliedOutside?: boolean;
 }
 
 // ───────────────────────────── Session continuity ─────────────────────────────
