@@ -1,0 +1,58 @@
+{
+  "$doc": "Action summary (designed 2026-10-05): every found action carries a 2–4 sentence summary written at finding time from the original and the wiki; a To confirm row shows one line of it and the clean source name; clicking a row selects it into the right pane (type and target, title, summary, FROM with Open original lines and Open wiki section, quote, why, fields, what Create draft will write; Add / Create draft and Dismiss; ↑/↓ and Return). Same on Slack, Jira, Confluence and Ask. Spec: docs/specs/action-summary.md.",
+  "row": 53400,
+  "rowNote": {
+    "id": "flow14",
+    "text": "14 · Action summary (know what a found action is about before you act)"
+  },
+  "templates": {},
+  "layouts": {
+    "pane": "<div style=\"flex-grow: 1; min-height: 0; overflow: hidden; position: relative\">{detail}</div>"
+  },
+  "bases": {
+    "todo": {
+      "window": {"width": 1200, "height": 900},
+      "sidebar": {"section": "actions", "sub": "todo", "height": 860, "queueCount": "0", "reviewCount": "0", "todoCount": "14"},
+      "layout": "pane",
+      "regions": {"detail": {"frag": "todo-confirm"}}
+    },
+    "jira": {
+      "window": {"width": 1200, "height": 1040},
+      "sidebar": {"section": "actions", "sub": "jira", "height": 1000, "queueCount": "0", "reviewCount": "0", "jiraCount": "3"},
+      "layout": "pane",
+      "regions": {"detail": {"frag": "jira-confirm"}}
+    }
+  },
+  "states": [
+    {"id": "asum-todo-confirm", "base": "todo", "label": "A · To do: every row says what it is about; click one and the pane shows the summary, where it came from and what Add does"},
+    {"id": "asum-jira-confirm", "base": "jira", "label": "B · Jira: the same pane, with what Create draft will write (nothing is created in Jira yet)"},
+    {"id": "asum-todo-summarizing", "base": "todo", "label": "C · An older item without a summary: written on first open; Why and the original’s lines show meanwhile", "set": {"detail": {"frag": "todo-summarizing"}}},
+    {"id": "asum-card-rows", "label": "Rows: today and designed", "caption": "One line of the summary under the title; a clean source name and date.", "card": {"height": 420, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-rows"}},
+    {"id": "asum-card-summary", "label": "What a summary is", "caption": "Separate from the draft (body), Why and the quote.", "card": {"height": 420, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-summary"}},
+    {"id": "asum-card-keys", "label": "Keyboard", "caption": "While the To confirm list has focus.", "card": {"height": 420, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-keys"}},
+    {"id": "asum-card-slack", "label": "Slack: the pane", "caption": "Nothing is sent: Copy, then Mark as sent, as today.", "card": {"height": 440, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-slack"}},
+    {"id": "asum-card-confluence", "label": "Confluence: the pane", "caption": "The page is created only on your click.", "card": {"height": 440, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-confluence"}},
+    {"id": "asum-card-ask", "label": "Ask: found in this answer", "caption": "No right pane in Ask: a row opens in place; the pencil edits the title.", "card": {"height": 440, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-ask"}},
+    {"id": "asum-card-fixes", "label": "Fixes", "caption": "Markdown out of source names; “Found by by” gone.", "card": {"height": 300, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-fixes"}},
+    {"id": "asum-card-model", "label": "What changes in the data", "caption": "Additive; older items keep working and get a summary on first open.", "card": {"height": 300, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-model"}}
+  ],
+  "boards": [
+    {
+      "file": "ActionSummary.dc.html",
+      "title": "Action summary · know what it is about before you act",
+      "heading": "Every found action says what it is about, and a click shows the rest",
+      "intro": "“I have no idea about what it is about, where’s coming from until I add it to the todo, create a slack msg, or create a draft jira.” Every action found in a note or an Ask answer now carries a summary of two to four plain sentences: what it is about, the context needed to act, who is involved, and what was asked or decided and by when. It is written when the action is found, from the original’s lines and the source’s wiki page, and it is separate from the draft. A To confirm row shows one line of it. Clicking the row selects it into the right pane: the summary in full, where it came from (Open original lines, Open wiki section), the quote, why, the fields, and what Add or Create draft will do. ↑/↓ move between rows and Return adds. The same on Slack, Jira, Confluence and Ask. Older items get their summary the first time you open them.",
+      "width": 2520,
+      "sections": [
+        {"title": "To confirm: click a row to see what it is about"},
+        {"row": ["asum-todo-confirm", "asum-jira-confirm"], "style": "display: flex; gap: 40px; align-items: flex-start"},
+        {"grid": ["asum-card-rows", "asum-card-summary", "asum-card-keys"], "cols": 3},
+        {"title": "Slack, Confluence and Ask"},
+        {"grid": ["asum-card-slack", "asum-card-confluence", "asum-card-ask"], "cols": 3},
+        {"title": "Older items, fixes and the data"},
+        {"row": ["asum-todo-summarizing"], "style": "display: flex; gap: 40px; align-items: flex-start"},
+        {"grid": ["asum-card-fixes", "asum-card-model"], "cols": 2}
+      ]
+    }
+  ]
+}

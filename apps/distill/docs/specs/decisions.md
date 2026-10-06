@@ -17,6 +17,41 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+**Action summary: every found action says what it is about (2026-10-05,
+proposed defaults, waiting for the owner).** Spec:
+[Action summary](action-summary.md). Canvas: row 14, board ActionSummary.
+
+The owner asked for a title and a summary on every action, and to click an
+item to confirm and "show the full summary of what about" before choosing what
+to do. The defaults below are proposed; none is built yet.
+
+- **`ActionItem.summary` is written at finding time.** It is 2–4 plain
+  sentences, from the original's lines and the wiki, in the same find run.
+  - It is separate from `body` and `why`.
+  - It is optional in `FIND_SCHEMA`.
+  - The instruction goes in the always-appended part of the find prompt, so
+    an edited prompt still asks for it.
+- **Older items are summarized on first open, automatically**, after the
+  selection rests for 600 ms.
+  - `POST /v1/actions/:id/summarize` writes it from the draft context with the
+    find model, so there is no new task or setting.
+  - The alternative is a Summarize button.
+- **The summary is not editable.**
+- **A To confirm row click selects it into the right pane (`ConfirmDetail`)**
+  on To do and on the Slack, Jira and Confluence screens.
+  - The inline chevron goes on those screens.
+  - Review and Ask keep the in-place expand, because they have no pane.
+- **Add and Dismiss move from the row to the pane's footer** on screens with a
+  pane. "Add all" and "Dismiss all" stay. The alternative keeps the row
+  buttons.
+- **Keys work while the list has focus:** ↑/↓ move, Return adds, Delete
+  dismisses, and ⌘Return adds from anywhere. After an action the selection
+  moves to the next row. The alternative is ⌘Return only.
+- **Ask: a row click opens the row; editing the title moves to a pencil.**
+- **Source names lose their Markdown in the core and the app.** Emoji stay.
+- **"Found by by" is fixed in the app.** The stored detail stays "by Sonnet".
+- **A to-do confirmed with an empty body takes the summary as its note.**
+
 **Resizable panes: a draggable divider on every split screen (2026-10-05).**
 Spec: [Resizable panes](resizable-panes.md). Canvas: row 13, board Panes.
 
