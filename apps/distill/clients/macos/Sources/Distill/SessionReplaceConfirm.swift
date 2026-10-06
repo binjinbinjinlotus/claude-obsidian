@@ -7,7 +7,7 @@ import SwiftUI
 struct SessionReplaceConfirm: View {
     /// batch | conversation | terminal
     var place: String
-    /// notFound | missing | neverStarted | runnerGone
+    /// notFound | missing | neverStarted | runnerGone | recovery (the recovery card's suggestion)
     var reason: String
     var runner: String = "Claude Code"
     /// What the new session starts with; empty = the place's default.
@@ -45,7 +45,7 @@ struct SessionReplaceConfirm: View {
                 Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.primary)
                     .frame(width: 18).padding(.top, 1)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(SessionReplaceText.heading(place: place)).font(Theme.body(14, .bold)).foregroundStyle(Theme.ink)
+                    Text(SessionReplaceText.heading(place: place, reason: reason)).font(Theme.body(14, .bold)).foregroundStyle(Theme.ink)
                     Text(SessionReplaceText.body(place: place, reason: reason, runner: runner))
                         .font(Theme.body(12.5)).foregroundStyle(Color(hex: 0x48463F)).lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -72,6 +72,6 @@ struct SessionReplaceConfirm: View {
         .frame(width: width, alignment: .leading)
         .frame(maxWidth: width == nil ? .infinity : nil, alignment: .leading)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(SessionReplaceText.heading(place: place))
+        .accessibilityLabel(SessionReplaceText.heading(place: place, reason: reason))
     }
 }

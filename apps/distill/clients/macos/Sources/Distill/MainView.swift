@@ -938,13 +938,16 @@ struct JobDetailView: View {
     /// v7: the batch's steps, open in place of the detail (‹ the batch).
     @State private var showSteps: Bool
     private let stepsOptions: StepsSnapshot
+    /// Snapshots: the recovery card's new-session confirmation starts open.
+    var confirmingNewSession = false
 
     /// `reply` / `allowed` / the review state start non-empty only in snapshots.
     init(jobID: String, reply: String = "", allowed: Set<String> = [], openFolders: Set<String> = [],
          unpicked: Set<String> = [], editing: (page: String, labels: [String])? = nil, labelError: String? = nil,
          openGroups: [String: Bool] = [:], menuOpen: Bool = false, hoverPage: String? = nil, collapsesConversation: Bool = true,
-         showSteps: Bool = false, stepsOptions: StepsSnapshot = StepsSnapshot()) {
+         showSteps: Bool = false, stepsOptions: StepsSnapshot = StepsSnapshot(), confirmingNewSession: Bool = false) {
         self.jobID = jobID
+        self.confirmingNewSession = confirmingNewSession
         self.collapsesConversation = collapsesConversation
         self.openFolders = openFolders
         self.hoverPage = hoverPage
@@ -1104,7 +1107,8 @@ struct JobDetailView: View {
         // failed batch too). Blocked commands have their own card below.
         if RecoveryText.shows(job), let recovery = job.recovery {
             RecoveryCard(job: job, recovery: recovery, onRecover: { engine.recover(job.id) }, onTerminal: { engine.openInTerminal(job) },
-                         onReject: { engine.reject(job.id, batch: true) })
+                         onReject: { engine.reject(job.id, batch: true) }, onNewSession: { engine.continueRecoveryInNewSession(job) },
+                         confirmingNewSession: confirmingNewSession)
         }
         // What needs the user (plan error, questions, blocked tools with
         // "Allow & continue") comes first, so it is visible without scrolling
@@ -1214,6 +1218,7 @@ struct JobDetailView: View {
         BlockedCommandCard(job: job, approval: approval, allowed: $allowed,
                            onTryAgain: { engine.reply(job.id, text: BlockedCommandCard.readInstead) },
                            onRecover: { engine.recover(job.id) },
+                           onNewSession: { engine.continueRecoveryInNewSession(job) },
                            onTerminal: { engine.openInTerminal(job) },
                            onReject: { engine.reject(job.id, batch: true) },
                            onAllow: { rules in engine.allow(job.id, rules: rules); allowed = [] },

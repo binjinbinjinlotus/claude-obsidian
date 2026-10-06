@@ -56,6 +56,13 @@ final class ReviewQueueTests: XCTestCase {
         XCTAssertTrue(RecoveryText.shows(job), "a batch whose run stopped shows its recovery")
         XCTAssertEqual(ReviewBatches.rowState(job, in: [job]), .couldntFix)
         XCTAssertEqual(ApplyTimeline.reviewList([job]).map(\.id), ["j"])
+        XCTAssertFalse(RecoveryText.offersNewSession(job))
+        job.recovery?.proposal = "new_session"
+        XCTAssertTrue(RecoveryText.offersNewSession(job), "recovery suggests it; the owner still confirms")
+        XCTAssertEqual(SessionReplaceText.heading(place: "batch", reason: "recovery"), "Recovery suggests a new session")
+        job.sessionUnavailable = SessionUnavailable(place: "batch", reason: "missing")
+        XCTAssertFalse(RecoveryText.offersNewSession(job), "the gone-session confirmation already shows")
+        job.sessionUnavailable = nil
         job.recovery?.signature = "denial"
         XCTAssertFalse(RecoveryText.shows(job), "blocked commands have their own card")
         job.recovery = nil

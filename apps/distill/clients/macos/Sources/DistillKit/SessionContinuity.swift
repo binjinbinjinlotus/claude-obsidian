@@ -60,7 +60,9 @@ public struct SessionUnavailable: Codable, Equatable, Hashable, Sendable {
 public enum SessionReplaceText {
     public static func noun(_ place: String) -> String { place == "conversation" ? "conversation" : "batch" }
 
-    public static func heading(place: String) -> String { "This \(noun(place))’s AI session isn’t available anymore" }
+    public static func heading(place: String, reason: String = "") -> String {
+        reason == "recovery" ? "Recovery suggests a new session" : "This \(noun(place))’s AI session isn’t available anymore"
+    }
 
     public static func reason(_ reason: String, runner: String) -> String {
         switch reason {
@@ -68,6 +70,7 @@ public enum SessionReplaceText {
         case "notFound": return "\(runner) couldn’t find it"
         case "neverStarted": return "it never started: the batch stopped before \(runner) read the sources"
         case "runnerGone": return "\(runner) isn’t available anymore"
+        case "recovery": return "a fresh session may get this batch going again"
         default: return "it can’t be resumed"
         }
     }

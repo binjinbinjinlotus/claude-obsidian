@@ -674,6 +674,15 @@ extension StatesSnapshot {
             JobDetailView(jobID: e.jobs[0].id)
         }
 
+        e = engine()
+        var suggests = stopped
+        suggests.recovery?.proposal = "new_session"
+        suggests.recovery?.summary = "The AI run stopped with an error (Claude Code stopped: 529 overloaded.). Its AI session isn’t available anymore."
+        e.jobs = [suggests]
+        main("review-gaveup-new-session", f, "Review", "Couldn't fix · recovery suggests a new session", "Continue in a new session opens the usual confirmation; nothing starts without the owner's Continue.", e, section: .review, job: e.jobs[0].id) {
+            JobDetailView(jobID: e.jobs[0].id, confirmingNewSession: true)
+        }
+
         // review-queue.md: approved and waiting (frame B), rebuilt and asking once more (frame D), updating (frame C).
         e = engine()
         var first = awaiting(e, id: "job-20261005-091000-aaaa", files: ["inbox/Product sync.md"], minutesAgo: 40)

@@ -137,6 +137,8 @@ public struct RecoveryState: Codable, Equatable, Sendable {
     }
 
     public var costUSD: Double { attempts.reduce(0) { $0 + $1.costUSD } }
+    /// Recovery suggests a new session (only the owner may start one).
+    public var suggestsNewSession: Bool { proposal == "new_session" }
 }
 
 /// review-queue.md, Self-recovery: the Review words for a problem other than a blocked command (stale-again,
@@ -195,6 +197,16 @@ public enum RecoveryText {
         let agent = r.attempts.last(where: { $0.by == "agent" }).map { " · last by \(ModelChoice.shortName($0.model ?? "the Recovery model"))" } ?? ""
         return "Tried \(n == 1 ? "once" : n == 2 ? "twice" : "\(n) times")\(agent)\(cost)."
     }
+
+    /// The card offers Continue in a new session: recovery suggested it and the job has no gone-session marker
+    /// (that one already shows the confirmation under the batch).
+    public static func offersNewSession(_ job: Job) -> Bool {
+        guard let r = job.recovery, r.state == .gaveUp, r.suggestsNewSession else { return false }
+        return job.sessionUnavailable == nil
+    }
+
+    /// What Continue in a new session sends, as the owner's reply (session continuity seeds the batch first).
+    public static let newSessionReply = "Continue this batch in a new session: pick up where it stopped, using only the tools you have, and finish with the structured status."
 
     static func clock(_ d: Date, timeZone: TimeZone) -> String {
         let f = DateFormatter()

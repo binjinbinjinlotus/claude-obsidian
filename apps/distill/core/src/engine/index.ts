@@ -1146,9 +1146,9 @@ export function createEngine(opts: EngineOptions): Engine {
     const answers = rec.denialAnswers ?? 0;
     const where = { vaultPath: job.vaultPath, jobDir: jobStateDirectory(job) };
     const settled = rec.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed' as const } : a));
-    const giveUp = (extra = '') =>
+    const giveUp = (extra = '', proposal?: 'new_session') =>
       mutate(id, (j) => {
-        j.recovery = { ...rec, attempts: settled, state: 'gaveUp', summary: denialSummary(denials, { ...where, answers }) + extra };
+        j.recovery = { ...rec, attempts: settled, state: 'gaveUp', summary: denialSummary(denials, { ...where, answers }) + extra, ...(proposal ? { proposal } : {}) };
       });
     // Settings → Recovery → Recover automatically off: the owner decides (plain words, never the command).
     if (!recoveryPreferences(settings).automatic) {
@@ -1165,7 +1165,7 @@ export function createEngine(opts: EngineOptions): Engine {
     }
     const text = denialAnswer(denials, where);
     if (precheck(job, 'reply', { text })) {
-      giveUp(' Its AI session isn’t available anymore.');
+      giveUp(' Its AI session isn’t available anymore.', 'new_session');
       return false;
     }
     const at = isoDate(now());
@@ -1183,7 +1183,7 @@ export function createEngine(opts: EngineOptions): Engine {
     startTurnProgress(current, 'Drafting page changes', 'Recovering · told Claude to read the files instead');
     const out = resumeBatchSession({ job: current, prompt: WorkerProtocol.replyPrompt(text), action: 'reply', text });
     if (out.kind === 'session_unavailable') {
-      giveUp(' Its AI session isn’t available anymore.');
+      giveUp(' Its AI session isn’t available anymore.', 'new_session');
       return false;
     }
     return true;
@@ -1239,9 +1239,9 @@ export function createEngine(opts: EngineOptions): Engine {
     if (!job || jobKind(job.kind)?.appliesInCore || coreApplies(job)) return false;
     const rec = recoveryFor(job.recovery, signature);
     const settled = rec.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed' as const } : a));
-    const giveUp = (extra = '') =>
+    const giveUp = (extra = '', proposal?: 'new_session') =>
       mutate(id, (j) => {
-        j.recovery = { ...rec, attempts: settled, state: 'gaveUp', summary: problemSummary(signature, j) + extra };
+        j.recovery = { ...rec, attempts: settled, state: 'gaveUp', summary: problemSummary(signature, j) + extra, ...(proposal ? { proposal } : {}) };
       });
     if (!recoveryPreferences(settings).automatic) {
       giveUp();
@@ -1251,7 +1251,7 @@ export function createEngine(opts: EngineOptions): Engine {
     if (signature !== 'stale-again' && !settled.some((a) => a.by === 'rule')) {
       const text = rebuildText(signature, job);
       if (precheck(job, 'reply', { text })) {
-        giveUp(' Its AI session isn’t available anymore.');
+        giveUp(' Its AI session isn’t available anymore.', 'new_session');
         return false;
       }
       mutate(id, (j) => {
@@ -1262,7 +1262,7 @@ export function createEngine(opts: EngineOptions): Engine {
       startTurnProgress(findJob(id)!, 'Drafting page changes', 'Recovering · asking Claude to try again');
       const out = resumeBatchSession({ job: findJob(id)!, prompt: WorkerProtocol.replyPrompt(text), action: 'reply', text });
       if (out.kind === 'session_unavailable') {
-        giveUp(' Its AI session isn’t available anymore.');
+        giveUp(' Its AI session isn’t available anymore.', 'new_session');
         return false;
       }
       return true;
@@ -2768,6 +2768,10 @@ export function createEngine(opts: EngineOptions): Engine {
     if (job.state === 'running') throw new CoreError('busy', `Job ${id} is running.`);
     if (job.state !== 'awaitingApproval' && holdsOtherJob(job)) throw new CoreError('busy', 'Another job holds this vault.');
     if (opts.newSession) {
+      // The owner acted (Continue in a new session, the recovery card's too): recovery starts over.
+      mutate(id, (j) => {
+        delete j.recovery;
+      });
       // After the switch: its first change (state not yet running) would close a progress started before.
       continueInNewSession(id, 'reply', { userTurn: trimmed, text: trimmed });
       const current = findJob(id);

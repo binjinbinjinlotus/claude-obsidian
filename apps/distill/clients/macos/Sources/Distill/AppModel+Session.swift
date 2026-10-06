@@ -94,6 +94,18 @@ extension AppModel {
         }
     }
 
+    /// review-queue.md: the recovery card's Continue in a new session, after the owner confirmed it there.
+    func continueRecoveryInNewSession(_ job: Job) {
+        guard let client else { lastError = "The Distill core is not connected."; return }
+        Task {
+            do {
+                upsert(try await client.reply(job.id, text: RecoveryText.newSessionReply, newSession: true))
+            } catch {
+                report(error)
+            }
+        }
+    }
+
     /// SessionReplaceConfirm → Cancel: nothing changes; a reply goes back in its box.
     func cancelSessionPrompt(_ job: Job) {
         let prompt = sessionPrompt(for: job)

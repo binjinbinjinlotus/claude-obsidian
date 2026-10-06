@@ -445,6 +445,26 @@ describe('batches: approve, reply, allow, Open in Terminal', () => {
     assert.equal(after.recovery, undefined);
   });
 
+  test('recovery with a gone session proposes a new one; only the owner continues it, and recovery starts over', async () => {
+    h = engineSetup(new FakeAgent([]), undefined, {});
+    const job = await reviewedBatch(h);
+    h.runner.steps.push({ throws: new RunnerError('Exited 1: 529 overloaded', 'nonZeroExit') });
+    await h.engine.reply(job.id, 'again');
+    h.runner.status = 'missing'; // gone before the turn ends: recovery can't reply in it
+    await h.engine.whenIdle();
+    const stuck = h.engine.getJob(job.id)!;
+    assert.equal(stuck.recovery?.state, 'gaveUp');
+    assert.equal(stuck.recovery?.proposal, 'new_session');
+    assert.equal(h.runner.requests.length, 2, 'no new session started by itself');
+    h.runner.steps.push({ structured: { status: 'nothing_to_do', summary: 'ok' } });
+    await h.engine.reply(job.id, 'Continue this batch in a new session.', { newSession: true });
+    await h.engine.whenIdle();
+    const after = h.engine.getJob(job.id)!;
+    assert.ok('start' in h.runner.requests.at(-1)!.session, 'a new session');
+    assert.notEqual(after.sessionID, job.sessionID);
+    assert.equal(after.recovery, undefined);
+  });
+
   test('runner-failed recovery: a resumed turn that errors gets one "continue" in the same session (review-queue.md)', async () => {
     h = engineSetup(new FakeAgent([]), undefined, {});
     const job = await reviewedBatch(h);
