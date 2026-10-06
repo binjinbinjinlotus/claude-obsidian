@@ -431,6 +431,8 @@ def screen_boards(screens, comps, H):
                     parts.append(f'<div style="{sec.get("style", "display: flex; gap: 40px")}">' + ''.join(frame(i) for i in sec['row']) + '</div>')
                 elif 'frame' in sec:
                     parts.append(frame(sec['frame']))
+                elif 'block' in sec:  # a full-width block straight on the board, e.g. the owner's answers above the frames
+                    parts.append(render_region(sec['block'], screen))
                 elif 'title' in sec:
                     sub = f'<span style="font-size: 13px; color: #6B6862; line-height: 1.5; max-width: 1300px">{sec["sub"]}</span>' if sec.get('sub') else ''
                     parts.append(f'<div style="display: flex; flex-direction: column; gap: 4px; margin-top: 10px"><span style="{HEAD}; font-weight: 800; font-size: 20px; letter-spacing: -0.01em">{sec["title"]}</span>{sub}</div>')
