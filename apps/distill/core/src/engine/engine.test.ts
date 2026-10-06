@@ -1192,6 +1192,73 @@ describe('the apply queue (review-queue.md)', () => {
     assert.equal(job.refresh, undefined, 'the rebuild finished');
   });
 
+  test('a queued head stale again (already rebuilt against this vault) leaves the queue for recovery, keeping the approved hash', async () => {
+    let stale = false;
+    let bBundle = '';
+    h = setup([], {
+      inspect: (b) => ({ status: 0, stdout: Buffer.from(JSON.stringify(stale && b === bBundle ? { ...PLAN, approval_sha256: 'e'.repeat(64) } : PLAN)), stderr: Buffer.alloc(0) }),
+    });
+    const a = await firstJob();
+    h.runner.steps.push(needsApproval(h.bundle(a)));
+    await h.engine.whenIdle();
+    fs.writeFileSync(path.join(h.queue, 'b.md'), '# B\n');
+    const b = (await h.engine.processQueue({ force: true }))!;
+    bBundle = h.bundle(b);
+    h.runner.steps.push(needsApproval(bBundle));
+    await h.engine.whenIdle();
+    // B's plan is already overtaken: Approve rebuilds it once against this vault (no apply has landed).
+    fs.mkdirSync(path.dirname(bBundle), { recursive: true });
+    fs.writeFileSync(bBundle, JSON.stringify({ expected_hashes: { 'wiki/b.md': null }, writes: [] }));
+    fs.mkdirSync(path.join(h.vault, 'wiki'), { recursive: true });
+    fs.writeFileSync(path.join(h.vault, 'wiki', 'b.md'), '# B\n');
+    h.runner.steps.push(needsApproval(bBundle));
+    await h.engine.approve(b.id);
+    await h.engine.whenIdle();
+    assert.match(h.runner.requests.at(-1)!.prompt, /The vault changed after this plan was built/, 'rebuilt once');
+    fs.writeFileSync(bBundle, JSON.stringify({ expected_hashes: {}, writes: [] }));
+    h.engine.unqueue(b.id);
+    // A's apply turn runs (held); B is approved and queues behind it under its approval.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    const run = h.runner.run.bind(h.runner);
+    h.runner.run = async (req) => {
+      if (req.allowedTools.some((x) => x.includes('transaction apply'))) {
+        h.runner.requests.push(req);
+        await held;
+        return { sessionID: 's', resultText: '', isError: false, costUSD: 0, denials: [], raw: '{}', structured: { status: 'failed', summary: 'The apply did not run.' } };
+      }
+      return run(req);
+    };
+    await h.engine.approve(a.id);
+    await h.engine.approve(b.id);
+    assert.equal(h.engine.getJob(b.id)!.queuedApply?.planSha256, PLAN.approval_sha256, 'queued under its approval');
+    // A's apply doesn't land, and the vault changed by hand: the head's inspect gives another hash.
+    stale = true;
+    h.runner.steps.push({ structured: { diagnosis: 'Something else keeps changing these pages.', fix: 'give_up', reason: 'r' } });
+    const calls = h.runner.requests.length;
+    release();
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 5));
+      await h.engine.whenIdle();
+    }
+    const job = h.engine.getJob(b.id)!;
+    assert.equal(h.engine.getJob(a.id)!.state, 'failed');
+    assert.equal(h.runner.requests.length, calls + 1, 'one recovery call, no second rebuild');
+    assert.match(h.runner.requests.at(-1)!.prompt, /recovery step/);
+    assert.equal(job.recovery?.signature, 'stale-again');
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.equal(job.recovery?.approvedSha256, PLAN.approval_sha256, 'the approved hash is kept on the recovery');
+    assert.equal(job.queuedApply?.planSha256, undefined, 'out of the queue: never applied under the old approval');
+    assert.ok(!h.runner.requests.slice(calls).some((r) => r.allowedTools.some((x) => x.includes('transaction apply'))), 'no apply turn for B');
+    assert.equal((await h.engine.status()).pendingApprovals, 1, 'B needs the owner (A failed on its own)');
+    const inspects = h.inspectCalls.length;
+    for (let i = 0; i < 3; i++) {
+      await new Promise((r) => setTimeout(r, 5));
+      await h.engine.whenIdle();
+    }
+    assert.equal(h.inspectCalls.length, inspects, 'the pump does not inspect it again');
+  });
+
   test('reject takes a batch out of the queue', async () => {
     const t = await twoBatches();
     const first = h.engine.approve(t.a.id);
