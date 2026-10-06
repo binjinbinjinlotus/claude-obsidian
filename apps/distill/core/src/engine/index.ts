@@ -121,6 +121,7 @@ import {
   recoveryPrompt,
   validateFix,
   whoApplies,
+  type FixContext,
   type RecoveryAnswer,
 } from './recovery.js';
 import { runStructured } from '../actions/ai.js';
@@ -1204,6 +1205,11 @@ export function createEngine(opts: EngineOptions): Engine {
       // Only the wait it was set for: the owner may have acted since (the recovery reset, gave up or was fixed).
       const rec = findJob(id)?.recovery;
       if (rec?.state !== 'waiting' || rec.signature !== signature) return;
+      // wait_then_retry / reinspect_same_bundle: the queued apply goes again (through the pump), no agent call.
+      if (rec.wake === 'retry') {
+        asScheduler(() => retryQueuedApply(id))();
+        return;
+      }
       track(asScheduler(() => runRecoveryAgent(id, signature))().catch((err: unknown) => log('warn', `Recovery: ${(err as Error).message}`)));
     }, Math.max(0, ms));
     t.unref?.();
@@ -1302,6 +1308,55 @@ export function createEngine(opts: EngineOptions): Engine {
   /** The latest agent call per batch: an older call's answer is never carried out. */
   const agentCalls = new Map<string, symbol>();
 
+  /** The pages a batch's plan touches (its inspected plan; empty without one). */
+  function planPaths(j: Job): string[] {
+    return j.approval?.plan?.changed_paths ?? [];
+  }
+
+  /** What validateFix and the agent's facts know about the batch (never the agent's word alone). */
+  function fixContext(job: Job): FixContext {
+    const approvedSha256 = job.recovery?.approvedSha256 ?? job.queuedApply?.planSha256;
+    return {
+      vaultPath: job.vaultPath,
+      paths: planPaths(job),
+      others: jobs
+        .filter((o) => o.id !== job.id && (o.state === 'awaitingApproval' || o.state === 'running'))
+        .map((o) => ({ id: o.id, vaultPath: o.vaultPath, paths: planPaths(o) })),
+      sources: (job.approval?.sources ?? []).filter((x) => !x.removed).map((x) => x.page),
+      rebuiltPart: !!(job.pendingPart && job.approval?.rebuilt && !job.approval.needsRebuild),
+      ...(approvedSha256 ? { approvedSha256 } : {}),
+    };
+  }
+
+  /**
+   * reinspect_same_bundle and wait_then_retry, when their time comes: the batch goes back to the queue under the
+   * exact hash the owner approved, and the pump's `transaction inspect` proves the bytes before anything applies.
+   * A plan that changed since never goes back by itself: the owner is asked.
+   */
+  function retryQueuedApply(id: string): void {
+    const job = findJob(id);
+    const rec = job?.recovery;
+    if (!job || !rec || rec.state !== 'waiting') return;
+    const q = job.queuedApply;
+    const plan = q ? planFor(job, q.labels) : undefined;
+    if (job.state !== 'awaitingApproval' || !q || !rec.approvedSha256 || plan?.approval_sha256 !== rec.approvedSha256) {
+      mutate(id, (j) => {
+        if (!j.recovery) return;
+        const { wake: _w, waitUntil: _u, ...rest } = j.recovery;
+        j.recovery = { ...rest, state: 'gaveUp', summary: `${recoverySummary(rest.signature, j)} The plan changed after you approved it, so Distill didn’t try it again; approve it as it is now.` };
+      });
+      return;
+    }
+    mutate(id, (j) => {
+      if (!j.recovery || !j.queuedApply) return;
+      const { wake: _w, waitUntil: _u, ...rest } = j.recovery;
+      j.recovery = { ...rest, state: 'running' };
+      j.queuedApply.planSha256 = rest.approvedSha256;
+      j.turns.push(newTurn('app', 'Trying your approved plan again: Distill checks it is unchanged before it applies.', now()));
+    });
+    track(pumpApplies(job.vaultPath).catch((err: unknown) => log('warn', `Apply queue: ${(err as Error).message}`)));
+  }
+
   /**
    * review-queue.md, Bounds: a recovery reads `running` only while a turn or an agent call works on it. When a
    * turn ends without fixing it (a valid plan) or re-triggering it (new denials, a plan error, a runner error),
@@ -1312,6 +1367,8 @@ export function createEngine(opts: EngineOptions): Engine {
     const job = findJob(id);
     const rec = job?.recovery;
     if (!job || !rec || rec.state !== 'running' || job.state === 'running' || (recoveryAgents.get(id) ?? 0) > 0) return;
+    // Back in the queue under the approved hash (a retry): the pump works on it.
+    if (job.state === 'awaitingApproval' && job.queuedApply?.planSha256) return;
     const last = [...rec.attempts].reverse().find((a) => a.result === 'running');
     const attempts = rec.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed' as const, error: a.error ?? 'The turn ended without a plan.' } : a));
     if (job.state === 'completed') {
@@ -1360,11 +1417,12 @@ export function createEngine(opts: EngineOptions): Engine {
     const where = { vaultPath: job.vaultPath, jobDir: jobStateDirectory(job) };
     const denials = job.approval?.denials ?? [];
     const base = recoverySummary(signature, job);
-    const stop = (extra: string, proposal?: 'new_session') =>
+    const stop = (extra: string, proposal?: 'new_session' | 'split_batch' | 'discard_stale_part', groups?: string[][]) =>
       mutate(id, (j) => {
         if (!j.recovery) return;
-        j.recovery = { ...j.recovery, state: 'gaveUp', summary: base + extra, ...(proposal ? { proposal } : {}) };
+        j.recovery = { ...j.recovery, state: 'gaveUp', summary: base + extra, ...(proposal ? { proposal } : {}), ...(groups ? { groups } : {}) };
       });
+    const context = fixContext(job);
     const spent = rec.attempts.reduce((n, a) => n + a.costUSD, 0);
     if (rec.attempts.filter((a) => a.by === 'agent').length >= prefs.maxAttempts) return stop('');
     if (spent >= prefs.maxCostUSD) return stop(` Recovery stopped at its $${prefs.maxCostUSD.toFixed(2)} limit.`);
@@ -1403,6 +1461,7 @@ export function createEngine(opts: EngineOptions): Engine {
         answersSent: job.turns.filter((t) => t.author === 'app' && /Read, Grep or Glob/.test(t.text)).map((t) => t.text),
         attempts: rec.attempts,
         ...where,
+        context,
       });
       const out = await runStructured({
         runners, settings, task: 'recovery', selection, prompt: recoveryPrompt(facts), schema: RECOVERY_SCHEMA,
@@ -1413,7 +1472,7 @@ export function createEngine(opts: EngineOptions): Engine {
       if (typeof parsed === 'string') error = parsed;
       else {
         answer = parsed;
-        error = validateFix(parsed, signature) ?? undefined;
+        error = validateFix(parsed, signature, context) ?? undefined;
       }
     } catch (err) {
       error = (err as Error).message;
@@ -1424,7 +1483,7 @@ export function createEngine(opts: EngineOptions): Engine {
     // recovery that is no longer this call's is dropped, never carried out.
     const last = current.recovery.attempts.at(-1);
     if (agentCalls.get(id) !== call || current.recovery.state !== 'running' || last?.by !== 'agent' || last.result !== 'running' || last.at !== at) return;
-    const settle = (result: 'running' | 'failed', extra: Partial<RecoveryAttempt> = {}) =>
+    const settle = (result: 'running' | 'failed' | 'fixed', extra: Partial<RecoveryAttempt> = {}) =>
       mutate(id, (j) => {
         if (!j.recovery) return;
         const attempts = [...j.recovery.attempts];
@@ -1473,6 +1532,25 @@ export function createEngine(opts: EngineOptions): Engine {
         if (out.kind === 'session_unavailable') stop(' Its AI session isn’t available anymore.', 'new_session');
         return;
       }
+      case 'reinspect_same_bundle':
+      case 'wait_then_retry': {
+        // Back to the queue under the approved hash only (validateFix checked there is one); the pump re-inspects.
+        const wait = answer.fix === 'wait_then_retry' ? RECOVERY_BACKOFF_MS : 0;
+        settle('fixed');
+        mutate(id, (j) => {
+          if (!j.recovery) return;
+          j.recovery = { ...j.recovery, state: 'waiting', wake: 'retry', approvedSha256: context.approvedSha256!, waitUntil: isoDate(new Date(now().getTime() + wait)) };
+        });
+        scheduleRecoveryWake(id, signature, wait);
+        return;
+      }
+      case 'split_batch':
+        // review-queue.md, decision 2026-10-06: a proposal the owner confirms on the card (Approve with the first group).
+        settle('failed', { error: 'Only you can split the batch.' });
+        return stop(` ${answer.diagnosis} Recovery suggests rebuilding ${plural(answer.groups![0]!.length, 'source')} first; the rest wait.`, 'split_batch', answer.groups!.filter((g) => g.length > 0));
+      case 'discard_stale_part':
+        settle('failed', { error: 'Only you can discard the rebuilt part.' });
+        return stop(` ${answer.diagnosis} Recovery suggests discarding the rebuilt part; its sources stay in this batch.`, 'discard_stale_part');
       case 'new_session':
         // Session continuity asks the owner before a new session (owner decision): a proposal only.
         settle('failed', { error: 'Only you can start a new session.' });
@@ -1693,6 +1771,7 @@ export function createEngine(opts: EngineOptions): Engine {
     if (job.state !== 'awaitingApproval' || !job.queuedApply) throw new CoreError('invalid_state', `Job ${id} is not waiting to apply.`);
     mutate(id, (j) => {
       delete j.queuedApply;
+      delete j.recovery; // the owner acted
       j.turns.push(newTurn('user', 'Not applied yet: taken out of the queue. Approve it when you want it applied.', now()));
     });
     track(pumpApplies(job.vaultPath));
@@ -2730,6 +2809,10 @@ export function createEngine(opts: EngineOptions): Engine {
     if (sources.length > 0 && picked.length === 0) throw new CoreError('invalid_request', 'Pick at least one source to approve, or reject the batch.');
     const partial = sources.length > 0 && (picked.length < active.length || sources.some((s) => s.removed));
     if (partial) {
+      // The owner acted (a pick, or confirming recovery's split): recovery starts over.
+      if (!fromQueue) mutate(id, (j) => {
+        delete j.recovery;
+      });
       if (!startPart(id, 'partial', { picked, labels: mode }, opts.newSession === true)) {
         throw new CoreError('invalid_state', "Distill couldn't prepare the rebuild for the sources you picked (the change's pages could not be read).");
       }
@@ -2939,6 +3022,9 @@ export function createEngine(opts: EngineOptions): Engine {
     if (opts.scope !== undefined && opts.scope !== 'part' && opts.scope !== 'batch') throw new CoreError('invalid_request', 'scope must be "part" or "batch".');
     const part = job.pendingPart;
     if (opts.scope !== 'batch' && part && job.approval?.rebuilt && !job.approval.needsRebuild) {
+      mutate(id, (j) => {
+        delete j.recovery; // the owner acted (or confirmed recovery's discard)
+      });
       discardPart(id, part);
       return;
     }

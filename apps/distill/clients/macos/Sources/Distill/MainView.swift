@@ -1109,6 +1109,8 @@ struct JobDetailView: View {
         if RecoveryText.shows(job), let recovery = job.recovery {
             RecoveryCard(job: job, recovery: recovery, onRecover: { engine.recover(job.id) }, onTerminal: { engine.openInTerminal(job) },
                          onReject: { engine.reject(job.id, batch: true) }, onNewSession: { engine.continueRecoveryInNewSession(job) },
+                         onSplit: { pages in engine.approveTracked(job.id, options: ApproveOptions(pages: pages)) },
+                         onDiscard: { engine.reject(job.id, batch: false) },
                          confirmingNewSession: confirmingNewSession)
         }
         // What needs the user (plan error, questions, blocked tools with

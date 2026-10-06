@@ -388,8 +388,21 @@ export interface RecoveryState {
   summary?: string;
   /** A waiting attempt runs again at this time (ISO). */
   waitUntil?: string;
-  /** Recovery suggested something only the owner may do. */
-  proposal?: 'new_session' | null;
+  /**
+   * Recovery suggested something only the owner may do: continue in a new session, rebuild one group of the
+   * sources first (`groups[0]`, the rest wait), or discard the rebuilt part. The card asks; nothing changes until
+   * the owner confirms.
+   */
+  proposal?: 'new_session' | 'split_batch' | 'discard_stale_part' | null;
+  /** split_batch: the sources (their pages) in groups; the first is rebuilt on the owner's OK. */
+  groups?: string[][];
+  /**
+   * The approval hash the owner gave this batch's queued apply. reinspect_same_bundle and wait_then_retry put
+   * the batch back in the queue only under this exact hash, and the pump's inspect proves the bytes first.
+   */
+  approvedSha256?: string;
+  /** What a `waiting` recovery does when its time comes: ask the agent (default) or retry the queued apply. */
+  wake?: 'agent' | 'retry';
 }
 
 /** v10: one source's coverage as clients show it ("647 lines · read in full"). */

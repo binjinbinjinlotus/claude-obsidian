@@ -343,7 +343,14 @@ function decodeRecovery(v: unknown): RecoveryState | undefined {
   if (summary !== undefined) out.summary = summary;
   const wait = str(v.waitUntil);
   if (wait !== undefined) out.waitUntil = wait;
-  if (v.proposal === 'new_session') out.proposal = 'new_session';
+  if (v.proposal === 'new_session' || v.proposal === 'split_batch' || v.proposal === 'discard_stale_part') out.proposal = v.proposal;
+  if (Array.isArray(v.groups)) {
+    const groups = v.groups.filter(Array.isArray).map((g) => (g as unknown[]).filter((x): x is string => typeof x === 'string'));
+    if (groups.length > 0) out.groups = groups;
+  }
+  const approved = str(v.approvedSha256);
+  if (approved !== undefined) out.approvedSha256 = approved;
+  if (v.wake === 'agent' || v.wake === 'retry') out.wake = v.wake;
   return out;
 }
 

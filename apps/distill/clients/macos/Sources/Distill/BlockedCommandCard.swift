@@ -105,6 +105,10 @@ struct RecoveryCard: View {
     var onReject: (() -> Void)?
     /// Continue in a new session, after the owner confirms (recovery suggested it).
     var onNewSession: (() -> Void)? = nil
+    /// Recovery's split proposal: rebuild these sources first (Approve with them picked).
+    var onSplit: (([String]) -> Void)? = nil
+    /// Recovery's discard proposal: discard the rebuilt part (its sources stay).
+    var onDiscard: (() -> Void)? = nil
     /// Snapshots open the confirmation.
     var confirmingNewSession = false
     @State private var confirming: Bool?
@@ -116,6 +120,17 @@ struct RecoveryCard: View {
                 Text(RecoveryText.summary(recovery)).font(Theme.body(12.5)).foregroundStyle(Theme.softInk).fixedSize(horizontal: false, vertical: true)
                 if let tried = RecoveryText.tried(recovery) { Text(tried).font(Theme.body(11.5)).foregroundStyle(Theme.muted) }
                 FlowLayout(spacing: 8) {
+                    if let group = RecoveryText.splitGroup(job), let onSplit {
+                        SoftButton(title: group.count == 1 ? "Rebuild 1 source first" : "Rebuild \(group.count) sources first", tint: Theme.peachInk, fill: .white,
+                                   size: .small, systemImage: "square.split.2x1") { onSplit(group) }
+                            .fixedSize()
+                            .help("Recovery’s suggestion: these sources are rebuilt first and come back for your OK; the rest wait in this batch.")
+                    }
+                    if RecoveryText.offersDiscard(job), let onDiscard {
+                        SoftButton(title: "Discard the rebuilt part", tint: Theme.peachInk, fill: .white, size: .small, systemImage: "xmark.circle", action: onDiscard)
+                            .fixedSize()
+                            .help("Recovery’s suggestion: nothing is applied, and its sources stay in this batch.")
+                    }
                     SoftButton(title: "Let recovery try again", tint: Theme.peachInk, fill: .white, size: .small, systemImage: "arrow.clockwise", action: onRecover)
                         .fixedSize()
                     NewSessionButton(job: job, confirming: Binding(get: { isConfirming }, set: { confirming = $0 }), enabled: onNewSession != nil)

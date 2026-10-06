@@ -659,6 +659,23 @@ extension StatesSnapshot {
             JobDetailView(jobID: e.jobs[0].id)
         }
 
+        // 2026-10-06: recovery's proposals the owner confirms on the card (split the batch; never automatic).
+        e = engine()
+        var split = awaiting(e, files: ["inbox/Tea club sync.md", "inbox/Gyokuro tasting.md", "inbox/Water temperature.md"],
+                             worker: "Rebuilt for the latest pages.")
+        split.approval?.sources = [ReviewSource(page: "wiki/sources/tea-club-sync.md", title: "Tea club sync"),
+                                   ReviewSource(page: "wiki/sources/gyokuro-tasting.md", title: "Gyokuro tasting"),
+                                   ReviewSource(page: "wiki/sources/water-temperature.md", title: "Water temperature")]
+        split.recovery = RecoveryState(state: .gaveUp, signature: "stale-again",
+                                       attempts: [RecoveryAttempt(at: Date().addingTimeInterval(-300), fix: "rebuild_in_session", result: "failed"),
+                                                  RecoveryAttempt(at: Date().addingTimeInterval(-200), by: "agent", model: "opus", fix: "split_batch", result: "failed", costUSD: 0.04)],
+                                       summary: "Your vault keeps changing under this plan: it was rebuilt for the latest pages and is out of date again. Two sources keep touching the Green tea page another batch is changing. Recovery suggests rebuilding 1 source first; the rest wait.",
+                                       proposal: "split_batch", groups: [["wiki/sources/water-temperature.md"], ["wiki/sources/tea-club-sync.md", "wiki/sources/gyokuro-tasting.md"]])
+        e.jobs = [split]
+        main("review-gaveup-split", f, "Review", "Couldn't fix · recovery suggests a split", "One click rebuilds the first group (Approve with it picked); nothing changes until then.", e, section: .review, job: e.jobs[0].id) {
+            JobDetailView(jobID: e.jobs[0].id)
+        }
+
         // review-queue.md, Self-recovery for other problems: a plan the core couldn't check (rule, then the agent),
         // the minute between agent attempts, and a run that stopped and recovery gave up on.
         e = engine()

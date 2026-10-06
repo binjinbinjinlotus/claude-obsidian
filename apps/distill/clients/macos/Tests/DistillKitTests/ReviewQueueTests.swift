@@ -98,6 +98,23 @@ final class ReviewQueueTests: XCTestCase {
         XCTAssertFalse(RecoveryText.isActive(job))
     }
 
+    func testRecoveryProposalsAndTheirFields() throws {
+        let json = #"{"state":"gaveUp","signature":"stale-again","proposal":"split_batch","groups":[["wiki/sources/a.md"],["wiki/sources/b.md"],[]],"approvedSha256":"abc","wake":"retry","attempts":[]}"#
+        let r = try JSONDecoder.core.decode(RecoveryState.self, from: Data(json.utf8))
+        XCTAssertEqual(r.groups, [["wiki/sources/a.md"], ["wiki/sources/b.md"]], "an empty group is dropped")
+        XCTAssertEqual(r.approvedSha256, "abc")
+        XCTAssertEqual(try JSONDecoder.core.decode(RecoveryState.self, from: JSONEncoder.core.encode(r)), r)
+        var job = Job(id: "j", vaultPath: "/v", files: [], state: .awaitingApproval)
+        job.recovery = r
+        XCTAssertEqual(RecoveryText.splitGroup(job), ["wiki/sources/a.md"])
+        job.recovery?.proposal = "discard_stale_part"
+        XCTAssertNil(RecoveryText.splitGroup(job))
+        XCTAssertFalse(RecoveryText.offersDiscard(job), "no rebuilt part waits: never offered (it would reject the batch)")
+        job.recovery = RecoveryState(state: .running, signature: "lock", approvedSha256: "abc")
+        job.queuedApply = QueuedApply(at: Date(), order: 1, planSha256: "abc")
+        XCTAssertTrue(RecoveryText.isActive(job), "back in the queue under the approved hash")
+    }
+
     func testQueueWordsAndTheBadgeRule() {
         let now = Date()
         var a = Job(id: "a", vaultPath: "/v", files: ["inbox/Product sync.md"], state: .running)

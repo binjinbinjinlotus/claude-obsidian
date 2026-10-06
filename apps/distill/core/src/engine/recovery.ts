@@ -166,6 +166,12 @@ export const RECOVERY_SCHEMA = JSON.stringify({
     fix: { type: 'string', enum: [...RECOVERY_FIXES] },
     reason: { type: 'string', description: 'At most 300 characters: why this fix.' },
     guidance: { type: 'string', description: 'answer_denial or rebuild_in_session: at most 1200 characters Distill sends to the session.' },
+    waitFor: { type: 'string', description: 'wait_then_retry: the id of another batch (from the facts) that touches the same pages.' },
+    groups: {
+      type: 'array',
+      items: { type: 'array', items: { type: 'string' } },
+      description: 'split_batch: every active source page exactly once, in at least two groups; the first group is rebuilt first.',
+    },
   },
   required: ['diagnosis', 'fix', 'reason'],
   additionalProperties: false,
@@ -176,6 +182,8 @@ export interface RecoveryAnswer {
   fix: (typeof RECOVERY_FIXES)[number];
   reason: string;
   guidance?: string;
+  waitFor?: string;
+  groups?: string[][];
 }
 
 export function parseRecoveryAnswer(v: Record<string, unknown>): RecoveryAnswer | string {
@@ -185,24 +193,58 @@ export function parseRecoveryAnswer(v: Record<string, unknown>): RecoveryAnswer 
   if (!diagnosis) return 'The answer had no diagnosis.';
   const out: RecoveryAnswer = { diagnosis, fix: fix as RecoveryAnswer['fix'], reason: typeof v.reason === 'string' ? v.reason.trim().slice(0, 300) : '' };
   if (typeof v.guidance === 'string' && v.guidance.trim()) out.guidance = v.guidance.trim();
+  if (typeof v.waitFor === 'string' && v.waitFor.trim()) out.waitFor = v.waitFor.trim();
+  if (Array.isArray(v.groups)) out.groups = v.groups.map((g) => (Array.isArray(g) ? g.filter((x): x is string => typeof x === 'string') : []));
   return out;
 }
 
 /** The fixes this problem allows. Anything else is a failed attempt (the core never runs it). */
 const ALLOWED: Record<RecoveryState['signature'], ReadonlyArray<RecoveryAnswer['fix']>> = {
   denial: ['answer_denial', 'new_session', 'give_up'],
-  'stale-again': ['rebuild_in_session', 'new_session', 'give_up'],
-  lock: ['reinspect_same_bundle', 'give_up'],
-  'plan-error': ['rebuild_in_session', 'new_session', 'give_up'],
+  'stale-again': ['rebuild_in_session', 'wait_then_retry', 'split_batch', 'discard_stale_part', 'new_session', 'give_up'],
+  lock: ['reinspect_same_bundle', 'wait_then_retry', 'give_up'],
+  'plan-error': ['rebuild_in_session', 'split_batch', 'new_session', 'give_up'],
   'not-recorded': ['give_up'],
   'full-read-stop': ['give_up'],
   'session-gone': ['new_session', 'give_up'],
   'runner-failed': ['rebuild_in_session', 'new_session', 'give_up'],
 };
 
+/** What the core knows about the batch when it checks a fix (the agent's answer is never trusted alone). */
+export interface FixContext {
+  /** The batch's vault and the pages its bundle touches. */
+  vaultPath: string;
+  paths: string[];
+  /** Other batches in Review or running, with the pages their bundles touch. */
+  others: { id: string; vaultPath: string; paths: string[] }[];
+  /** The active (not removed) source pages of the batch. */
+  sources: string[];
+  /** A rebuilt part is waiting (what discard_stale_part discards). */
+  rebuiltPart: boolean;
+  /** The hash the owner approved for the queued apply (reinspect_same_bundle / wait_then_retry need it). */
+  approvedSha256?: string;
+}
+
 /** Null when the core may carry the fix out; otherwise why not. The approval gate is never negotiable. */
-export function validateFix(a: RecoveryAnswer, signature: RecoveryState['signature']): string | null {
+export function validateFix(a: RecoveryAnswer, signature: RecoveryState['signature'], ctx?: FixContext): string | null {
   if (!ALLOWED[signature].includes(a.fix)) return `${a.fix} isn't a fix for this problem.`;
+  if (a.fix === 'reinspect_same_bundle' || a.fix === 'wait_then_retry') {
+    if (!ctx?.approvedSha256) return `${a.fix} needs a plan you approved, and this batch has none waiting.`;
+  }
+  if (a.fix === 'wait_then_retry') {
+    const other = ctx!.others.find((o) => o.id === a.waitFor);
+    if (!other) return 'wait_then_retry needs another batch to wait for.';
+    if (other.vaultPath !== ctx!.vaultPath) return 'That batch is in another vault.';
+    if (!other.paths.some((p) => ctx!.paths.includes(p))) return 'That batch doesn’t touch the same pages.';
+  }
+  if (a.fix === 'split_batch') {
+    const groups = (a.groups ?? []).filter((g) => g.length > 0);
+    if (!ctx || groups.length < 2) return 'split_batch needs at least two groups of sources.';
+    const all = groups.flat();
+    if (new Set(all).size !== all.length) return 'A source is in two groups.';
+    if (all.length !== ctx.sources.length || !ctx.sources.every((s) => all.includes(s))) return 'The groups must hold every source of the batch, each once.';
+  }
+  if (a.fix === 'discard_stale_part' && !ctx?.rebuiltPart) return 'There is no rebuilt part to discard.';
   if (a.fix === 'answer_denial' || (a.fix === 'rebuild_in_session' && a.guidance)) {
     const g = a.guidance ?? '';
     if (!g) return 'answer_denial needs guidance.';
@@ -222,6 +264,8 @@ export function recoveryFacts(o: {
   attempts: RecoveryState['attempts'];
   vaultPath: string;
   jobDir: string;
+  /** For wait_then_retry and split_batch (FixContext). */
+  context?: FixContext;
 }): string {
   const turns = o.turns.slice(-12).map((t) => `[${t.author}] ${t.text.slice(0, 1500)}`).join('\n\n');
   const lines = [
@@ -233,6 +277,15 @@ export function recoveryFacts(o: {
   ];
   if (o.denials.length > 0) lines.push('Blocked calls in the last turn:', ...o.denials.slice(0, 6).map((d) => `- ${denialLine(d)}`));
   if (o.answersSent.length > 0) lines.push('What Distill already told the session:', ...o.answersSent.slice(-3).map((t) => `- ${t.slice(0, 600)}`));
+  if (o.context) {
+    const c = o.context;
+    if (c.paths.length > 0) lines.push(`Pages this batch changes: ${c.paths.slice(0, 20).join(', ')}`);
+    const near = c.others.filter((x) => x.vaultPath === c.vaultPath && x.paths.some((p) => c.paths.includes(p)));
+    if (near.length > 0) lines.push('Other batches touching the same pages:', ...near.slice(0, 6).map((x) => `- ${x.id}: ${x.paths.filter((p) => c.paths.includes(p)).slice(0, 6).join(', ')}`));
+    if (c.sources.length > 0) lines.push(`Source pages of this batch: ${c.sources.join(', ')}`);
+    lines.push(c.rebuiltPart ? 'A rebuilt part is waiting for the owner.' : 'No rebuilt part is waiting.');
+    lines.push(c.approvedSha256 ? 'The owner approved this batch; its apply waits in the queue.' : 'The owner has not approved a plan that waits in the queue.');
+  }
   if (o.attempts.length > 0) lines.push('Earlier attempts:', ...o.attempts.map((a) => `- ${a.by} ${a.fix}: ${a.result}${a.diagnosis ? ` (${a.diagnosis.slice(0, 200)})` : ''}`));
   lines.push('Conversation (newest last):', turns);
   const text = lines.join('\n');
@@ -242,7 +295,11 @@ export function recoveryFacts(o: {
 export function recoveryPrompt(facts: string): string {
   return [
     'You are the recovery step for a stuck Distill batch. Pick exactly one fix from the list and explain it in plain words for the owner.',
-    'Fixes: answer_denial (send the session guidance so it can continue with the tools it has), rebuild_in_session (ask the same session to rebuild its plan, with optional guidance), new_session (suggest the owner start a fresh session), give_up (the owner must decide).',
+    'Fixes: answer_denial (send the session guidance so it can continue with the tools it has), rebuild_in_session (ask the same session to rebuild its plan, with optional guidance), ' +
+      'reinspect_same_bundle (check the approved bundle again; it applies only if its hash is still the one the owner approved), ' +
+      'wait_then_retry (waitFor: another batch touching the same pages; retry the approved apply a minute later), ' +
+      'split_batch (groups: every source page once, in two or more groups; the owner confirms, then the first group is rebuilt), ' +
+      'discard_stale_part (suggest the owner discard a rebuilt part that is out of date), new_session (suggest the owner start a fresh session), give_up (the owner must decide).',
     'Only the fixes allowed for this problem count; any other is a failed attempt.',
     'Never suggest applying anything to the vault, never ask for a tool rule: only the owner approves or allows.',
     '',

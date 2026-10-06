@@ -108,13 +108,20 @@ public struct RecoveryState: Codable, Equatable, Sendable {
     public var proposal: String?
     /// A waiting attempt runs again at this time.
     public var waitUntil: Date?
+    /// split_batch: the sources in groups; the first is rebuilt when the owner confirms.
+    public var groups: [[String]]
+    /// The hash the owner approved for the queued apply (a retry goes back only under it).
+    public var approvedSha256: String?
+    /// What a waiting recovery does next: agent (default) or retry (the queued apply).
+    public var wake: String?
 
     public init(state: Phase, signature: String, attempts: [RecoveryAttempt] = [], denialAnswers: Int = 0, summary: String? = nil, proposal: String? = nil,
-                waitUntil: Date? = nil) {
+                waitUntil: Date? = nil, groups: [[String]] = [], approvedSha256: String? = nil, wake: String? = nil) {
         self.state = state; self.signature = signature; self.attempts = attempts; self.denialAnswers = denialAnswers
         self.summary = summary; self.proposal = proposal; self.waitUntil = waitUntil
+        self.groups = groups; self.approvedSha256 = approvedSha256; self.wake = wake
     }
-    enum Keys: String, CodingKey { case state, signature, attempts, denialAnswers, summary, proposal, waitUntil }
+    enum Keys: String, CodingKey { case state, signature, attempts, denialAnswers, summary, proposal, waitUntil, groups, approvedSha256, wake }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
         state = c.lossy(Phase.self, .state) ?? .gaveUp
@@ -124,6 +131,9 @@ public struct RecoveryState: Codable, Equatable, Sendable {
         summary = c.lossy(String.self, .summary)
         proposal = c.lossy(String.self, .proposal)
         waitUntil = c.lossyDate(.waitUntil)
+        groups = (c.lossy([[String]].self, .groups) ?? []).filter { !$0.isEmpty }
+        approvedSha256 = c.lossy(String.self, .approvedSha256)
+        wake = c.lossy(String.self, .wake)
     }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: Keys.self)
@@ -134,6 +144,9 @@ public struct RecoveryState: Codable, Equatable, Sendable {
         try c.encodeIfPresent(summary, forKey: .summary)
         try c.encodeIfPresent(proposal, forKey: .proposal)
         if let waitUntil { try c.encode(CoreDate.format(waitUntil), forKey: .waitUntil) }
+        if !groups.isEmpty { try c.encode(groups, forKey: .groups) }
+        try c.encodeIfPresent(approvedSha256, forKey: .approvedSha256)
+        try c.encodeIfPresent(wake, forKey: .wake)
     }
 
     public var costUSD: Double { attempts.reduce(0) { $0 + $1.costUSD } }
@@ -159,7 +172,9 @@ public enum RecoveryText {
         guard let r = job.recovery else { return false }
         switch r.state {
         case .waiting: return true
-        case .running: return job.state == .running || r.attempts.last(where: { $0.result == "running" })?.by == "agent"
+        case .running:
+            return job.state == .running || r.attempts.last(where: { $0.result == "running" })?.by == "agent"
+                || job.queuedApply?.waitingToApply == true // back in the queue under the approved hash: the pump has it
         case .gaveUp, .fixed: return false
         }
     }
@@ -218,6 +233,19 @@ public enum RecoveryText {
     public static func offersNewSession(_ job: Job) -> Bool {
         guard let r = job.recovery, r.state == .gaveUp, r.suggestsNewSession else { return false }
         return job.sessionUnavailable == nil
+    }
+
+    /// split_batch: the owner's one click rebuilds the first group (Approve with those pages); the rest wait.
+    public static func splitGroup(_ job: Job) -> [String]? {
+        guard job.state == .awaitingApproval, let r = job.recovery, r.state == .gaveUp, r.proposal == "split_batch",
+              let first = r.groups.first, !first.isEmpty else { return nil }
+        return first
+    }
+
+    /// discard_stale_part: only while a rebuilt part waits (Reject the part, never the batch).
+    public static func offersDiscard(_ job: Job) -> Bool {
+        guard job.state == .awaitingApproval, let r = job.recovery, r.state == .gaveUp, r.proposal == "discard_stale_part" else { return false }
+        return job.pendingPart != nil && job.approval?.rebuilt != nil && job.approval?.needsRebuild != true
     }
 
     /// What Continue in a new session sends, as the owner's reply (session continuity seeds the batch first).

@@ -951,12 +951,34 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
   `RecoveryText.isActive` (a turn runs, an agent attempt runs, or a next try
   is scheduled); otherwise the batch reads Needs you. Snapshot state
   `review-gaveup-questions`.
+- **The other four fixes (2026-10-06).** The agent's schema has `waitFor`
+  and `groups`, its facts list the pages the batch changes, other batches
+  touching them, the source pages, a waiting rebuilt part and whether an
+  approved apply waits. `validateFix(answer, signature, FixContext)` checks
+  each fix against the batch, never the agent's word:
+  - **`reinspect_same_bundle`** (lock): needs the hash the owner approved
+    (`recovery.approvedSha256`). The recovery waits with `wake: 'retry'`; when
+    it wakes, the batch goes back to the queue under that exact hash only if
+    the plan still has it, and the pump's `transaction inspect` proves the
+    bytes before the apply. A plan that changed goes to the owner.
+  - **`wait_then_retry`** (lock, stale-again): `waitFor` must be another
+    batch in the same vault touching the same pages. The retry runs one
+    backoff (1 minute) later, the same way, with no agent call; a restart
+    resumes it as a retry (`wake`).
+  - **`split_batch`** (stale-again, plan-error) and **`discard_stale_part`**
+    (stale-again): **proposals** the owner confirms on the card, which narrows
+    the design table (decision 2026-10-06). `groups` must hold every active
+    source exactly once, in two or more groups; the card's "Rebuild N sources
+    first" approves the first group (`approve` with `pages`, so
+    `startPart('partial')`). Discard needs a waiting rebuilt part; the card's
+    "Discard the rebuilt part" rejects the part, never the batch.
+  - The owner's own action (a pick, a discard, Don't apply yet) clears the
+    recovery. A batch back in the queue under its approved hash counts as
+    worked on (not settled, not Needs you).
+  - Snapshot state `review-gaveup-split`.
 - **Still open:**
   - `lock`, `not-recorded`, `full-read-stop` and `session-gone` keep their
     rules; the agent doesn't run for them.
-  - The fixes `reinspect_same_bundle`, `wait_then_retry`, `split_batch` and
-    `discard_stale_part` are not carried out (an answer with one is a failed
-    attempt).
   - The Couldn't fix card has no **Rebuild** option yet, and the attempts are
     one line, not one row each.
 - Tests: `session-continuity.test.ts` (runner-failed recovery; a stopped batch

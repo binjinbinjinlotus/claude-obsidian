@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { PermissionDenial } from '../contracts.js';
-import { denialAnswer, denialLine, denialPaths, denialSummary, friendlyPath, plainCause, recoveryFor } from './recovery.js';
+import { denialAnswer, denialLine, denialPaths, denialSummary, friendlyPath, plainCause, recoveryFor, validateFix } from './recovery.js';
 
 const VAULT = '/Users/me/Vault';
 const JOB = `${VAULT}/.vault-meta/worker/job-20261005-1`;
@@ -57,7 +57,7 @@ test('a recovery for the same signature carries on; another signature carries th
 });
 
 test('recovery answers: only known fixes for the problem, and never the apply or a tool rule', async () => {
-  const { parseRecoveryAnswer, validateFix } = await import('./recovery.js');
+  const { parseRecoveryAnswer } = await import('./recovery.js');
   assert.equal(parseRecoveryAnswer({ fix: 'format_disk', diagnosis: 'x' }), 'The answer named no fix Distill knows.');
   const a = parseRecoveryAnswer({ fix: 'answer_denial', diagnosis: 'd', reason: 'r', guidance: 'Read the two files.' });
   assert.ok(typeof a !== 'string');
@@ -74,4 +74,27 @@ test('the cause in the owner\'s sentence is plain words, never stderr, argv or a
   assert.equal(plainCause('Unreadable runner output: {"type":"result","subtype":'), 'the AI’s answer couldn’t be read');
   assert.equal(plainCause('Exited 2: python3 /Users/me/x.py --flag'), '');
   assert.equal(plainCause(undefined), '');
+});
+
+test('the new fixes are checked against the batch, never taken on the agent’s word', () => {
+  const ctx = {
+    vaultPath: '/v', paths: ['wiki/a.md', 'wiki/log.md'],
+    others: [{ id: 'j2', vaultPath: '/v', paths: ['wiki/a.md'] }, { id: 'j3', vaultPath: '/w', paths: ['wiki/a.md'] }, { id: 'j4', vaultPath: '/v', paths: ['wiki/z.md'] }],
+    sources: ['wiki/sources/a.md', 'wiki/sources/b.md'], rebuiltPart: false, approvedSha256: 'f'.repeat(64),
+  };
+  const a = (fix: string, extra: Record<string, unknown> = {}) => ({ diagnosis: 'd', reason: 'r', fix, ...extra }) as never;
+  assert.equal(validateFix(a('reinspect_same_bundle'), 'lock', ctx), null);
+  assert.match(validateFix(a('reinspect_same_bundle'), 'lock', { ...ctx, approvedSha256: undefined }) ?? '', /approved/);
+  assert.match(validateFix(a('reinspect_same_bundle'), 'plan-error', ctx) ?? '', /isn't a fix/);
+  assert.equal(validateFix(a('wait_then_retry', { waitFor: 'j2' }), 'lock', ctx), null);
+  assert.match(validateFix(a('wait_then_retry', { waitFor: 'j3' }), 'lock', ctx) ?? '', /another vault/);
+  assert.match(validateFix(a('wait_then_retry', { waitFor: 'j4' }), 'lock', ctx) ?? '', /same pages/);
+  assert.match(validateFix(a('wait_then_retry', { waitFor: 'nope' }), 'lock', ctx) ?? '', /another batch/);
+  assert.equal(validateFix(a('split_batch', { groups: [['wiki/sources/a.md'], ['wiki/sources/b.md']] }), 'stale-again', ctx), null);
+  assert.match(validateFix(a('split_batch', { groups: [['wiki/sources/a.md', 'wiki/sources/b.md']] }), 'stale-again', ctx) ?? '', /two groups/);
+  assert.match(validateFix(a('split_batch', { groups: [['wiki/sources/a.md'], ['wiki/sources/a.md']] }), 'stale-again', ctx) ?? '', /two groups/);
+  assert.match(validateFix(a('split_batch', { groups: [['wiki/sources/a.md'], ['wiki/sources/c.md']] }), 'stale-again', ctx) ?? '', /every source/);
+  assert.match(validateFix(a('discard_stale_part'), 'stale-again', ctx) ?? '', /no rebuilt part/);
+  assert.equal(validateFix(a('discard_stale_part'), 'stale-again', { ...ctx, rebuiltPart: true }), null);
+  assert.match(validateFix(a('split_batch', { groups: [['x'], ['y']] }), 'not-recorded', ctx) ?? '', /isn't a fix/);
 });

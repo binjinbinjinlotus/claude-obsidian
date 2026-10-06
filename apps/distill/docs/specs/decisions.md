@@ -17,6 +17,18 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**Recovery's split and discard are proposals; its retries reuse only the
+approved hash (2026-10-06).** The design table had `split_batch` start a part
+and `discard_stale_part` reject the rebuilt part by themselves. Built as
+proposals instead: the card shows "Rebuild N sources first" or "Discard the
+rebuilt part", and nothing changes until the owner clicks. Why: both change
+what is in the batch, and the owner asked that recovery never change a batch
+without them. `reinspect_same_bundle` and `wait_then_retry` act on their own,
+but only by putting the batch back in the queue under the hash the owner
+approved (kept on the recovery, since the queue drops it when it asks the
+owner); the pump's inspect proves the bytes, so nothing new is ever applied
+without an approval.
+
 **Add automation asks what it does first (2026-10-06).** Collect keeps
 today's steps after it; Commands for buttons and Both are scripts, and
 Commands is saved with `collects: false`. Commands are declared on the saved

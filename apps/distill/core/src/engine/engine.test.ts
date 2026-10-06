@@ -1200,3 +1200,116 @@ describe('the apply queue (review-queue.md)', () => {
     assert.equal(t.applies(), 1);
   });
 });
+
+describe('recovery fixes (review-queue.md, 2026-10-06)', () => {
+  const sandboxed = (steps: Step[] = []) => new FakeRunner(steps, new Set<RunnerCapability>(['agentTools', 'sandboxedWrites', 'sessionResume', 'structuredOutput']));
+  const ok = (op: string): ProcessOutput => ({ status: 0, stdout: Buffer.from(JSON.stringify({ operation_id: op, changed_paths: ['wiki/a.md'] })), stderr: Buffer.alloc(0) });
+
+  /**
+   * A batch in Review left with a recovery the rule already tried (as a restart finds it): start() hands it to the
+   * recovery agent, whose answer is `answer`.
+   */
+  async function stuck(signature: string, answer: Record<string, unknown>, edit: (j: Record<string, unknown>, all: Array<Record<string, unknown>>) => void = () => {}, o: { apply?: () => ProcessOutput } = {}) {
+    let applies = 0;
+    await h?.engine.stop(); // a test that calls this twice
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'distill-engine-')));
+    h = setup([], { runner: sandboxed() });
+    h.runner.steps.push(needsApproval(h.bundle(await firstJob())));
+    await h.engine.whenIdle();
+    const id = h.engine.listJobs()[0]!.id;
+    await h.engine.stop();
+    const jobsFile = path.join(tmp, 'state', 'jobs.json');
+    const saved = JSON.parse(fs.readFileSync(jobsFile, 'utf8')) as Array<Record<string, unknown>>;
+    const j = saved.find((x) => x.id === id)!;
+    j.recovery = { state: 'running', signature, attempts: [{ at: '2026-10-06T09:00:00Z', by: 'rule', fix: 'rebuild_in_session', result: 'running', costUSD: 0 }] };
+    edit(j, saved);
+    h = setup([], {
+      runner: sandboxed([{ structured: answer }]),
+      jobs: saved,
+      apply: () => {
+        applies += 1;
+        return o.apply?.() ?? ok('op-1');
+      },
+    });
+    await h.engine.start();
+    await h.engine.whenIdle();
+    await new Promise((r) => setTimeout(r, 20));
+    await h.engine.whenIdle();
+    return { id, applies: () => applies };
+  }
+  const queued = (j: Record<string, unknown>) => {
+    j.queuedApply = { at: '2026-10-06T08:59:00Z', order: 1, bundlePath: (j.approval as { bundlePath: string }).bundlePath, labels: 'confirm', carries: 'confirm' };
+    (j.recovery as Record<string, unknown>).approvedSha256 = PLAN.approval_sha256;
+  };
+
+  test('reinspect_same_bundle: back to the queue under the approved hash; inspect proves it, then it applies', async () => {
+    const t = await stuck('lock', { diagnosis: 'The lock is gone now.', fix: 'reinspect_same_bundle', reason: 'r' }, queued);
+    const job = h.engine.getJob(t.id)!;
+    assert.equal(t.applies(), 1, 'applied once, after inspect');
+    assert.equal(job.state, 'completed');
+    assert.ok(h.inspectCalls.some((c) => c.includes('inspect')), 'inspected again first');
+    assert.equal(job.recovery, undefined, 'the apply ended the recovery');
+  });
+
+  test('reinspect_same_bundle never retries a plan the owner did not approve', async () => {
+    const t = await stuck('lock', { diagnosis: 'Try again.', fix: 'reinspect_same_bundle', reason: 'r' }, (j) => {
+      queued(j);
+      (j.recovery as Record<string, unknown>).approvedSha256 = 'e'.repeat(64); // a hash the current plan doesn't have
+    });
+    const job = h.engine.getJob(t.id)!;
+    assert.equal(t.applies(), 0);
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.match(job.recovery?.summary ?? '', /plan changed after you approved it/);
+    assert.equal(job.queuedApply?.planSha256, undefined, 'never queued under another hash');
+  });
+
+  test('a fix that needs an approval is refused without one; wait_then_retry needs a batch touching the same pages', async () => {
+    let t = await stuck('lock', { diagnosis: 'x', fix: 'reinspect_same_bundle', reason: 'r' });
+    assert.equal(h.engine.getJob(t.id)!.recovery?.state, 'gaveUp');
+    assert.match(h.engine.getJob(t.id)!.recovery!.attempts.at(-1)!.error ?? '', /needs a plan you approved/);
+    t = await stuck('lock', { diagnosis: 'x', fix: 'wait_then_retry', reason: 'r', waitFor: 'job-nope' }, queued);
+    assert.equal(h.engine.getJob(t.id)!.recovery?.state, 'gaveUp');
+    assert.equal(t.applies(), 0);
+  });
+
+  test('wait_then_retry: a minute later the approved apply goes again through the queue, without another agent call', async () => {
+    const t = await stuck('lock', { diagnosis: 'Another batch is writing the same page.', fix: 'wait_then_retry', reason: 'r', waitFor: 'job-other' }, (j, all) => {
+      queued(j);
+      all.push({ ...structuredClone(j), id: 'job-other', recovery: undefined, queuedApply: undefined });
+    });
+    const job = h.engine.getJob(t.id)!;
+    assert.equal(job.recovery?.state, 'waiting');
+    assert.equal(job.recovery?.wake, 'retry', 'the wake retries the apply, not the agent');
+    assert.equal(job.recovery?.approvedSha256, PLAN.approval_sha256);
+    assert.ok(Date.parse(job.recovery!.waitUntil!) - Date.now() > 55_000, 'one backoff');
+    assert.equal(job.queuedApply?.planSha256, undefined, 'not queued until its time');
+    assert.equal(t.applies(), 0);
+    assert.equal((await h.engine.status()).pendingApprovals, 1, 'only the other batch needs the owner; recovery is on this one');
+  });
+
+  test('split_batch and discard_stale_part are proposals: nothing in the batch changes until the owner confirms', async () => {
+    const sources = (j: Record<string, unknown>) => {
+      (j.approval as Record<string, unknown>).sources = [
+        { page: 'wiki/sources/a.md', title: 'A', labels: [], by: 'none' },
+        { page: 'wiki/sources/b.md', title: 'B', labels: [], by: 'none' },
+      ];
+    };
+    let t = await stuck('stale-again', { diagnosis: 'Two sources keep colliding.', fix: 'split_batch', reason: 'r', groups: [['wiki/sources/a.md'], ['wiki/sources/b.md']] }, sources);
+    let job = h.engine.getJob(t.id)!;
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.equal(job.recovery?.proposal, 'split_batch');
+    assert.deepEqual(job.recovery?.groups, [['wiki/sources/a.md'], ['wiki/sources/b.md']]);
+    assert.equal(job.pendingPart, undefined, 'no part was started');
+    assert.equal(h.runner.requests.length, 1, 'only the recovery call');
+
+    t = await stuck('stale-again', { diagnosis: 'x', fix: 'split_batch', reason: 'r', groups: [['wiki/sources/a.md']] }, sources);
+    job = h.engine.getJob(t.id)!;
+    assert.equal(job.recovery?.proposal, undefined, 'one group is not a split');
+    assert.match(job.recovery!.attempts.at(-1)!.error ?? '', /two groups/);
+
+    t = await stuck('stale-again', { diagnosis: 'x', fix: 'discard_stale_part', reason: 'r' });
+    job = h.engine.getJob(t.id)!;
+    assert.equal(job.recovery?.proposal, undefined, 'no rebuilt part to discard');
+    assert.equal(job.state, 'awaitingApproval', 'the batch is untouched');
+  });
+});
