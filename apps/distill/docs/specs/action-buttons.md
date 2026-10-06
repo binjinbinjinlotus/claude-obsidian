@@ -759,7 +759,10 @@ Order: core → API → CLI → Mac. Each step is one commit, with `npm test
   "required") and the template field. The field's placeholder is the hint,
   unless the hint only repeats the name (`text` for `text`), which showed the
   word twice; then it is "{a field} or text" (`ScriptCommandArg.editorNote`,
-  `editorPlaceholder`). Snapshot state `sa-card-editor-empty`.
+  `editorPlaceholder`). Snapshot state `sa-card-editor-empty`. Until the
+  core's preview arrives, the preview names what is missing ("Fill in target
+  and text.", `AutomationText.previewPending`), or says it is working the
+  command out; "Pick an automation and a command." only when none is picked.
 - **Ready to send (2026-10-06).** A ready Slack message reads "Ready to send"
   when a button holds the Send slot (and is on), not "Ready to paste"
   (`ActionTypeInfo.readyWords`): the row, the detail and the status filter.

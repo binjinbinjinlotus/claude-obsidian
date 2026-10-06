@@ -101,6 +101,10 @@ public struct ScriptCommand: Codable, Hashable, Sendable, Identifiable {
 
     /// The arguments a button binds (words are fixed).
     public var bindable: [ScriptCommandArg] { args.filter { $0.kind != .word } }
+    /// Required arguments a button leaves empty, by name (the core refuses them as "needs a value").
+    public func missing(_ bindings: [String: String]) -> [String] {
+        bindable.filter { $0.kind != .switch && $0.isRequired && (bindings[$0.name] ?? "").trimmingCharacters(in: .whitespaces).isEmpty }.map(\.name)
+    }
 }
 
 public struct AutomationButton: Codable, Hashable, Sendable, Identifiable {
@@ -347,6 +351,16 @@ extension CoreClient {
 // MARK: - Logic the app shows (tested in AutomationsTests)
 
 public enum AutomationText {
+    /// The button editor's preview before the core answers: what is still missing ("Fill in target and
+    /// text."), else that the preview is on its way. Nil command: pick one first.
+    public static func previewPending(_ command: ScriptCommand?, bindings: [String: String]) -> String {
+        guard let command else { return "Pick an automation and a command." }
+        let names = command.missing(bindings)
+        guard !names.isEmpty else { return "Working out the command…" }
+        let list = names.count == 1 ? names[0] : names.dropLast().joined(separator: ", ") + " and " + names.last!
+        return "Fill in \(list)."
+    }
+
     /// The buttons an item shows, split by slot. Disabled buttons and statuses outside `when` are left out.
     public static func slots(_ buttons: [ActionButtonInfo], for item: ActionItem) -> (send: ActionButtonInfo?, primary: [ActionButtonInfo], more: [ActionButtonInfo]) {
         let shown = buttons.filter { $0.button.enabled && $0.button.shows(for: item.status) }

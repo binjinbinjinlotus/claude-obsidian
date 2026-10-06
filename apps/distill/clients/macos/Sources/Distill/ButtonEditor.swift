@@ -169,7 +169,7 @@ struct ButtonEditorSheet: View {
             } else if let previewError {
                 Text(previewError).font(Theme.body(12)).foregroundStyle(Theme.peachInk)
             } else {
-                Text("Pick an automation and a command.").font(Theme.body(12)).foregroundStyle(Theme.faint)
+                Text(AutomationText.previewPending(command, bindings: draft.bindings)).font(Theme.body(12)).foregroundStyle(Theme.faint)
             }
         }
     }

@@ -131,6 +131,20 @@ final class AutomationsTests: XCTestCase {
         XCTAssertEqual(ScriptCommandArg(name: "note", kind: .positional, required: false).editorNote, "optional")
     }
 
+    func testEditorPreviewSaysWhatIsMissing() {
+        let send = ScriptCommand(id: "send", label: "Send", args: [
+            ScriptCommandArg(name: "send", kind: .word, value: "send"),
+            ScriptCommandArg(name: "thread", kind: .flag, flag: "--thread", required: false),
+            ScriptCommandArg(name: "target", kind: .positional),
+            ScriptCommandArg(name: "text", kind: .positional),
+            ScriptCommandArg(name: "loud", kind: .switch, flag: "--loud")])
+        XCTAssertEqual(AutomationText.previewPending(nil, bindings: [:]), "Pick an automation and a command.")
+        XCTAssertEqual(AutomationText.previewPending(send, bindings: [:]), "Fill in target and text.")
+        XCTAssertEqual(AutomationText.previewPending(send, bindings: ["target": "{fields.to}", "text": " "]), "Fill in text.")
+        XCTAssertEqual(AutomationText.previewPending(send, bindings: ["target": "{fields.to}", "text": "{body}"]), "Working out the command…")
+        XCTAssertEqual(send.missing([:]), ["target", "text"], "an optional flag and a switch are never missing")
+    }
+
     func testDisplayText() {
         let run = ActionButtonRun(runId: "r", buttonId: "b", label: "Send in Slack", durationMs: 1200, result: "failed", exitCode: 3)
         XCTAssertEqual(AutomationText.runLine(run, time: "10:42 AM"), "Send in Slack · exit 3 · 1.2 s · 10:42 AM")
