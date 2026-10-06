@@ -144,6 +144,9 @@ notes | Meetings.
   - When an ingest batch starts, the core compares each such page's section with what it
     should say. Up to 10 pages that differ go into that batch's first prompt, with the exact
     text and "change nothing else on these pages" (`othersActionsPrompt`, `RereadFacts.othersActions`).
+  - The lines come from notes, so the prompt fences each page's text in a `<page>` block marked
+    as data to copy exactly. A line is one line with `<` and `>` written as `&lt;` and `&gt;`, so
+    no note text can open or close a block.
   - The section reaches the page only in that batch's bundle, which the user approves in Review.
 - Nothing is tracked per item:
   - A batch that skipped a page, got it wrong or was rejected leaves it due for the next batch.
