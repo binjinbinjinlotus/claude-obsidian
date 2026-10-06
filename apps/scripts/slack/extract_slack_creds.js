@@ -7,8 +7,9 @@
  *   - SLACK_TOKEN  : your xoxc- user token (read from localStorage)
  *   - SLACK_COOKIE : your `d` cookie value, xoxd- (you paste this)
  *
- * Then load it into the Keychain and delete it:
- *   python3 slack_cli.py import ~/Downloads/slack_c.json --delete-source
+ * Move or rename the file as you like, then load it into the Keychain and
+ * delete it, passing its path:
+ *   python3 slack_cli.py import /path/to/file.json --delete-source
  *
  * Why the paste step: the `d` cookie is HttpOnly, so page JavaScript
  * is not allowed to read it. Everything else is automatic.

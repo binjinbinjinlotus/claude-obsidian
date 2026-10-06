@@ -52,18 +52,21 @@ Slack needs two values together:
    want.
 6. When asked, paste the `d` cookie value.
 
-The browser downloads `slack_c.json` to `~/Downloads`.
+The browser downloads `slack_c.json`, usually to `~/Downloads`. You can move or
+rename it to anything you like; the next step takes its path.
 
 ## 3. Put the credentials in the Keychain
 
+Give `import` the path to the JSON file. It can be in any folder and have any
+name:
+
 ```bash
 cd apps/scripts/slack
-python3 slack_cli.py import --delete-source
+python3 slack_cli.py import ~/Downloads/slack_c.json --delete-source
+python3 slack_cli.py import ~/secrets/work-slack.json        # any name works
 ```
 
-With no path, `import` looks for `./slack_c.json`, then
-`~/Downloads/slack_c.json`. You can also give a path:
-`python3 slack_cli.py import ~/Downloads/slack_c.json --delete-source`.
+`--delete-source` deletes the file once its contents are in the Keychain.
 
 It checks the credentials with Slack and prints who you are:
 
@@ -132,7 +135,7 @@ Every run looks in this order:
 
 | Message | What to do |
 |---|---|
-| `slack_c.json not found` | Run step 2 again, or pass the file's path to `import` |
+| `<path> not found` | Check the path you gave `import`, or run step 2 again |
 | `SLACK_COOKIE must start with xoxd-` | You copied the wrong cookie. Copy the Value of the row named exactly `d` |
 | `auth.test failed: invalid_auth` | The session ended (you logged out, or Slack expired it). Repeat steps 2 and 3 |
 | `auth.test failed: not_authed` | The cookie is missing. Run `creds`, then repeat step 3 |

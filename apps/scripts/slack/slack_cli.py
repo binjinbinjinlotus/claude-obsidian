@@ -11,7 +11,7 @@ Getting the credentials: run extract_slack_creds.js (next to this file) in the
 DevTools console of a logged-in Slack tab. It downloads slack_c.json.
 
 Credentials: store them once in your OS keychain, then forget about them.
-  python3 slack_cli.py import ~/Downloads/slack_c.json --delete-source
+  python3 slack_cli.py import /path/to/creds.json --delete-source   # any location, any name
   python3 slack_cli.py creds                     # show which store is in use + who you are
   python3 slack_cli.py logout                    # remove creds from the keychain
 Resolution order every run: keychain -> SLACK_TOKEN/SLACK_COOKIE env vars.
@@ -27,7 +27,7 @@ Setup:
     pip3 install python-dotenv          # optional, only if you prefer a .env file
 
 Commands:
-    import  [path] [--delete-source]  load SLACK_TOKEN/SLACK_COOKIE from JSON into keychain
+    import  <path> [--delete-source]  load SLACK_TOKEN/SLACK_COOKIE from JSON into keychain
     creds                             show credential source and your identity
     logout                            delete stored credentials from the keychain
     channels                          list channels you're in
@@ -62,7 +62,6 @@ STATE_PATH = os.environ.get("SLACK_CLI_STATE",
                             os.path.expanduser("~/.slack_cli_state.json"))
 KEYCHAIN_SERVICE = "slack_cli"
 CRED_KEYS = ("SLACK_TOKEN", "SLACK_COOKIE")
-CREDS_FILE = "slack_c.json"
 
 
 class SlackError(RuntimeError):
@@ -84,13 +83,6 @@ def normalize_cookie(cookie):
     if "%" not in value:
         value = quote(value, safe="")
     return value
-
-
-def default_creds_path():
-    """slack_c.json in the current directory, else the browser's Downloads."""
-    if os.path.exists(CREDS_FILE):
-        return CREDS_FILE
-    return os.path.expanduser(os.path.join("~", "Downloads", CREDS_FILE))
 
 
 # --------------------------------------------------------------------------
@@ -163,7 +155,7 @@ def read_creds_json(path: str):
         with open(path) as f:
             data = json.load(f)
     except FileNotFoundError:
-        raise SlackError(f"{path} not found. Run extract_slack_creds.js in the Slack tab first.")
+        raise SlackError(f"{path} not found. Check the path, or run extract_slack_creds.js in the Slack tab first.")
     except json.JSONDecodeError as e:
         raise SlackError(f"{path} is not valid JSON: {e}")
     token = (data.get("SLACK_TOKEN") or "").strip()
@@ -202,12 +194,12 @@ class SlackClient:
         if not self.token or not self.token.startswith("xoxc-"):
             raise SlackError(
                 "No valid xoxc- token found. Store one with: "
-                "python3 slack_cli.py import slack_c.json  (or set SLACK_TOKEN)."
+                "python3 slack_cli.py import /path/to/creds.json  (or set SLACK_TOKEN)."
             )
         if not self.cookie:
             raise SlackError(
                 "No `d` cookie found. Store one with: "
-                "python3 slack_cli.py import slack_c.json  (or set SLACK_COOKIE)."
+                "python3 slack_cli.py import /path/to/creds.json  (or set SLACK_COOKIE)."
             )
         d_value = normalize_cookie(self.cookie)
         self.session = requests.Session()
@@ -473,9 +465,8 @@ def main(argv=None):
     sub = p.add_subparsers(dest="cmd", required=True)
 
     imp = sub.add_parser("import", help="load creds from JSON into the OS keychain")
-    imp.add_argument("path", nargs="?", default=None,
-                     help="JSON from extract_slack_creds.js "
-                          "(default: ./slack_c.json, else ~/Downloads/slack_c.json)")
+    imp.add_argument("path",
+                     help="path to the JSON from extract_slack_creds.js (any location, any name)")
     imp.add_argument("--delete-source", action="store_true",
                      help="delete the JSON file after a successful import")
     sub.add_parser("creds", help="show credential source and your Slack identity")
@@ -516,7 +507,7 @@ def main(argv=None):
     try:
         # --- credential management: handled before building a client ----
         if args.cmd == "import":
-            path = os.path.expanduser(args.path) if args.path else default_creds_path()
+            path = os.path.expanduser(args.path)
             token, cookie, meta = read_creds_json(path)
             store_credentials(token, cookie)
             team = f" in {meta['team']}" if meta.get("team") else ""
@@ -542,7 +533,7 @@ def main(argv=None):
         if args.cmd == "creds":
             tok, ck, source = resolve_credentials()
             if not (tok and ck):
-                print("no credentials found. Run: python3 slack_cli.py import slack_c.json")
+                print("no credentials found. Run: python3 slack_cli.py import /path/to/creds.json")
                 return
             client = SlackClient()
             print(f"source: {client.cred_source}")

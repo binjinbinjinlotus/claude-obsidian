@@ -60,8 +60,8 @@ app yet.
 - **The `d` cookie stays URL-encoded end to end.** The browser sends it
   encoded; the extract script no longer decodes it, and the CLI re-encodes a
   decoded value (`normalize_cookie`), so either form works.
-- **`import` finds the download by itself**: `./slack_c.json`, else
-  `~/Downloads/slack_c.json`; it rejects a token not starting `xoxc-` or a
+- **`import` takes the JSON path as a required argument** (any folder, any
+  name; the owner asked for this, since the file can be saved anywhere). It rejects a token not starting `xoxc-` or a
   cookie not starting `xoxd-` before touching the Keychain.
 - **The `catchup` checkpoint lives in `~/.slack_cli_state.json`**, not the
   current folder, so a run from the repo never leaves state there.
