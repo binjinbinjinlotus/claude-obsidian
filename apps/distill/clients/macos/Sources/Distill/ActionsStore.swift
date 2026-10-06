@@ -82,6 +82,8 @@ final class ActionsStore: ObservableObject {
     @Published var addAsMenu: String?
     /// Jira pickers (actions.md): what the connected account allows, and why it couldn't be loaded.
     @Published var jiraProjects: JiraProjectList?
+    /// Project names from the last list (key → name), kept so the picker reads "TLS · Telus Platform" offline.
+    @Published var jiraProjectNames: [String: String] = (UserDefaults.standard.dictionary(forKey: "jiraProjectNames") as? [String: String]) ?? [:]
     @Published var jiraProblem: JiraListProblem?
     @Published var jiraLoading = false
     @Published var jiraTypes: [String: [JiraIssueType]] = [:]

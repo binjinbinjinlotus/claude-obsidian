@@ -601,7 +601,7 @@ struct ExternalCard: View {
             return [item.field("space"), item.field("parent")].compactMap { $0 }.joined(separator: " › ")
         }
         // "TLS · Telus Platform · Task" once the account's projects are known.
-        let project = item.field("project").map { v in store.jiraProjects.flatMap { JiraPick.project(v, in: $0.projects)?.label } ?? v }
+        let project = JiraPick.label(item.field("project"), projects: store.jiraProjects?.projects, names: store.jiraProjectNames)
         return [project, item.field("issueType")].compactMap { $0 }.joined(separator: " · ")
     }
 

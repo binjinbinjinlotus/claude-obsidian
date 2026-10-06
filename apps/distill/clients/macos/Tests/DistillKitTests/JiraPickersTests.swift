@@ -20,6 +20,19 @@ final class JiraPickersTests: XCTestCase {
         XCTAssertEqual(JiraPick.search("", in: projects).count, 2)
     }
 
+    func testThePickerStoresTheKeyAndShowsTheNameEvenOffline() {
+        // What a pick writes: the key, so {fields.project}, filters, Add as and Copy all see "TLS".
+        XCTAssertEqual(JiraPick.stored(JiraProject(key: "TLS", name: "Telus Platform")), "TLS")
+        // What the picker shows: Jira's lists when known, else the names cached from the last load.
+        let names = JiraPick.names(projects)
+        XCTAssertEqual(names, ["PX": "Project X", "TLS": "Telus Platform"])
+        XCTAssertEqual(JiraPick.label("TLS", projects: projects, names: [:]), "TLS · Telus Platform")
+        XCTAssertEqual(JiraPick.label("TLS", projects: nil, names: names), "TLS · Telus Platform", "offline, from the cached names")
+        XCTAssertEqual(JiraPick.label("TLS · Telus Platform", projects: nil, names: [:]), "TLS · Telus Platform", "an older saved label still reads well")
+        XCTAssertEqual(JiraPick.label("NEW", projects: nil, names: names), "NEW", "a key with no cached name")
+        XCTAssertNil(JiraPick.label("  ", projects: projects, names: names))
+    }
+
     func testTheCoresWordsForAValueOutsideTheLists() {
         XCTAssertEqual(JiraPick.priorityProblem("Medium", project: "TLS", priorities: ["P1 - Critical", "P3 - Normal"]), "Medium isn’t a priority in TLS. Pick one:")
         XCTAssertNil(JiraPick.priorityProblem("p3 - normal", project: "TLS", priorities: ["P1 - Critical", "P3 - Normal"]), "case is Jira’s to fix")

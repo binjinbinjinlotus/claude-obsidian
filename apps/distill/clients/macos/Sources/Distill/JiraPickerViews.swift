@@ -13,8 +13,11 @@ extension ActionsStore {
         Task {
             defer { jiraLoading = false }
             do {
-                jiraProjects = try await client.jiraProjects(refresh: refresh)
+                let list = try await client.jiraProjects(refresh: refresh)
+                jiraProjects = list
                 jiraProblem = nil
+                jiraProjectNames.merge(JiraPick.names(list.projects)) { _, new in new }
+                UserDefaults.standard.set(jiraProjectNames, forKey: "jiraProjectNames")
                 if refresh { jiraTypes = [:]; jiraScreens = [:] }
             } catch let e as JiraListError {
                 jiraProblem = e.problem
@@ -83,7 +86,7 @@ struct JiraFieldPickers: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             row("project", "Project") {
-                pop("project", project?.label ?? text("project", or: "Choose a project")) { projectMenu }
+                pop("project", JiraPick.label(values["project"], projects: projects, names: store.jiraProjectNames) ?? text("project", or: "Choose a project")) { projectMenu }
             }
             .zIndex(open == "project" ? 2 : 0)
             row("issueType", "Type") {
@@ -189,8 +192,8 @@ struct JiraFieldPickers: View {
 
     private func projectRow(_ p: JiraProject) -> some View {
         ActionMenuRow(title: p.label, checked: p.key == project?.key) {
-            // "TLS · Telus Platform" reads well even when Jira can't be reached; the core takes the key from it.
-            set("project", p.label); open = nil; search = ""
+            // The key is what's saved (buttons, filters, Add as read it); the picker shows the name (label).
+            set("project", JiraPick.stored(p)); open = nil; search = ""
         }
     }
 

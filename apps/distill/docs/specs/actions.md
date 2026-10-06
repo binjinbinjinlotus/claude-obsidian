@@ -195,8 +195,12 @@ Jira allows, and the banner said "didn't create" twice.
   ticket's fields ("jin@lotusflare… · updated 2 min ago"). Offline, the
   pickers are muted with the saved values and Create stays on. A refused
   create shows "Nothing was created and your draft is unchanged." (Create in
-  the footer retries). Picking a project saves "TLS · Telus Platform"; the
-  core reads the key from it. Tests: `JiraPickersTests`. Snapshot states
+  the footer retries). Picking a project saves its key ("TLS"), so a
+  button's `{fields.project}`, the filters, Add as and Copy read the key; the
+  picker shows "TLS · Telus Platform" (`JiraPick.label`), from Jira's list or,
+  offline, from the names cached at the last load (`jiraProjectNames`). An
+  older saved "TLS · Telus Platform" still works: the core reads the key from
+  it. Tests: `JiraPickersTests`. Snapshot states
   `jira-fields-pickers`, `jira-fields-project-menu`, `jira-fields-invalid`,
   `jira-fields-offline`, `jira-fields-error`, `jira-fields-settings`.
 - Tests: `actions.test.ts` ("Jira pickers: …", a fake Jira over the fake

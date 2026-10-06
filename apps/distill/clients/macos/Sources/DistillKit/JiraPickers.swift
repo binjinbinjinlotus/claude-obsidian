@@ -96,6 +96,24 @@ public enum JiraPick {
         return list.first { same($0.name, v) }
     }
 
+    /// What a picked project saves in `fields.project`: its key ("TLS"), so a button's {fields.project}, the
+    /// filters, Add as and Copy all read the key. The picker shows `label` instead.
+    public static func stored(_ p: JiraProject) -> String { p.key }
+
+    /// Key → name, cached from the last list so the picker can name a project while Jira can't be reached.
+    public static func names(_ list: [JiraProject]) -> [String: String] {
+        Dictionary(list.filter { !$0.name.isEmpty }.map { ($0.key, $0.name) }, uniquingKeysWith: { a, _ in a })
+    }
+
+    /// What the picker shows for a saved value: "TLS · Telus Platform" from Jira's list, else from the cached
+    /// names (offline), else the value as saved. Nil when empty.
+    public static func label(_ value: String?, projects: [JiraProject]?, names: [String: String]) -> String? {
+        guard let v = value?.trimmingCharacters(in: .whitespaces), !v.isEmpty else { return nil }
+        if let projects, let p = project(v, in: projects) { return p.label }
+        if let name = names[key(v)] { return JiraProject(key: key(v), name: name).label }
+        return v
+    }
+
     /// Projects whose key or name contains the search text.
     public static func search(_ text: String, in list: [JiraProject]) -> [JiraProject] {
         let t = text.trimmingCharacters(in: .whitespaces).lowercased()

@@ -486,7 +486,7 @@ extension StatesSnapshot {
             e.actions.items["j1"]?.title = "Create Jira tickets for the three migration areas"
             e.actions.items["j1"]?.body = "## What to do\n- One ticket each for the API layer, the test suites and the deploy scripts\n- Link them to the Telus cut-over epic"
             e.actions.items["j1"]?.labels = ["migration", "telus"]
-            e.actions.items["j1"]?.fields = ["project": "TLS · Telus Platform", "issueType": "Task", "priority": "Medium", "assignee": "Jin Bin Liu"]
+            e.actions.items["j1"]?.fields = ["project": "TLS", "issueType": "Task", "priority": "Medium", "assignee": "Jin Bin Liu"]
             e.actions.items["j2"]?.fields["project"] = "PAY"
             e.actions.items["j3"]?.fields["project"] = "TLS"
             let now = ActionFixtures.at(15, 56)
@@ -496,6 +496,8 @@ extension StatesSnapshot {
                                                      projects: [JiraProject(key: "AUTH", name: "Auth service"), JiraProject(key: "DOC", name: "Docs"),
                                                                 JiraProject(key: "OPS", name: "Operations"), JiraProject(key: "PAY", name: "Payments"),
                                                                 JiraProject(key: "PX", name: "Project X"), JiraProject(key: "TLS", name: "Telus Platform")])
+            // The names cached at the last load (never the machine's own defaults): offline still reads TLS · Telus Platform.
+            e.actions.jiraProjectNames = JiraPick.names(e.actions.jiraProjects?.projects ?? [])
             e.actions.jiraTypes = ["TLS": [JiraIssueType(id: "10001", name: "Task"), JiraIssueType(id: "10002", name: "Bug"), JiraIssueType(id: "10003", name: "Story")]]
             e.actions.jiraScreens = ["TLS|10001": JiraCreateScreen(project: "TLS", typeId: "10001", priorities: priorities)]
             open(e)
@@ -512,7 +514,7 @@ extension StatesSnapshot {
             e.actions.jiraProjects = nil
             e.actions.jiraProblem = .unreachable("Couldn’t reach acme.atlassian.net.")
         }
-        ext("jira-fields-offline", "jira", "Couldn't reach Jira", "Muted pickers keep the saved values; Couldn’t reach Jira to check these · Retry; Create stays on (Jira checks).", e)
+        ext("jira-fields-offline", "jira", "Couldn't reach Jira", "Muted pickers keep the saved values (TLS · Telus Platform from the cached names); Couldn’t reach Jira to check these · Retry; Create stays on (Jira checks).", e)
         e = jira { e in
             e.actions.items["j1"]?.error = ActionError(code: "refused", message: "Jira didn’t create the ticket: The priority selected is invalid.", field: "priority")
         }
