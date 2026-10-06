@@ -69,8 +69,15 @@ public struct SlackTarget: Codable, Hashable, Sendable {
         if written.contains(",") {
             return SlackTarget(kind: .person, written: written, target: nil, problem: "A button sends to one person or one channel. Pick one.")
         }
-        if written.hasPrefix("#") || match(#"^[CG][A-Z0-9]{2,}$"#, written) != nil { return SlackTarget(kind: .channel, written: written, target: written) }
-        if written.hasPrefix("@") || match(#"^[DUW][A-Z0-9]{2,}$"#, written) != nil { return SlackTarget(kind: .person, written: written, target: written) }
+        let channel = written.hasPrefix("#") || match(#"^[CG][A-Z0-9]{2,}$"#, written) != nil
+        if channel || written.hasPrefix("@") || match(#"^[DUW][A-Z0-9]{2,}$"#, written) != nil {
+            // "@Mei Tanaka" is a display name with an @, not a handle: it never reaches a script.
+            guard match(rule, written) != nil else {
+                return SlackTarget(kind: channel ? .channel : .person, written: written, target: nil,
+                                   problem: "“\(written)” isn’t an @handle, a #channel or a Slack ID. Write the @handle or #channel without spaces in the To row.")
+            }
+            return SlackTarget(kind: channel ? .channel : .person, written: written, target: written)
+        }
         if let found = lookup(normalName(written)) {
             return SlackTarget(kind: match(#"^(#|[CG][A-Z0-9])"#, found) != nil ? .channel : .person, written: written, target: found, name: written)
         }

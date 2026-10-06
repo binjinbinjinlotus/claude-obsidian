@@ -12,6 +12,8 @@
     { "to": "Aditya", "expect": { "kind": "person", "written": "Aditya", "target": null, "ask": "Who is Aditya in Slack?", "problem": "Distill doesn’t know who Aditya is in Slack yet. Add their @handle or ID in the To row." } },
     { "to": "Mei Tanaka", "expect": { "kind": "person", "written": "Mei Tanaka", "target": null, "ask": "Who is Mei Tanaka in Slack?", "problem": "Distill doesn’t know who Mei Tanaka is in Slack yet. Add their @handle or ID in the To row." } },
     { "to": "", "expect": { "kind": "person", "written": "", "target": null, "problem": "Choose who gets it first." } },
+    { "to": "@Mei Tanaka", "expect": { "kind": "person", "written": "@Mei Tanaka", "target": null, "problem": "“@Mei Tanaka” isn’t an @handle, a #channel or a Slack ID. Write the @handle or #channel without spaces in the To row." } },
+    { "to": "#eng team", "expect": { "kind": "channel", "written": "#eng team", "target": null, "problem": "“#eng team” isn’t an @handle, a #channel or a Slack ID. Write the @handle or #channel without spaces in the To row." } },
     { "to": "Mei, Aditya Pradhan", "expect": { "kind": "person", "written": "Mei, Aditya Pradhan", "target": null, "problem": "A button sends to one person or one channel. Pick one." } },
     { "to": "#eng", "thread": "https://acme.slack.com/archives/C0123ABCD/p1759600000123456", "expect": { "kind": "thread", "written": "#eng", "target": "C0123ABCD", "threadTs": "1759600000.123456" } },
     { "to": "Mei Tanaka", "thread": "https://acme.slack.com/archives/C0123ABCD/p1759600111000222?thread_ts=1759600000.123456&cid=C0123ABCD", "expect": { "kind": "thread", "written": "Mei Tanaka", "target": "C0123ABCD", "threadTs": "1759600000.123456" } },

@@ -67,8 +67,14 @@ function toTarget(written: string, lookup: (name: string) => string | undefined)
   if (written.includes(',')) {
     return { kind: 'person', written, target: null, problem: 'A button sends to one person or one channel. Pick one.' };
   }
-  if (written.startsWith('#') || CHANNEL_ID.test(written)) return { kind: 'channel', written, target: written };
-  if (written.startsWith('@') || PERSON_ID.test(written)) return { kind: 'person', written, target: written };
+  const channel = written.startsWith('#') || CHANNEL_ID.test(written);
+  if (channel || written.startsWith('@') || PERSON_ID.test(written)) {
+    // "@Mei Tanaka" is a display name with an @, not a handle: it never reaches a script.
+    if (!SLACK_TARGET_RULE.test(written)) {
+      return { kind: channel ? 'channel' : 'person', written, target: null, problem: `“${written}” isn’t an @handle, a #channel or a Slack ID. Write the @handle or #channel without spaces in the To row.` };
+    }
+    return { kind: channel ? 'channel' : 'person', written, target: written };
+  }
   const found = lookup(normalName(written));
   if (found) return { kind: SLACK_CHANNELISH.test(found) ? 'channel' : 'person', written, target: found, name: written };
   return { kind: 'person', written, target: null, ask: `Who is ${written} in Slack?`, problem: `Distill doesn’t know who ${written} is in Slack yet. Add their @handle or ID in the To row.` };

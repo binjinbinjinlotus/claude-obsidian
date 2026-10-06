@@ -166,10 +166,14 @@ test('a button runs its command with the exact argv, never through a shell, and 
   assert.equal((await request('GET', `/v1/collectors/${collectorId}`)).body.status.lastRun, null);
 });
 
-test('a pattern miss is shown in the preview and refuses the run', async () => {
+test('a target that isn’t a handle is shown in the preview and refuses the run', async () => {
   const item = (await request('POST', '/v1/actions', { type: 'slack', title: 'Tell Mei', body: 'hi', fields: { to: '@' } })).body;
   const preview = (await request('POST', `/v1/actions/${item.id}/buttons/btn-send/preview`)).body;
-  assert.match(preview.problems[0], /“@” isn’t #channel, @handle or an ID/);
+  assert.deepEqual(preview.problems, ['“@” isn’t an @handle, a #channel or a Slack ID. Write the @handle or #channel without spaces in the To row.']);
+  // A display name with an @ is refused the same way, whatever pattern the button's command has.
+  const spaced = (await request('POST', '/v1/actions', { type: 'slack', title: 'Tell Mei', body: 'hi', fields: { to: '@Mei Tanaka' } })).body;
+  assert.equal((await request('GET', `/v1/actions/${spaced.id}/slack-target`)).body.target, null);
+  assert.equal((await request('POST', `/v1/actions/${spaced.id}/buttons/btn-send/run`, { approve: true })).status, 400);
   assert.equal((await request('POST', `/v1/actions/${item.id}/buttons/btn-send/run`, { approve: true })).status, 400);
 });
 
