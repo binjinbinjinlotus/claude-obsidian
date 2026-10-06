@@ -445,6 +445,13 @@ first.
   - Recovery never triggers recovery: a failure inside an attempt ends that
     attempt as failed.
   - A refresh rebuild that goes stale again counts toward `stale-again`.
+  - A recovery still working (running or waiting) that hits another signature
+    keeps its attempts, its cost and its denial answers (`recoveryFor`), so
+    the bounds hold per recovery, not per signature; the new signature gets no
+    rule of its own when a rule already ran (2026-10-06).
+  - A minute's wake runs only if the recovery is still waiting for it, and an
+    agent answer is carried out only while its attempt is the running one: an
+    owner's action in between makes them no-ops.
   - Attempts reset only when the owner acts: Approve, Reply, Try recovery again,
     Reject.
 - **Cost cap.** **$1.00 per batch** by default (`settings.recovery.maxCostUSD`).

@@ -948,6 +948,19 @@ describe('blocked commands (review-queue.md)', () => {
     assert.equal(job.recovery?.summary?.includes('Old.'), false);
   });
 
+  test('recovery that alternates blocked commands and plan errors stays bounded across signatures', async () => {
+    h = setup([]);
+    const vault = path.join(tmp, 'vault');
+    const bad = needsApproval('/tmp/elsewhere/bundle.json');
+    for (let i = 0; i < 15; i++) h.runner.steps.push(blocked(vault), bad);
+    const created = await firstJob();
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.ok(h.runner.requests.length <= 6, `bounded: ${h.runner.requests.length} runner calls`);
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.ok(job.recovery!.attempts.every((a) => a.result !== 'running'));
+  });
+
   test('an apply turn with a blocked call is not answered', async () => {
     h = setup([]);
     const created = await firstJob();

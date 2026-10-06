@@ -17,6 +17,16 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**Recovery bounds hold across signatures (2026-10-06, verification).** A
+recovery that hit another signature while it still worked started fresh, so
+`runner-failed` and `plan-error` (or `denial` and `plan-error`) took turns
+running their free rule forever: 42 session turns in a test with a runner that
+alternates. Now `recoveryFor` carries the attempts, cost and denial answers
+over while the recovery is running or waiting; a gave-up or fixed one still
+starts fresh. The bounds in review-queue.md (Bounds, No loop) are per recovery,
+not per signature. Also: a minute's wake and a recovery agent answer act only
+on the recovery they were for, never on one the owner's action replaced.
+
 **A recovery settles when its turn ends without a result (2026-10-06).** The
 owner's batch read "Recovering" forever: Distill answered a blocked command,
 and Claude came back with questions, no denials and no plan, which nothing
