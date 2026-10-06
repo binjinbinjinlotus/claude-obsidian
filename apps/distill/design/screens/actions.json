@@ -225,6 +225,34 @@
     "statusKind": "removed",
     "mode": "history"
    }
+  ],
+  "jira-tls": [
+   {
+    "head": "DRAFTS"
+   },
+   {
+    "type": "jira",
+    "title": "Create Jira tickets for the three migration areas",
+    "source": "From Telus migration sync · created today at 10:05 AM",
+    "status": "Draft"
+   },
+   {
+    "type": "jira",
+    "title": "Write a runbook entry for payment client timeouts",
+    "source": "From Q3 architecture sync · not written yet",
+    "status": "Not written",
+    "statusKind": "muted"
+   },
+   {
+    "head": "CREATED IN JIRA"
+   },
+   {
+    "type": "jira",
+    "title": "PX-482 Add an alert for retry storms on the auth service",
+    "source": "Created today at 3:51 PM · In progress in Jira",
+    "status": "Created",
+    "statusKind": "created"
+   }
   ]
  },
  "bases": {
@@ -1343,6 +1371,90 @@
    }
   },
   {
+   "id": "jira-fields-pickers",
+   "base": "jira",
+   "label": "F · Project, Type and Priority are pickers filled from your Jira: TLS · Telus Platform, the project’s issue types and its priorities",
+   "set": {
+    "list": {
+     "selected": 0,
+     "list": "jira-tls"
+    },
+    "detail": {
+     "frag": "jira-fields-pickers"
+    }
+   }
+  },
+  {
+   "id": "jira-fields-project-menu",
+   "base": "jira",
+   "label": "G · The Project picker: Search projects, the projects you can create issues in, recent first",
+   "set": {
+    "list": {
+     "selected": 0,
+     "list": "jira-tls"
+    },
+    "detail": {
+     "frag": "jira-fields-project-menu"
+    }
+   }
+  },
+  {
+   "id": "jira-fields-invalid",
+   "base": "jira",
+   "label": "H · The draft’s Medium isn’t a TLS priority: marked, the picker opens with TLS’s priorities, Create in Jira waits. No Jira error: Distill catches it first",
+   "set": {
+    "list": {
+     "selected": 0,
+     "list": "jira-tls"
+    },
+    "detail": {
+     "frag": "jira-fields-invalid"
+    }
+   }
+  },
+  {
+   "id": "jira-fields-offline",
+   "base": "jira",
+   "label": "I · Jira can’t be reached: the saved values with “Couldn’t reach Jira to check these · Retry”; Create stays allowed (Jira will check)",
+   "set": {
+    "list": {
+     "selected": 0,
+     "list": "jira-tls"
+    },
+    "detail": {
+     "frag": "jira-fields-offline"
+    }
+   }
+  },
+  {
+   "id": "jira-fields-error",
+   "base": "jira",
+   "label": "J · Jira’s error, said once: “Jira didn’t create the ticket: The priority selected is invalid.” Nothing was created; the draft is unchanged",
+   "set": {
+    "list": {
+     "selected": 0,
+     "list": "jira-tls"
+    },
+    "detail": {
+     "frag": "jira-fields-error"
+    }
+   }
+  },
+  {
+   "id": "jira-card-fields",
+   "label": "Fields from your Jira",
+   "caption": "Live lists, cached for an hour; Project first; hidden fields; the same pickers in Add as… and Settings.",
+   "card": {
+    "height": 420,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "stretch"
+   },
+   "body": {
+    "frag": "jira-card-fields"
+   }
+  },
+  {
    "id": "actions-confluence",
    "base": "confluence",
    "label": "A · Confluence pages: drafts you check, and pages already created"
@@ -1915,6 +2027,41 @@
       "actions-jira-unreachable",
       "actions-jira-removed",
       "jira-card-completed"
+     ],
+     "cols": 4
+    }
+   ]
+  },
+  {
+   "file": "ActionsJiraFields.dc.html",
+   "title": "Actions · Jira fields from your account",
+   "heading": "Jira fields picked from your Jira account",
+   "intro": "Project, Type and Priority are pickers filled from the connected Jira account, not free text or a fixed list. Distill checks a draft’s values against the project before it sends, so “The priority selected is invalid” is caught here and never reaches Jira. Jira’s own errors are shown once, in plain words.",
+   "width": 2520,
+   "sections": [
+    {
+     "row": [
+      "jira-fields-pickers",
+      "jira-fields-project-menu"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "row": [
+      "jira-fields-invalid",
+      "jira-fields-offline"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "row": [
+      "jira-fields-error"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "grid": [
+      "jira-card-fields"
      ],
      "cols": 4
     }
