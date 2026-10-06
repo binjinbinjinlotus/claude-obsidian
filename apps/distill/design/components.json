@@ -7144,7 +7144,7 @@
         },
         {
           "name": "line",
-          "type": "bool",
+          "type": "boolean",
           "default": true
         }
       ],

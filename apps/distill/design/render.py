@@ -541,6 +541,8 @@ def merge_canvas(live_path, out_dir, built, written):
         in_row = [k for k, v in boards.items() if v['y'] == row]
         x = max((boards[k]['x'] + boards[k]['w'] for k in in_row), default=-80) + 80
         boards[f] = {'x': x, 'y': row, 'w': W, 'h': h or 400, 'title': title}
+        if c.get('pages'):  # a canvas with explicit pages: a new board joins the first one
+            boards[f]['page'] = c['pages'][0]['id']
         last = max((order.index(k) for k in in_row if k in order), default=len(order) - 1)
         order.insert(last + 1, f)
         added.append(f)
@@ -549,6 +551,8 @@ def merge_canvas(live_path, out_dir, built, written):
         n = s.get('rowNote')
         if n and n['id'] not in notes:
             notes[n['id']] = {'kind': 'title1', 'maxW': 8000, 'text': n['text'], 'w': 240, 'x': 0, 'y': s['row'] - 240}
+            if c.get('pages'):
+                notes[n['id']]['page'] = c['pages'][0]['id']
             print('note   ', n['id'], n['text'])
     with open(os.path.join(out_dir, 'canvas.json'), 'w', encoding='utf-8') as fh:
         json.dump(c, fh, indent=2, ensure_ascii=False)
