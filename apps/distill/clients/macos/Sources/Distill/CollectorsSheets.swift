@@ -496,7 +496,7 @@ struct CollectorsOverlay: View {
                 if store.adding != nil {
                     // Scrolls when a script with packages is taller than the window (an 890 × 700 window).
                     ScrollView(.vertical, showsIndicators: false) {
-                        AddCollectorSheet(store: store).padding(.top, (store.adding?.step == 2 && store.adding?.kind == .script) ? 60 : 110)
+                        AddCollectorSheet(store: store).padding(.top, (store.adding?.stage == "Source" && store.adding?.kind == .script) ? 60 : 110)
                             .padding(.bottom, 40)
                             .frame(maxWidth: .infinity)
                     }
@@ -533,20 +533,23 @@ struct AddCollectorSheet: View {
 
     var body: some View {
         let d = store.adding ?? AddDraft()
-        SheetCard(width: d.step == 2 && d.kind == .script ? 600 : 520) {
-            steps(d.step)
-            switch d.step {
-            case 1: kindStep(d)
-            case 2: if d.kind == .script { scriptStep(d) } else { folderStep(d) }
+        SheetCard(width: d.stage == "Source" && d.kind == .script ? 600 : 520) {
+            steps(d)
+            switch d.stage {
+            case "What it does": roleStep(d)
+            case "Kind": kindStep(d)
+            case "Source": if d.kind == .script { scriptStep(d) } else { folderStep(d) }
+            case "Commands": commandsStep(d)
             default: scheduleStep(d)
             }
         }
         .onExitCommand { store.adding = nil }
     }
 
-    private func steps(_ current: Int) -> some View {
-        HStack(spacing: 16) {
-            ForEach(Array(["Kind", "Source", "Schedule"].enumerated()), id: \.offset) { i, title in
+    private func steps(_ d: AddDraft) -> some View {
+        let current = d.step
+        return HStack(spacing: 16) {
+            ForEach(Array(d.role.steps.enumerated()), id: \.offset) { i, title in
                 let n = i + 1
                 HStack(spacing: 6) {
                     Text("\(n)").font(Theme.body(10, .bold))
@@ -580,13 +583,67 @@ struct AddCollectorSheet: View {
 
     private func kindStep(_ d: AddDraft) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            title("Add a collector")
+            title("What does it collect from?")
             VStack(spacing: 8) {
                 choice(.folder, "Folder", "Collect files from a folder you choose. Built in, no code.", d)
                 choice(.script, "Custom script", "Run your own zsh, Python, JavaScript or TypeScript script on a schedule.", d)
             }
-            footer(back: false, next: "Continue") { store.adding?.step = 2 }
+            footer(back: true, next: "Continue") { store.adding?.step += 1 }
         }
+    }
+
+    /// Step 1 (action-buttons.md, frame sa-card-add): what the automation does. Collect keeps today's steps.
+    private func roleStep(_ d: AddDraft) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            title("Add automation")
+            VStack(spacing: 8) {
+                ForEach(AutomationRole.allCases, id: \.self) { role in
+                    pick(on: d.role == role, icon: role == .collect ? "tray.and.arrow.down" : role == .commands ? "command" : "square.stack.3d.up",
+                         name: role.title, detail: role.detail) { store.adding?.setRole(role) }
+                }
+            }
+            footer(back: false, next: "Continue") { store.adding?.step += 1 }
+        }
+    }
+
+    /// The last step for Commands and Both: commands are declared on the saved script (its COMMANDS block).
+    private func commandsStep(_ d: AddDraft) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            title("Its commands")
+            Text("After you add it, open the script and choose Add command under COMMANDS: the name, the arguments it takes, and how to read its result. Buttons on your actions then run those commands.")
+                .font(Theme.body(13)).foregroundStyle(Theme.softInk).fixedSize(horizontal: false, vertical: true)
+            Hint(d.role == .commands ? "It is saved off and never runs on its own. Allow shows you the code first." : "It is saved off. Allow shows you the code first; then it collects on its schedule.")
+            footer(back: true, next: "Add", icon: "checkmark", enabled: store.busy["add"] == nil) { store.finishAdding() }
+        }
+    }
+
+    private func pick(on: Bool, icon: String, name: String, detail: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.primary)
+                    .frame(width: 34, height: 34).background(RoundedRectangle(cornerRadius: 10).fill(Theme.primaryTint))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name).font(Theme.body(14, .bold)).foregroundStyle(Theme.ink)
+                    Text(detail).font(Theme.body(12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                ZStack {
+                    if on {
+                        Circle().fill(Theme.primary)
+                        Image(systemName: "checkmark").font(.system(size: 9, weight: .heavy)).foregroundStyle(.white)
+                    } else {
+                        Circle().strokeBorder(Color(hex: 0xB5B1A9), lineWidth: 1.5)
+                    }
+                }
+                .frame(width: 18, height: 18)
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 12).fill(on ? CollectorsTheme.selectedFill : Color.white))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(on ? CollectorsTheme.selectedStroke : Theme.border, lineWidth: on ? 1.5 : 1))
+            .contentShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     private func choice(_ kind: CollectorKind, _ name: String, _ detail: String, _ d: AddDraft) -> some View {
@@ -641,7 +698,7 @@ struct AddCollectorSheet: View {
                                selection: draft.afterCollect, height: 28)
                 Hint("Distill remembers what it collected, so it never takes the same file twice.")
             }
-            footer(back: true, next: "Continue", enabled: !d.folderPath.trimmingCharacters(in: .whitespaces).isEmpty) { store.adding?.step = 3 }
+            footer(back: true, next: "Continue", enabled: !d.folderPath.trimmingCharacters(in: .whitespaces).isEmpty) { store.adding?.step += 1 }
         }
     }
 
@@ -668,7 +725,7 @@ struct AddCollectorSheet: View {
             Hint("It gets the vault and queue folder paths as $1 and $2 (and DISTILL_VAULT, DISTILL_QUEUE_DIR). Nothing runs until you allow it.")
             footer(back: true, next: "Continue",
                    enabled: d.scriptInline ? !d.code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty : !d.scriptFile.isEmpty) {
-                store.adding?.step = 3
+                store.adding?.step += 1
             }
         }
     }
@@ -692,8 +749,12 @@ struct AddCollectorSheet: View {
                     Text("the vault’s queue").font(Theme.body(12)).foregroundStyle(Theme.faint)
                 }
             }
-            footer(back: true, next: d.kind == .folder ? "Add and turn on" : "Add", icon: "checkmark",
-                   enabled: valid == true && !d.vaultPath.isEmpty && store.busy["add"] == nil) { store.finishAdding() }
+            if d.isLastStep {
+                footer(back: true, next: d.kind == .folder ? "Add and turn on" : "Add", icon: "checkmark",
+                       enabled: valid == true && !d.vaultPath.isEmpty && store.busy["add"] == nil) { store.finishAdding() }
+            } else {
+                footer(back: true, next: "Continue", enabled: valid == true && !d.vaultPath.isEmpty) { store.adding?.step += 1 }
+            }
         }
     }
 }

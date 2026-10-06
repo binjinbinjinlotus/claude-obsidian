@@ -17,6 +17,12 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**Add automation asks what it does first (2026-10-06).** Collect keeps
+today's steps after it; Commands for buttons and Both are scripts, and
+Commands is saved with `collects: false`. Commands are declared on the saved
+script, not in the Add sheet (the frame's "Commands (or later)"): one editor
+for commands, in one place.
+
 **"Ready to send" follows the Send slot (2026-10-06).** A ready Slack message
 reads "Ready to send" when the built-in Send works or a button (turned on)
 holds the Send slot; otherwise "Ready to paste". Why: the button sends it, so

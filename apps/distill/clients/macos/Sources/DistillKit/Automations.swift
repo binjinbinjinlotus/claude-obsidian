@@ -366,3 +366,33 @@ public enum AutomationText {
         return out
     }
 }
+
+/// Add automation, step 1 "What it does" (action-buttons.md, board ScriptActions frame sa-card-add). Collect keeps
+/// today's steps; Commands and Both are scripts. Commands never collects (`script.collects: false`).
+public enum AutomationRole: String, CaseIterable, Sendable {
+    case collect, commands, both
+
+    public var title: String {
+        switch self { case .collect: "Collect on a schedule"; case .commands: "Commands for buttons"; case .both: "Both" }
+    }
+
+    public var detail: String {
+        switch self {
+        case .collect: "Folder or script. Fills the queue, like a collector today."
+        case .commands: "A script you call with arguments from action buttons. Never runs on its own."
+        case .both: "A script that collects and also offers commands."
+        }
+    }
+
+    /// What the new script sends as `collects` (nil = absent, which collects).
+    public var collects: Bool? { self == .commands ? false : nil }
+
+    /// The Add sheet's steps for this role, in order.
+    public var steps: [String] {
+        switch self {
+        case .collect: ["What it does", "Kind", "Source", "Schedule"]
+        case .commands: ["What it does", "Source", "Commands"]
+        case .both: ["What it does", "Source", "Schedule", "Commands"]
+        }
+    }
+}

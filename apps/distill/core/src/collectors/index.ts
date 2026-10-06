@@ -1438,6 +1438,8 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
           throw new CoreError('invalid_request', 'A zsh script has no package manifest.');
         }
         c.script = { source: applySource(c, input.script.source, input.script.interpreter), interpreter: input.script.interpreter, timeoutSeconds };
+        // Automations: "Commands for buttons" never collects on a schedule (absent = collects, as before).
+        if (input.script.collects === false) c.script.collects = false;
         if (manifest !== undefined) {
           if (!isManaged(c.script)) throw new CoreError('invalid_request', 'Packages are for scripts Distill keeps (inline code), not your own file.');
           folders.writeManifest(c.id, c.script.interpreter, manifest);

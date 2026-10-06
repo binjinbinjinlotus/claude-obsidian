@@ -193,8 +193,10 @@ extension StatesSnapshot {
 
         // Adding an automation: the first step.
         e = S.engine()
-        e.collectors.adding = AddDraft()
-        main("sa-card-add", f, "Automations", "Adding an automation", "The first step; a collector keeps today's steps.", e, section: .collectors) {
+        var first = AddDraft()
+        first.setRole(.commands)
+        e.collectors.adding = first
+        main("sa-card-add", f, "Automations", "Adding an automation", "Step 1, What it does: Collect, Commands for buttons (picked) or Both; a collector keeps today's steps.", e, section: .collectors) {
             CollectorsScreen()
         }
     }

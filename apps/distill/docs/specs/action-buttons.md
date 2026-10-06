@@ -742,8 +742,16 @@ Order: core → API → CLI → Mac. Each step is one commit, with `npm test
   `sa-slack-failed`, `sa-card-settings`, `sa-card-editor`, `sa-card-command`,
   `sa-card-todo`, `sa-card-add`; the prose cards have none. The to-do footer
   puts its buttons on their own row when the pane is too narrow for one.
-- **Not yet:** Add automation's first step "What it does (Collect / Commands /
-  Both)" (`sa-card-add` shows today's kind step).
+- **What it does (2026-10-06).** Add automation starts with step 1, What it
+  does: **Collect on a schedule** (then today's Kind, Source, Schedule),
+  **Commands for buttons** (Source, then Commands) or **Both** (Source,
+  Schedule, Commands). Commands and Both are scripts; Commands is created with
+  `script.collects: false` (`NewCollectorInput.script.collects`, core and
+  Swift), so it never collects on its own. The Commands step says where to
+  declare them (the saved script's COMMANDS block); the sheet doesn't edit
+  commands itself. `AutomationRole` (DistillKit) holds the steps and words.
+  Snapshot states `sa-card-add` (Commands picked), `collectors-add` (step 1)
+  and `collectors-add-kind`.
 - **Ready to send (2026-10-06).** A ready Slack message reads "Ready to send"
   when a button holds the Send slot (and is on), not "Ready to paste"
   (`ActionTypeInfo.readyWords`, the row and the detail). The status filter's

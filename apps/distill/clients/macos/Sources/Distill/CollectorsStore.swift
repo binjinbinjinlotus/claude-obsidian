@@ -42,6 +42,8 @@ struct ScheduleDraft: Equatable {
 /// The Add sheet (three steps).
 struct AddDraft: Equatable {
     var step = 1
+    /// Step 1, What it does: Collect keeps today's steps; Commands and Both are scripts.
+    var role: AutomationRole = .collect
     var kind: CollectorKind = .folder
     var folderPath = "~/Distill Inbox"
     var afterCollect = "copy"
@@ -56,6 +58,18 @@ struct AddDraft: Equatable {
     var schedule = ScheduleDraft()
     var vaultPath = ""
     var name = ""
+
+    /// The step being shown, by name ("What it does", "Kind", "Source", "Schedule", "Commands").
+    var stage: String {
+        get { role.steps[max(0, min(step, role.steps.count) - 1)] }
+        set { if let i = role.steps.firstIndex(of: newValue) { step = i + 1 } }
+    }
+    var isLastStep: Bool { step >= role.steps.count }
+
+    mutating func setRole(_ r: AutomationRole) {
+        role = r
+        if r != .collect { kind = .script }
+    }
 
     /// v6: "Kept by Distill" (a managed file written from `code`) or "Your own file".
     var managed: Bool {
@@ -737,7 +751,7 @@ final class CollectorsStore: ObservableObject {
     func startAdding(kind: CollectorKind? = nil) {
         var d = AddDraft()
         d.vaultPath = engine?.activeVault?.path ?? engine?.settings.vaults.first?.path ?? ""
-        if let kind { d.kind = kind; d.step = 2 }
+        if let kind { d.kind = kind; d.stage = "Source" }
         adding = d
     }
 
@@ -755,7 +769,8 @@ final class CollectorsStore: ObservableObject {
             // A script Distill keeps gets its package manifest at creation; its packages install on Allow.
             let manifest = d.manifest.trimmingCharacters(in: .whitespacesAndNewlines)
             input.script = .init(source: source, interpreter: d.interpreter,
-                                 manifest: d.managed && d.interpreter.manifestName != nil && !manifest.isEmpty ? d.manifest : nil)
+                                 manifest: d.managed && d.interpreter.manifestName != nil && !manifest.isEmpty ? d.manifest : nil,
+                                 collects: d.role.collects)
         }
         guard let client else { return }
         busy["add"] = "add"

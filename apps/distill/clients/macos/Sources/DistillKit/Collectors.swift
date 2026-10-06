@@ -652,8 +652,12 @@ public struct NewCollectorInput: Encodable, Hashable, Sendable {
         public var timeoutSeconds: Int?
         /// v6: the package manifest's text for a managed script (package.json / requirements.txt).
         public var manifest: String?
-        public init(source: ScriptSource, interpreter: CollectorInterpreter, timeoutSeconds: Int? = nil, manifest: String? = nil) {
+        /// Automations: false for "Commands for buttons" (absent = collects).
+        public var collects: Bool?
+        public init(source: ScriptSource, interpreter: CollectorInterpreter, timeoutSeconds: Int? = nil, manifest: String? = nil,
+                    collects: Bool? = nil) {
             self.source = source; self.interpreter = interpreter; self.timeoutSeconds = timeoutSeconds; self.manifest = manifest
+            self.collects = collects
         }
     }
     public var kind: CollectorKind

@@ -86,6 +86,19 @@ final class AutomationsTests: XCTestCase {
         XCTAssertNil(AutomationText.slots(type.buttons, for: item).send, "default when: open and ready")
     }
 
+    func testAddAutomationRoles() throws {
+        XCTAssertEqual(AutomationRole.collect.steps, ["What it does", "Kind", "Source", "Schedule"], "a collector keeps today's steps after step 1")
+        XCTAssertEqual(AutomationRole.commands.steps, ["What it does", "Source", "Commands"])
+        XCTAssertEqual(AutomationRole.both.steps, ["What it does", "Source", "Schedule", "Commands"])
+        XCTAssertEqual(AutomationRole.commands.collects, false)
+        XCTAssertNil(AutomationRole.both.collects, "absent = collects")
+        let input = NewCollectorInput(kind: .script, script: .init(source: .inline("exit 0"), interpreter: .zsh, collects: AutomationRole.commands.collects))
+        let json = String(decoding: try JSONEncoder().encode(input), as: UTF8.self)
+        XCTAssertTrue(json.contains(#""collects":false"#), json)
+        let both = NewCollectorInput(kind: .script, script: .init(source: .inline("exit 0"), interpreter: .zsh, collects: AutomationRole.both.collects))
+        XCTAssertFalse(String(decoding: try JSONEncoder().encode(both), as: UTF8.self).contains("collects"))
+    }
+
     func testReadyWordsFollowTheSendSlot() {
         var type = ActionTypeInfo(id: "slack", label: "Slack message")
         XCTAssertEqual(type.readyWords, "Ready to paste", "nothing sends it")

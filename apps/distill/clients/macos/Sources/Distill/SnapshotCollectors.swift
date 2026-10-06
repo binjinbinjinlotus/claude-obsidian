@@ -161,7 +161,13 @@ extension StatesSnapshot {
         e = engine()
         var s = F.load(e, [])
         s.startAdding()
-        shot("collectors-add", "B · Add, step 1", "Kind: Folder (selected) or Custom script.", e)
+        shot("collectors-add", "B · Add, step 1", "What it does: Collect on a schedule (selected), Commands for buttons, or Both.", e)
+
+        e = engine()
+        s = F.load(e, [])
+        s.startAdding()
+        s.adding?.stage = "Kind"
+        shot("collectors-add-kind", "B2 · Add, Collect: the kind", "Folder (selected) or Custom script, as before.", e)
 
         e = engine()
         s = F.load(e, [])
@@ -171,7 +177,7 @@ extension StatesSnapshot {
         e = engine()
         s = F.load(e, [])
         s.startAdding(kind: .folder)
-        s.adding?.step = 3
+        s.adding?.stage = "Schedule"
         shot("collectors-add-schedule", "D · Add, step 3", "Schedule (every hour) and target vault (the active vault).", e)
 
         e = engine()

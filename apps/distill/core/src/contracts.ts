@@ -1799,8 +1799,11 @@ export interface NewCollectorInput {
   /** Default every hour. */
   schedule?: CollectorSchedule;
   folder?: Partial<FolderCollectorSettings>;
-  /** v6: `manifest` is the package manifest's text for a managed script (package.json / requirements.txt). */
-  script?: { source: ScriptSource; interpreter: CollectorInterpreter; timeoutSeconds?: number; manifest?: string };
+  /**
+   * v6: `manifest` is the package manifest's text for a managed script (package.json / requirements.txt).
+   * Automations: `collects: false` for a script that only offers commands (Add's "Commands for buttons").
+   */
+  script?: { source: ScriptSource; interpreter: CollectorInterpreter; timeoutSeconds?: number; manifest?: string; collects?: boolean };
 }
 
 export interface CollectorPatch {
