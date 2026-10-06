@@ -278,7 +278,18 @@ struct ActionTypeSettingsPage: View {
                         StatePill(text: "On your click", systemImage: "lock.fill").help("This can’t be changed")
                     }
                 }
-                ForEach(type.defaultFields, id: \.key) { field in
+                if type.id == "jira" {
+                    // Jira: the defaults are picked from the account (actions.md, Jira pickers).
+                    row("Defaults", "New Jira tickets start with these; a draft can pick others") {
+                        JiraFieldPickers(store: engine.actions,
+                                         values: Dictionary(uniqueKeysWithValues: JiraFieldPickers.keys.compactMap { k in
+                                             SettingsEdits.actions(engine.settings).fieldDefault(type.id, k).map { (k, $0) } }),
+                                         set: { k, v in SettingsEdits.setActions(&engine.settings) { $0.setFieldDefault(type.id, k, v) } },
+                                         labelWidth: 60)
+                            .frame(maxWidth: 360)
+                    }
+                }
+                ForEach(type.defaultFields.filter { !(type.id == "jira" && JiraFieldPickers.keys.contains($0.key)) }, id: \.key) { field in
                     row(field.title, "New \(type.pluralLabel) start with this; a draft can pick another") {
                         FieldDefaultBox(placeholder: placeholder(field.key),
                                         value: SettingsEdits.actions(engine.settings).fieldDefault(type.id, field.key) ?? "") { v in

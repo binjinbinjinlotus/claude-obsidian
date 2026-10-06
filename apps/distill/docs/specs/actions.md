@@ -176,6 +176,18 @@ Jira allows, and the banner said "didn't create" twice.
   one."). Best effort: not connected or offline changes nothing.
 - **One "didn't create":** the banner shows the core's sentence once ("Jira
   didn't create the ticket: The priority selected is invalid.").
+- **Mac (built):** `JiraPickerViews.swift` and `DistillKit/JiraPickers.swift`.
+  In the Jira ticket detail, Project is a searchable picker ("TLS · Telus
+  Platform"; PROJECTS YOU CAN CREATE IN), Type and Priority are pickers
+  reloaded when Project changes, with the caption "From your Jira (Jin Liu ·
+  updated 3 min ago) · Refresh". A value outside the lists is marked with the
+  core's words; a create screen without Priority shows "Priority isn't used in
+  this project". Without the lists the values stay as text with "Couldn't
+  reach Jira to check these · Retry". The same pickers are in the Add as…
+  panel for a Jira ticket and in Settings → Jira ticket (Defaults: project,
+  type, priority). Tests: `JiraPickersTests`. Snapshot states
+  `jira-fields-pickers`, `jira-fields-project-menu`, `jira-fields-invalid`,
+  `jira-fields-offline`, `jira-fields-error`, `jira-fields-settings`.
 - Tests: `actions.test.ts` ("Jira pickers: …", a fake Jira over the fake
   fetch: paging, cache and refresh, refusals before any POST, Jira's
   spelling, no Priority on the screen, unreachable blocks nothing, the

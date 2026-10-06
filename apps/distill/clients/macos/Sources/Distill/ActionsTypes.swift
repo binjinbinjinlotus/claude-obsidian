@@ -562,7 +562,7 @@ struct ExternalCard: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             if let error = item.error, draft == nil, !creating { errorCallout(error) }
-            content
+            content.zIndex(1)
             if draft == nil && !(item.error?.needsSignIn ?? false) { ActionContextBlock(item: item) }
             if draft == nil { ButtonLastRun(store: store, item: item) }
             footer
@@ -630,7 +630,8 @@ struct ExternalCard: View {
                     ActionButton(title: "Retry", icon: "arrow.clockwise", kind: .soft, height: 28) { store.perform(item, handler: "create") }
                 }
             case "refused":
-                ActionCallout(title: "\(service) didn't create it: \(error.message)",
+                // The core's sentence once ("Jira didn’t create the ticket: …", or a check before Create).
+                ActionCallout(title: error.message.isEmpty ? "\(service) didn't create it" : error.message,
                               text: "Nothing was created and your draft is unchanged. Fix the marked field, then retry.") {
                     ActionButton(title: "Retry", icon: "arrow.clockwise", kind: .soft, height: 28) { store.perform(item, handler: "create") }
                 }
@@ -678,7 +679,7 @@ struct ExternalCard: View {
                     }
                     ActionRunLine(title: "Writing the draft with \(model)…") { store.cancelRun(item.id) }
                 } else {
-                    fieldsBlock
+                    fieldsBlock.zIndex(1) // the Jira project menu draws over the body
                     if !(item.error?.needsSignIn ?? false) {
                         ActionBodyText(markdown: item.body ?? "", size: 12,
                                        tinted: store.justImproved.contains(item.id) ? ActionText.addedWords(from: item.previousBody ?? "", to: item.body ?? "") : [])
@@ -711,10 +712,20 @@ struct ExternalCard: View {
         }
     }
 
+    /// Jira: Project, Type and Priority are pickers from the account (actions.md, Jira pickers).
+    private var jiraPicks: Bool { type.id == "jira" && item.status != .created }
+
     /// Type fields (Project, Type, Priority, Assignee, Labels / Space, Parent page), the refused one marked.
     private var fieldsBlock: some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(shownFields, id: \.key) { spec in
+            if jiraPicks {
+                JiraFieldPickers(store: store, values: item.fields.compactMapValues { $0 },
+                                 set: { k, v in store.update(item.id, ActionPatch(fields: [k: v.isEmpty ? nil : v])) },
+                                 marked: item.error?.code == "refused" ? item.error?.field : nil,
+                                 menuOpen: store.fixtureJiraMenu)
+                    .zIndex(1)
+            }
+            ForEach(shownFields.filter { !jiraPicks || !JiraFieldPickers.keys.contains($0.key) }, id: \.key) { spec in
                 let refused = item.error?.code == "refused" && item.error?.field == spec.key
                 HStack(spacing: 10) {
                     Text(spec.label).font(Theme.body(12)).foregroundStyle(refused ? Theme.peachInk : Theme.muted).frame(width: 70, alignment: .leading)

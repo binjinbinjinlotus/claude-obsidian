@@ -138,7 +138,12 @@ struct AddAsPanel: View {
                     .background(RoundedRectangle(cornerRadius: 6).fill(Color.white))
                     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.border))
             }
-            ForEach(type.fields.filter { $0.kind != "markdown" }, id: \.key) { spec in
+            if type.id == "jira" {
+                // Jira: Project, Type and Priority from the account (actions.md, Jira pickers).
+                JiraFieldPickers(store: store, values: draft.fields, set: { k, v in store.addingAs[item.id]?.fields[k] = v }, labelWidth: 64)
+                    .zIndex(1)
+            }
+            ForEach(type.fields.filter { $0.kind != "markdown" && !(type.id == "jira" && JiraFieldPickers.keys.contains($0.key)) }, id: \.key) { spec in
                 row(spec.label + (spec.required ? " *" : "")) { field(spec) }
                 if type.id == "slack" && spec.key == "to" { slackWho }
             }

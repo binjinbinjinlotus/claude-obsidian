@@ -480,6 +480,39 @@ extension StatesSnapshot {
         var e = actionsEngine(tab: "jira", select: "j1")
         ext("actions-jira", "jira", "Drafts and created", "Drafts you check, and tickets already created with their status.", e)
 
+        // Jira pickers (actions.md): Project, Type and Priority from the account.
+        func jira(_ fields: [String: String], _ open: (AppModel) -> Void = { _ in }) -> AppModel {
+            let e = actionsEngine(tab: "jira", select: "j1")
+            e.actions.items["j1"]?.fields.merge(fields) { _, new in new }
+            let now = ActionFixtures.at(15, 56)
+            e.actions.fixtureNow = now
+            e.actions.fixtureInlineMenus = true
+            e.actions.jiraProjects = JiraProjectList(site: "https://acme.atlassian.net", account: "Jin Liu", fetchedAt: now.addingTimeInterval(-3 * 60),
+                                                     projects: [JiraProject(key: "AUTH", name: "Auth Service"), JiraProject(key: "PX", name: "Project X"),
+                                                                JiraProject(key: "TLS", name: "Telus Platform"), JiraProject(key: "TOOLS", name: "Internal Tools")])
+            e.actions.jiraTypes = ["TLS": [JiraIssueType(id: "10001", name: "Task"), JiraIssueType(id: "10002", name: "Bug"), JiraIssueType(id: "10003", name: "Story")]]
+            e.actions.jiraScreens = ["TLS|10001": JiraCreateScreen(project: "TLS", typeId: "10001", priorities: ["P1 - Critical", "P2 - High", "P3 - Normal", "P4 - Low"])]
+            open(e)
+            return e
+        }
+        e = jira(["project": "TLS", "issueType": "Task", "priority": "P3 - Normal"])
+        ext("jira-fields-pickers", "jira", "Pickers from your Jira", "Project TLS · Telus Platform, Type and Priority from the account; From your Jira (Jin Liu · updated 3 min ago) · Refresh.", e)
+        e = jira(["project": "TLS", "issueType": "Task", "priority": "P3 - Normal"]) { $0.actions.fixtureJiraMenu = true }
+        ext("jira-fields-project-menu", "jira", "Choosing a project", "Searchable: the projects the account can create issues in, by key and name.", e)
+        e = jira(["project": "TLS", "issueType": "Task", "priority": "Medium"])
+        ext("jira-fields-invalid", "jira", "A priority TLS doesn't have", "Medium isn't a priority in TLS. Pick one. Marked before Create; nothing is sent.", e)
+        e = jira(["project": "TLS", "issueType": "Task", "priority": "Medium"]) { e in
+            e.actions.jiraProjects = nil
+            e.actions.jiraProblem = .unreachable("Couldn’t reach acme.atlassian.net.")
+        }
+        ext("jira-fields-offline", "jira", "Couldn't reach Jira", "The values as written and Couldn't reach Jira to check these · Retry; Create isn't blocked (Jira checks).", e)
+        e = jira(["project": "TLS", "issueType": "Task", "priority": "Medium"]) { e in
+            e.actions.jiraProjects = nil
+            e.actions.jiraProblem = .unreachable("Couldn’t reach acme.atlassian.net.")
+            e.actions.items["j1"]?.error = ActionError(code: "refused", message: "Jira didn’t create the ticket: The priority selected is invalid.", field: "priority")
+        }
+        ext("jira-fields-error", "jira", "Jira refused it", "The banner says it once: Jira didn't create the ticket: The priority selected is invalid. The field is marked.", e)
+
         e = actionsEngine(tab: "jira", select: "j1", disconnected: true)
         e.actions.items["j1"]?.error = ActionError(code: "not_connected", message: "Not connected")
         ext("actions-jira-not-connected", "jira", "Not connected", "The draft waits; Set up connection opens Settings → Connections to paste an API token.", e)
