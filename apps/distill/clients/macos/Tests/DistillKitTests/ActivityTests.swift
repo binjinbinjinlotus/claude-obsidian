@@ -223,6 +223,20 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(outsideLabels, ["Script", "Saved", "Type"])
     }
 
+    func testButtonRunAndApprovalFacts() {
+        let t = ActivityText()
+        func rows(_ type: String) -> [ActivityText.Fact] {
+            let e = ActivityEntry(id: "1", at: Date(), type: type, source: .app, object: ActivityObject(kind: "action", id: "act-1", name: "Ship notes"),
+                                  summary: "Ran Send in Slack", details: ["buttonId": .string("send"), "actionType": .string("slack"), "runId": .string("run-1")])
+            return t.facts(e, now: e.at).rows
+        }
+        XCTAssertEqual(rows("action.button_run").map(\.label), ["Button", "Action type", "Type"])
+        XCTAssertEqual(rows("action.button_run")[1].value, "Slack message")
+        let approved = rows("action.button_approved")
+        XCTAssertEqual(approved.map(\.label), ["Button", "Action type", "Approved", "Type"])
+        XCTAssertTrue(approved[2].value.hasPrefix("This exact command."))
+    }
+
     func testReadableSettingsChangesWin() {
         let t = ActivityText()
         let e = ActivityEntry(id: "1", at: Date(), type: "settings.changed", source: .app, object: ActivityObject(kind: "settings", name: "Settings"),

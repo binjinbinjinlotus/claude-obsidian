@@ -764,16 +764,22 @@ struct TodoDetail: View {
                     ActionButton(title: "Done", kind: .primary) { editing = false }
                 }
             } else {
-                // Same order on every tab: remove on the left; Complete, then the primary action.
-                HStack(spacing: 8) {
-                    IconButton(systemImage: "trash", size: 30, help: "Remove (Delete)") { store.remove(item) }
-                    Spacer(minLength: 4)
-                    if item.status == .done {
-                        SoftButton(title: "Bring back", size: .small, systemImage: "arrow.uturn.backward") { store.restore(item.id) }
-                    } else {
-                        if let type = store.type("todo") { ItemAutomationButtons(store: store, type: type, item: item) }
-                        SoftButton(title: "Complete", size: .small, systemImage: "checkmark") { store.complete(item) }
-                        PrimaryButton(title: "Send to", systemImage: "paperplane", size: .small) { menu = menu == "sendto" ? nil : "sendto" }
+                // Same order on every tab: remove on the left; Complete, then the primary action. Automation
+                // buttons move to their own row when the pane is too narrow for one.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        IconButton(systemImage: "trash", size: 30, help: "Remove (Delete)") { store.remove(item) }
+                        Spacer(minLength: 4)
+                        if item.status != .done, let type = store.type("todo") { ItemAutomationButtons(store: store, type: type, item: item) }
+                        footerActions
+                    }
+                    VStack(alignment: .trailing, spacing: 8) {
+                        if item.status != .done, let type = store.type("todo") { ItemAutomationButtons(store: store, type: type, item: item) }
+                        HStack(spacing: 8) {
+                            IconButton(systemImage: "trash", size: 30, help: "Remove (Delete)") { store.remove(item) }
+                            Spacer(minLength: 4)
+                            footerActions
+                        }
                     }
                 }
                 .overlay(alignment: .bottomTrailing) {
@@ -786,6 +792,15 @@ struct TodoDetail: View {
             }
         }
         .padding(.horizontal, 22).padding(.top, 4).padding(.bottom, 20)
+    }
+
+    @ViewBuilder private var footerActions: some View {
+        if item.status == .done {
+            SoftButton(title: "Bring back", size: .small, systemImage: "arrow.uturn.backward") { store.restore(item.id) }
+        } else {
+            SoftButton(title: "Complete", size: .small, systemImage: "checkmark") { store.complete(item) }
+            PrimaryButton(title: "Send to", systemImage: "paperplane", size: .small) { menu = menu == "sendto" ? nil : "sendto" }
+        }
     }
 
     private var reading: some View {

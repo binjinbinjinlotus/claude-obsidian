@@ -2260,8 +2260,11 @@ export interface DistillCore {
   previewActionButton(id: string, buttonId: string): Promise<ActionButtonPreview>;
   /** The preview for a button being edited (Settings), on an item or a built-in sample. */
   previewButtonDraft(input: { typeId: string; button: ActionButton; itemId?: string | null }): Promise<ActionButtonPreview>;
-  /** Run a button for an item. `approve` records the approval of this exact command (the run sheet's Run). */
-  runActionButton(id: string, buttonId: string, opts?: { approve?: boolean }): Promise<{ run: ActionButtonRun; item: ActionItem }>;
+  /**
+   * Run a button for an item. `approve` records the approval of this exact command (the run sheet's Run);
+   * `approved` is true when this run approved it (a first run, or a changed command), for the activity log.
+   */
+  runActionButton(id: string, buttonId: string, opts?: { approve?: boolean }): Promise<{ run: ActionButtonRun; item: ActionItem; approved?: boolean }>;
   stopActionButtonRun(id: string): Promise<void>;
   /** Improve the draft after your edit (improve prompt + model); keeps previousBody for Undo. */
   improveAction(id: string, opts?: { signal?: AbortSignal }): Promise<ActionItem>;

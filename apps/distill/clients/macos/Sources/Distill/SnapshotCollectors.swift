@@ -310,5 +310,7 @@ extension StatesSnapshot {
 
         // v6: script files, packages, Test run and Run now everywhere (board CollectorsScriptFiles).
         collectorScriptStates()
+        // Automations: commands and action buttons (board ScriptActions).
+        scriptActionStates()
     }
 }

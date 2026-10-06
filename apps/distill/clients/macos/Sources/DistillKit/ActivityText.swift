@@ -442,9 +442,11 @@ public struct ActivityText: Sendable {
         case "batch" where e.verb == "refresh":
             add("Changed first", e.strings("stalePaths").isEmpty ? nil : list(e.strings("stalePaths"), show: 3), keys: ["stalePaths"])
             add("You had approved it", e.details["approved"] == .bool(true) ? "Yes: it asks once more" : "No", keys: ["approved"])
-        case "action" where e.verb == "button_run":
+        case "action" where e.verb == "button_run" || e.verb == "button_approved":
+            // action-buttons.md: which button, never the command's values (they can hold message text).
             add("Button", e.string("buttonId"), keys: ["buttonId"])
-            add("Type", e.string("actionType"), keys: ["actionType"])
+            add("Action type", e.string("actionType").map(Self.actionTypeName), keys: ["actionType"])
+            if e.verb == "button_approved" { add("Approved", "This exact command. It runs without asking again until the command or its script changes.") }
             used.insert("runId")
         case "queue":
             if e.verb == "removed" { heading = "WHAT WAS THERE" }
@@ -511,6 +513,14 @@ public struct ActivityText: Sendable {
             let parts = a.compactMap(plain)
             return parts.isEmpty ? nil : parts.joined(separator: ", ")
         case .object, .null: return nil
+        }
+    }
+
+    /// An action type's name for a fact row ("Slack message"); a type of your own keeps its id.
+    static func actionTypeName(_ id: String) -> String {
+        switch id {
+        case "todo": "To do"; case "slack": "Slack message"; case "jira": "Jira ticket"; case "confluence": "Confluence page"
+        default: id
         }
     }
 

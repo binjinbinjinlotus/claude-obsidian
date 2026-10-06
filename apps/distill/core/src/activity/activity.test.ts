@@ -481,6 +481,30 @@ describe('instrumentCore', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  test('a button run that approved its command logs the approval first; later runs only the run (action-buttons.md)', async () => {
+    const dir = tmp('distill-activity-button-');
+    const log = new ActivityLog({ dir });
+    const trash = new Trash({ dir: path.join(dir, 'trash') });
+    const fake = createFakeCore();
+    let approved = true;
+    (fake as unknown as Record<string, unknown>).runActionButton = async (id: string) => ({
+      run: { runId: 'run-1', buttonId: 'send', label: 'Send in Slack' },
+      item: { id, type: 'slack', title: 'Ship notes' },
+      ...(approved ? { approved: true } : {}),
+    });
+    const core = instrumentCore(fake, { log, trash, askDir: path.join(dir, 'ask') });
+    await runWithSource('app', () => core.runActionButton('act-1', 'send', { approve: true }));
+    approved = false;
+    await runWithSource('app', () => core.runActionButton('act-1', 'send'));
+    const entries = log.list().entries.reverse();
+    assert.deepEqual(entries.map((e) => [e.type, e.summary]), [
+      ['action.button_approved', 'Approved Send in Slack’s command'],
+      ['action.button_run', 'Ran Send in Slack for “Ship notes”'],
+      ['action.button_run', 'Ran Send in Slack for “Ship notes”'],
+    ]);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   test('a spec that throws never drops the entry, and never replaces the core\'s error (2026-10-04)', async (t) => {
     const dir = tmp('distill-activity-spec-error-');
     const log = new ActivityLog({ dir });

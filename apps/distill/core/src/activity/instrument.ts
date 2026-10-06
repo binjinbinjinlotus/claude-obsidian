@@ -253,12 +253,25 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
     // action-buttons.md: who ran which button; never the argv values (they can hold message text).
     runActionButton: {
       before: (id: string) => getAction(id),
-      ok: ([id], r: { run: ActionButtonRun; item: ActionItem }) => ({
-        type: 'action.button_run',
-        object: actionObject(String(id), r.item),
-        summary: `Ran ${r.run.label} for ${q(r.item.title)}`,
-        details: { buttonId: r.run.buttonId, runId: r.run.runId, actionType: r.item.type },
-      }),
+      ok: ([id], r: { run: ActionButtonRun; item: ActionItem; approved?: boolean }) => {
+        const ran: Described = {
+          type: 'action.button_run',
+          object: actionObject(String(id), r.item),
+          summary: `Ran ${r.run.label} for ${q(r.item.title)}`,
+          details: { buttonId: r.run.buttonId, runId: r.run.runId, actionType: r.item.type },
+        };
+        // The owner's OK of this exact command (a first run, or after the command changed) is its own entry.
+        if (!r.approved) return ran;
+        return [
+          {
+            type: 'action.button_approved',
+            object: actionObject(String(id), r.item),
+            summary: `Approved ${r.run.label}’s command`,
+            details: { buttonId: r.run.buttonId, actionType: r.item.type },
+          },
+          ran,
+        ];
+      },
       fail: ([id, buttonId], before: ActionItem | undefined) => ({
         type: 'action.button_run',
         object: actionObject(String(id), before),

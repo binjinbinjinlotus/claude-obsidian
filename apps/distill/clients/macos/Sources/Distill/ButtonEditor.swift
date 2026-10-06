@@ -15,9 +15,14 @@ struct ButtonEditorSheet: View {
     @State private var previewTask: Task<Void, Never>?
     @State private var confirmDelete = false
 
-    init(target: ButtonEditorTarget, close: @escaping () -> Void) {
+    /// Snapshots: the preview the core would compute (there is no core to ask).
+    private let fixedPreview: ActionButtonPreview?
+
+    init(target: ButtonEditorTarget, close: @escaping () -> Void, preview: ActionButtonPreview? = nil) {
         self.target = target
         self.close = close
+        fixedPreview = preview
+        _preview = State(initialValue: preview)
         var b = target.button ?? AutomationButton()
         if target.button == nil, target.typeID == "slack" { b.onSuccess = .markSent }
         _draft = State(initialValue: b)
@@ -227,7 +232,7 @@ struct ButtonEditorSheet: View {
 
     private func schedulePreview() {
         previewTask?.cancel()
-        guard command != nil, let client = engine.client else { preview = nil; return }
+        guard command != nil, let client = engine.client else { preview = fixedPreview; return }
         let button = draft, typeID = target.typeID, itemID = target.itemID
         previewTask = Task {
             try? await Task.sleep(nanoseconds: 250_000_000)

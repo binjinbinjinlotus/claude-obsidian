@@ -1647,7 +1647,7 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     return out;
   }
 
-  async function runButton(id: string, buttonId: string, o: { approve?: boolean } = {}): Promise<{ run: ActionButtonRun; item: ActionItem }> {
+  async function runButton(id: string, buttonId: string, o: { approve?: boolean } = {}): Promise<{ run: ActionButtonRun; item: ActionItem; approved?: boolean }> {
     const item = require(id);
     const button = buttonOf(item.type, buttonId);
     if (!button.enabled) throw new CoreError('invalid_state', `${button.label} is turned off.`);
@@ -1662,6 +1662,7 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       }
       approvals.approve(button.id, p.approvalHash, now());
     }
+    const approvedNow = p.needsApproval;
     const scripts = opts.scripts?.();
     if (!scripts) throw new CoreError('invalid_state', 'Automations aren’t running.');
     const command = p.resolved.command!;
@@ -1723,7 +1724,7 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         });
       }),
     );
-    return { run: started, item: updated };
+    return { run: started, item: updated, ...(approvedNow ? { approved: true } : {}) };
   }
 
   const service: ActionsService = {
