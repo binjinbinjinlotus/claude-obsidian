@@ -36,6 +36,32 @@ final class ReviewQueueTests: XCTestCase {
         XCTAssertEqual(BlockedText.heading(job), "Recovering")
     }
 
+    func testRecoveryWordsForOtherProblems() throws {
+        let json = #"{"state":"waiting","signature":"plan-error","waitUntil":"2026-10-06T14:05:00Z","attempts":[{"at":"2026-10-06T14:03:00Z","by":"rule","fix":"rebuild_in_session","result":"failed","costUSD":0},{"at":"2026-10-06T14:04:00Z","by":"agent","model":"opus","fix":"rebuild_in_session","result":"failed","costUSD":0.04}]}"#
+        var r = try JSONDecoder.core.decode(RecoveryState.self, from: Data(json.utf8))
+        XCTAssertEqual(r.waitUntil, CoreDate.parse("2026-10-06T14:05:00Z"))
+        XCTAssertEqual(try JSONDecoder.core.decode(RecoveryState.self, from: JSONEncoder.core.encode(r)), r)
+        XCTAssertEqual(RecoveryText.heading(r, timeZone: TimeZone(identifier: "UTC")!), "Recovering · next try at 2:05 PM")
+        XCTAssertEqual(RecoveryText.summary(r), "The vault core couldn’t check this plan.")
+        XCTAssertEqual(RecoveryText.tried(r), "Tried twice · last by Opus · $0.04.")
+        r.state = .running
+        XCTAssertEqual(RecoveryText.heading(r), "Recovering · Opus · asking Claude to rebuild the plan")
+        r.state = .gaveUp
+        r.summary = "The AI run stopped with an error (529 overloaded)."
+        XCTAssertEqual(RecoveryText.heading(r), "Distill couldn’t fix this")
+        XCTAssertEqual(RecoveryText.summary(r), "The AI run stopped with an error (529 overloaded).")
+
+        var job = Job(id: "j", vaultPath: "/v", files: [], state: .failed)
+        job.recovery = r
+        XCTAssertTrue(RecoveryText.shows(job), "a batch whose run stopped shows its recovery")
+        XCTAssertEqual(ReviewBatches.rowState(job, in: [job]), .couldntFix)
+        XCTAssertEqual(ApplyTimeline.reviewList([job]).map(\.id), ["j"])
+        job.recovery?.signature = "denial"
+        XCTAssertFalse(RecoveryText.shows(job), "blocked commands have their own card")
+        job.recovery = nil
+        XCTAssertTrue(ApplyTimeline.reviewList([job]).isEmpty)
+    }
+
     func testQueueWordsAndTheBadgeRule() {
         let now = Date()
         var a = Job(id: "a", vaultPath: "/v", files: ["inbox/Product sync.md"], state: .running)

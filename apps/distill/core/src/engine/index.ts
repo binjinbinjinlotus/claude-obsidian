@@ -2831,7 +2831,9 @@ export function createEngine(opts: EngineOptions): Engine {
 
   async function reject(id: string, opts: RejectOptions = {}): Promise<void> {
     const job = requireJob(id);
-    if (job.state !== 'awaitingApproval') throw new CoreError('invalid_state', `Job ${id} is not awaiting approval.`);
+    // review-queue.md: a batch whose run stopped and that recovery works on (or gave up on) can be rejected too.
+    const stopped = job.state === 'failed' && job.recovery !== undefined;
+    if (job.state !== 'awaitingApproval' && !stopped) throw new CoreError('invalid_state', `Job ${id} is not awaiting approval.`);
     if (opts.scope !== undefined && opts.scope !== 'part' && opts.scope !== 'batch') throw new CoreError('invalid_request', 'scope must be "part" or "batch".');
     const part = job.pendingPart;
     if (opts.scope !== 'batch' && part && job.approval?.rebuilt && !job.approval.needsRebuild) {

@@ -162,6 +162,8 @@ public struct ApplyTimeline: Equatable, Sendable {
     public static func reviewList(_ jobs: [Job]) -> [Job] {
         let waiting = ReviewBatches.ordered(jobs.filter {
             $0.state == .awaitingApproval || ($0.state == .running && ($0.pendingPart != nil || $0.refresh != nil))
+                // review-queue.md: a batch whose run stopped stays here while recovery works on it, or gave up.
+                || ($0.state == .failed && RecoveryText.shows($0) && !showsInReview($0))
         })
         let approved = jobs.filter(showsInReview).sorted { ($0.approvedChange?.at ?? $0.updatedAt, $0.id) < ($1.approvedChange?.at ?? $1.updatedAt, $1.id) }
         return waiting + approved

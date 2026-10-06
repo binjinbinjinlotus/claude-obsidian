@@ -640,6 +640,40 @@ extension StatesSnapshot {
             JobDetailView(jobID: e.jobs[0].id)
         }
 
+        // review-queue.md, Self-recovery for other problems: a plan the core couldn't check (rule, then the agent),
+        // the minute between agent attempts, and a run that stopped and recovery gave up on.
+        e = engine()
+        var planError = awaiting(e, planError: "Bundle /tmp/elsewhere/bundle.json is outside the job directory.", worker: "The bundle is ready for review.")
+        planError.recovery = RecoveryState(state: .running, signature: "plan-error",
+                                           attempts: [RecoveryAttempt(at: Date().addingTimeInterval(-90), fix: "rebuild_in_session", result: "failed"),
+                                                      RecoveryAttempt(at: Date().addingTimeInterval(-20), by: "agent", model: "opus", fix: "rebuild_in_session",
+                                                                      diagnosis: "The bundle was written outside the batch's folder.", costUSD: 0.03)])
+        e.jobs = [planError]
+        main("review-recovering-plan-error", f, "Review", "Recovering · plan the core couldn't check", "Distill asked the session to rebuild the plan, then Opus did; nothing needs the owner.", e, section: .review, job: e.jobs[0].id) {
+            JobDetailView(jobID: e.jobs[0].id)
+        }
+        e = engine()
+        var backoff = planError
+        backoff.recovery?.state = .waiting
+        backoff.recovery?.attempts[1].result = "failed"
+        backoff.recovery?.waitUntil = Date().addingTimeInterval(45)
+        e.jobs = [backoff]
+        main("review-waiting-backoff", f, "Review", "Recovering · a minute between tries", "The next agent attempt waits a minute; the time it runs is shown.", e, section: .review, job: e.jobs[0].id) {
+            JobDetailView(jobID: e.jobs[0].id)
+        }
+        e = engine()
+        var stopped = job(e, "job-20261006-091500-c3d4", .failed, files: ["inbox/gongfu-brewing-guide.pdf"], minutesAgo: 30,
+                          error: "Claude Code stopped: 529 overloaded.", worker: "I read the guide and started the source page.")
+        stopped.recovery = RecoveryState(state: .gaveUp, signature: "runner-failed",
+                                         attempts: [RecoveryAttempt(at: Date().addingTimeInterval(-600), fix: "rebuild_in_session", result: "failed"),
+                                                    RecoveryAttempt(at: Date().addingTimeInterval(-480), by: "agent", model: "opus", fix: "rebuild_in_session", result: "failed", costUSD: 0.04),
+                                                    RecoveryAttempt(at: Date().addingTimeInterval(-360), by: "agent", model: "opus", fix: "rebuild_in_session", result: "failed", costUSD: 0.05)],
+                                         summary: "The AI run stopped with an error (Claude Code stopped: 529 overloaded.). The service was busy each time Distill asked it to continue.")
+        e.jobs = [stopped]
+        main("review-gaveup-runner", f, "Review", "Couldn't fix · the run stopped", "A failed batch stays in Review with its recovery: what's wrong, what was tried, Let recovery try again.", e, section: .review, job: e.jobs[0].id) {
+            JobDetailView(jobID: e.jobs[0].id)
+        }
+
         // review-queue.md: approved and waiting (frame B), rebuilt and asking once more (frame D), updating (frame C).
         e = engine()
         var first = awaiting(e, id: "job-20261005-091000-aaaa", files: ["inbox/Product sync.md"], minutesAgo: 40)

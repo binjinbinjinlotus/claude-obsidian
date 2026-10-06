@@ -104,13 +104,17 @@ public struct RecoveryState: Codable, Equatable, Sendable {
     public var denialAnswers: Int
     /// The owner's sentence when recovery gave up, written by the core (never built from a command here).
     public var summary: String?
+    /// new_session: recovery suggests something only the owner may do.
     public var proposal: String?
+    /// A waiting attempt runs again at this time.
+    public var waitUntil: Date?
 
-    public init(state: Phase, signature: String, attempts: [RecoveryAttempt] = [], denialAnswers: Int = 0, summary: String? = nil, proposal: String? = nil) {
+    public init(state: Phase, signature: String, attempts: [RecoveryAttempt] = [], denialAnswers: Int = 0, summary: String? = nil, proposal: String? = nil,
+                waitUntil: Date? = nil) {
         self.state = state; self.signature = signature; self.attempts = attempts; self.denialAnswers = denialAnswers
-        self.summary = summary; self.proposal = proposal
+        self.summary = summary; self.proposal = proposal; self.waitUntil = waitUntil
     }
-    enum Keys: String, CodingKey { case state, signature, attempts, denialAnswers, summary, proposal }
+    enum Keys: String, CodingKey { case state, signature, attempts, denialAnswers, summary, proposal, waitUntil }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
         state = c.lossy(Phase.self, .state) ?? .gaveUp
@@ -119,6 +123,7 @@ public struct RecoveryState: Codable, Equatable, Sendable {
         denialAnswers = c.lossyInt(.denialAnswers) ?? 0
         summary = c.lossy(String.self, .summary)
         proposal = c.lossy(String.self, .proposal)
+        waitUntil = c.lossyDate(.waitUntil)
     }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: Keys.self)
@@ -128,9 +133,76 @@ public struct RecoveryState: Codable, Equatable, Sendable {
         try c.encode(denialAnswers, forKey: .denialAnswers)
         try c.encodeIfPresent(summary, forKey: .summary)
         try c.encodeIfPresent(proposal, forKey: .proposal)
+        if let waitUntil { try c.encode(CoreDate.format(waitUntil), forKey: .waitUntil) }
     }
 
     public var costUSD: Double { attempts.reduce(0) { $0 + $1.costUSD } }
+}
+
+/// review-queue.md, Self-recovery: the Review words for a problem other than a blocked command (stale-again,
+/// plan-error, runner-failed). The sentence of what's wrong is the core's; these only describe the state.
+public enum RecoveryText {
+    /// The card shows for these; blocked commands have their own card (BlockedText).
+    public static func shows(_ job: Job) -> Bool {
+        guard let r = job.recovery, r.signature != "denial", r.state != .fixed else { return false }
+        return job.state == .awaitingApproval || job.state == .failed
+    }
+
+    public static func heading(_ r: RecoveryState, timeZone: TimeZone = .current) -> String {
+        switch r.state {
+        case .running: return "Recovering · \(doing(r))"
+        case .waiting: return r.waitUntil.map { "Recovering · next try at \(clock($0, timeZone: timeZone))" } ?? "Recovering · waiting a minute"
+        case .gaveUp: return "Distill couldn’t fix this"
+        case .fixed: return "Fixed"
+        }
+    }
+
+    /// What recovery is doing now, from the last attempt.
+    public static func doing(_ r: RecoveryState) -> String {
+        let last = r.attempts.last
+        let who = last?.by == "agent" ? ModelChoice.shortName(last?.model ?? "the Recovery model") + " · " : ""
+        switch (r.signature, last?.fix) {
+        case ("stale-again", _): return who + "rebuilding against the latest pages"
+        case ("runner-failed", "rebuild_in_session"): return who + "asking Claude to continue"
+        case (_, "rebuild_in_session"): return who + "asking Claude to rebuild the plan"
+        default: return who + "looking at the problem"
+        }
+    }
+
+    /// The plain sentence: the core's when it gave up, else what this kind of problem is.
+    public static func summary(_ r: RecoveryState) -> String {
+        if let s = r.summary, !s.isEmpty { return s }
+        switch r.signature {
+        case "stale-again": return "Your vault keeps changing under this plan: it was rebuilt for the latest pages and is out of date again."
+        case "plan-error": return "The vault core couldn’t check this plan."
+        case "runner-failed": return "The AI run stopped with an error."
+        default: return "Distill couldn’t get this batch going again by itself."
+        }
+    }
+
+    /// The quiet line under a running or waiting notice.
+    public static func detail(_ r: RecoveryState) -> String {
+        let base = summary(r)
+        if r.state == .waiting { return base + " Distill waits a minute between tries, then looks again." }
+        return base + " Nothing needs you while Distill works on it."
+    }
+
+    /// "Tried twice · last by Opus · $0.04."
+    public static func tried(_ r: RecoveryState) -> String? {
+        guard !r.attempts.isEmpty else { return nil }
+        let n = r.attempts.count
+        let cost = r.costUSD > 0 ? String(format: " · $%.2f", r.costUSD) : ""
+        let agent = r.attempts.last(where: { $0.by == "agent" }).map { " · last by \(ModelChoice.shortName($0.model ?? "the Recovery model"))" } ?? ""
+        return "Tried \(n == 1 ? "once" : n == 2 ? "twice" : "\(n) times")\(agent)\(cost)."
+    }
+
+    static func clock(_ d: Date, timeZone: TimeZone) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = timeZone
+        f.dateFormat = "h:mm a"
+        return f.string(from: d)
+    }
 }
 
 /// The blocked-command card's words (review-queue.md): the core's sentence, or a plain fallback for a batch
@@ -356,6 +428,8 @@ extension ReviewBatches {
             return ApplyTimeline.isApplying(job) ? .applying : .working
         case .completed:
             return job.operationID != nil && job.operationID == job.approvedChange?.operationID ? .added : .notAdded
+        case .failed where job.recovery?.state == .gaveUp:
+            return .couldntFix
         case .failed, .cancelled, .rejected:
             return .notAdded
         }

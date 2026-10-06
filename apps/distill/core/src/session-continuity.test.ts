@@ -432,6 +432,19 @@ describe('batches: approve, reply, allow, Open in Terminal', () => {
     assert.match(after.error ?? '', /overloaded/);
   });
 
+  test('a stopped batch recovery gave up on can be rejected (review-queue.md)', async () => {
+    h = engineSetup(new FakeAgent([]));
+    const job = await reviewedBatch(h);
+    h.runner.steps.push({ throws: new RunnerError('Exited 1: 529 overloaded', 'nonZeroExit') });
+    await h.engine.reply(job.id, 'again');
+    await h.engine.whenIdle();
+    assert.equal(h.engine.getJob(job.id)!.recovery?.state, 'gaveUp');
+    await h.engine.reject(job.id);
+    const after = h.engine.getJob(job.id)!;
+    assert.equal(after.state, 'rejected');
+    assert.equal(after.recovery, undefined);
+  });
+
   test('runner-failed recovery: a resumed turn that errors gets one "continue" in the same session (review-queue.md)', async () => {
     h = engineSetup(new FakeAgent([]), undefined, {});
     const job = await reviewedBatch(h);

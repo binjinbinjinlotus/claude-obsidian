@@ -32,7 +32,7 @@ struct BlockedCommandCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 Label(BlockedText.heading(job), systemImage: "exclamationmark.bubble").font(Theme.body(13, .bold))
                 Text(BlockedText.summary(job)).font(Theme.body(12.5)).foregroundStyle(Theme.softInk).fixedSize(horizontal: false, vertical: true)
-                if let tried = triedLine { Text(tried).font(Theme.body(11.5)).foregroundStyle(Theme.muted) }
+                if let tried = job.recovery.flatMap(RecoveryText.tried) { Text(tried).font(Theme.body(11.5)).foregroundStyle(Theme.muted) }
                 HStack(spacing: 8) {
                     if let onRecover, job.recovery != nil {
                         SoftButton(title: "Let recovery try again", tint: Theme.peachInk, fill: .white, size: .small, systemImage: "arrow.clockwise", action: onRecover)
@@ -54,14 +54,6 @@ struct BlockedCommandCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0xFFF4EE)))
         }
-    }
-
-    private var triedLine: String? {
-        guard let r = job.recovery, !r.attempts.isEmpty else { return nil }
-        let n = r.attempts.count
-        let cost = r.costUSD > 0 ? String(format: " · $%.2f", r.costUSD) : ""
-        let agent = r.attempts.last(where: { $0.by == "agent" }).map { " · last by \(ModelChoice.shortName($0.model ?? "the Recovery model"))" } ?? ""
-        return "Tried \(n == 1 ? "once" : n == 2 ? "twice" : "\(n) times")\(agent)\(cost)."
     }
 
     private var commands: some View {
@@ -86,6 +78,43 @@ struct BlockedCommandCard: View {
             if !allowed.isEmpty {
                 SoftButton(title: "Allow & continue", tint: Theme.peachInk, fill: .white) { onAllow(Array(allowed)) }
             }
+        }
+    }
+}
+
+/// review-queue.md, Self-recovery: a batch stuck for another reason (its plan went stale again, the vault core
+/// couldn't check it, or the run stopped with an error). Blue while Distill works on it (nothing needs the owner),
+/// the peach Couldn't fix card once recovery gave up. The words are the core's sentence, never a command.
+struct RecoveryCard: View {
+    let job: Job
+    let recovery: RecoveryState
+    var onRecover: () -> Void
+    var onTerminal: () -> Void
+    /// Nil for a batch that can't be rejected from here.
+    var onReject: (() -> Void)?
+
+    var body: some View {
+        if recovery.state == .gaveUp {
+            VStack(alignment: .leading, spacing: 10) {
+                Label(RecoveryText.heading(recovery), systemImage: "exclamationmark.bubble").font(Theme.body(13, .bold))
+                Text(RecoveryText.summary(recovery)).font(Theme.body(12.5)).foregroundStyle(Theme.softInk).fixedSize(horizontal: false, vertical: true)
+                if let tried = RecoveryText.tried(recovery) { Text(tried).font(Theme.body(11.5)).foregroundStyle(Theme.muted) }
+                HStack(spacing: 8) {
+                    SoftButton(title: "Let recovery try again", tint: Theme.peachInk, fill: .white, size: .small, systemImage: "arrow.clockwise", action: onRecover)
+                        .fixedSize()
+                    SoftButton(title: "Open in Terminal", fill: .white, size: .small, systemImage: "terminal", action: onTerminal).fixedSize()
+                    if let onReject {
+                        SoftButton(title: "Reject batch", tint: Theme.muted, fill: .clear, size: .small, action: onReject).fixedSize()
+                    }
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0xFFF4EE)))
+        } else {
+            ReviewNotice(tone: .blue, title: RecoveryText.heading(recovery),
+                         text: RecoveryText.detail(recovery) + (RecoveryText.tried(recovery).map { " " + $0 } ?? ""),
+                         busy: recovery.state == .running, systemImage: "clock")
         }
     }
 }

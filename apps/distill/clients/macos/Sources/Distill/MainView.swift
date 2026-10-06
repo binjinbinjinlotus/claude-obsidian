@@ -842,7 +842,7 @@ struct StateStyle {
     /// review-queue.md: what the batch is doing in the queue, when it isn't simply waiting for the owner.
     static func of(_ job: Job) -> StateStyle {
         if job.refresh != nil { return .init(label: "Updating…", fill: Theme.primaryTint, ink: Theme.primary, dot: Theme.primary) }
-        if job.recovery?.state == .running { return .init(label: "Recovering", fill: Theme.primaryTint, ink: Theme.primary, dot: Theme.primary) }
+        if job.recovery?.state == .running || job.recovery?.state == .waiting { return .init(label: "Recovering", fill: Theme.primaryTint, ink: Theme.primary, dot: Theme.primary) }
         if job.state == .awaitingApproval {
             if job.queuedApply?.waitingToApply == true { return .init(label: "Queued", fill: Theme.panel, ink: Theme.softInk, dot: Theme.faint) }
             if job.recovery?.state == .gaveUp { return .init(label: "Needs you", fill: Theme.peachTint, ink: Theme.peachInk, dot: Theme.peachInk) }
@@ -1100,11 +1100,18 @@ struct JobDetailView: View {
             ApplyProgressCard(store: engine.jobSteps, job: job, onShowSteps: { showSteps = true })
         }
         InboxCleanupResultLine(store: engine.inboxCleanup, jobID: job.id)
+        // review-queue.md, Self-recovery: stale again, a plan the core couldn't check, or a run that stopped (a
+        // failed batch too). Blocked commands have their own card below.
+        if RecoveryText.shows(job), let recovery = job.recovery {
+            RecoveryCard(job: job, recovery: recovery, onRecover: { engine.recover(job.id) }, onTerminal: { engine.openInTerminal(job) },
+                         onReject: { engine.reject(job.id, batch: true) })
+        }
         // What needs the user (plan error, questions, blocked tools with
         // "Allow & continue") comes first, so it is visible without scrolling
         // even at the 900 × 600 minimum window.
         if let approval = job.approval, job.state == .awaitingApproval {
-            if let error = approval.planError {
+            // While recovery works on the plan, its notice says what's wrong; the raw error waits.
+            if let error = approval.planError, !(RecoveryText.shows(job) && job.recovery?.state != .gaveUp) {
                 Callout(icon: "exclamationmark.triangle", title: "Can't apply this plan yet", text: error)
             }
             if !approval.questions.isEmpty {
