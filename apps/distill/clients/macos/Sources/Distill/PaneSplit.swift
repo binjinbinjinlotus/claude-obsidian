@@ -188,7 +188,6 @@ struct PaneWidth: ViewModifier {
     @State private var live: CGFloat?
     @State private var limit: PaneLimit?
     @State private var hovering = false
-    @State private var cursor: NSCursor?
 
     init(spec: PaneSpec, automatic: CGFloat, container: CGFloat? = nil) {
         self.spec = spec
@@ -219,29 +218,30 @@ struct PaneWidth: ViewModifier {
     }
 
     private var handle: some View {
-        // The grab area lies inside the column, on its inner edge. A handle pushed out over the next
-        // column was drawn under that column (a later sibling) and never got the mouse.
+        // The grab area lies inside the column, on its inner edge, and is an AppKit view: the main window
+        // moves by its background (isMovableByWindowBackground), so a SwiftUI gesture on a clear area
+        // lost the drag to the window. PaneGrabView says it doesn't move the window and owns the drag.
         return PaneHandle(state: state, line: false)
             .frame(width: Self.hitWidth, alignment: spec.edge == .trailing ? .trailing : .leading)
             .frame(maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .onHover { inside in hovering = inside; updateCursor() }
-            .onTapGesture(count: 2) { reset() }
-            .highPriorityGesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                .onChanged { v in
-                    let s = start ?? shown
-                    if start == nil { start = s }
-                    let r = PaneLayout.drag(start: s, translation: v.translation.width, spec: spec, automatic: automatic, container: room)
-                    live = r.width
-                    limit = r.limit
-                    updateCursor()
-                }
-                .onEnded { _ in
-                    if let w = live { stored = Double(w) }
-                    start = nil; live = nil; limit = nil
-                    updateCursor()
-                })
-            .onDisappear { hovering = false; start = nil; live = nil; limit = nil; updateCursor() }
+            .overlay {
+                PaneGrab(
+                    onHover: { hovering = $0 },
+                    onDrag: { dx in
+                        let s = start ?? shown
+                        if start == nil { start = s }
+                        let r = PaneLayout.drag(start: s, translation: dx, spec: spec, automatic: automatic, container: room)
+                        live = r.width
+                        limit = r.limit
+                        return cursorFor(r.limit)
+                    },
+                    onEnd: {
+                        if let w = live { stored = Double(w) }
+                        start = nil; live = nil; limit = nil
+                    },
+                    onDoubleClick: { reset() })
+            }
+            .onDisappear { hovering = false; start = nil; live = nil; limit = nil }
             .accessibilityElement()
             .accessibilityLabel("Resize \(spec.label)")
             .accessibilityAddTraits(.allowsDirectInteraction)
@@ -251,26 +251,82 @@ struct PaneWidth: ViewModifier {
             }
     }
 
+    /// ↔ normally; one-way at a limit (at the min the column can only grow, at the max only shrink).
+    private func cursorFor(_ limit: PaneLimit?) -> NSCursor {
+        guard let limit else { return .resizeLeftRight }
+        let right = (spec.edge == .trailing) == (limit == .min)
+        return right ? .resizeRight : .resizeLeft
+    }
+
     private func reset() {
         withAnimation(.easeOut(duration: 0.2)) { stored = 0 }
     }
+}
 
-    /// ↔ while hovering or dragging; one-way at a limit. Pushed once, popped when neither.
-    private func updateCursor() {
-        let want: NSCursor?
-        if let limit {
-            // At the min the column can only grow; at the max only shrink.
-            let grow: Bool = limit == .min
-            let right = (spec.edge == .trailing) == grow
-            want = right ? .resizeRight : .resizeLeft
-        } else if hovering || live != nil {
-            want = .resizeLeftRight
-        } else {
-            want = nil
-        }
-        guard want !== cursor else { return }
-        if cursor != nil { NSCursor.pop() }
-        want?.push()
-        cursor = want
+
+// MARK: - The grab area (AppKit)
+
+/// The divider's mouse area. An NSView, so it can refuse to move the window (`mouseDownCanMoveWindow`),
+/// keep the ↔ cursor with a cursor rect, and track the drag in window coordinates.
+struct PaneGrab: NSViewRepresentable {
+    var onHover: (Bool) -> Void
+    /// The drag's x translation since mouse down; returns the cursor to show (one-way at a limit).
+    var onDrag: (CGFloat) -> NSCursor
+    var onEnd: () -> Void
+    var onDoubleClick: () -> Void
+
+    func makeNSView(context: Context) -> PaneGrabView { PaneGrabView() }
+
+    func updateNSView(_ view: PaneGrabView, context: Context) {
+        view.onHover = onHover
+        view.onDrag = onDrag
+        view.onEnd = onEnd
+        view.onDoubleClick = onDoubleClick
+    }
+}
+
+final class PaneGrabView: NSView {
+    var onHover: (Bool) -> Void = { _ in }
+    var onDrag: (CGFloat) -> NSCursor = { _ in .resizeLeftRight }
+    var onEnd: () -> Void = {}
+    var onDoubleClick: () -> Void = {}
+    private var startX: CGFloat?
+    private var tracking: NSTrackingArea?
+
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .resizeLeftRight)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        addTrackingArea(area)
+        tracking = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { onHover(true) }
+    override func mouseExited(with event: NSEvent) { if startX == nil { onHover(false) } }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 { onDoubleClick(); return }
+        startX = event.locationInWindow.x
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let startX else { return }
+        onDrag(event.locationInWindow.x - startX).set()
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard startX != nil else { return }
+        startX = nil
+        onEnd()
+        let inside = bounds.contains(convert(event.locationInWindow, from: nil))
+        if !inside { onHover(false) }
+        window?.invalidateCursorRects(for: self)
     }
 }

@@ -52,4 +52,11 @@ final class PaneLayoutTests: XCTestCase {
         XCTAssertNotEqual(PaneSpec.actionsList("jira").key, PaneSpec.actionsList("slack").key)
         XCTAssertTrue(PaneSpec.fixedKeys.allSatisfy { $0.hasPrefix("distill.pane.") })
     }
+
+    /// The main window moves by its background; the divider's grab area must not.
+    @MainActor func testGrabAreaNeverMovesTheWindow() {
+        let view = PaneGrabView()
+        XCTAssertFalse(view.mouseDownCanMoveWindow)
+        XCTAssertTrue(view.acceptsFirstMouse(for: nil))
+    }
 }
