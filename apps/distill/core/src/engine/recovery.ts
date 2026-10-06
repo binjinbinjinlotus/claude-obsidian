@@ -130,7 +130,7 @@ export const RECOVERY_SCHEMA = JSON.stringify({
     diagnosis: { type: 'string', description: 'At most 400 characters, plain words for the owner: what is wrong.' },
     fix: { type: 'string', enum: [...RECOVERY_FIXES] },
     reason: { type: 'string', description: 'At most 300 characters: why this fix.' },
-    guidance: { type: 'string', description: 'answer_denial only: at most 1200 characters Distill sends to the session as its reply.' },
+    guidance: { type: 'string', description: 'answer_denial or rebuild_in_session: at most 1200 characters Distill sends to the session.' },
   },
   required: ['diagnosis', 'fix', 'reason'],
   additionalProperties: false,
@@ -168,7 +168,7 @@ const ALLOWED: Record<RecoveryState['signature'], ReadonlyArray<RecoveryAnswer['
 /** Null when the core may carry the fix out; otherwise why not. The approval gate is never negotiable. */
 export function validateFix(a: RecoveryAnswer, signature: RecoveryState['signature']): string | null {
   if (!ALLOWED[signature].includes(a.fix)) return `${a.fix} isn't a fix for this problem.`;
-  if (a.fix === 'answer_denial') {
+  if (a.fix === 'answer_denial' || (a.fix === 'rebuild_in_session' && a.guidance)) {
     const g = a.guidance ?? '';
     if (!g) return 'answer_denial needs guidance.';
     if (g.length > 1200) return 'The guidance is longer than 1200 characters.';
@@ -207,7 +207,8 @@ export function recoveryFacts(o: {
 export function recoveryPrompt(facts: string): string {
   return [
     'You are the recovery step for a stuck Distill batch. Pick exactly one fix from the list and explain it in plain words for the owner.',
-    'Fixes: answer_denial (send the session guidance so it can continue with the tools it has), new_session (suggest the owner start a fresh session), give_up (the owner must decide).',
+    'Fixes: answer_denial (send the session guidance so it can continue with the tools it has), rebuild_in_session (ask the same session to rebuild its plan, with optional guidance), new_session (suggest the owner start a fresh session), give_up (the owner must decide).',
+    'Only the fixes allowed for this problem count; any other is a failed attempt.',
     'Never suggest applying anything to the vault, never ask for a tool rule: only the owner approves or allows.',
     '',
     facts,

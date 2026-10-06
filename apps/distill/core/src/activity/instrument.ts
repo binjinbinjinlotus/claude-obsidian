@@ -886,8 +886,18 @@ function runSummary(name: string, run: CollectorRun): string {
 
 /** Log what happens without a direct request: batches moving on, runs, retention, queue scans. */
 export function createEventLogger(deps: EventLoggerDeps, seedJobs: Job[]): (event: CoreEvent) => void {
-  const jobs = new Map<string, { state: Job['state']; actions?: string; stopped?: number }>();
-  for (const j of seedJobs) jobs.set(j.id, { state: j.state, ...(j.actionsFound?.status ? { actions: j.actionsFound.status } : {}), stopped: j.stopped?.length ?? 0 });
+  type Seen = { state: Job['state']; actions?: string; stopped?: number; queued?: boolean; refresh?: boolean; attempts?: number; gaveUp?: boolean };
+  const seenOf = (j: Job): Seen => ({
+    state: j.state,
+    ...(j.actionsFound?.status ? { actions: j.actionsFound.status } : {}),
+    stopped: j.stopped?.length ?? 0,
+    queued: !!j.queuedApply?.planSha256,
+    refresh: !!j.refresh,
+    attempts: j.recovery?.attempts.length ?? 0,
+    gaveUp: j.recovery?.state === 'gaveUp',
+  });
+  const jobs = new Map<string, Seen>();
+  for (const j of seedJobs) jobs.set(j.id, seenOf(j));
   const write = (d: Described, source: ActivitySource, outcome: 'ok' | 'failed' = 'ok', error?: string) =>
     deps.log.record({ ...d, source, outcome, ...(error ? { error } : {}) });
 
@@ -902,9 +912,44 @@ export function createEventLogger(deps: EventLoggerDeps, seedJobs: Job[]): (even
             return;
           }
           const seen = jobs.get(job.id);
-          jobs.set(job.id, { state: job.state, ...(job.actionsFound?.status ? { actions: job.actionsFound.status } : {}), stopped: job.stopped?.length ?? 0 });
+          jobs.set(job.id, seenOf(job));
           const source = currentSource();
           const object = jobObject(job.id, job);
+          // review-queue.md: the apply queue, refreshes and recovery attempts (the scheduler acts; the owner reads it here).
+          if (seen) {
+            if (job.queuedApply?.planSha256 && !seen.queued && job.state === 'awaitingApproval') {
+              write({ type: 'batch.queued', object, summary: `${jobName(job)} is queued: it applies after the batch before it` }, source);
+            }
+            if (job.refresh && !seen.refresh) {
+              write({ type: 'batch.refresh', object, summary: `Updating ${jobName(job)} against the latest pages`, details: { stalePaths: job.refresh.stalePaths, approved: job.refresh.approved } }, 'scheduler');
+            }
+            const attempts = job.recovery?.attempts ?? [];
+            for (const a of attempts.slice(seen.attempts ?? 0)) {
+              write(
+                {
+                  type: 'batch.recovery',
+                  object,
+                  summary: a.by === 'rule' ? `Recovering ${jobName(job)}: told Claude to read the files instead` : `Recovering ${jobName(job)} with ${a.model ?? 'the Recovery model'}`,
+                  details: { kind: job.recovery!.signature, by: a.by, fix: a.fix, ...(a.model ? { model: a.model } : {}) },
+                },
+                'scheduler',
+              );
+            }
+            if (job.recovery?.state === 'gaveUp' && !seen.gaveUp) {
+              const cost = attempts.reduce((n, a) => n + a.costUSD, 0);
+              write(
+                {
+                  type: 'batch.recovery',
+                  object,
+                  summary: `Couldn't fix ${jobName(job)}: it needs you`,
+                  details: { kind: job.recovery.signature, attempts: attempts.length, costUSD: Math.round(cost * 100) / 100, ...(job.recovery.summary ? { summary: job.recovery.summary } : {}) },
+                },
+                'scheduler',
+                'failed',
+                job.recovery.summary ?? 'recovery gave up',
+              );
+            }
+          }
           // v10 (full reads): a source that couldn't be read in full is left out of the change.
           const stoppedNow = job.stopped ?? [];
           if (stoppedNow.length > (seen?.stopped ?? 0)) {

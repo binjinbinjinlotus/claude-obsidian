@@ -970,6 +970,7 @@ export function createEngine(opts: EngineOptions): Engine {
             restoreJob(id, extra.resumeOf.snapshot, marker);
           } else {
             fail(id, err instanceof Error ? err.message : String(err));
+            if (extra.resumeOf && !extra.applyPlan) recover(id, 'runner-failed');
           }
         } finally {
           if (controllers.get(id) === controller) controllers.delete(id);
@@ -992,8 +993,12 @@ export function createEngine(opts: EngineOptions): Engine {
       log('warn', `Full-read check of ${id}: ${(err as Error).message}`);
     }
     if (!status) {
-      if (result.isError) fail(id, result.resultText);
-      else await requestDecision(id, { status: 'needs_input', summary, questions: [], changed_paths: [], skipped: [] }, result, vault);
+      if (result.isError) {
+        fail(id, result.resultText);
+        // A recovery turn that errored escalates (rule → agent); a first run's error stays the owner's.
+        const rec = findJob(id)?.recovery;
+        if (rec && rec.signature !== 'denial' && rec.state === 'running' && applyPlan === undefined) recover(id, rec.signature === 'stale-again' ? 'runner-failed' : rec.signature);
+      } else await requestDecision(id, { status: 'needs_input', summary, questions: [], changed_paths: [], skipped: [] }, result, vault);
       return;
     }
     switch (status.status) {
@@ -1094,13 +1099,15 @@ export function createEngine(opts: EngineOptions): Engine {
       j.approval = request;
       delete j.refresh;
       // review-queue.md: a plan that came back ends a blocked-command recovery.
-      if (request.plan?.valid && j.recovery?.signature === 'denial') {
+      if (request.plan?.valid && j.recovery && j.recovery.state !== 'gaveUp') {
         j.recovery = { ...j.recovery, state: 'fixed', attempts: j.recovery.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'fixed' } : a)) };
       }
     });
     // review-queue.md: blocked tool calls and no plan: Distill answers the session itself first.
     // Not on an apply turn: there the approved command itself is what ran (or was refused).
     if (!applyTurn && request.denials.length > 0 && !request.plan?.valid && recoverDenial(id)) return;
+    // review-queue.md: a plan the vault core couldn't check: Distill asks the session to rebuild it, then recovery.
+    if (!applyTurn && request.planError && !request.plan && request.denials.length === 0 && recover(id, 'plan-error')) return;
     // review-queue.md: an apply turn that came back because another batch changed the same pages first.
     const queued = findJob(id)?.queuedApply;
     if (applyTurn && queued) {
@@ -1182,6 +1189,91 @@ export function createEngine(opts: EngineOptions): Engine {
     return true;
   }
 
+  const RECOVERY_BACKOFF_MS = 60_000;
+  const recoveryWakes = new Map<string, ReturnType<typeof setTimeout>>();
+
+  function scheduleRecoveryWake(id: string, signature: RecoverySignature, ms: number): void {
+    const old = recoveryWakes.get(id);
+    if (old) clearTimeout(old);
+    const t = setTimeout(() => {
+      recoveryWakes.delete(id);
+      void asScheduler(() => runRecoveryAgent(id, signature))().catch((err: unknown) => log('warn', `Recovery: ${(err as Error).message}`));
+    }, Math.max(0, ms));
+    t.unref?.();
+    recoveryWakes.set(id, t);
+  }
+
+  /** The owner's sentence for a problem other than a blocked command (never a command or a stack trace). */
+  function problemSummary(signature: RecoverySignature, job: Job): string {
+    const err = (job.approval?.planError ?? job.error ?? '').replace(/\s+/g, ' ').slice(0, 160);
+    switch (signature) {
+      case 'stale-again':
+        return 'Your vault keeps changing under this plan: it was rebuilt for the latest pages and is out of date again.';
+      case 'plan-error':
+        return `The vault core couldn’t check this plan${err ? ` (${err})` : ''}.`;
+      case 'runner-failed':
+        return `The AI run stopped with an error${err ? ` (${err})` : ''}.`;
+      default:
+        return 'Distill couldn’t get this batch going again by itself.';
+    }
+  }
+
+  /** What Distill (rule) or the recovery agent (rebuild_in_session) sends the batch's session. */
+  function rebuildText(signature: RecoverySignature, job: Job): string {
+    if (signature === 'runner-failed') {
+      return `The last run stopped with an error: ${(job.error ?? 'unknown').slice(0, 300)}. Continue the task from where you were, using only the tools you have, and finish with the structured status.`;
+    }
+    return (
+      `The vault core couldn't check the plan: ${(job.approval?.planError ?? 'no usable bundle').slice(0, 400)}. ` +
+      'Rebuild the bundle in this job directory so `transaction inspect` accepts it, run inspect, and finish with `needs_approval`.'
+    );
+  }
+
+  /**
+   * review-queue.md, Self-recovery: a batch that can't make progress gets a rule first ($0, at most once), then the
+   * recovery agent within its bounds. Blocked commands have their own rule (recoverDenial). True when it took over.
+   */
+  function recover(id: string, signature: RecoverySignature): boolean {
+    if (signature === 'denial') return recoverDenial(id);
+    const job = findJob(id);
+    if (!job || jobKind(job.kind)?.appliesInCore || coreApplies(job)) return false;
+    const rec = recoveryFor(job.recovery, signature);
+    const settled = rec.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed' as const } : a));
+    const giveUp = (extra = '') =>
+      mutate(id, (j) => {
+        j.recovery = { ...rec, attempts: settled, state: 'gaveUp', summary: problemSummary(signature, j) + extra };
+      });
+    if (!recoveryPreferences(settings).automatic) {
+      giveUp();
+      return false;
+    }
+    // The stale rule is the refresh itself; the others get one fixed reply first.
+    if (signature !== 'stale-again' && !settled.some((a) => a.by === 'rule')) {
+      const text = rebuildText(signature, job);
+      if (precheck(job, 'reply', { text })) {
+        giveUp(' Its AI session isn’t available anymore.');
+        return false;
+      }
+      mutate(id, (j) => {
+        j.recovery = { ...rec, state: 'running', attempts: [...settled, { at: isoDate(now()), by: 'rule', fix: 'rebuild_in_session', result: 'running', costUSD: 0 }] };
+        delete j.recovery.summary;
+        j.turns.push(newTurn('app', text, now()));
+      });
+      startTurnProgress(findJob(id)!, 'Drafting page changes', 'Recovering · asking Claude to try again');
+      const out = resumeBatchSession({ job: findJob(id)!, prompt: WorkerProtocol.replyPrompt(text), action: 'reply', text });
+      if (out.kind === 'session_unavailable') {
+        giveUp(' Its AI session isn’t available anymore.');
+        return false;
+      }
+      return true;
+    }
+    mutate(id, (j) => {
+      j.recovery = { ...rec, attempts: settled, state: 'running' };
+    });
+    track(asScheduler(() => runRecoveryAgent(id, signature))().catch((err: unknown) => log('warn', `Recovery: ${(err as Error).message}`)));
+    return true;
+  }
+
   /**
    * review-queue.md, "The recovery agent": one structured call (no tools, no session, no vault access) picks one fix
    * from a fixed list; the core checks it and carries it out. Bounded by Settings → Recovery (attempts, cost).
@@ -1189,12 +1281,12 @@ export function createEngine(opts: EngineOptions): Engine {
    */
   async function runRecoveryAgent(id: string, signature: RecoverySignature): Promise<void> {
     const job = findJob(id);
-    if (!job?.recovery || job.state !== 'awaitingApproval') return;
+    if (!job?.recovery || (job.state !== 'awaitingApproval' && job.state !== 'failed')) return;
     const prefs = recoveryPreferences(settings);
     const rec = job.recovery;
     const where = { vaultPath: job.vaultPath, jobDir: jobStateDirectory(job) };
     const denials = job.approval?.denials ?? [];
-    const base = signature === 'denial' ? denialSummary(denials, { ...where, answers: rec.denialAnswers ?? 0 }) : 'Distill couldn’t get this batch going again by itself.';
+    const base = signature === 'denial' ? denialSummary(denials, { ...where, answers: rec.denialAnswers ?? 0 }) : problemSummary(signature, job);
     const stop = (extra: string, proposal?: 'new_session') =>
       mutate(id, (j) => {
         if (!j.recovery) return;
@@ -1203,10 +1295,22 @@ export function createEngine(opts: EngineOptions): Engine {
     const spent = rec.attempts.reduce((n, a) => n + a.costUSD, 0);
     if (rec.attempts.filter((a) => a.by === 'agent').length >= prefs.maxAttempts) return stop('');
     if (spent >= prefs.maxCostUSD) return stop(` Recovery stopped at its $${prefs.maxCostUSD.toFixed(2)} limit.`);
+    // A minute between agent attempts (review-queue.md, Bounds): the vault or the session may settle.
+    const lastAgent = [...rec.attempts].reverse().find((a) => a.by === 'agent');
+    const wait = lastAgent ? Date.parse(lastAgent.at) + RECOVERY_BACKOFF_MS - now().getTime() : 0;
+    if (wait > 0) {
+      const until = new Date(now().getTime() + wait);
+      mutate(id, (j) => {
+        if (j.recovery) j.recovery = { ...j.recovery, state: 'waiting', waitUntil: isoDate(until) };
+      });
+      scheduleRecoveryWake(id, signature, wait);
+      return;
+    }
     const selection = selectionFor(settings, 'recovery');
     const at = isoDate(now());
     mutate(id, (j) => {
       if (!j.recovery) return;
+      delete j.recovery.waitUntil;
       j.recovery = {
         ...j.recovery,
         state: 'running',
@@ -1240,7 +1344,7 @@ export function createEngine(opts: EngineOptions): Engine {
       error = (err as Error).message;
     }
     const current = findJob(id);
-    if (!current?.recovery || current.state !== 'awaitingApproval') return;
+    if (!current?.recovery || (current.state !== 'awaitingApproval' && current.state !== 'failed')) return;
     const settle = (result: 'running' | 'failed', extra: Partial<RecoveryAttempt> = {}) =>
       mutate(id, (j) => {
         if (!j.recovery) return;
@@ -1269,6 +1373,27 @@ export function createEngine(opts: EngineOptions): Engine {
         if (out.kind === 'session_unavailable') stop(' Its AI session isn’t available anymore.');
         return;
       }
+      case 'rebuild_in_session': {
+        if (signature === 'stale-again') {
+          settle('running');
+          if (!refreshJob(id, !!current.queuedApply, staleFor(current.vaultPath, current.queuedApply?.bundlePath ?? current.approval?.bundlePath ?? '').map((x) => x.path), true)) {
+            settle('failed', { error: 'The rebuild couldn’t start.' });
+            return stop(` ${answer.diagnosis}`);
+          }
+          return;
+        }
+        const text = rebuildText(signature, current) + (answer.guidance ? `\n\n${answer.guidance}` : '');
+        if (precheck(current, 'reply', { text })) {
+          settle('failed', { error: 'The batch’s AI session isn’t available anymore.' });
+          return stop(' Its AI session isn’t available anymore.', 'new_session');
+        }
+        settle('running');
+        mutate(id, (j) => j.turns.push(newTurn('app', text, now())));
+        startTurnProgress(findJob(id)!, 'Drafting page changes', 'Recovering · rebuilding the plan');
+        const out = resumeBatchSession({ job: findJob(id)!, prompt: WorkerProtocol.replyPrompt(text), action: 'reply', text });
+        if (out.kind === 'session_unavailable') stop(' Its AI session isn’t available anymore.', 'new_session');
+        return;
+      }
       case 'new_session':
         // Session continuity asks the owner before a new session (owner decision): a proposal only.
         settle('failed', { error: 'Only you can start a new session.' });
@@ -1282,13 +1407,14 @@ export function createEngine(opts: EngineOptions): Engine {
   /** Let recovery try again (the owner's click): attempts start over, the rule first. */
   function tryRecoveryAgain(id: string): Job {
     const job = requireJob(id);
-    if (job.state !== 'awaitingApproval' || !job.recovery || job.recovery.state !== 'gaveUp') {
+    if ((job.state !== 'awaitingApproval' && job.state !== 'failed') || !job.recovery || job.recovery.state !== 'gaveUp') {
       throw new CoreError('invalid_state', `Job ${id} has nothing for recovery to try again.`);
     }
+    const signature = job.recovery.signature;
     mutate(id, (j) => {
       delete j.recovery;
     });
-    if (!recoverDenial(id)) throw new CoreError('invalid_state', 'Recovery can’t run for this batch now. Reply to Claude, open it in Terminal, or reject it.');
+    if (!recover(id, signature)) throw new CoreError('invalid_state', 'Recovery can’t run for this batch now. Reply to Claude, open it in Terminal, or reject it.');
     return clone(requireJob(id));
   }
 
@@ -1414,7 +1540,7 @@ export function createEngine(opts: EngineOptions): Engine {
           }
           return;
         }
-        if (!refreshJob(head.id, true, staleFor(vault.path, q.bundlePath).map((s) => s.path))) {
+        if (!refreshJob(head.id, true, staleFor(vault.path, q.bundlePath).map((s) => s.path)) && !recover(head.id, 'stale-again')) {
           backToOwner(head.id, 'Not applied yet: your vault changed after you approved this plan (not by another batch). Reply to have it rebuilt, or reject.');
         }
         return;
@@ -1445,12 +1571,13 @@ export function createEngine(opts: EngineOptions): Engine {
     'run `transaction inspect`, and finish with `needs_approval`.';
 
   /** Rebuild a batch's plan against the vault as it is now, in its own session. False when it can't start. */
-  function refreshJob(id: string, approved: boolean, stalePaths: string[]): boolean {
+  function refreshJob(id: string, approved: boolean, stalePaths: string[], force = false): boolean {
     const job = findJob(id);
     if (!job || job.state !== 'awaitingApproval' || jobKind(job.kind)?.appliesInCore) return false;
-    // Never twice against the same vault: a plan still stale after its rebuild changed for another reason.
+    // Never twice against the same vault: a plan still stale after its rebuild changed for another reason
+    // (then recovery decides: `force` is its rebuild_in_session).
     const applies = appliesIn.get(job.vaultPath) ?? 0;
-    if (refreshedAt.get(id) === applies) return false;
+    if (!force && refreshedAt.get(id) === applies) return false;
     refreshedAt.set(id, applies);
     const attempt = (job.refresh?.attempt ?? 0) + 1;
     mutate(id, (j) => {
@@ -3702,6 +3829,19 @@ export function createEngine(opts: EngineOptions): Engine {
           asScheduler(() => recoverDenial(j.id))();
         }
       }
+      // Recovery that was waiting out its minute, or whose agent call a restart cut off, goes on.
+      for (const j of jobs) {
+        const rec = j.recovery;
+        if (!rec || j.state === 'running' || (j.state !== 'awaitingApproval' && j.state !== 'failed')) continue;
+        if (rec.state === 'waiting') {
+          scheduleRecoveryWake(j.id, rec.signature, rec.waitUntil ? Date.parse(rec.waitUntil) - now().getTime() : 0);
+        } else if (rec.state === 'running' && rec.attempts.some((a) => a.result === 'running')) {
+          mutate(j.id, (x) => {
+            if (x.recovery) x.recovery = { ...x.recovery, attempts: x.recovery.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed', error: 'Distill restarted.' } : a)) };
+          });
+          track(asScheduler(() => runRecoveryAgent(j.id, rec.signature))().catch((err: unknown) => log('warn', `Recovery: ${(err as Error).message}`)));
+        }
+      }
       scheduleNextBatch(now());
       scheduleNextScan(now());
       if (timer) clearInterval(timer);
@@ -3723,6 +3863,8 @@ export function createEngine(opts: EngineOptions): Engine {
     async stop() {
       if (timer) clearInterval(timer);
       timer = undefined;
+      for (const t of recoveryWakes.values()) clearTimeout(t);
+      recoveryWakes.clear();
     },
 
     status,

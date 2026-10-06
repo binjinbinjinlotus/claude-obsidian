@@ -449,7 +449,7 @@ describe('engine state machine', () => {
   });
 
   test('bundle outside the job directory is refused, not inspected', async () => {
-    h = setup([needsApproval('/tmp/elsewhere/bundle.json')]);
+    h = setup([needsApproval('/tmp/elsewhere/bundle.json')], { settings: { recovery: { automatic: false } } });
     const created = await firstJob();
     await h.engine.whenIdle();
     const job = h.engine.getJob(created.id)!;
@@ -836,6 +836,37 @@ describe('blocked commands (review-queue.md)', () => {
     await h.engine.whenIdle();
     assert.equal(h.runner.requests.length, 1, 'nothing sent automatically');
     assert.equal(h.engine.getJob(manual.id)!.recovery?.state, 'gaveUp');
+  });
+
+  test('a plan the core could not check: Distill asks the session to rebuild it; the plan comes back', async () => {
+    h = setup([needsApproval('/tmp/elsewhere/bundle.json')]);
+    const created = await firstJob();
+    h.runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(h.runner.requests.length, 2, 'one rebuild request');
+    assert.ok('resume' in h.runner.requests[1]!.session, 'the same session');
+    assert.match(h.runner.requests[1]!.prompt, /couldn't check the plan/);
+    assert.ok(job.approval?.plan?.valid);
+    assert.equal(job.recovery?.signature, 'plan-error');
+    assert.equal(job.recovery?.state, 'fixed');
+  });
+
+  test('plan-error: the rule, then the agent; a second agent attempt waits a minute', async () => {
+    const clock = Date.parse('2026-10-05T10:00:00Z');
+    h = setup([], { now: () => new Date(clock) });
+    const bad = needsApproval('/tmp/elsewhere/bundle.json');
+    h.runner.steps.push(bad, bad,
+      { structured: { diagnosis: 'The bundle is in the wrong folder.', fix: 'rebuild_in_session', reason: 'r', guidance: 'Write the bundle inside the job directory.' } },
+      bad);
+    const created = await firstJob();
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(h.runner.requests.length, 4, 'first run, rule, agent, agent-guided rebuild');
+    assert.match(h.runner.requests[3]!.prompt, /Write the bundle inside the job directory/);
+    assert.equal(job.recovery?.state, 'waiting', 'the next agent attempt waits');
+    assert.equal(job.recovery?.waitUntil, '2026-10-05T10:01:00Z');
+    assert.deepEqual(job.recovery?.attempts.map((a) => a.by), ['rule', 'agent']);
   });
 
   test('an apply turn with a blocked call is not answered', async () => {

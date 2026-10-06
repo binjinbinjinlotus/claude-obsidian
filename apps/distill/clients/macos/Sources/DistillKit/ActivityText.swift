@@ -421,6 +421,31 @@ public struct ActivityText: Sendable {
             let paths = e.strings("changedPaths")
             add("Changed", paths.isEmpty ? "Nothing" : list(paths, show: 2), keys: ["changedPaths"])
             add("Operation", e.string("operationID"), keys: ["operationID"])
+        case "batch" where e.verb == "recovery":
+            // review-queue.md: what recovery tried, by whom, and what it cost.
+            heading = "RECOVERY"
+            let problem: String? = switch e.string("kind") {
+            case "denial": "A blocked command"; case "stale-again": "The plan went stale again"; case "lock": "The vault was locked"
+            case "plan-error": "The plan couldn't be checked"; case "runner-failed": "The AI run failed"; case let k?: k; case nil: nil
+            }
+            add("Problem", problem, keys: ["kind"])
+            let fix: String? = switch e.string("fix") {
+            case "answer_denial": "Told Claude to read the files instead"; case "rebuild_in_session": "Rebuilt against the latest pages"
+            case "new_session": "Suggested a new session"; case "give_up": "Asked you"; case let f?: f; case nil: nil
+            }
+            add("Fix", fix, keys: ["fix"])
+            add("By", e.string("by") == "agent" ? e.string("model").map { ModelChoice.shortName($0) } ?? "Recovery model" : e.string("by") == "rule" ? "Distill (a rule)" : nil,
+                keys: ["by", "model"])
+            add("Tried", e.int("attempts").map { $0 == 1 ? "once" : "\($0) times" }, keys: ["attempts"])
+            add("Cost", e.number("costUSD").map { String(format: "$%.2f", $0) }, keys: ["costUSD"])
+            add("What's wrong", e.string("summary"), keys: ["summary"])
+        case "batch" where e.verb == "refresh":
+            add("Changed first", e.strings("stalePaths").isEmpty ? nil : list(e.strings("stalePaths"), show: 3), keys: ["stalePaths"])
+            add("You had approved it", e.details["approved"] == .bool(true) ? "Yes: it asks once more" : "No", keys: ["approved"])
+        case "action" where e.verb == "button_run":
+            add("Button", e.string("buttonId"), keys: ["buttonId"])
+            add("Type", e.string("actionType"), keys: ["actionType"])
+            used.insert("runId")
         case "queue":
             if e.verb == "removed" { heading = "WHAT WAS THERE" }
             add("Size", e.int("size").flatMap { $0 > 0 ? Self.size($0) : nil }, keys: ["size"])

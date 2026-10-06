@@ -39,6 +39,9 @@ interface JobLog {
   tools: Map<string, string>;
   /** The job as last seen in an event. */
   last?: Job;
+  /** review-queue.md: the open queued and updating steps. */
+  queued?: string;
+  updating?: string;
   /** The review step waiting for the user, if any. */
   review?: string;
   turn: number;
@@ -321,6 +324,42 @@ export function createStepLog(opts: StepLogOptions): StepLog {
     l.apply = undefined;
   }
 
+  /** review-queue.md: queued, updating and each recovery attempt, as live-log steps (`queued-n`, `updating-n`, `recover-n`). */
+  function queueSteps(job: Job, prev: Job | undefined): void {
+    const end = isoDate(now());
+    const l = logFor(job.id);
+    const queued = !!job.queuedApply?.planSha256 && job.state === 'awaitingApproval';
+    const wasQueued = !!prev?.queuedApply?.planSha256 && prev.state === 'awaitingApproval';
+    if (queued && !wasQueued) {
+      l.queued = step(job.id, { id: `queued-${l.seq + 1}`, phase: 'apply', kind: 'step', state: 'waiting', verb: 'queued', text: 'Queued · applies after the batch before it' });
+    } else if (!queued && wasQueued && l.queued) {
+      change(job.id, l.queued, { state: 'done', text: job.state === 'running' ? 'Its turn came: applying' : 'Left the queue', endedAt: end });
+      l.queued = undefined;
+    }
+    if (job.refresh && !prev?.refresh) {
+      l.updating = step(job.id, { id: `updating-${job.refresh.attempt}-${l.seq + 1}`, phase: 'apply', kind: 'step', state: 'running', verb: 'updating', text: 'Updating against the latest pages', ...(job.refresh.stalePaths.length ? { detail: job.refresh.stalePaths.join('\n') } : {}) });
+    } else if (!job.refresh && prev?.refresh && l.updating) {
+      change(job.id, l.updating, { state: 'done', text: 'Rebuilt against the latest pages', endedAt: end });
+      l.updating = undefined;
+    }
+    const attempts = job.recovery?.attempts ?? [];
+    const before = prev?.recovery?.attempts ?? [];
+    attempts.forEach((a, i) => {
+      const id = `recover-${i + 1}`;
+      const words =
+        a.by === 'rule'
+          ? 'Recovering · told Claude to read the files instead'
+          : `Recovering · ${a.model ? a.model.charAt(0).toUpperCase() + a.model.slice(1) : 'Recovery model'} · ${a.fix === 'answer_denial' ? 'answering a blocked command' : 'looking at what went wrong'}`;
+      const state = a.result === 'running' ? 'running' : a.result === 'fixed' ? 'done' : 'failed';
+      const detail = [a.diagnosis, a.error, a.costUSD > 0 ? `$${a.costUSD.toFixed(2)}` : ''].filter(Boolean).join(' · ');
+      if (!l.steps.has(id) || i >= before.length) {
+        if (!l.steps.has(id)) step(job.id, { id, phase: 'apply', kind: 'step', state, verb: 'recover', text: words, ...(detail ? { detail } : {}) });
+      } else if (before[i]?.result !== a.result) {
+        change(job.id, id, { state, ...(detail ? { detail } : {}), ...(state !== 'running' ? { endedAt: end } : {}) });
+      }
+    });
+  }
+
   function onJob(job: Job, deleted: boolean): void {
     if (deleted) {
       logs.delete(job.id);
@@ -355,6 +394,7 @@ export function createStepLog(opts: StepLogOptions): StepLog {
       }
       if (job.state !== 'running') return;
     }
+    queueSteps(job, prev);
     const was = prev?.state;
     if (job.state === 'running' && was !== 'running') {
       if (was === 'awaitingApproval' || was === 'cancelled' || was === 'failed') {

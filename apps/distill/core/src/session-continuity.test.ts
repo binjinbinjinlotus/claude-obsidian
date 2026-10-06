@@ -199,7 +199,7 @@ interface H {
   events: CoreEvent[];
 }
 
-function engineSetup(runner: FakeAgent, jobs?: unknown): H {
+function engineSetup(runner: FakeAgent, jobs?: unknown, extra: Record<string, unknown> = { recovery: { automatic: false } }): H {
   const vault = path.join(tmp, 'vault');
   const product = path.join(tmp, 'product');
   const state = path.join(tmp, 'state');
@@ -217,6 +217,7 @@ function engineSetup(runner: FakeAgent, jobs?: unknown): H {
       pythonPath: '/usr/bin/python3',
       autoProcessEnabled: false,
       labeling: { autoLabelQueueFolder: false },
+      ...extra,
     }),
   );
   if (jobs) fs.writeFileSync(path.join(state, 'jobs.json'), JSON.stringify(jobs));
@@ -429,6 +430,19 @@ describe('batches: approve, reply, allow, Open in Terminal', () => {
     assert.equal(after.state, 'failed');
     assert.equal(after.sessionUnavailable, undefined);
     assert.match(after.error ?? '', /overloaded/);
+  });
+
+  test('runner-failed recovery: a resumed turn that errors gets one "continue" in the same session (review-queue.md)', async () => {
+    h = engineSetup(new FakeAgent([]), undefined, {});
+    const job = await reviewedBatch(h);
+    h.runner.steps.push({ throws: new RunnerError('Exited 1: 529 overloaded', 'nonZeroExit') });
+    await h.engine.reply(job.id, 'again');
+    await h.engine.whenIdle();
+    const after = h.engine.getJob(job.id)!;
+    assert.equal(after.recovery?.signature, 'runner-failed');
+    assert.equal(after.recovery?.attempts[0]?.by, 'rule');
+    assert.ok(after.turns.some((t) => t.author === 'app' && /stopped with an error: .*overloaded/.test(t.text)), 'Distill asked the session to continue');
+    assert.equal(after.sessionID, job.sessionID, 'the same session');
   });
 
   test('Open in Terminal: a gone session throws (no resume argv); newSession opens a primed new session, the batch unchanged', async () => {
