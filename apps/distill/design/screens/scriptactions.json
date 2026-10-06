@@ -97,6 +97,59 @@
       }
     },
     {
+      "id": "sa-to-unresolved",
+      "base": "slack",
+      "label": "G · Who is Mei Tanaka in Slack? The To row asks for the @handle or ID; the pill reads Needs a recipient; Send in Slack is off with the reason",
+      "set": {
+        "detail": {
+          "frag": "to-unresolved"
+        }
+      }
+    },
+    {
+      "id": "sa-to-resolved",
+      "base": "slack",
+      "label": "H · A remembered name: To [Person] Mei Tanaka (@mei.tanaka) · direct message; Send in Slack is on",
+      "set": {
+        "detail": {
+          "frag": "to-resolved"
+        }
+      }
+    },
+    {
+      "id": "sa-to-panel",
+      "base": "slack",
+      "label": "I · The To menu: Change who Mei Tanaka is, Forget Mei Tanaka, a thread link, Post in the channel instead",
+      "set": {
+        "detail": {
+          "frag": "to-resolved"
+        },
+        "overlay": {
+          "frag": "to-menu"
+        }
+      }
+    },
+    {
+      "id": "sa-to-thread",
+      "base": "slack",
+      "label": "J · A reply in a thread: To [Thread] #tea-club · reply in its thread; the button fills --thread from {fields.thread}",
+      "set": {
+        "detail": {
+          "frag": "to-thread"
+        }
+      }
+    },
+    {
+      "id": "sa-to-thread-off",
+      "base": "slack",
+      "label": "K · A thread the button can’t reach: Send in Slack is off with the reason, never a post to the channel",
+      "set": {
+        "detail": {
+          "frag": "to-thread-off"
+        }
+      }
+    },
+    {
       "id": "sa-card-settings",
       "label": "Settings → Actions → Slack message → Buttons",
       "caption": "One list per type, in footer order. The same editor opens from ＋ Button in the tab.",
@@ -113,7 +166,7 @@
     {
       "id": "sa-card-editor",
       "label": "The button editor: mapping and preview",
-      "caption": "Each argument gets a template; the preview is computed by the core with a real item and lists problems.",
+      "caption": "Each argument gets a template; the preview is computed by the core with a real item and lists problems. As built: each argument’s name and hint on one line above its field, with no repeated hint.",
       "card": {
         "height": 760,
         "bg": "#E4E1DB",
@@ -258,6 +311,30 @@
           "row": [
             "sa-slack-sent",
             "sa-slack-failed"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
+          "title": "Where to send (as built)",
+          "sub": "The To row has a kind: Channel, Person (a direct message) or Thread. A plain name is never sent: the card asks who it is, remembers the answer for this vault, and Send in Slack stays off with the reason until then. A thread never becomes a channel post. “Needs a recipient” is the pill for an unknown name (being built)."
+        },
+        {
+          "row": [
+            "sa-to-unresolved",
+            "sa-to-resolved"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
+          "row": [
+            "sa-to-panel",
+            "sa-to-thread"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
+          "row": [
+            "sa-to-thread-off"
           ],
           "style": "display: flex; gap: 40px; align-items: flex-start"
         },
