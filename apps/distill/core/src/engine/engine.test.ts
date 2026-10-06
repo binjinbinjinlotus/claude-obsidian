@@ -1001,6 +1001,33 @@ describe('the apply queue (review-queue.md)', () => {
     assert.equal((await h.engine.status()).pendingApprovals, 1);
   });
 
+  test('approving a plan the vault already overtook rebuilds it at once, without an apply turn', async () => {
+    let applies = 0;
+    const runner = sandboxed();
+    h = setup([], { runner, apply: async () => ok(`op-${++applies}`) });
+    const a = await firstJob();
+    runner.steps.push(needsApproval(h.bundle(a)));
+    await h.engine.whenIdle();
+    // The plan expected wiki/a.md not to exist; the vault has it now (a hand edit, nothing Distill applied).
+    fs.mkdirSync(path.dirname(h.bundle(a)), { recursive: true });
+    fs.writeFileSync(h.bundle(a), JSON.stringify({ expected_hashes: { 'wiki/a.md': null }, writes: [] }));
+    fs.mkdirSync(path.join(h.vault, 'wiki'), { recursive: true });
+    fs.writeFileSync(path.join(h.vault, 'wiki', 'a.md'), '# A\n');
+    const before = runner.requests.length;
+    runner.steps.push(needsApproval(h.bundle(a)));
+    await h.engine.approve(a.id);
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(a.id)!;
+    assert.equal(applies, 0, 'no apply ran');
+    assert.equal(runner.requests.length, before + 1, 'one rebuild turn');
+    assert.match(runner.requests.at(-1)!.prompt, /The vault changed after this plan was built/);
+    assert.ok(!runner.requests.at(-1)!.allowedTools.some((t) => t.includes('transaction apply')), 'the rebuild turn has no apply rule');
+    assert.ok(job.turns.some((t) => t.author === 'user' && /rebuilt first/.test(t.text)));
+    assert.equal(job.state, 'awaitingApproval');
+    assert.equal(job.queuedApply?.planSha256, undefined, 'the rebuilt plan asks the owner once more');
+    assert.equal(job.refresh, undefined, 'the rebuild finished');
+  });
+
   test('reject takes a batch out of the queue', async () => {
     const t = await twoBatches();
     const first = h.engine.approve(t.a.id);

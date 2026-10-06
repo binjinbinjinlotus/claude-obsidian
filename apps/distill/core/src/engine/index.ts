@@ -2677,6 +2677,23 @@ export function createEngine(opts: EngineOptions): Engine {
         });
         return;
       }
+      // Nothing ahead, but the plan is already out of date (the vault changed since it was built): the cheap hash
+      // check sends it straight to the refresh instead of spending an apply turn that would come back with exit 75.
+      const stale = jobKind(job.kind)?.appliesInCore ? [] : staleFor(job.vaultPath, bundle).map((s) => s.path);
+      if (stale.length > 0 && !precheck(job, 'reply', { text: STALE_REBUILD_PROMPT })) {
+        const before = job.queuedApply;
+        mutate(id, (j) => {
+          j.queuedApply = queued;
+          delete j.recovery;
+          j.turns.push(newTurn('user', `Approved ${plan.operation_id} (${plan.approval_sha256.slice(0, 12)}…). Your vault changed since this plan was built, so it is rebuilt first.`, now()));
+        });
+        if (refreshJob(id, true, stale)) return;
+        mutate(id, (j) => {
+          j.turns.pop();
+          if (before) j.queuedApply = before;
+          else delete j.queuedApply;
+        });
+      }
     }
     const startingApply = (j: Job) => {
       j.queuedApply = queued; // no planSha256: it never re-applies by itself if it comes back
