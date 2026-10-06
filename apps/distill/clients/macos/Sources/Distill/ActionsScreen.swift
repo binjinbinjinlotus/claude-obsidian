@@ -211,7 +211,9 @@ struct TodoScreen: View {
                                               ink: group.title == "OVERDUE" ? Theme.peachInk : Theme.faint)
                         }
                         ForEach(group.items) { item in
-                            TodoRow(item: item, selected: store.selected["todo"] == item.id || (selectedItem == nil && item.id == visible.first?.id),
+                            TodoRow(item: item, selected: ActionList.todoHighlighted(item.id, selected: store.selected["todo"],
+                                                                                   paneShowsSelection: selectedItem != nil || selectedPending != nil,
+                                                                                   first: visible.first?.id),
                                     checked: ui.selection.contains(item.id), selecting: !ui.selection.isEmpty,
                                     struck: completing.contains(item.id) || item.status == .done,
                                     match: ActionSearch.match(item, ui.filter.text), now: now,

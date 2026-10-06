@@ -38,6 +38,17 @@ final class ActionsLogicTests: XCTestCase {
         XCTAssertEqual(ActionCounts.total(items, types: ["todo", "jira"]), 7)
     }
 
+    func testOneRowIsSelectedWhenAToConfirmItemIsInThePane() {
+        // A To-confirm item in the pane: no to-do row is drawn selected as well (the stand-in first row).
+        XCTAssertFalse(ActionList.todoHighlighted("t1", selected: "p1", paneShowsSelection: true, first: "t1"))
+        // Nothing selected: the first row stands in.
+        XCTAssertTrue(ActionList.todoHighlighted("t1", selected: nil, paneShowsSelection: false, first: "t1"))
+        XCTAssertFalse(ActionList.todoHighlighted("t2", selected: nil, paneShowsSelection: false, first: "t1"))
+        // A to-do selected: only it.
+        XCTAssertTrue(ActionList.todoHighlighted("t2", selected: "t2", paneShowsSelection: true, first: "t1"))
+        XCTAssertFalse(ActionList.todoHighlighted("t1", selected: "t2", paneShowsSelection: true, first: "t1"))
+    }
+
     func testPhrases() {
         XCTAssertEqual(ActionCounts.phrase(["jira": 1, "todo": 3, "slack": 1], types: types), "3 to-dos, 1 Slack message, 1 Jira ticket")
         XCTAssertEqual(ActionCounts.phrase(["email": 2], types: types), "2 emails")

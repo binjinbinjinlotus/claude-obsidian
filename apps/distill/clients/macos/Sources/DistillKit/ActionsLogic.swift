@@ -163,6 +163,13 @@ public struct ActionGroup: Identifiable, Equatable, Sendable {
 }
 
 public enum ActionList {
+    /// Whether a to-do row is drawn selected. With nothing in the pane, the first row stands in for the
+    /// selection; a To-confirm item in the pane is the selection, so no to-do row is drawn selected too.
+    public static func todoHighlighted(_ id: String, selected: String?, paneShowsSelection: Bool, first: String?) -> Bool {
+        if id == selected { return true }
+        return !paneShowsSelection && id == first
+    }
+
     public static let priorities = ["High", "Medium", "Low"]
 
     public static func priorityRank(_ item: ActionItem) -> Int {
