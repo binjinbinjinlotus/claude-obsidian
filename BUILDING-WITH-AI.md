@@ -89,6 +89,19 @@ isn't.
 ## Friction log (newest first)
 
 ### 2026-10-05
+- **A new AI task quietly blocked batching.** Adding the `recovery` task to
+  the task list made the setup check require its runner too. A test with only
+  a sandboxed runner enabled then stopped processing the queue: the job came
+  back null.
+  - *Change:* recovery is left out of the setup check, as action tasks are.
+  - *Lesson:* every new task in a shared list inherits every rule that loops
+    over that list. Grep the loops, not only the type.
+- **The "automatic" rule could have spent tokens by itself.** The first draft
+  rebuilt stale plans at app start and after any batch turn. One test caught
+  it: a plan stale from a hand edit was rebuilt. Rebuilds now run only after an
+  apply lands, and at most once per change.
+  - *Lesson:* "automatic over human" still needs a trigger caused by Distill's
+    own action, and a bound on how often it can fire.
 - **A "don't index" marker didn't hide the build copy.** The owner saw two
   Distill apps in Spotlight after the fix that touched
   `build/.metadata_never_index`. Spotlight honours that file only at a volume
