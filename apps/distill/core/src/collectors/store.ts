@@ -29,6 +29,7 @@ import type {
   ScriptSource,
 } from '../contracts.js';
 import { bool, encodeJSON, isObject, normalizeDate, num, preserveUnreadable, readJSON, str, strArray, writeFileAtomic, type JSONObject } from '../store/json.js';
+import { validCommands } from './commands.js';
 
 export const INTERPRETERS: CollectorInterpreter[] = ['zsh', 'python3', 'node', 'typescript'];
 export const PRESETS: SchedulePreset[] = ['every15', 'hourly', 'daily', 'weekdays', 'custom'];
@@ -159,6 +160,15 @@ export function decodeCollector(v: unknown, now = new Date()): Collector | undef
       c.script.allowedFiles = { script: s.allowedFiles.script, manifest: str(s.allowedFiles.manifest) ?? null };
     }
     if (isObject(s.knownFiles)) c.script.knownFiles = { script: str(s.knownFiles.script) ?? null, manifest: str(s.knownFiles.manifest) ?? null };
+    // Automations: absent = collects (every collector made before).
+    if (typeof s.collects === 'boolean') c.script.collects = s.collects;
+    if (Array.isArray(s.commands)) {
+      try {
+        c.script.commands = validCommands(s.commands);
+      } catch {
+        // A list this build can't read is kept as it was (the raw object survives a save).
+      }
+    }
   }
   return c;
 }

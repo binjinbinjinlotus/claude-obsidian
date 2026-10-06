@@ -608,6 +608,22 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       record('draftAction', id, opts?.signal ? 'signal' : undefined);
       return Object.assign(requireAction(id), { status: 'ready' as const, body: 'Drafted.' });
     },
+    async previewActionButton(id, buttonId) {
+      record('previewActionButton', id, buttonId);
+      return { argv: ['python3', '/x/slack_cli.py', 'send', '--', '#general', 'Hi'], display: "python3 /x/slack_cli.py send -- '#general' Hi", problems: [], needsApproval: true, needsConsent: false, approvalHash: 'h' };
+    },
+    async previewButtonDraft(input) {
+      record('previewButtonDraft', input.typeId);
+      return { argv: ['python3', '/x/slack_cli.py', 'send'], display: 'python3 /x/slack_cli.py send', problems: [], needsApproval: true, needsConsent: false, approvalHash: 'h' };
+    },
+    async runActionButton(id, buttonId, opts) {
+      record('runActionButton', id, buttonId, opts?.approve ? 'approve' : undefined);
+      const item = requireAction(id);
+      return { run: { runId: 'run-1', buttonId, label: 'Send in Slack', startedAt: '2026-10-05T12:00:00Z', result: 'running' as const }, item };
+    },
+    async stopActionButtonRun(id) {
+      record('stopActionButtonRun', id);
+    },
     async summarizeAction(id, opts) {
       record('summarizeAction', id, opts?.signal ? 'signal' : undefined);
       return Object.assign(requireAction(id), { summary: 'Summarized.' });

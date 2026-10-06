@@ -10,6 +10,8 @@ import type {
   TrashItem,
   ActionItem,
   JobActions,
+  ActionButtonPreview,
+  ActionTypeInfo,
   AddNoteRequest,
   AddNoteResult,
   AskConversation,
@@ -103,6 +105,8 @@ Usage:
   distill actions add "<title>" [--type todo] [--body "..."] [--why "..."] [--due YYYY-MM-DD]
               [--vault PATH] [--json]
   distill actions found <job-id> [--json]
+  distill actions buttons [type] [--json]
+  distill actions preview <action-id> <button-id> [--json]
   distill collectors list [--json]
   distill collectors run <id> [--json]
   distill collectors history <id> [--limit N] [--json]
@@ -175,6 +179,9 @@ Commands:
   actions found Show what a batch found while it was read: each action, where it stands
                 (waits for apply, added, already in Actions, not added) and the lines of
                 the original it comes from, plus how many lines were looked through.
+  actions buttons  List the buttons on action types that run an automation's command,
+                and whether each can run now. Buttons run only from the Distill app.
+  actions preview  Show the exact command a button would run for an item (read-only).
   collectors list
                 List collectors (Folder and script) for all vaults: kind, on/off, schedule,
                 next run, last run, and whether one needs the user (a failed run, or a
@@ -803,7 +810,41 @@ async function actions(args: string[], io: CliIO, api: ApiFactory): Promise<numb
     });
     return 0;
   }
-  throw usageError(sub ? `unknown actions command "${sub}" (use "actions list", "actions add" or "actions found")` : 'usage: distill actions list | add "<title>" | found <job-id>');
+  if (sub === 'buttons') {
+    // action-buttons.md: list only; running a button is the app's.
+    const { values, positionals } = parse(rest, {});
+    const [type, extra] = positionals;
+    if (extra !== undefined) throw usageError(`unexpected argument "${extra}"`);
+    const out = new Output(io, values.json === true);
+    const client = await api(out);
+    const res = await client.request<{ types: ActionTypeInfo[] }>('GET', '/v1/action-types');
+    const types = res.types.filter((t) => !type || t.id === type);
+    if (type && types.length === 0) throw usageError(`unknown action type "${type}"`);
+    const rows = types.flatMap((t) => (t.buttons ?? []).map((b) => ({ type: t.id, ...b })));
+    out.result({ buttons: rows }, () => {
+      if (rows.length === 0) return `No buttons${type ? ` on ${type}` : ''}. Add them in the Distill app (Settings → Actions).\n`;
+      return rows.map((b) => `${b.type}  ${b.id}  ${b.label}  → ${b.scriptName ?? b.scriptId} › ${b.commandLabel ?? b.commandId}${b.available ? '' : `  (${b.reason ?? 'off'})`}`).join('\n') + '\n';
+    });
+    return 0;
+  }
+  if (sub === 'preview') {
+    const { values, positionals } = parse(rest, {});
+    const [actionID, buttonID, extra] = positionals;
+    if (!actionID || !buttonID) throw usageError('usage: distill actions preview <action-id> <button-id> [--json]');
+    if (extra !== undefined) throw usageError(`unexpected argument "${extra}"`);
+    const out = new Output(io, values.json === true);
+    const client = await api(out);
+    const p = await client.request<ActionButtonPreview>('POST', `/v1/actions/${encodeURIComponent(actionID)}/buttons/${encodeURIComponent(buttonID)}/preview`);
+    out.result(p, () => {
+      const lines = [p.display];
+      if (p.problems.length > 0) lines.push(...p.problems.map((x) => `! ${x}`));
+      if (p.needsConsent) lines.push('The script needs your OK in the Distill app first.');
+      else if (p.needsApproval) lines.push('The first run asks in the Distill app before it runs.');
+      return lines.join('\n') + '\n';
+    });
+    return 0;
+  }
+  throw usageError(sub ? `unknown actions command "${sub}" (use "actions list", "actions add", "actions found", "actions buttons" or "actions preview")` : 'usage: distill actions list | add "<title>" | found <job-id> | buttons [type] | preview <id> <button>');
 }
 
 // ───────────────────────────── collectors ─────────────────────────────

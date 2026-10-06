@@ -1,6 +1,8 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 import type {
+  ActionButton,
+  ScriptCommand,
   ActivityApi,
   ActivityObjectKind,
   ActivityQuery,
@@ -582,6 +584,15 @@ function parseCollectorPatch(body: unknown): CollectorPatch {
     if (source) script.source = source;
     if (interpreter) script.interpreter = interpreter;
     if (timeoutSeconds !== undefined) script.timeoutSeconds = timeoutSeconds;
+    // Automations (action-buttons.md): the core validates the commands.
+    if (so.collects !== undefined) {
+      if (typeof so.collects !== 'boolean') throw bad('"collects" must be a boolean');
+      script.collects = so.collects;
+    }
+    if (so.commands !== undefined) {
+      if (!Array.isArray(so.commands)) throw bad('"commands" must be a list');
+      script.commands = so.commands as ScriptCommand[];
+    }
     patch.script = script;
   }
   return patch;
@@ -1191,6 +1202,42 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
       method: 'POST',
       pattern: /^\/v1\/actions\/([^/]+)\/summarize$/,
       handler: async ({ params, res }) => abortOnClose(res, (signal) => core.summarizeAction(params[0]!, { signal })),
+    },
+    // ── Action buttons (action-buttons.md): preview for any client; run only from the Distill app. ──
+    {
+      method: 'POST',
+      pattern: /^\/v1\/actions\/([^/]+)\/buttons\/([^/]+)\/preview$/,
+      handler: async ({ params }) => core.previewActionButton(params[0]!, params[1]!),
+    },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/action-buttons\/preview$/,
+      handler: async ({ body }) => {
+        const o = asObject(await body(), false);
+        const button = o.button;
+        if (!button || typeof button !== 'object') throw bad('"button" must be an object');
+        return core.previewButtonDraft({ typeId: reqString(o, 'typeId'), button: button as ActionButton, itemId: typeof o.itemId === 'string' ? o.itemId : null });
+      },
+    },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/actions\/([^/]+)\/buttons\/([^/]+)\/run$/,
+      status: 202,
+      handler: async ({ req, params, body }) => {
+        // Only the app runs buttons; the CLI and agents can list and preview (not a boundary against a
+        // program holding the token, the same limit collector Allow has).
+        if (sourceFromHeaders(req.headers) !== 'app') throw new HttpError(403, 'forbidden_client', 'Buttons run only from the Distill app.');
+        const o = asObject(await body(), true);
+        return core.runActionButton(params[0]!, params[1]!, { approve: o.approve === true });
+      },
+    },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/actions\/([^/]+)\/buttons\/stop$/,
+      handler: async ({ params }) => {
+        await core.stopActionButtonRun(params[0]!);
+        return { ok: true };
+      },
     },
     {
       method: 'POST',

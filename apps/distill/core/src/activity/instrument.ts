@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type {
   ActionItem,
+  ActionButtonRun,
   ActivityObject,
   ActivityRecovery,
   ActivitySource,
@@ -246,6 +247,25 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
     listActions: 'read', // its History sweep is logged from `action` events
     getAction: 'read',
     summarizeAction: 'read', // fills an older item's summary on first open; routine, not the owner's change
+    previewActionButton: 'read',
+    previewButtonDraft: 'read',
+    stopActionButtonRun: 'read', // the run's end is on the item
+    // action-buttons.md: who ran which button; never the argv values (they can hold message text).
+    runActionButton: {
+      before: (id: string) => getAction(id),
+      ok: ([id], r: { run: ActionButtonRun; item: ActionItem }) => ({
+        type: 'action.button_run',
+        object: actionObject(String(id), r.item),
+        summary: `Ran ${r.run.label} for ${q(r.item.title)}`,
+        details: { buttonId: r.run.buttonId, runId: r.run.runId, actionType: r.item.type },
+      }),
+      fail: ([id, buttonId], before: ActionItem | undefined) => ({
+        type: 'action.button_run',
+        object: actionObject(String(id), before),
+        summary: `Couldn't run a button for ${q(before?.title)}`.trim(),
+        details: { buttonId: String(buttonId) },
+      }),
+    },
     listConnections: 'read',
     signInURL: 'read',
     listCollectors: 'read',

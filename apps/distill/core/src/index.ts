@@ -4,7 +4,7 @@ import { createActivityService, createEventLogger, instrumentCore, type Activity
 import { createEngine, type EngineExtras, type EngineOptions } from './engine/index.js';
 import { createAskService } from './ask/index.js';
 import { createRunnerAdmin } from './runners/admin.js';
-import { createActionsService, type ActionsService } from './actions/index.js';
+import { createActionsService, type ActionsService, type ScriptsAccess } from './actions/index.js';
 import { createCollectorsService, type CollectorsOptions } from './collectors/index.js';
 import { createStepLog, type StepLog } from './steps/index.js';
 import type { FetchLike } from './runners/model-api.js';
@@ -107,7 +107,10 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras &
     getConversation: (id) => ask.getConversation(id),
     setJobActions: (id, summary) => engine.setJobActions?.(id, summary),
     getJob: (id) => engine.getJob(id),
+    // Automations run buttons' commands; bound late (collectors are created next).
+    scripts: () => collectorsRef,
   });
+  let collectorsRef: ScriptsAccess | undefined;
   const collectors = createCollectorsService({
     emit,
     getSettings: () => engine.getSettings(),
@@ -121,6 +124,7 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras &
       engine.listJobs().some((j) => j.state === 'running' && path.resolve(j.vaultPath) === path.resolve(vaultPath)),
     ...opts.collectors,
   });
+  collectorsRef = collectors;
   // A batch that finishes lets waiting scripts start.
   engine.subscribe((e) => {
     if (e.type === 'job') collectors.pump();
@@ -132,6 +136,9 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras &
     pump: _pump,
     whenIdle: _collectorsIdle,
     restoreCollector,
+    // Internal to Automations and action buttons, never on the API.
+    runCommand: _runCommand,
+    scriptConsent: _scriptConsent,
     ...collectorMethods
   } = collectors;
   // v6: the activity log (spec activity-log.md). New lines go out as `activity` events.

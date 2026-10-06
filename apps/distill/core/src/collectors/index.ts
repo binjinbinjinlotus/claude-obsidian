@@ -28,6 +28,7 @@ import {
   type NewCollectorInput,
   type ScheduleCheck,
   type ScriptCollectorSettings,
+  type ScriptCommand,
   type ScriptSource,
   type Settings,
   type VaultProfile,
@@ -41,7 +42,8 @@ import { queuePlacementProblem } from '../engine/validator.js';
 import { isWithin, realish } from '../store/realpath.js';
 import { backupFile, consentHash, hasDependencies, MANIFEST, packageCount, PACKAGES_DIR, ScriptFolders } from './files.js';
 import { InstallStore, nodeSearchPath, planInstall, probeNode, resolveRuntime, startInstall } from './packages.js';
-import { INLINE_EXTENSION, loginShellPath, scriptBytes, sha256Text, startScript, type ScriptHandle } from './script.js';
+import { INLINE_EXTENSION, loginShellPath, scriptBytes, sha256Text, startProcess, startScript, type ScriptHandle } from './script.js';
+import { maskSecrets, validCommands } from './commands.js';
 import {
   clampTimeout,
   CollectorStore,
@@ -117,7 +119,30 @@ export type CollectorsService = Pick<DistillCore, CollectorsOwned> & {
    * that is taken, comes back off, and a script needs consent again.
    */
   restoreCollector(record: unknown, files?: string): Promise<Collector>;
+  /** Automations: a command run for an action button (action-buttons.md). Never a shell; argv as given. */
+  runCommand(input: CommandRunInput): CommandRunHandle;
+  /** The script's current consent hash (part of a button's approval), or why there is none. */
+  scriptConsent(id: string): { sha256: string; allowed: boolean } | { problem: string };
 };
+
+export interface CommandRunInput {
+  collectorId: string;
+  commandId: string;
+  /** After the script path, from buildArgv. */
+  args: string[];
+  timeoutSeconds: number;
+  buttonId: string;
+  actionId: string;
+  actionType: string;
+  /** The item as JSON, written to a 0600 temp file (DISTILL_ACTION_JSON). */
+  itemJson: string;
+}
+
+export interface CommandRunHandle {
+  run: CollectorRun;
+  done: Promise<CollectorRun>;
+  stop(): void;
+}
 
 interface Active {
   run: CollectorRun;
@@ -619,6 +644,8 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
   }
 
   function dueAt(c: Collector): Date | undefined {
+    // Automations: a commands-only script never runs on a schedule.
+    if (c.kind === 'script' && c.script?.collects === false) return undefined;
     try {
       return nextRun(parseCron(c.schedule.cron), lastTick(c));
     } catch {
@@ -635,8 +662,8 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
   /** The newest run that isn't a test run (test runs never set lastRun or the sidebar count). */
   function latestReal(id: string): CollectorRun | undefined {
     const latest = runs.latest(id, now());
-    if (!latest || latest.trigger !== 'test') return latest;
-    return runs.list(id, now()).find((r) => r.trigger !== 'test');
+    if (!latest || (latest.trigger !== 'test' && latest.trigger !== 'action')) return latest;
+    return runs.list(id, now()).find((r) => r.trigger !== 'test' && r.trigger !== 'action');
   }
 
   function summary(run: CollectorRun | undefined): CollectorRun | null {
@@ -1149,7 +1176,177 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
 
   // ───────────── API ─────────────
 
+  // ───────────── commands (Automations) ─────────────
+
+  /** One command run per item at a time; alongside a collect of the same script. */
+  const commandRuns = new Map<string, { run: CollectorRun; stop(): void; stopRequested: boolean }>();
+
+  function scriptConsentOf(id: string): { sha256: string; allowed: boolean } | { problem: string } {
+    const c = find(id);
+    if (!c || c.kind !== 'script' || !c.script) return { problem: 'Script missing' };
+    let bytes: Buffer;
+    try {
+      bytes = scriptBytes(c.script.source);
+    } catch (err) {
+      return { problem: `Script missing: ${(err as Error).message}` };
+    }
+    const manifest = manifestOf(c);
+    const sha = consentHash(bytes, manifest?.bytes ? { name: manifest.name, bytes: manifest.bytes } : null);
+    return { sha256: sha, allowed: c.script.allowedSha256 === sha };
+  }
+
+  function runCommand(input: CommandRunInput): CommandRunHandle {
+    const c = require(input.collectorId);
+    if (c.kind !== 'script' || !c.script) throw new CoreError('invalid_request', `${c.name} isn't a script.`);
+    const command = (c.script.commands ?? []).find((x) => x.id === input.commandId);
+    if (!command) throw new CoreError('invalid_request', `${c.name} has no command ${input.commandId}.`);
+    if (commandRuns.has(input.actionId)) throw new CoreError('busy', 'A button is already running for this item.');
+    const run: CollectorRun = {
+      ...newRun(c, 'action'),
+      result: 'running',
+      command: { id: command.id, buttonId: input.buttonId, actionId: input.actionId, argv: input.args.map(maskSecrets) },
+    };
+    delete run.waiting;
+    const started = now();
+    const entry = { run, stopRequested: false, stop: () => undefined as void };
+    let handle: ScriptHandle | undefined;
+    let stopInstall: (() => void) | undefined;
+    entry.stop = () => {
+      entry.stopRequested = true;
+      handle?.stop();
+      stopInstall?.();
+    };
+    commandRuns.set(input.actionId, entry);
+    record(run);
+    opts.emit({ type: 'collector.run.started', run: clone(run) });
+    const script = c.script;
+    const done = (async () => {
+      const consent = scriptConsentOf(c.id);
+      if ('problem' in consent) {
+        run.result = 'failed';
+        run.error = { code: 'scriptMissing', message: consent.problem };
+        return;
+      }
+      run.sha256 = consent.sha256;
+      if (!consent.allowed) {
+        run.result = 'notTrusted';
+        run.error = script.allowedSha256
+          ? { code: 'scriptChanged', message: 'Not run · the script changed since you allowed it.' }
+          : { code: 'notAllowed', message: 'Not run · you haven’t allowed this script yet.' };
+        return;
+      }
+      const searchPath = await loginPath();
+      if (needsInstall(c)) {
+        const inst = await install(c, 'beforeRun', false, {
+          onStart: (i) => {
+            run.installId = i.id;
+          },
+          onHandle: (stop) => {
+            stopInstall = stop;
+            if (entry.stopRequested) stop();
+          },
+        });
+        stopInstall = undefined;
+        if (inst.result !== 'success' || entry.stopRequested) {
+          run.result = entry.stopRequested || inst.result === 'stopped' ? 'stopped' : 'failed';
+          if (run.result === 'failed') run.error = { code: 'installFailed', message: `Not run · installing packages failed: ${inst.error?.message ?? inst.result}` };
+          return;
+        }
+      }
+      const folder = isManaged(script) ? folders.folder(c.id) : null;
+      const onNode = script.interpreter === 'node' || script.interpreter === 'typescript';
+      const runPath = onNode ? nodeSearchPath(nodePath(), searchPath) : searchPath;
+      const runtime = await resolveRuntime(script.interpreter, folder, runPath, scriptEnv(runPath, {}), nodePath());
+      if ('error' in runtime) {
+        run.result = 'failed';
+        run.error = { code: 'interpreterMissing', message: runtime.error };
+        return;
+      }
+      run.runtime = runtime.runtime;
+      if (entry.stopRequested) {
+        run.result = 'stopped';
+        return;
+      }
+      const tmp = opts.tmpDir ?? os.tmpdir();
+      const cwd = fs.mkdtempSync(path.join(tmp, `distill-cmd-${run.id}-`));
+      let scriptPath: string;
+      if ('inline' in script.source) {
+        scriptPath = path.join(cwd, `collector.${INLINE_EXTENSION[script.interpreter]}`);
+        fs.writeFileSync(scriptPath, scriptBytes(script.source), { mode: 0o600 });
+      } else {
+        scriptPath = script.source.file;
+      }
+      const itemFile = path.join(cwd, '.distill-action.json');
+      fs.writeFileSync(itemFile, input.itemJson, { mode: 0o600 });
+      const vault = vaultProfile(c.vaultPath);
+      const env = scriptEnv(runPath, {
+        DISTILL_RUN_TRIGGER: 'action',
+        DISTILL_RUN_ID: run.id,
+        DISTILL_COLLECTOR_ID: c.id,
+        DISTILL_COMMAND: command.id,
+        DISTILL_ACTION_ID: input.actionId,
+        DISTILL_ACTION_TYPE: input.actionType,
+        DISTILL_ACTION_JSON: itemFile,
+        ...(vault ? { DISTILL_VAULT: path.resolve(vault.path) } : {}),
+      });
+      const output = throttledOutput(c.id, run.id);
+      try {
+        handle = startProcess({
+          command: runtime.command,
+          args: [...runtime.args, scriptPath, ...input.args],
+          cwd,
+          env,
+          timeoutMs: input.timeoutSeconds * 1000,
+          ...(opts.killGraceMs !== undefined ? { killGraceMs: opts.killGraceMs } : {}),
+          onOutput: output.push,
+        });
+        if (entry.stopRequested) handle.stop();
+        const o = await handle.done;
+        output.flush();
+        run.exitCode = o.exitCode;
+        run.signal = o.signal;
+        run.stdoutTail = maskSecrets(o.stdoutTail);
+        run.stderrTail = maskSecrets(o.stderrTail);
+        if (o.outputLog.length > 0) run.outputLog = o.outputLog.map((x) => ({ ...x, text: maskSecrets(x.text) }));
+        if (o.spawnError) {
+          run.result = 'failed';
+          run.error = { code: 'interpreterMissing', message: `${script.interpreter} couldn't start: ${o.spawnError}` };
+        } else if (o.stopped) {
+          run.result = 'stopped';
+        } else if (o.timedOut) {
+          run.result = 'timedout';
+          run.error = { code: 'scriptFailed', message: `Timed out after ${formatSeconds(input.timeoutSeconds)}.` };
+        } else if (o.exitCode === 0) {
+          run.result = 'success';
+        } else {
+          run.result = 'failed';
+          run.error = {
+            code: 'scriptFailed',
+            message: o.exitCode !== null ? `The script exited with code ${o.exitCode}.` : `The script was killed (${o.signal ?? 'signal'}).`,
+          };
+        }
+      } finally {
+        output.flush();
+        fs.rmSync(cwd, { recursive: true, force: true });
+      }
+    })()
+      .catch((err: unknown) => {
+        run.result = 'failed';
+        run.error = { code: 'other', message: (err as Error).message };
+      })
+      .then(() => {
+        closeRun(run, started);
+        commandRuns.delete(input.actionId);
+        record(run);
+        opts.emit({ type: 'collector.run.finished', run: clone(run) });
+        return clone(run);
+      });
+    return { run: clone(run), done, stop: () => entry.stop() };
+  }
+
   return {
+    runCommand,
+    scriptConsent: scriptConsentOf,
     start() {
       if (timer) return;
       // A collector with no tick yet starts counting now (no run for time before Distill knew it).
@@ -1195,6 +1392,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
         a.script?.stop();
       }
       for (const i of installing.values()) i.stop();
+      for (const r of commandRuns.values()) r.stop();
       await Promise.all([...active.values()].map((a) => a.done));
       await Promise.all([...installing.values()].map((i) => i.done));
     },
@@ -1275,6 +1473,9 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
           const s = next.script!;
           if (patch.script.interpreter !== undefined && !INTERPRETERS.includes(patch.script.interpreter)) throw new CoreError('invalid_request', INTERPRETER_ERROR);
           if (patch.script.timeoutSeconds !== undefined) s.timeoutSeconds = validTimeout(patch.script.timeoutSeconds);
+          // Automations: commands and Collect don't change the script's bytes, so consent stays.
+          if (patch.script.collects !== undefined) s.collects = patch.script.collects === true;
+          if (patch.script.commands !== undefined) s.commands = validCommands(patch.script.commands);
           const interpreter = patch.script.interpreter ?? s.interpreter;
           if (patch.script.source !== undefined) {
             s.source = applySource(c, patch.script.source, interpreter);
@@ -1382,6 +1583,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
     async runCollector(id) {
       const c = require(id);
       noticeOutsideOne(c);
+      if (c.kind === 'script' && c.script?.collects === false) throw new CoreError('invalid_request', `${c.name} doesn't collect; its commands run from action buttons.`);
       // While packages install, the run waits for them (queued, waiting 'install'): "Allow and run" works.
       if (busyWith(id) === 'run') throw new CoreError('busy', `${c.name} is already running.`);
       return enqueue(c, 'now');
@@ -1390,6 +1592,7 @@ export function createCollectorsService(opts: CollectorsOptions): CollectorsServ
       const c = require(id);
       noticeOutsideOne(c);
       if (c.kind !== 'script' || !c.script) throw new CoreError('invalid_request', 'Test run is for script collectors.');
+      if (c.script.collects === false) throw new CoreError('invalid_request', `${c.name} doesn't collect; its commands run from action buttons.`);
       if (busyWith(id) === 'run') throw new CoreError('busy', `${c.name} is already running.`);
       return enqueue(c, 'test');
     },

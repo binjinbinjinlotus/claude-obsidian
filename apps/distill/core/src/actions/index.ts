@@ -15,6 +15,12 @@ import {
   type ActionSource,
   type ActionStatus,
   type ActionTypeInfo,
+  type ActionButton,
+  type ActionButtonInfo,
+  type ActionButtonPreview,
+  type ActionButtonRun,
+  type Collector,
+  type ScriptCommand,
   type AskConversation,
   type AskResponse,
   type ConnectionInfo,
@@ -70,6 +76,9 @@ import { isoDate } from '../store/json.js';
 import { actionPreferences, defaultSelection as settingsDefaultSelection } from '../store/settings.js';
 import { DRAFT_SCHEMA, FIND_SCHEMA, fieldsFrom, IMPROVE_SCHEMA, modelName, runStructured, SUMMARIZE_SCHEMA, type ActionTask } from './ai.js';
 import { ActionHandlerError, API_TOKEN_URL, ATLASSIAN, AtlassianClient, ConnectionFile } from './atlassian.js';
+import { approvalHash, buildArgv, commandTimeout, displayArgv, maskSecrets, parseResult } from '../collectors/commands.js';
+import type { CommandRunHandle, CommandRunInput } from '../collectors/index.js';
+import { buttonsFor, ButtonApprovals, normalizeButton, sampleItem, templateValues } from './buttons.js';
 import { buildDraftPrompt, buildFindPrompt, buildImprovePrompt, buildSummarizePrompt, DEFAULT_FIND_PROMPT, type DraftContext, type FindDocument } from './prompts.js';
 import {
   actionTypeDef,
@@ -104,6 +113,15 @@ export interface ActionsServiceOptions {
   setJobActions?: (jobID: string, summary: JobActionsSummary) => void;
   /** v11: the job as it is now (commit checks which parts applied). */
   getJob?: (id: string) => Job | undefined;
+  /** Automations (action-buttons.md): runs a script's command for a button. Bound late (collectors start after actions). */
+  scripts?: () => ScriptsAccess | undefined;
+}
+
+/** What action buttons need from Automations. */
+export interface ScriptsAccess {
+  runCommand(input: CommandRunInput): CommandRunHandle;
+  scriptConsent(id: string): { sha256: string; allowed: boolean } | { problem: string };
+  getCollector(id: string): Promise<Collector | undefined>;
 }
 
 export type ActionsService = Pick<DistillCore, ActionsOwned> & {
@@ -1554,11 +1572,200 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
 
   // ───────────── public API ─────────────
 
+  // ───────────── buttons (action-buttons.md) ─────────────
+
+  const approvals = new ButtonApprovals(path.join(opts.stateDir, 'actions', 'button-approvals.json'));
+  const buttonRuns = new Map<string, { stop(): void }>();
+
+  interface ResolvedButton {
+    collector?: Collector;
+    command?: ScriptCommand;
+    problem?: string;
+  }
+
+  async function resolveScript(button: ActionButton): Promise<ResolvedButton> {
+    const scripts = opts.scripts?.();
+    if (!scripts) return { problem: 'Automations aren’t running' };
+    let collector: Collector | undefined;
+    try {
+      collector = await scripts.getCollector(button.scriptId);
+    } catch {
+      return { problem: 'Script missing' };
+    }
+    if (!collector) return { problem: 'Script missing' };
+    if (collector.kind !== 'script' || !collector.script) return { collector, problem: `${collector.name} isn’t a script` };
+    const command = (collector.script.commands ?? []).find((c) => c.id === button.commandId);
+    if (!command) return { collector, problem: `${collector.name} has no command ${button.commandId}` };
+    return { collector, command };
+  }
+
+  function buttonOf(typeId: string, buttonId: string): ActionButton {
+    const b = buttonsFor(prefs(), typeId).find((x) => x.id === buttonId);
+    if (!b) throw new CoreError('not_found', `No button ${buttonId} on ${typeId}.`);
+    return b;
+  }
+
+  async function previewFor(item: ActionItem, button: ActionButton): Promise<ActionButtonPreview & { resolved: ResolvedButton }> {
+    const resolved = await resolveScript(button);
+    const out: ActionButtonPreview = { argv: [], display: '', problems: [], needsApproval: true, needsConsent: false, approvalHash: '' };
+    if (resolved.problem || !resolved.collector?.script || !resolved.command) {
+      out.problems.push(resolved.problem ?? 'Script missing');
+      return { ...out, resolved };
+    }
+    const script = resolved.collector.script;
+    const def = actionTypeDef(item.type);
+    const ctx = promptContext(item);
+    const values = templateValues(item, { fieldKeys: (def?.fields ?? []).map((f) => f.key), noteTitle: ctx.noteTitle, notePath: ctx.notePath, now: now() });
+    const built = buildArgv(resolved.command, button.bindings, values);
+    out.problems.push(...built.problems);
+    const scriptPath = 'file' in script.source ? script.source.file : `(${resolved.collector.name}, kept by Distill)`;
+    out.argv = [script.interpreter, scriptPath, ...built.args];
+    out.display = displayArgv(out.argv);
+    const consent = opts.scripts?.()?.scriptConsent(resolved.collector.id);
+    if (!consent || 'problem' in consent) {
+      out.problems.push(consent && 'problem' in consent ? consent.problem : 'Script missing');
+      return { ...out, resolved };
+    }
+    out.needsConsent = !consent.allowed;
+    out.approvalHash = approvalHash(consent.sha256, resolved.command, button);
+    out.needsApproval = !approvals.approved(button.id, out.approvalHash);
+    return { ...out, resolved };
+  }
+
+  async function buttonInfos(typeId: string): Promise<ActionButtonInfo[]> {
+    const out: ActionButtonInfo[] = [];
+    for (const b of buttonsFor(prefs(), typeId)) {
+      const r = await resolveScript(b);
+      let reason = r.problem ?? null;
+      if (!reason && r.collector) {
+        const consent = opts.scripts?.()?.scriptConsent(r.collector.id);
+        if (consent && 'problem' in consent) reason = consent.problem;
+        else if (consent && !consent.allowed) reason = `${r.collector.name} needs your OK`;
+      }
+      out.push({ ...b, available: b.enabled && !reason, reason, scriptName: r.collector?.name ?? null, commandLabel: r.command?.label ?? null });
+    }
+    return out;
+  }
+
+  async function runButton(id: string, buttonId: string, o: { approve?: boolean } = {}): Promise<{ run: ActionButtonRun; item: ActionItem }> {
+    const item = require(id);
+    const button = buttonOf(item.type, buttonId);
+    if (!button.enabled) throw new CoreError('invalid_state', `${button.label} is turned off.`);
+    if (item.activeRun || buttonRuns.has(id)) throw new CoreError('busy', 'A button is already running for this item.');
+    const p = await previewFor(item, button);
+    if (p.problems.length > 0) throw new CoreError('invalid_request', p.problems.join('; '), { problems: p.problems });
+    if (p.needsConsent) throw new CoreError('invalid_state', `${p.resolved.collector!.name} needs your OK before its commands run.`, { needsConsent: true });
+    if (p.needsApproval || button.confirm) {
+      if (!o.approve) {
+        const { resolved: _r, ...preview } = p;
+        throw new CoreError('invalid_state', 'Check the command, then press Run.', { needsApproval: true, preview });
+      }
+      approvals.approve(button.id, p.approvalHash, now());
+    }
+    const scripts = opts.scripts?.();
+    if (!scripts) throw new CoreError('invalid_state', 'Automations aren’t running.');
+    const command = p.resolved.command!;
+    const handle = scripts.runCommand({
+      collectorId: p.resolved.collector!.id,
+      commandId: command.id,
+      args: p.argv.slice(2),
+      timeoutSeconds: commandTimeout(command),
+      buttonId: button.id,
+      actionId: id,
+      actionType: item.type,
+      itemJson: JSON.stringify(item),
+    });
+    buttonRuns.set(id, handle);
+    const started: ActionButtonRun = { runId: handle.run.id, buttonId: button.id, label: button.label, startedAt: handle.run.startedAt, result: 'running' };
+    const updated = mutate(id, (i) => {
+      i.activeRun = { runId: handle.run.id, buttonId: button.id };
+      i.runs = [started, ...(i.runs ?? [])].slice(0, 10);
+      if (i.error?.code === 'other' && i.error.message.startsWith(`${button.label} `)) i.error = null;
+    });
+    track(
+      handle.done.then((run) => {
+        buttonRuns.delete(id);
+        if (!find(id)) return;
+        const parsed = run.result === 'success' ? parseResult(run.stdoutTail ?? '', command.result) : {};
+        const tail = (t?: string) => (t ? maskSecrets(t).slice(-2048) : undefined);
+        const result: ActionButtonRun = {
+          ...started,
+          endedAt: run.endedAt,
+          durationMs: run.durationMs,
+          result: run.result === 'success' ? 'success' : run.result === 'timedout' ? 'timedout' : run.result === 'stopped' ? 'stopped' : run.result === 'notTrusted' ? 'notTrusted' : 'failed',
+          exitCode: run.exitCode ?? null,
+          ...(tail(run.stdoutTail) ? { stdoutTail: tail(run.stdoutTail) } : {}),
+          ...(tail(run.stderrTail) ? { stderrTail: tail(run.stderrTail) } : {}),
+          ...(parsed.key || parsed.url ? { external: { key: parsed.key ?? null, url: parsed.url ?? null } } : {}),
+          message: parsed.message ?? run.error?.message ?? null,
+        };
+        mutate(id, (i) => {
+          i.activeRun = null;
+          i.runs = [result, ...(i.runs ?? []).filter((r) => r.runId !== result.runId)].slice(0, 10);
+          if (result.result === 'success') {
+            if (button.storeResult && (parsed.key || parsed.url)) {
+              i.external = { ...(i.external ?? {}), ...(parsed.key ? { key: parsed.key } : {}), ...(parsed.url ? { url: parsed.url } : {}), ...(parsed.status ? { status: parsed.status } : {}) };
+            }
+            if (button.onSuccess === 'markSent' && i.status !== 'sent') {
+              i.events.push(event(now(), 'status', `${i.status} → sent`));
+              i.status = 'sent';
+            } else if (button.onSuccess === 'complete' && i.status !== 'done') {
+              i.events.push(event(now(), 'done', i.status));
+              i.status = 'done';
+            }
+            i.error = null;
+            i.events.push(event(now(), 'ran', `${button.label}${result.message ? ` · ${result.message.slice(0, 200)}` : ''}`));
+          } else {
+            const why = result.result === 'timedout' ? 'timed out' : result.result === 'stopped' ? 'was stopped' : `failed${result.exitCode != null ? ` (exit ${result.exitCode})` : ''}`;
+            i.error = { code: 'other', message: `${button.label} ${why}${run.error?.message && result.result !== 'stopped' ? `: ${run.error.message}` : ''}` };
+            i.events.push(event(now(), 'run-failed', `${button.label} · ${why}`));
+          }
+        });
+      }),
+    );
+    return { run: started, item: updated };
+  }
+
   const service: ActionsService = {
     async listActionTypes(): Promise<ActionTypeInfo[]> {
       const p = prefs();
       const conn = { connected: (id: string) => (id === ATLASSIAN ? atlassian.isConnected() : false) };
-      return actionTypeDefs().map((d) => typeInfo(d, p, conn));
+      const out: ActionTypeInfo[] = [];
+      for (const d of actionTypeDefs()) {
+        const info = typeInfo(d, p, conn);
+        const buttons = await buttonInfos(d.id);
+        if (buttons.length > 0) {
+          info.buttons = buttons;
+          // A button in the Send slot takes the reserved "Send in Slack" place.
+          if (buttons.some((b) => b.slot === 'send')) info.handlers = info.handlers.filter((h) => h.id !== 'send');
+        }
+        out.push(info);
+      }
+      return out;
+    },
+
+    async previewActionButton(id, buttonId) {
+      const item = require(id);
+      const { resolved: _r, ...p } = await previewFor(item, buttonOf(item.type, buttonId));
+      return p;
+    },
+
+    async previewButtonDraft(input) {
+      const button = normalizeButton(input.button);
+      if (!button) throw new CoreError('invalid_request', 'A button needs an id, a script and a command.');
+      const def = actionTypeDef(input.typeId);
+      if (!def) throw new CoreError('not_found', `Unknown action type ${input.typeId}.`);
+      const item = input.itemId ? require(input.itemId) : sampleItem(def.id, def.fields.map((f) => f.key));
+      const { resolved: _r, ...p } = await previewFor(item, button);
+      return p;
+    },
+
+    runActionButton(id, buttonId, o) {
+      return runButton(id, buttonId, o);
+    },
+
+    async stopActionButtonRun(id) {
+      buttonRuns.get(id)?.stop();
     },
 
     async listActions(query: ActionQuery = {}): Promise<ActionItem[]> {

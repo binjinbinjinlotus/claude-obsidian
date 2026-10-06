@@ -1210,6 +1210,10 @@ export interface ActionItem {
   error?: ActionError | null;
   /** The item this one came from (a to-do sent to Slack keeps the to-do's id here). */
   fromActionID?: string | null;
+  /** Button runs, newest first, at most 10 (action-buttons.md). */
+  runs?: ActionButtonRun[];
+  /** A button running for this item now. */
+  activeRun?: { runId: string; buttonId: string } | null;
   /** Timeline, oldest first. */
   events: ActionEvent[];
 }
@@ -1251,6 +1255,8 @@ export interface ActionTypeInfo {
   defaultImprovePrompt?: string | null;
   /** Placeholders a prompt may use (Settings → Insert field), e.g. "{title}", "{excerpt}", "{recipient}". */
   placeholders?: string[];
+  /** Buttons that run an automation's command, with whether each can run now. */
+  buttons?: ActionButtonInfo[];
 }
 
 export interface ActionSourcePreferences {
@@ -1275,6 +1281,8 @@ export interface ActionTypePreferences {
   improvePrompt?: string | null;
   /** Default field values, e.g. {project: "PX", issueType: "Task"} or {space: "ENG"}. */
   fieldDefaults?: Record<string, string>;
+  /** Buttons that run an automation's command (action-buttons.md). */
+  buttons?: ActionButton[];
 }
 
 export interface ActionPreferences {
@@ -1412,6 +1420,113 @@ export interface ScriptCollectorSettings {
    * editor"); the core logs that once (`collector.script.changed_outside`) and moves this on. Internal.
    */
   knownFiles?: { script: string | null; manifest: string | null } | null;
+  /**
+   * Automations (action-buttons.md): whether this script collects on a schedule / Run now. Absent = true
+   * (every collector made before). A commands-only script (the Slack CLI) has `collects: false`.
+   */
+  collects?: boolean;
+  /** Ways an action button may call this script with arguments, declared by the owner. */
+  commands?: ScriptCommand[];
+}
+
+/** One way to call a script with arguments (action-buttons.md). */
+export interface ScriptCommand {
+  /** A slug, unique within the script: "send". */
+  id: string;
+  label: string;
+  description?: string;
+  /** In argv order. */
+  args: ScriptCommandArg[];
+  /** Put "--" before the first positional. Default true, so text starting with "-" stays text. */
+  endOptions?: boolean;
+  /** Default 60, 1…3600. */
+  timeoutSeconds?: number;
+  /** How to read a key or URL from stdout; absent = nothing is read. */
+  result?: ScriptResultParse;
+}
+
+export interface ScriptCommandArg {
+  /** What a button binds to: "target", "text", "thread". */
+  name: string;
+  /** word = a fixed word ("send"); flag = "--thread VALUE", left out when empty; switch = "--all" when on; positional = one element. */
+  kind: 'word' | 'flag' | 'switch' | 'positional';
+  flag?: string;
+  /** word: the word itself. */
+  value?: string;
+  /** positional default true, flag default false. */
+  required?: boolean;
+  /** A regular expression the final value must match. */
+  pattern?: string;
+  /** Plain words for the pattern: "#channel, @handle or an ID". */
+  hint?: string;
+}
+
+export interface ScriptResultParse {
+  /** The last stdout line that parses as a JSON object: {key?, url?, status?, message?}. */
+  json?: boolean;
+  /** A regular expression on stdout; group 1 (or a group named key) becomes external.key. */
+  keyPattern?: string;
+  urlPattern?: string;
+}
+
+/** A button on an action type that runs an automation's command (action-buttons.md). */
+export interface ActionButton {
+  id: string; // btn-<uuid>
+  label: string;
+  icon?: string | null;
+  enabled: boolean;
+  /** The automation (col-…). */
+  scriptId: string;
+  commandId: string;
+  /** Argument name → template, e.g. {text: "{body}"}. Words are never bound. */
+  bindings: Record<string, string>;
+  /** Show the run sheet and wait for Run. The first run and the first after any change always ask. */
+  confirm: boolean;
+  onSuccess: 'none' | 'markSent' | 'complete';
+  /** Store the key or URL read from the output in item.external. */
+  storeResult: boolean;
+  /** Item statuses that show it. Default ['open', 'ready']. */
+  when?: ActionStatus[];
+  /** send = takes the reserved "Send in Slack" slot; primary; or more (the ⋯ menu). */
+  slot: 'send' | 'primary' | 'more';
+}
+
+export interface ActionButtonInfo extends ActionButton {
+  available: boolean;
+  /** Why it can't run now: "Slack CLI needs your OK", "Script missing", "Command removed". */
+  reason?: string | null;
+  scriptName?: string | null;
+  commandLabel?: string | null;
+}
+
+/** The exact command a button would run for an item. */
+export interface ActionButtonPreview {
+  /** Interpreter, script path, then the arguments, one element each (exactly what runs). */
+  argv: string[];
+  /** For reading only: shell-quoted. */
+  display: string;
+  problems: string[];
+  /** The run sheet must open (first run, or anything changed since the last approved run). */
+  needsApproval: boolean;
+  /** The script itself needs consent first. */
+  needsConsent: boolean;
+  approvalHash: string;
+}
+
+/** One button run kept on an item (newest 10). */
+export interface ActionButtonRun {
+  runId: string;
+  buttonId: string;
+  label: string;
+  startedAt: string;
+  endedAt?: string;
+  durationMs?: number;
+  result: 'running' | 'success' | 'failed' | 'timedout' | 'stopped' | 'notTrusted';
+  exitCode?: number | null;
+  stdoutTail?: string;
+  stderrTail?: string;
+  external?: { key?: string | null; url?: string | null } | null;
+  message?: string | null;
 }
 
 /** v6: a kept script's files changed outside Distill (seen at a read, a tick or before consent and runs). */
@@ -1593,7 +1708,7 @@ export interface CollectorPatch {
   schedule?: CollectorSchedule;
   folder?: Partial<FolderCollectorSettings>;
   /** A new source or interpreter changes the hash: the script needs consent again. */
-  script?: Partial<{ source: ScriptSource; interpreter: CollectorInterpreter; timeoutSeconds: number }>;
+  script?: Partial<{ source: ScriptSource; interpreter: CollectorInterpreter; timeoutSeconds: number; collects: boolean; commands: ScriptCommand[] }>;
 }
 
 /**
@@ -1601,7 +1716,7 @@ export interface CollectorPatch {
  * folder Distill owns (`outputDir`), so nothing reaches the queue. Not a scheduled run: it never changes
  * status.lastRun, the sidebar count or the schedule. Kept in run history.
  */
-export type CollectorTrigger = 'schedule' | 'now' | 'catchup' | 'test';
+export type CollectorTrigger = 'schedule' | 'now' | 'catchup' | 'test' | 'action';
 
 /**
  * queued    – waiting for a free slot (at most 2 collectors run at once) or, for a script,
@@ -1681,6 +1796,8 @@ export interface CollectorRun {
   outputDir?: string;
   /** Script: what ran it (JavaScript and TypeScript run on Distill's own Node, never the login shell's node). */
   runtime?: CollectorRuntime;
+  /** Automations: a command run from an action button (trigger 'action'). argv is masked like output. */
+  command?: { id: string; buttonId: string; actionId: string; argv: string[] };
 }
 
 /** v7: a piece of script output and when it came. */
@@ -2028,6 +2145,13 @@ export interface DistillCore {
   draftAction(id: string, opts?: { signal?: AbortSignal }): Promise<ActionItem>;
   /** Write the summary of an item that has none (older items), from its original and wiki context. */
   summarizeAction(id: string, opts?: { signal?: AbortSignal }): Promise<ActionItem>;
+  /** The exact command a button would run for an item (action-buttons.md). */
+  previewActionButton(id: string, buttonId: string): Promise<ActionButtonPreview>;
+  /** The preview for a button being edited (Settings), on an item or a built-in sample. */
+  previewButtonDraft(input: { typeId: string; button: ActionButton; itemId?: string | null }): Promise<ActionButtonPreview>;
+  /** Run a button for an item. `approve` records the approval of this exact command (the run sheet's Run). */
+  runActionButton(id: string, buttonId: string, opts?: { approve?: boolean }): Promise<{ run: ActionButtonRun; item: ActionItem }>;
+  stopActionButtonRun(id: string): Promise<void>;
   /** Improve the draft after your edit (improve prompt + model); keeps previousBody for Undo. */
   improveAction(id: string, opts?: { signal?: AbortSignal }): Promise<ActionItem>;
   /** Put previousBody back. */
