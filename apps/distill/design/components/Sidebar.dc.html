@@ -54,13 +54,11 @@ const subs = {
   history: [['jobs', 'Jobs', '', 'History.dc.html'], ['chats', 'Ask chats', '', 'History.dc.html'], ['actions', 'Actions', '', 'ActionsHistory.dc.html'], ['activity', 'Activity', '', 'Activity.dc.html']]
 };
 const sum = (k) => subs[k].reduce((a, s) => a + (parseInt(s[2], 10) || 0), 0);
-// Design proposal (not built): Pending and Highlights under Actions, only when routing is on; not counted in the Actions badge.
-if (p.routing === true || p.routing === 'true') subs.actions = subs.actions.concat([['pending', 'Pending', '5', 'ActionsRouting.dc.html'], ['highlights', 'Highlights', '', 'ActionsRouting.dc.html']]);
 const top = [
   ['queue', 'Queue', cnt(p.queueCount, '3'), false, 'Main.dc.html'],
   ['collectors', 'Collectors', p.collectorsAlert || '', true, 'Collectors.dc.html'],
   ['review', 'Review', cnt(p.reviewCount, '1'), true, 'Review.dc.html'],
-  ['actions', 'Actions', cnt(p.actionsCount, String(sum('actions') - ((p.routing === true || p.routing === 'true') ? (parseInt('5', 10) || 0) : 0))), true, 'ActionsTodo.dc.html'],
+  ['actions', 'Actions', cnt(p.actionsCount, String(sum('actions'))), true, 'ActionsTodo.dc.html'],
   ['ask', 'Ask', '', false, 'Ask.dc.html'],
   ['labels', 'Labels', cnt(p.labelsCount, '12'), false, 'Notes.dc.html'],
   ['history', 'History', '', false, 'History.dc.html']
