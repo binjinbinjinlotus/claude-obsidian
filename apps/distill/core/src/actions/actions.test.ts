@@ -1167,6 +1167,21 @@ describe('action summary (action-summary.md)', () => {
     assert.deepEqual([same!.type, same!.body, same!.events.at(-1)!.detail], ['todo', null, undefined]);
   });
 
+  test('Add as: a mapped value outside the new type’s choices is left out, never stored', async () => {
+    const h = harness();
+    writeTea(h);
+    h.runner.find = () => ({
+      structured: { items: [{ ...TEA_FOUND.items[0], type: 'jira', title: 'Fix the retries', fields: [{ key: 'project', value: 'PX' }, { key: 'issueType', value: 'Bug' }, { key: 'priority', value: 'Highest' }] }] },
+    });
+    await h.service.findInJob(job(h, 'job-as3', ['inbox/tea.md'], ['wiki/sources/tea.md']));
+    const [found] = await h.service.listActions({ status: ['pending'] });
+    assert.equal(found!.fields.priority, 'Highest');
+    const [todo] = await h.service.confirmActions([found!.id], { as: { type: 'todo' } });
+    assert.equal(todo!.type, 'todo');
+    assert.notEqual(todo!.fields.priority, 'Highest', 'a to-do’s priority is High, Medium or Low');
+    assert.equal(todo!.fields.priority ?? null, null);
+  });
+
   test('an item found without a summary has none, and a confirmed to-do without a note takes it', async () => {
     const h = harness();
     writeTea(h);

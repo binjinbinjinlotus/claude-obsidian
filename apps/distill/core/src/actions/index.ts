@@ -1776,6 +1776,8 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     const def = actionTypeDef(as.type);
     if (!def || !effectiveType(def, prefs()).enabled) throw new CoreError('invalid_request', `Can’t add it as ${as.type}: that type isn’t on.`);
     const fields = mappedFields(item, def.fields.map((f) => f.key));
+    // A carried-over choice the new type doesn't have (a ticket's "Highest" for a to-do) is left out, never stored.
+    for (const f of def.fields) if (f.kind === 'choice' && f.choices && fields[f.key] && !f.choices.includes(fields[f.key]!)) fields[f.key] = null;
     for (const [k, v] of Object.entries(as.fields ?? {})) {
       const spec = def.fields.find((f) => f.key === k);
       if (!spec) throw new CoreError('invalid_request', `${def.pluralLabel} have no field ${k}.`);
