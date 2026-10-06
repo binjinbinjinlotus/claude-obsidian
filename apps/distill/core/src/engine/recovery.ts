@@ -44,15 +44,30 @@ export function denialPaths(denials: PermissionDenial[], vaultPath: string, jobD
 }
 
 /** What Distill tells the session: the call isn't allowed here; read the files with Read, Grep or Glob. */
-export function denialAnswer(denials: PermissionDenial[], o: { vaultPath: string; jobDir: string }): string {
+export function denialAnswer(denials: PermissionDenial[], o: { vaultPath: string; jobDir: string; queued?: boolean }): string {
   const lines = denials.slice(0, 3).map((d) => `\`${denialLine(d)}\``);
   const paths = denialPaths(denials, o.vaultPath, o.jobDir);
   const named = paths.length > 0 ? ` For example: ${paths.map((p) => `\`${p}\``).join(', ')}.` : '';
   return [
     `Distill sessions can't run ${lines.join(', ')} (no shell commands or python here).`,
     `Use Read, Grep or Glob to inspect files instead.${named} To compare two files, read both.`,
-    "Don't run shell commands or python. Then continue the task and finish with the structured status.",
+    "Don't run shell commands or python.",
+    whoApplies(o.queued),
+    'Then continue the task and finish with the structured status.',
   ].join(' ');
+}
+
+/**
+ * review-queue.md: the session never has to inspect, apply or clear a lock itself. Said in every recovery reply,
+ * because a session that believes it must run them asks the owner for commands it can't have.
+ */
+export function whoApplies(queued?: boolean): string {
+  const base =
+    'Distill runs `transaction inspect` itself, and runs the approved apply only when the owner has approved it; ' +
+    "don't run inspect or apply yourself. Your part is to write or rebuild the bundle in this job's directory and finish with `needs_approval`.";
+  return queued
+    ? `${base} This batch's approved apply waits in Distill's queue, and Distill retries it by itself (a locked vault included), so there is nothing to clear.`
+    : base;
 }
 
 const VERBS: Array<[RegExp, string]> = [

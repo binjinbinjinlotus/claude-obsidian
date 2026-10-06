@@ -24,13 +24,19 @@ struct BlockedCommandCard: View {
     /// What "Tell Claude to read the files" sends (the owner's reply, so recovery starts over).
     static let readInstead = "Don't run shell commands or python. Use Read, Grep or Glob to look at the files you need (to compare two files, read both), then continue and finish with the structured status."
 
-    private var recovering: Bool { job.recovery?.state == .running }
+    private var recovering: Bool { RecoveryText.isActive(job) }
     private var isOpen: Bool { open ?? showCommand }
+
+    private var recoveringText: String {
+        if let agent = job.recovery?.attempts.last(where: { $0.result == "running" }), agent.by == "agent" {
+            return "Claude was blocked from running a command, and Distill’s answers didn’t help. \(ModelChoice.shortName(agent.model ?? "The Recovery model")) is looking at what to do next."
+        }
+        return "Claude was blocked from running a command. Distill told it to read the files instead and is waiting for its answer."
+    }
 
     var body: some View {
         if recovering {
-            ReviewNotice(tone: .blue, title: "Recovering", text: "Claude was blocked from running a command. Distill told it to read the files instead and is waiting for its answer.",
-                         busy: true)
+            ReviewNotice(tone: .blue, title: "Recovering", text: recoveringText, busy: true)
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 Label(BlockedText.heading(job), systemImage: "exclamationmark.bubble").font(Theme.body(13, .bold))
@@ -104,9 +110,9 @@ struct RecoveryCard: View {
     @State private var confirming: Bool?
 
     var body: some View {
-        if recovery.state == .gaveUp {
+        if !RecoveryText.isActive(job) {
             VStack(alignment: .leading, spacing: 10) {
-                Label(RecoveryText.heading(recovery), systemImage: "exclamationmark.bubble").font(Theme.body(13, .bold))
+                Label("Distill couldn’t fix this", systemImage: "exclamationmark.bubble").font(Theme.body(13, .bold))
                 Text(RecoveryText.summary(recovery)).font(Theme.body(12.5)).foregroundStyle(Theme.softInk).fixedSize(horizontal: false, vertical: true)
                 if let tried = RecoveryText.tried(recovery) { Text(tried).font(Theme.body(11.5)).foregroundStyle(Theme.muted) }
                 FlowLayout(spacing: 8) {

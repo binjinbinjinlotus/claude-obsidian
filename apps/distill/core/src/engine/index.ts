@@ -119,6 +119,7 @@ import {
   recoveryFor,
   recoveryPrompt,
   validateFix,
+  whoApplies,
   type RecoveryAnswer,
 } from './recovery.js';
 import { runStructured } from '../actions/ai.js';
@@ -974,6 +975,8 @@ export function createEngine(opts: EngineOptions): Engine {
           }
         } finally {
           if (controllers.get(id) === controller) controllers.delete(id);
+          // A recovery turn that ended without fixing or re-triggering it never leaves "Recovering" behind.
+          settleRecovery(id);
         }
       })(),
     );
@@ -1163,7 +1166,7 @@ export function createEngine(opts: EngineOptions): Engine {
       track(asScheduler(() => runRecoveryAgent(id, 'denial'))().catch((err: unknown) => log('warn', `Recovery: ${(err as Error).message}`)));
       return true;
     }
-    const text = denialAnswer(denials, where);
+    const text = denialAnswer(denials, { ...where, queued: queuedOrApproved(job) });
     if (precheck(job, 'reply', { text })) {
       giveUp(' Its AI session isn’t available anymore.', 'new_session');
       return false;
@@ -1218,14 +1221,19 @@ export function createEngine(opts: EngineOptions): Engine {
     }
   }
 
+  /** The batch was approved: its apply waits in the queue (or comes back to it), Distill retries it. */
+  function queuedOrApproved(job: Job): boolean {
+    return job.queuedApply !== undefined || job.approvedChange !== undefined;
+  }
+
   /** What Distill (rule) or the recovery agent (rebuild_in_session) sends the batch's session. */
   function rebuildText(signature: RecoverySignature, job: Job): string {
     if (signature === 'runner-failed') {
-      return `The last run stopped with an error: ${(job.error ?? 'unknown').slice(0, 300)}. Continue the task from where you were, using only the tools you have, and finish with the structured status.`;
+      return `The last run stopped with an error: ${(job.error ?? 'unknown').slice(0, 300)}. Continue the task from where you were, using only the tools you have, and finish with the structured status. ${whoApplies(queuedOrApproved(job))}`;
     }
     return (
       `The vault core couldn't check the plan: ${(job.approval?.planError ?? 'no usable bundle').slice(0, 400)}. ` +
-      'Rebuild the bundle in this job directory so `transaction inspect` accepts it, run inspect, and finish with `needs_approval`.'
+      `Rebuild the bundle in this job directory. ${whoApplies(queuedOrApproved(job))}`
     );
   }
 
@@ -1274,19 +1282,75 @@ export function createEngine(opts: EngineOptions): Engine {
     return true;
   }
 
+  /** The owner's sentence for a recovery that stops (never a command). */
+  function recoverySummary(signature: RecoverySignature, job: Job): string {
+    if (signature !== 'denial') return problemSummary(signature, job);
+    const denials = job.approval?.denials ?? [];
+    if (denials.length > 0) {
+      return denialSummary(denials, { vaultPath: job.vaultPath, jobDir: jobStateDirectory(job), answers: job.recovery?.denialAnswers ?? 0 });
+    }
+    return 'Distill answered Claude’s blocked command, but Claude stopped with questions instead of a plan.';
+  }
+
+  /** Recovery agent calls in flight (a recovery reads `running` while one is). */
+  const recoveryAgents = new Set<string>();
+
+  /**
+   * review-queue.md, Bounds: a recovery reads `running` only while a turn or an agent call works on it. When a
+   * turn ends without fixing it (a valid plan) or re-triggering it (new denials, a plan error, a runner error),
+   * its attempt fails: a rule's attempt escalates once to the recovery agent, anything else gives up and the
+   * batch needs the owner. Also run at start for recoveries an older build left running.
+   */
+  function settleRecovery(id: string): void {
+    const job = findJob(id);
+    const rec = job?.recovery;
+    if (!job || !rec || rec.state !== 'running' || job.state === 'running' || recoveryAgents.has(id)) return;
+    const last = [...rec.attempts].reverse().find((a) => a.result === 'running');
+    const attempts = rec.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed' as const, error: a.error ?? 'The turn ended without a plan.' } : a));
+    if (job.state === 'completed') {
+      mutate(id, (j) => {
+        if (j.recovery) j.recovery = { ...rec, state: 'fixed', attempts: rec.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'fixed' } : a)) };
+      });
+      return;
+    }
+    if (job.state !== 'awaitingApproval' && job.state !== 'failed') {
+      mutate(id, (j) => {
+        delete j.recovery; // cancelled or rejected: the owner acted
+      });
+      return;
+    }
+    const escalate = last?.by === 'rule' && recoveryPreferences(settings).automatic && !jobKind(job.kind)?.appliesInCore;
+    mutate(id, (j) => {
+      j.recovery = escalate ? { ...rec, attempts, state: 'running' } : { ...rec, attempts, state: 'gaveUp', summary: recoverySummary(rec.signature, j) };
+    });
+    if (escalate) {
+      track(asScheduler(() => runRecoveryAgent(id, rec.signature))().catch((err: unknown) => log('warn', `Recovery: ${(err as Error).message}`)));
+    }
+  }
+
   /**
    * review-queue.md, "The recovery agent": one structured call (no tools, no session, no vault access) picks one fix
    * from a fixed list; the core checks it and carries it out. Bounded by Settings → Recovery (attempts, cost).
    * It never applies anything and never allows a tool rule.
    */
   async function runRecoveryAgent(id: string, signature: RecoverySignature): Promise<void> {
+    recoveryAgents.add(id);
+    try {
+      await recoveryAgentCall(id, signature);
+    } finally {
+      recoveryAgents.delete(id);
+      settleRecovery(id);
+    }
+  }
+
+  async function recoveryAgentCall(id: string, signature: RecoverySignature): Promise<void> {
     const job = findJob(id);
     if (!job?.recovery || (job.state !== 'awaitingApproval' && job.state !== 'failed')) return;
     const prefs = recoveryPreferences(settings);
     const rec = job.recovery;
     const where = { vaultPath: job.vaultPath, jobDir: jobStateDirectory(job) };
     const denials = job.approval?.denials ?? [];
-    const base = signature === 'denial' ? denialSummary(denials, { ...where, answers: rec.denialAnswers ?? 0 }) : problemSummary(signature, job);
+    const base = recoverySummary(signature, job);
     const stop = (extra: string, proposal?: 'new_session') =>
       mutate(id, (j) => {
         if (!j.recovery) return;
@@ -3861,11 +3925,14 @@ export function createEngine(opts: EngineOptions): Engine {
         if (!rec || j.state === 'running' || (j.state !== 'awaitingApproval' && j.state !== 'failed')) continue;
         if (rec.state === 'waiting') {
           scheduleRecoveryWake(j.id, rec.signature, rec.waitUntil ? Date.parse(rec.waitUntil) - now().getTime() : 0);
-        } else if (rec.state === 'running' && rec.attempts.some((a) => a.result === 'running')) {
+        } else if (rec.state === 'running' && [...rec.attempts].reverse().find((a) => a.result === 'running')?.by === 'agent') {
           mutate(j.id, (x) => {
             if (x.recovery) x.recovery = { ...x.recovery, attempts: x.recovery.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed', error: 'Distill restarted.' } : a)) };
           });
           track(asScheduler(() => runRecoveryAgent(j.id, rec.signature))().catch((err: unknown) => log('warn', `Recovery: ${(err as Error).message}`)));
+        } else if (rec.state === 'running') {
+          // Nothing works on it any more (no turn, no agent call): the rule's attempt escalates, else the owner.
+          settleRecovery(j.id);
         }
       }
       scheduleNextBatch(now());

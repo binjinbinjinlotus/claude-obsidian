@@ -17,6 +17,15 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**A recovery settles when its turn ends without a result (2026-10-06).** The
+owner's batch read "Recovering" forever: Distill answered a blocked command,
+and Claude came back with questions, no denials and no plan, which nothing
+handled. Now a recovery is `running` only while a turn or an agent call works
+on it; otherwise the rule's attempt escalates once to the recovery agent, then
+the batch needs the owner. A start-up sweep settles recoveries an older build
+left running. Recovery replies tell the session that Distill inspects and
+applies, so it stops asking the owner for commands it can't have.
+
 **A failed batch recovery gave up on counts as Needs you (2026-10-06).**
 Supersedes "Badges still count only waiting batches" in the entry below: now
 that such a batch can be rejected, it counts in the badges and its pill reads

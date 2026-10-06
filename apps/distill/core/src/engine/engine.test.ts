@@ -904,6 +904,71 @@ describe('blocked commands (review-queue.md)', () => {
     assert.equal(h.runner.requests.length, 1);
     assert.match(h.runner.requests[0]!.prompt, /Read, Grep or Glob/);
   });
+
+  // 2026-10-06, the owner's job-20261005-124947-9958: a denial, Distill's answer, then questions and no plan.
+  const stillBlocked: Step = {
+    structured: { status: 'needs_input', summary: 'Still blocked, and this session no longer allows the commands I would need.', questions: ['Can you clear the lock?'] },
+  };
+
+  test('a denial answered, then questions without denials: recovery escalates once to the agent, then needs the owner', async () => {
+    h = setup([]);
+    const vault = path.join(tmp, 'vault');
+    h.runner.steps.push(blocked(vault), stillBlocked, { structured: { diagnosis: 'Claude thinks it must clear a lock.', fix: 'give_up', reason: 'r' } });
+    const created = await firstJob();
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(h.runner.requests.length, 3, 'the batch, the rule answer, one recovery call');
+    assert.match(h.runner.requests[1]!.prompt, /Distill runs `transaction inspect` itself/, 'the answer says who inspects and applies');
+    assert.equal(job.recovery?.state, 'gaveUp', 'never left running');
+    assert.deepEqual(job.recovery!.attempts.map((a) => [a.by, a.result]), [['rule', 'failed'], ['agent', 'failed']]);
+    assert.equal(job.recovery?.summary, 'Distill answered Claude’s blocked command, but Claude stopped with questions instead of a plan. Claude thinks it must clear a lock.');
+    assert.equal((await h.engine.status()).pendingApprovals, 1, 'needs the owner');
+  });
+
+  test('the agent’s answer that also ends in questions gives up (one escalation, no loop)', async () => {
+    h = setup([]);
+    const vault = path.join(tmp, 'vault');
+    h.runner.steps.push(blocked(vault), stillBlocked,
+      { structured: { diagnosis: 'Read the files.', fix: 'answer_denial', reason: 'r', guidance: 'Use Read on the ledger, then finish.' } }, stillBlocked);
+    const created = await firstJob();
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(h.runner.requests.length, 4, 'no second agent call');
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.ok(job.recovery!.attempts.every((a) => a.result !== 'running'));
+    assert.equal(job.state, 'awaitingApproval');
+  });
+
+  test('at start, a recovery left running with nothing working on it settles (the owner’s stuck batch)', async () => {
+    h = setup([]);
+    h.runner.steps.push(stillBlocked);
+    const created = await firstJob();
+    await h.engine.whenIdle();
+    await h.engine.stop();
+    const jobsFile = path.join(tmp, 'state', 'jobs.json');
+    const saved = JSON.parse(fs.readFileSync(jobsFile, 'utf8')) as Array<Record<string, unknown>>;
+    const old = saved.find((j) => j.id === created.id)!;
+    old.recovery = { state: 'running', signature: 'denial', denialAnswers: 1, attempts: [{ at: '2026-10-05T12:55:00Z', by: 'rule', fix: 'answer_denial', result: 'running', costUSD: 0 }] };
+    old.queuedApply = { at: '2026-10-05T12:50:00Z', order: 1, bundlePath: '/x/bundle.json', labels: 'confirm', carries: 'confirm' };
+    fs.writeFileSync(jobsFile, JSON.stringify(saved));
+    h = setup([], { runner: new FakeRunner([{ structured: { diagnosis: 'It needs you.', fix: 'give_up', reason: 'r' } }]), jobs: saved });
+    await h.engine.start();
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(h.runner.requests.length, 1, 'one recovery call, no session turn');
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.equal((await h.engine.status()).pendingApprovals, 1);
+
+    // Recover automatically off: it settles straight to the owner.
+    await h.engine.stop();
+    const again = JSON.parse(fs.readFileSync(jobsFile, 'utf8')) as Array<Record<string, unknown>>;
+    again.find((j) => j.id === created.id)!.recovery = old.recovery;
+    h = setup([], { jobs: again, settings: { recovery: { automatic: false } } });
+    await h.engine.start();
+    await h.engine.whenIdle();
+    assert.equal(h.runner.requests.length, 0);
+    assert.equal(h.engine.getJob(created.id)!.recovery?.state, 'gaveUp');
+  });
 });
 
 describe('the apply queue (review-queue.md)', () => {

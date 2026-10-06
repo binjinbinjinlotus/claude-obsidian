@@ -929,6 +929,21 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
   the vault already overtook goes straight to the refresh ("Your vault changed
   since this plan was built, so it is rebuilt first"), never an apply turn. If
   the refresh can't start, Approve goes on as before.
+- **No recovery is left "Recovering" (2026-10-06, the owner's stuck batch).**
+  A recovery reads `running` only while a turn or a recovery agent call works
+  on it. `settleRecovery` runs when every turn ends and after every agent
+  call: a turn that neither fixed it (a valid plan) nor started it again (new
+  denials, a plan error, a runner error) fails the running attempt. A rule's
+  attempt escalates once to the agent, anything else gives up ("Distill
+  answered Claude’s blocked command, but Claude stopped with questions instead
+  of a plan."). `start()` settles a recovery left running with nothing in
+  flight the same way. Every recovery reply (`denialAnswer`, `rebuildText`)
+  now says Distill runs `transaction inspect` and the approved apply itself,
+  and, for an approved batch, that the apply waits in Distill's queue and is
+  retried (`whoApplies`). The Mac says Recovering only while
+  `RecoveryText.isActive` (a turn runs, an agent attempt runs, or a next try
+  is scheduled); otherwise the batch reads Needs you. Snapshot state
+  `review-gaveup-questions`.
 - **Still open:**
   - `lock`, `not-recorded`, `full-read-stop` and `session-gone` keep their
     rules; the agent doesn't run for them.

@@ -842,7 +842,7 @@ struct StateStyle {
     /// review-queue.md: what the batch is doing in the queue, when it isn't simply waiting for the owner.
     static func of(_ job: Job) -> StateStyle {
         if job.refresh != nil { return .init(label: "Updating…", fill: Theme.primaryTint, ink: Theme.primary, dot: Theme.primary) }
-        if job.recovery?.state == .running || job.recovery?.state == .waiting { return .init(label: "Recovering", fill: Theme.primaryTint, ink: Theme.primary, dot: Theme.primary) }
+        if RecoveryText.isActive(job) { return .init(label: "Recovering", fill: Theme.primaryTint, ink: Theme.primary, dot: Theme.primary) }
         if job.state == .failed, job.recovery?.state == .gaveUp { return .init(label: "Needs you", fill: Theme.peachTint, ink: Theme.peachInk, dot: Theme.peachInk) }
         if job.state == .awaitingApproval {
             if job.queuedApply?.waitingToApply == true { return .init(label: "Queued", fill: Theme.panel, ink: Theme.softInk, dot: Theme.faint) }

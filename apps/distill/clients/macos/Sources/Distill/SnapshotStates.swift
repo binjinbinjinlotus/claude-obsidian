@@ -622,10 +622,13 @@ extension StatesSnapshot {
         e = engine()
         var recovering = awaiting(e, denials: diff, worker: "I need to compare the claim ledgers before I write the bundle.")
         recovering.approval?.plan = nil
+        // Recovering only while something works on it: here the recovery agent's call (2026-10-06).
         recovering.recovery = RecoveryState(state: .running, signature: "denial",
-                                            attempts: [RecoveryAttempt(at: Date().addingTimeInterval(-40), fix: "answer_denial")], denialAnswers: 1)
+                                            attempts: [RecoveryAttempt(at: Date().addingTimeInterval(-300), fix: "answer_denial", result: "failed"),
+                                                       RecoveryAttempt(at: Date().addingTimeInterval(-120), fix: "answer_denial", result: "failed"),
+                                                       RecoveryAttempt(at: Date().addingTimeInterval(-10), by: "agent", model: "opus", fix: "give_up")], denialAnswers: 2)
         e.jobs = [recovering]
-        main("review-recovering-denial", f, "Review", "Blocked command · Distill answers", "Distill told Claude to read the files instead; Recovering, nothing for the owner.", e, section: .review, job: e.jobs[0].id) {
+        main("review-recovering-denial", f, "Review", "Blocked command · recovery at work", "Two answers didn't help; the recovery agent looks at it. Recovering, nothing for the owner.", e, section: .review, job: e.jobs[0].id) {
             JobDetailView(jobID: e.jobs[0].id)
         }
         e = engine()
@@ -637,6 +640,22 @@ extension StatesSnapshot {
                                         summary: "Claude wanted to compare the claim ledger with this batch's copy. Distill couldn't let it run that, and told it to read the files instead (twice).")
         e.jobs = [gaveUp]
         main("review-gaveup-denial", f, "Review", "Blocked command · plain words", "The owner card: the sentence, the options, and the command only behind Show command.", e, section: .review, job: e.jobs[0].id) {
+            JobDetailView(jobID: e.jobs[0].id)
+        }
+
+        // 2026-10-06, the owner's stuck batch: Distill answered a blocked command, Claude came back with questions.
+        // Nothing works on it any more, so it reads Needs you with the Couldn't fix card, never Recovering.
+        e = engine()
+        var stuck = awaiting(e, questions: ["Can you clear the vault lock?"], worker: "Still blocked, and this session no longer allows the commands I’d need.")
+        stuck.approval?.plan = nil
+        stuck.queuedApply = QueuedApply(at: Date().addingTimeInterval(-900), order: 1)
+        stuck.recovery = RecoveryState(state: .gaveUp, signature: "denial",
+                                       attempts: [RecoveryAttempt(at: Date().addingTimeInterval(-600), fix: "answer_denial", result: "failed"),
+                                                  RecoveryAttempt(at: Date().addingTimeInterval(-540), by: "agent", model: "opus", fix: "give_up", result: "failed", costUSD: 0.03)],
+                                       denialAnswers: 1,
+                                       summary: "Distill answered Claude’s blocked command, but Claude stopped with questions instead of a plan. Claude thinks it has to clear the vault lock; Distill retries the apply itself.")
+        e.jobs = [stuck]
+        main("review-gaveup-questions", f, "Review", "Couldn't fix · questions after a blocked command", "The recovery settles when its turn ends with questions: Needs you, never a Recovering that never clears.", e, section: .review, job: e.jobs[0].id) {
             JobDetailView(jobID: e.jobs[0].id)
         }
 

@@ -144,10 +144,24 @@ public struct RecoveryState: Codable, Equatable, Sendable {
 /// review-queue.md, Self-recovery: the Review words for a problem other than a blocked command (stale-again,
 /// plan-error, runner-failed). The sentence of what's wrong is the core's; these only describe the state.
 public enum RecoveryText {
-    /// The card shows for these; blocked commands have their own card (BlockedText).
+    /// The card shows for these; blocked commands have their own card (BlockedText) while the turn still has
+    /// blocked calls to show.
     public static func shows(_ job: Job) -> Bool {
-        guard let r = job.recovery, r.signature != "denial", r.state != .fixed else { return false }
+        guard let r = job.recovery, r.state != .fixed else { return false }
+        if r.signature == "denial", !(job.approval?.denials.isEmpty ?? true) { return false }
         return job.state == .awaitingApproval || job.state == .failed
+    }
+
+    /// Recovery is really working on the batch: a turn runs, an agent attempt runs, or the next try is scheduled.
+    /// A recovery an older core left `running` with nothing in flight (the rule's turn ended with questions) is
+    /// not: the batch needs the owner (2026-10-06).
+    public static func isActive(_ job: Job) -> Bool {
+        guard let r = job.recovery else { return false }
+        switch r.state {
+        case .waiting: return true
+        case .running: return job.state == .running || r.attempts.last(where: { $0.result == "running" })?.by == "agent"
+        case .gaveUp, .fixed: return false
+        }
     }
 
     public static func heading(_ r: RecoveryState, timeZone: TimeZone = .current) -> String {
@@ -178,6 +192,7 @@ public enum RecoveryText {
         case "stale-again": return "Your vault keeps changing under this plan: it was rebuilt for the latest pages and is out of date again."
         case "plan-error": return "The vault core couldn’t check this plan."
         case "runner-failed": return "The AI run stopped with an error."
+        case "denial": return "Distill answered Claude’s blocked command, but Claude stopped with questions instead of a plan."
         default: return "Distill couldn’t get this batch going again by itself."
         }
     }
@@ -225,7 +240,7 @@ public enum BlockedText {
         return "Claude was blocked from running a command it wanted, and stopped."
     }
     public static func heading(_ job: Job) -> String {
-        job.recovery?.state == .running ? "Recovering" : "Claude got stuck"
+        RecoveryText.isActive(job) ? "Recovering" : "Claude got stuck"
     }
 }
 
@@ -237,7 +252,7 @@ public enum ReviewQueueText {
         if j.state == .failed { return j.recovery?.state == .gaveUp }
         guard j.state == .awaitingApproval else { return false }
         if j.queuedApply?.waitingToApply == true || j.refresh != nil { return false }
-        if let r = j.recovery, r.state == .running || r.state == .waiting { return false }
+        if RecoveryText.isActive(j) { return false }
         return true
     }
 
@@ -422,7 +437,7 @@ extension ReviewBatches {
     /// The row's one state, from the same facts as the apply card.
     public static func rowState(_ job: Job, in jobs: [Job]) -> ReviewRowState {
         if job.refresh != nil { return .updating }
-        if job.recovery?.state == .running || job.recovery?.state == .waiting { return .recovering }
+        if RecoveryText.isActive(job) { return .recovering }
         switch job.state {
         case .awaitingApproval:
             if job.recovery?.state == .gaveUp { return .couldntFix }

@@ -33,7 +33,9 @@ final class ReviewQueueTests: XCTestCase {
         job.recovery = RecoveryState(state: .gaveUp, signature: "denial", summary: "Claude wanted to read the vault log.")
         XCTAssertEqual(BlockedText.summary(job), "Claude wanted to read the vault log.")
         job.recovery?.state = .running
-        XCTAssertEqual(BlockedText.heading(job), "Recovering")
+        XCTAssertEqual(BlockedText.heading(job), "Claude got stuck", "nothing works on it: never Recovering")
+        job.state = .running
+        XCTAssertEqual(BlockedText.heading(job), "Recovering", "the rule's turn runs")
     }
 
     func testRecoveryWordsForOtherProblems() throws {
@@ -65,9 +67,35 @@ final class ReviewQueueTests: XCTestCase {
         XCTAssertFalse(RecoveryText.offersNewSession(job), "the gone-session confirmation already shows")
         job.sessionUnavailable = nil
         job.recovery?.signature = "denial"
+        XCTAssertTrue(RecoveryText.shows(job), "no blocked calls left to show: this card")
+        job.approval = ApprovalRequest(summary: "", denials: [PermissionDenial(toolName: "Bash", input: ["command": .string("ls")])])
         XCTAssertFalse(RecoveryText.shows(job), "blocked commands have their own card")
         job.recovery = nil
         XCTAssertTrue(ApplyTimeline.reviewList([job]).isEmpty)
+    }
+
+    /// 2026-10-06, the owner's stuck batch: a rule's recovery left `running` after its turn ended with questions.
+    func testRecoveringOnlyWhileSomethingWorksOnIt() {
+        var job = Job(id: "j", vaultPath: "/v", files: ["inbox/Sync.md"], state: .awaitingApproval)
+        job.approval = ApprovalRequest(summary: "Still blocked.", questions: ["Can you clear the lock?"])
+        job.recovery = RecoveryState(state: .running, signature: "denial", attempts: [RecoveryAttempt(at: Date(), fix: "answer_denial")], denialAnswers: 1)
+        XCTAssertFalse(RecoveryText.isActive(job), "nothing in flight")
+        XCTAssertEqual(ReviewBatches.rowState(job, in: [job]), .needsYou)
+        XCTAssertTrue(ReviewQueueText.needsOwner(job))
+        XCTAssertEqual(BlockedText.heading(job), "Claude got stuck")
+        XCTAssertTrue(RecoveryText.shows(job), "no blocked calls left: the recovery card shows")
+
+        job.state = .running
+        XCTAssertTrue(RecoveryText.isActive(job), "the rule's turn runs")
+        XCTAssertEqual(ReviewBatches.rowState(job, in: [job]), .recovering)
+        job.state = .awaitingApproval
+        job.recovery?.attempts.append(RecoveryAttempt(at: Date(), by: "agent", model: "opus", fix: "give_up"))
+        XCTAssertTrue(RecoveryText.isActive(job), "an agent attempt runs")
+        XCTAssertFalse(ReviewQueueText.needsOwner(job))
+        job.recovery = RecoveryState(state: .waiting, signature: "plan-error", waitUntil: Date())
+        XCTAssertTrue(RecoveryText.isActive(job))
+        job.recovery?.state = .gaveUp
+        XCTAssertFalse(RecoveryText.isActive(job))
     }
 
     func testQueueWordsAndTheBadgeRule() {
@@ -89,7 +117,7 @@ final class ReviewQueueTests: XCTestCase {
         c.refresh = RefreshState(since: now)
         XCTAssertFalse(ReviewQueueText.needsOwner(c), "being rebuilt")
         c.refresh = nil
-        c.recovery = RecoveryState(state: .running, signature: "denial")
+        c.recovery = RecoveryState(state: .running, signature: "denial", attempts: [RecoveryAttempt(at: now, by: "agent", fix: "give_up")])
         XCTAssertFalse(ReviewQueueText.needsOwner(c), "recovering")
     }
 
