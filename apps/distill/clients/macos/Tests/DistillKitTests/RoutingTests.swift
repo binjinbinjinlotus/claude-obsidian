@@ -75,11 +75,14 @@ final class RoutingTests: XCTestCase {
         XCTAssertFalse(Routing.overdue("2026-10-06", now: now), "today isn't overdue")
         XCTAssertEqual(Routing.receivedLine(ActionReceived(notePath: "wiki/sources/2026-10-06 Standup.md")), "Looks received in 2026-10-06 Standup. Mark received?")
 
-        func w(_ id: String, owner: String, ownerID: String? = nil, due: String?) -> ActionItem {
-            var i = ActionItem(id: id, title: id); i.route = .waiting; i.owner = owner; i.ownerID = ownerID; i.due = due; return i
+        func w(_ id: String, owner: String, ownerID: String? = nil, due: String?, daysAgo: Double) -> ActionItem {
+            var i = ActionItem(id: id, title: id, createdAt: now.addingTimeInterval(-daysAgo * 86_400))
+            i.route = .waiting; i.owner = owner; i.ownerID = ownerID; i.due = due; return i
         }
-        let list = [w("v", owner: "Vladan", due: "2026-10-02"), w("a", owner: "A", ownerID: "p-aditya", due: "2026-10-09"), w("n", owner: "Anant", due: nil)]
-        XCTAssertEqual(Routing.pendingGroups(list, byDate: false, people: people, now: now).map(\.title), ["Aditya Pradhan", "Anant", "Vladan"], "People first, then by name")
+        let list = [w("n", owner: "Anant", due: nil, daysAgo: 1), w("v", owner: "Vladan", due: "2026-10-02", daysAgo: 6),
+                    w("a", owner: "A", ownerID: "p-aditya", due: "2026-10-09", daysAgo: 1), w("v2", owner: "Vladan", due: nil, daysAgo: 0)]
+        XCTAssertEqual(Routing.pendingGroups(list, byDate: false, people: people, now: now).map(\.title), ["Aditya Pradhan", "Vladan", "Anant"],
+                       "People first in list order, then others in the order the notes first name them")
         XCTAssertEqual(Routing.pendingGroups(list, byDate: true, people: people, now: now).map(\.title), ["Overdue", "Fri", "No date"])
     }
 

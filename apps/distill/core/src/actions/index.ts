@@ -2035,7 +2035,15 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       const k = id ? people.findIndex((x) => x.id === id) : -1;
       return k < 0 ? people.length : k;
     };
-    const groups = [...byPerson.values()].sort((a, b) => order(a.personID) - order(b.personID) || a.person.localeCompare(b.person));
+    // People-list entries first, in list order; then others in the order they first appear in the note.
+    const firstSeen = (g: { items: HighlightItem[] }): [string, number] => g.items
+      .map((i): [string, number] => [find(i.id)?.createdAt ?? '9999', i.line ?? Number.MAX_SAFE_INTEGER])
+      .reduce((m, x) => (x[0] < m[0] || (x[0] === m[0] && x[1] < m[1]) ? x : m), ['9999', Number.MAX_SAFE_INTEGER]);
+    const seen = (a: { items: HighlightItem[] }, b: { items: HighlightItem[] }) => {
+      const [x, y] = [firstSeen(a), firstSeen(b)];
+      return x[0] !== y[0] ? (x[0] < y[0] ? -1 : 1) : x[1] - y[1];
+    };
+    const groups = [...byPerson.values()].sort((a, b) => order(a.personID) - order(b.personID) || seen(a, b) || a.person.localeCompare(b.person));
     const names: string[] = [];
     const you = people[0]!;
     if (fromNote.some((i) => i.ownerID === YOU_ID || i.owedToID === YOU_ID || inLists(i))) names.push(you.name.trim() || 'You');

@@ -30,16 +30,21 @@ extension ActionsStore {
         }
     }
 
-    func trackAsPending(_ item: ActionItem) {
-        call { try await $0.trackAsPending(item.id) }
-        show(ActionToast(text: "Tracking “\(item.title)” in Pending", open: { [weak self] in self?.open(tab: "pending", select: item.id) }))
+    /// Track as Pending, for one of a person's actions or all of them (one toast).
+    func trackAsPending(_ items: [ActionItem]) {
+        guard let first = items.first else { return }
+        for item in items { call { try await $0.trackAsPending(item.id) } }
+        let what = items.count == 1 ? "“\(first.title)”" : "\(items.count) items"
+        show(ActionToast(text: "Tracking \(what) in Pending", open: { [weak self] in self?.open(tab: "pending", select: first.id) }))
     }
 
-    /// It's mine: an Others' action goes to its type's list as yours.
-    func claim(_ item: ActionItem) {
-        call { try await $0.claimAction(item.id) }
-        let tab = listTypes.contains { $0.id == item.type } ? item.type : "todo"
-        show(ActionToast(text: "Moved “\(item.title)” to \(label(tab))", open: { [weak self] in self?.open(tab: tab, select: item.id) }))
+    /// It's mine: Others' actions go to their type's list as yours.
+    func claim(_ items: [ActionItem]) {
+        guard let first = items.first else { return }
+        for item in items { call { try await $0.claimAction(item.id) } }
+        let tab = listTypes.contains { $0.id == first.type } ? first.type : "todo"
+        let what = items.count == 1 ? "“\(first.title)”" : "\(items.count) items"
+        show(ActionToast(text: "Moved \(what) to your lists", open: { [weak self] in self?.open(tab: tab, select: first.id) }))
     }
 
     func markReceived(_ item: ActionItem) {

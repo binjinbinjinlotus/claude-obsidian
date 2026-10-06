@@ -337,8 +337,10 @@ public enum Routing {
             let key = item.ownerID ?? "name:\(name.lowercased())"
             if let k = groups.firstIndex(where: { $0.id == key }) { groups[k].items.append(item) } else { groups.append(PendingGroup(id: key, title: name, items: [item])) }
         }
+        // People-list entries first, in list order; then others in the order they first appear in the notes.
         let order = { (g: PendingGroup) -> Int in people.firstIndex { $0.id == g.id } ?? people.count }
-        return groups.sorted { order($0) != order($1) ? order($0) < order($1) : $0.title < $1.title }
+        let first = { (g: PendingGroup) -> Date in g.items.map(\.createdAt).min() ?? .distantFuture }
+        return groups.sorted { order($0) != order($1) ? order($0) < order($1) : first($0) != first($1) ? first($0) < first($1) : $0.title < $1.title }
     }
 
     // MARK: To confirm

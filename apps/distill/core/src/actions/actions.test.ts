@@ -1689,6 +1689,21 @@ describe('Highlights (actions-routing.md)', () => {
     }
   });
 
+  test('Others’ actions list People first, then others in the order the note names them', async () => {
+    const h = harness({ prefs: routedPrefs() });
+    writeSync(h);
+    const other = (title: string, owner: string, quote: string, type = 'todo') => ({ type, title, summary: 's', fields: [], why: 'w', quote, notePath: 'inbox/sync.md', owner });
+    h.runner.find = () => ({ structured: { items: [
+      other('Benchmark the Redis cache on staging', 'Vladan', '- Vladan to benchmark the Redis cache on staging by Wed'),
+      other('Set up one shared Storybook', 'Zed', '- storybook: one shared instance for both FE teams'),
+      other('Ping the audit team', 'A', '- A: can you set it up? we need it for the audit', 'slack'),
+    ] } });
+    await h.service.findInJob(job(h, 'job-order', ['inbox/sync.md'], ['wiki/sources/sync.md']));
+    const note = await h.service.getHighlight('wiki/sources/sync.md');
+    // Aditya is in People (first); Zed (line 3) before Vladan (line 8), though V sorts before Z.
+    assert.deepEqual(note.others.map((g) => g.person), ['Aditya Pradhan', 'Zed', 'Vladan']);
+  });
+
   test('the section is replaced, never doubled, and removed when empty', () => {
     const page = '# P\n\nText.\n\n## Others\' actions\n\n- **A**: old\n\n## Links\n\n- x\n';
     const next = withOthersSection(page, ['- **B**: new']);

@@ -94,7 +94,7 @@ Actions → Pending, a sidebar sub-item with its count.
 - The detail:
   - Who it's waiting on and by when.
   - WHAT YOU'RE WAITING FOR.
-  - The original's lines, Why, and Found by.
+  - A full FROM THE ORIGINAL header (Open original, Show in Finder, the lines), Why, and Found by.
   - Not waiting anymore · Nudge · Mark received.
 - Mark received: status `done`, with event `received`. It is restorable.
 - Not waiting anymore: status `removed`, with event `not-waiting`. It goes to History.
@@ -120,7 +120,10 @@ notes | Meetings.
 - The note pane shows:
   - From the wiki page: Open page, Sources › title, the summary, KEY POINTS and DECISIONS, each
     with its line.
-  - OTHERS' ACTIONS by person, each item with Track as Pending and It's mine.
+  - OTHERS' ACTIONS by person. Track as Pending and It's mine appear once per person and act on all
+    of that person's items in the note; each line's … menu holds the same two choices for that one item.
+  - People (in Pending's By person, and in Others' actions) are listed People-list entries first, in
+    list order, then others in the order the notes first name them.
   - YOUR ITEMS, linking to your lists and Pending.
   - Copy as summary and Open note.
 - The summary, key points and decisions are read from the note's wiki source page

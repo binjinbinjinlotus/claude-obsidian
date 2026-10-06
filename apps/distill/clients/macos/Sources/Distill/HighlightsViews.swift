@@ -268,15 +268,22 @@ struct HighlightDetail: View {
                                 if let line = item.line {
                                     Text("line \(line)").font(Theme.body(11, .semibold)).foregroundStyle(Theme.primary)
                                 }
+                                // One item of several: the same two choices, for this line only.
+                                ActionRowMore {
+                                    Button("Track as Pending") { store.trackAsPending(routed([item])) }
+                                    Button("It’s mine") { store.claim(routed([item])) }
+                                }
+                                .frame(height: 16)
                             }
-                            .padding(.leading, 24)
-                            HStack(spacing: 10) {
-                                Button("Track as Pending") { if let a = store.routed[item.id] { store.trackAsPending(a) } }
-                                Button("It’s mine") { if let a = store.routed[item.id] { store.claim(a) } }
-                            }
-                            .buttonStyle(.plain).font(Theme.body(11.5, .semibold)).foregroundStyle(Theme.primary)
                             .padding(.leading, 24)
                         }
+                        // Once per person (canvas actions-highlights-note): for all of their items in this note.
+                        HStack(spacing: 10) {
+                            Button("Track as Pending") { store.trackAsPending(routed(g.items)) }
+                            Button("It’s mine") { store.claim(routed(g.items)) }
+                        }
+                        .buttonStyle(.plain).font(Theme.body(11.5, .semibold)).foregroundStyle(Theme.primary)
+                        .padding(.leading, 24)
                     }
                 }
             }
@@ -317,6 +324,8 @@ struct HighlightDetail: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panel))
     }
+
+    private func routed(_ items: [HighlightNote.Item]) -> [ActionItem] { items.compactMap { store.routed[$0.id] } }
 
     /// "the ticket links" → "ticket links".
     private func shortWhat(_ s: String) -> String {

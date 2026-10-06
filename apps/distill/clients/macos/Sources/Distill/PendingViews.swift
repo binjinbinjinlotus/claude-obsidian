@@ -174,7 +174,7 @@ struct PendingDetail: View {
                         Text(item.summary ?? item.why ?? item.title).font(Theme.body(13.5)).lineSpacing(3)
                             .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                     }
-                    ActionContextBlock(item: item)
+                    ActionContextBlock(item: item, full: true)
                     if store.nudging[item.id] != nil { NudgePanel(store: store, item: item) }
                 }
                 .padding(.horizontal, 22).padding(.top, 4).padding(.bottom, 20)
