@@ -81,7 +81,7 @@
     {
       "id": "review-gaveup",
       "base": "review",
-      "label": "F · Distill couldn’t fix this: the core’s sentence, Let recovery try again, Continue in a new session (proposed), Open in Terminal, Reject batch",
+      "label": "F · Distill couldn’t fix this: What was tried (one row per attempt), Rebuild against the latest pages, Let recovery try again, Continue in a new session (proposed), Open in Terminal, Reject batch",
       "set": {
         "detail": {
           "frag": "gaveup"
@@ -138,7 +138,7 @@
     {
       "id": "review-gaveup-runner",
       "base": "review",
-      "label": "K · A failed batch (runner-failed) gave up: it stays in Review; Let recovery try again, Open in Terminal, Reject batch",
+      "label": "K · A failed batch (runner-failed) gave up: it stays in Review; What was tried, Rebuild, Let recovery try again, Open in Terminal, Reject batch",
       "set": {
         "detail": {
           "frag": "gaveup-runner"
@@ -160,11 +160,35 @@
       }
     },
     {
+      "id": "review-gaveup-split",
+      "base": "review",
+      "label": "M · Recovery proposes a split: “Rebuild 1 source first” approves only that source; the rest wait",
+      "set": {
+        "detail": {
+          "frag": "gaveup-split"
+        },
+        "sidebar.reviewCount": "2",
+        "sidebar.status": "Needs you"
+      }
+    },
+    {
+      "id": "review-gaveup-discard",
+      "base": "review",
+      "label": "N · Recovery proposes discarding the rebuilt part: “Discard the rebuilt part” rejects the part, never the batch",
+      "set": {
+        "detail": {
+          "frag": "gaveup-discard"
+        },
+        "sidebar.reviewCount": "2",
+        "sidebar.status": "Needs you"
+      }
+    },
+    {
       "id": "rq-card-asbuilt",
       "label": "As built (2026-10-06)",
-      "caption": "Where the build differs from the frames above, and what is still open.",
+      "caption": "The rules as built: the session first, the lock hand-over, the notice and the card.",
       "card": {
-        "height": 520,
+        "height": 560,
         "bg": "#E4E1DB",
         "pad": "22px",
         "align": "stretch"
@@ -363,6 +387,16 @@
           "row": [
             "review-gaveup-runner",
             "review-gaveup-new-session"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
+          "title": "Proposals the owner confirms"
+        },
+        {
+          "row": [
+            "review-gaveup-split",
+            "review-gaveup-discard"
           ],
           "style": "display: flex; gap: 40px; align-items: flex-start"
         },

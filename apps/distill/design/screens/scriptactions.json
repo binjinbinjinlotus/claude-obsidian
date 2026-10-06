@@ -155,9 +155,9 @@
     {
       "id": "sa-card-add",
       "label": "Adding an automation",
-      "caption": "A first step says what it does; collectors keep today’s steps.",
+      "caption": "As built: the first step, What it does; a collector keeps today’s steps after it.",
       "card": {
-        "height": 300,
+        "height": 470,
         "bg": "#E4E1DB",
         "pad": "22px",
         "align": "stretch"
