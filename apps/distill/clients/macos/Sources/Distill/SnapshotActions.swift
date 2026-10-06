@@ -28,7 +28,7 @@ enum ActionFixtures {
                        draftWhen: "onFind", improveAfterEdit: true),
         ActionTypeInfo(id: "jira", label: "Jira ticket", pluralLabel: "Jira tickets",
                        fields: [ActionFieldSpec(key: "project", label: "Project", required: true),
-                                ActionFieldSpec(key: "issueType", label: "Type", kind: "choice", choices: ["Task", "Bug", "Story"]),
+                                ActionFieldSpec(key: "issueType", label: "Type", kind: "choice", choices: ["Task", "Bug", "Story"], required: true),
                                 ActionFieldSpec(key: "priority", label: "Priority", kind: "choice", choices: ["Highest", "High", "Medium", "Low"]),
                                 ActionFieldSpec(key: "assignee", label: "Assignee", kind: "person")],
                        handlers: [ActionHandlerInfo(id: "create", label: "Create in Jira"), ActionHandlerInfo(id: "refresh", label: "Refresh"),
@@ -361,11 +361,11 @@ extension StatesSnapshot {
         e = addAs { e in
             if let item = e.actions.items["p1"], let slack = e.actions.type("slack") {
                 var draft = AddAs.prefill(item, as: slack)
-                draft.fields["to"] = ""
+                draft.fields["to"] = "Vladan Dimitrijevic"
                 e.actions.addingAs["p1"] = draft
             }
         }
-        todo("actions-confirm-addas-blocked", "A required field empty", "Add as Slack message with no To: Cancel · Fill in who it goes to · Add as Slack message (off).", e)
+        todo("actions-confirm-addas-blocked", "A required field empty", "Add as Slack message to a name Distill doesn't know: Who is Vladan Dimitrijevic in Slack?, Cancel · Fill in who it goes to · Add as Slack message (off).", e)
 
         e = actionsEngine(select: "t2")
         e.actions.toast = ActionToast(text: "Added 2 to-dos and created 1 draft from Tea club planning", undo: {})

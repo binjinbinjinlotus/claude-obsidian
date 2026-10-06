@@ -137,6 +137,11 @@ time.
   to-do"; a blocked footer reads Cancel · "Fill in who it goes to" (a
   Slack To; other fields by label, "Fill in Project") · a disabled "Add as
   Slack message", the reason on its own line when the pane is too narrow.
+  A Slack To that is a name nobody has said who it is in Slack, while a
+  button sends to To, counts as not filled in ("Who is Vladan Dimitrijevic in
+  Slack?" is open; canvas F). Plain Return in the detail adds as the found
+  type too (⌘Return is an alias), never while typing in a text field or with
+  the panel open; ⌥Return opens Add as….
   Tests: `AddAsTests`. Snapshot states
   `actions-confirm-addas-menu`, `actions-confirm-addas-slack`,
   `actions-confirm-addas-blocked`.
