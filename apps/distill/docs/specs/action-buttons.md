@@ -750,8 +750,10 @@ Order: core → API → CLI → Mac. Each step is one commit, with `npm test
   Swift), so it never collects on its own. The Commands step says where to
   declare them (the saved script's COMMANDS block); the sheet doesn't edit
   commands itself. `AutomationRole` (DistillKit) holds the steps and words.
-  Snapshot states `sa-card-add` (Commands picked), `collectors-add` (step 1)
-  and `collectors-add-kind`.
+  Snapshot states `sa-card-add` (Commands picked), `collectors-add` (step 1),
+  `collectors-add-kind`, and the Commands path `collectors-add-commands-source`
+  and `collectors-add-commands`. For Commands, the Source step's hint says the
+  arguments come from buttons (not the vault and queue paths).
 - **Ready to send (2026-10-06).** A ready Slack message reads "Ready to send"
   when a button holds the Send slot (and is on), not "Ready to paste"
   (`ActionTypeInfo.readyWords`): the row, the detail and the status filter.

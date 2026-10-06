@@ -169,6 +169,22 @@ extension StatesSnapshot {
         s.adding?.stage = "Kind"
         shot("collectors-add-kind", "B2 · Add, Collect: the kind", "Folder (selected) or Custom script, as before.", e)
 
+        // Add automation as Commands for buttons: What it does → Source → Commands (no schedule; it never collects).
+        e = engine()
+        s = F.load(e, [])
+        s.startAdding()
+        s.adding?.setRole(.commands)
+        s.adding?.stage = "Source"
+        s.adding?.code = "#!/usr/bin/env zsh\n# send -- <target> <text>: the button passes them after --\nshift  # the command name\n[[ $1 == -- ]] && shift\nslack chat send --channel \"$1\" --text \"$2\"\n"
+        shot("collectors-add-commands-source", "B3 · Add, Commands: the script", "Commands for buttons skips Kind and Schedule: a script Distill keeps, or your own file.", e)
+
+        e = engine()
+        s = F.load(e, [])
+        s.startAdding()
+        s.adding?.setRole(.commands)
+        s.adding?.stage = "Commands"
+        shot("collectors-add-commands", "B4 · Add, Commands: last step", "Where its commands are declared (the saved script's COMMANDS block); Add saves it off, never collecting.", e)
+
         e = engine()
         s = F.load(e, [])
         s.startAdding(kind: .folder)

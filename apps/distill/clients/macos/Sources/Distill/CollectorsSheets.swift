@@ -722,7 +722,9 @@ struct AddCollectorSheet: View {
                               summary: manifestText.isEmpty ? "" : "\(n == 1 ? "1 package" : "\(n) packages") · install when you allow the script",
                               text: draft.manifest)
             }
-            Hint("It gets the vault and queue folder paths as $1 and $2 (and DISTILL_VAULT, DISTILL_QUEUE_DIR). Nothing runs until you allow it.")
+            Hint(d.role == .commands
+                 ? "Each command gets its arguments from your buttons, passed as they are (never through a shell). Nothing runs until you allow it."
+                 : "It gets the vault and queue folder paths as $1 and $2 (and DISTILL_VAULT, DISTILL_QUEUE_DIR). Nothing runs until you allow it.")
             footer(back: true, next: "Continue",
                    enabled: d.scriptInline ? !d.code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty : !d.scriptFile.isEmpty) {
                 store.adding?.step += 1

@@ -676,6 +676,23 @@ extension StatesSnapshot {
             JobDetailView(jobID: e.jobs[0].id)
         }
 
+        // Frame N: recovery suggests discarding the rebuilt part (offered only while one waits; never the batch).
+        e = engine()
+        var discard = awaiting(e, files: ["inbox/Tea club sync.md", "inbox/Gyokuro tasting.md"], worker: "Rebuilt the change for the source you picked.")
+        discard.approval?.sources = [ReviewSource(page: "wiki/sources/tea-club-sync.md", title: "Tea club sync"),
+                                     ReviewSource(page: "wiki/sources/gyokuro-tasting.md", title: "Gyokuro tasting")]
+        discard.approval?.rebuilt = RebuiltPlan(reason: .partial, pages: ["wiki/sources/tea-club-sync.md"])
+        discard.pendingPart = PendingPart(reason: .partial, expected: ["wiki/sources/tea-club-sync.md": "x"], excluded: ["wiki/sources/gyokuro-tasting.md"])
+        discard.recovery = RecoveryState(state: .gaveUp, signature: "stale-again",
+                                         attempts: [RecoveryAttempt(at: Date().addingTimeInterval(-400), fix: "rebuild_in_session", result: "failed"),
+                                                    RecoveryAttempt(at: Date().addingTimeInterval(-300), by: "agent", model: "opus", fix: "discard_stale_part", result: "failed", costUSD: 0.03)],
+                                         summary: "Your vault keeps changing under this plan: it was rebuilt for the latest pages and is out of date again. The rebuilt part changes the Green tea page another batch already changed. Recovery suggests discarding the rebuilt part; its sources stay in this batch.",
+                                         proposal: "discard_stale_part")
+        e.jobs = [discard]
+        main("review-gaveup-discard", f, "Review", "Couldn't fix · recovery suggests discarding the rebuilt part", "Offered only while a rebuilt part waits; nothing is applied and its sources stay in the batch.", e, section: .review, job: e.jobs[0].id) {
+            JobDetailView(jobID: e.jobs[0].id)
+        }
+
         // review-queue.md, Self-recovery for other problems: a plan the core couldn't check (rule, then the agent),
         // the minute between agent attempts, and a run that stopped and recovery gave up on.
         e = engine()

@@ -997,7 +997,7 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
   - The owner's own action (a pick, a discard, Don't apply yet) clears the
     recovery. A batch back in the queue under its approved hash counts as
     worked on (not settled, not Needs you).
-  - Snapshot state `review-gaveup-split`.
+  - Snapshot states `review-gaveup-split` and `review-gaveup-discard`.
 - **Rebuild and What was tried (2026-10-06).** The Couldn't fix card has
   **Rebuild against the latest pages**: the owner's reply with a fixed text
   (`RecoveryText.rebuildReply`), so it clears the recovery, works for a stopped
