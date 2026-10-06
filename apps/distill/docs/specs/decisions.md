@@ -17,6 +17,21 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+**Slack CLI saved as a future Distill collector (2026-10-05).** Code:
+`apps/scripts/slack/` (`slack_cli.py`, `extract_slack_creds.js`, README).
+The owner supplied both scripts for later use in Distill; not wired into the
+app yet.
+
+- **The `d` cookie stays URL-encoded end to end.** The browser sends it
+  encoded; the extract script no longer decodes it, and the CLI re-encodes a
+  decoded value (`normalize_cookie`), so either form works.
+- **`import` finds the download by itself**: `./slack_c.json`, else
+  `~/Downloads/slack_c.json`; it rejects a token not starting `xoxc-` or a
+  cookie not starting `xoxd-` before touching the Keychain.
+- **The `catchup` checkpoint lives in `~/.slack_cli_state.json`**, not the
+  current folder, so a run from the repo never leaves state there.
+  `slack_c.json` and `.env` are git-ignored in that folder.
+
 **Resizable panes: a draggable divider on every split screen (2026-10-05).**
 Spec: [Resizable panes](resizable-panes.md). Canvas: row 13, board Panes.
 
