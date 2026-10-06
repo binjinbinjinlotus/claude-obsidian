@@ -1292,6 +1292,30 @@ describe('recovery fixes (review-queue.md, 2026-10-06)', () => {
     assert.equal((await h.engine.status()).pendingApprovals, 1, 'only the other batch needs the owner; recovery is on this one');
   });
 
+  test('Let recovery try again on a lock keeps the approved hash and goes to the agent (within its minute); session-gone refuses', async () => {
+    const t = await stuck('lock', { diagnosis: 'Still locked.', fix: 'give_up', reason: 'r' }, queued);
+    assert.equal(h.engine.getJob(t.id)!.recovery?.state, 'gaveUp');
+    const calls = h.runner.requests.length;
+    h.runner.steps.push({ structured: { diagnosis: 'Still locked.', fix: 'give_up', reason: 'r' } });
+    h.engine.tryRecoveryAgain(t.id);
+    await h.engine.whenIdle();
+    const again = h.engine.getJob(t.id)!;
+    assert.equal(h.runner.requests.length, calls + 1, 'one agent call (the owner reset the attempts)');
+    assert.equal(again.recovery?.signature, 'lock');
+    assert.equal(again.recovery?.approvedSha256, PLAN.approval_sha256, 'the hash the owner approved survives');
+    assert.deepEqual(again.recovery?.attempts.map((a) => a.by), ['agent']);
+    assert.equal(t.applies(), 0, 'nothing retried by itself');
+    await h.engine.stop();
+
+    const s = await stuck('lock', { diagnosis: 'x', fix: 'give_up', reason: 'r' }, (j) => {
+      queued(j);
+      (j.recovery as Record<string, unknown>).signature = 'session-gone';
+    });
+    assert.equal(h.engine.getJob(s.id)!.recovery?.state, 'gaveUp');
+    assert.throws(() => h.engine.tryRecoveryAgain(s.id), /continue it in a new session/);
+    assert.equal(h.engine.getJob(s.id)!.recovery?.signature, 'session-gone', 'nothing wiped');
+  });
+
   test('split_batch and discard_stale_part are proposals: nothing in the batch changes until the owner confirms', async () => {
     const sources = (j: Record<string, unknown>) => {
       (j.approval as Record<string, unknown>).sources = [

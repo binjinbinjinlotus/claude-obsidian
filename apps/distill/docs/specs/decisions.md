@@ -52,7 +52,7 @@ for commands, in one place.
 **"Ready to send" follows the Send slot (2026-10-06).** A ready Slack message
 reads "Ready to send" when the built-in Send works or a button (turned on)
 holds the Send slot; otherwise "Ready to paste". Why: the button sends it, so
-"paste" was wrong. The filter's option names stay as they are.
+"paste" was wrong. The status filter uses the same words.
 
 **Recovery bounds hold across signatures (2026-10-06, verification).** A
 recovery that hit another signature while it still worked started fresh, so

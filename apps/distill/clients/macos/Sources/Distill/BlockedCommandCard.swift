@@ -129,7 +129,7 @@ struct RecoveryCard: View {
                     }
                 }
                 FlowLayout(spacing: 8) {
-                    if let onRebuild {
+                    if let onRebuild, RecoveryText.offersRebuild(job) {
                         SoftButton(title: "Rebuild against the latest pages", tint: Theme.peachInk, fill: .white, size: .small,
                                    systemImage: "arrow.triangle.2.circlepath", action: onRebuild)
                             .fixedSize()
@@ -146,8 +146,10 @@ struct RecoveryCard: View {
                             .fixedSize()
                             .help("Recovery’s suggestion: nothing is applied, and its sources stay in this batch.")
                     }
-                    SoftButton(title: "Let recovery try again", tint: Theme.peachInk, fill: .white, size: .small, systemImage: "arrow.clockwise", action: onRecover)
-                        .fixedSize()
+                    if RecoveryText.offersTryAgain(job) {
+                        SoftButton(title: "Let recovery try again", tint: Theme.peachInk, fill: .white, size: .small, systemImage: "arrow.clockwise", action: onRecover)
+                            .fixedSize()
+                    }
                     NewSessionButton(job: job, confirming: Binding(get: { isConfirming }, set: { confirming = $0 }), enabled: onNewSession != nil)
                     SoftButton(title: "Open in Terminal", fill: .white, size: .small, systemImage: "terminal", action: onTerminal).fixedSize()
                     if let onReject {

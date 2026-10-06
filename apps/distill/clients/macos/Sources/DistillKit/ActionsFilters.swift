@@ -100,7 +100,7 @@ public enum ActionFacets {
     /// Fixed option lists (no counts); other sections list the values the items have, by count.
     public static func fixed(_ kind: String, _ key: String, types: [ActionTypeInfo] = []) -> [String]? {
         switch (kind, key) {
-        case ("slack", "status"): return ["Not written", "Draft", "Ready to paste", "Copied"]
+        case ("slack", "status"): return ["Not written", "Draft", types.first { $0.id == "slack" }?.readyWords ?? "Ready to paste", "Copied"]
         case ("jira", "status"), ("confluence", "status"): return ["Not written", "Draft", "Created"]
         case ("history", "type"):
             let builtin = ["To do", "Slack message", "Jira ticket", "Confluence page"]
@@ -120,7 +120,9 @@ public enum ActionFacets {
         case "status":
             if kind == "slack" {
                 if item.status == .open && (item.body ?? "").isEmpty { return ["Not written"] }
-                if item.status == .ready { return [copied || item.lastEvent("copied") != nil ? "Copied" : "Ready to paste"] }
+                if item.status == .ready {
+                    return [copied || item.lastEvent("copied") != nil ? "Copied" : types.first { $0.id == kind }?.readyWords ?? "Ready to paste"]
+                }
                 return ["Draft"]
             }
             if item.status == .created { return ["Created"] }

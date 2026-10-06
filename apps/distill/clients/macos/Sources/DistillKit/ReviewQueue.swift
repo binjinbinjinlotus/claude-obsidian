@@ -267,6 +267,12 @@ public enum RecoveryText {
     /// What the card's Rebuild sends, as the owner's reply (a gone session asks first, as every reply does).
     public static let rebuildReply = "Rebuild this batch’s plan against the pages as they are now: write the bundle again in this job’s directory and finish with needs_approval. Distill runs inspect and the approved apply itself."
 
+    /// Let recovery try again: not for session-gone (only the owner's new session goes on).
+    public static func offersTryAgain(_ job: Job) -> Bool { job.recovery?.signature != "session-gone" }
+
+    /// Rebuild against the latest pages is a reply to the batch's session: a labels confirmation has none.
+    public static func offersRebuild(_ job: Job) -> Bool { job.kind != "labels" }
+
     /// split_batch: the owner's one click rebuilds the first group (Approve with those pages); the rest wait.
     public static func splitGroup(_ job: Job) -> [String]? {
         guard job.state == .awaitingApproval, let r = job.recovery, r.state == .gaveUp, r.proposal == "split_batch",

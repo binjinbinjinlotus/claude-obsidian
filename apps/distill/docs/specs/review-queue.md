@@ -1005,6 +1005,13 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
   lists one row per attempt ("Opus · asked Claude to rebuild the plan · didn’t
   help · $0.04"), words from `RecoveryText.fixWords`, which Activity's Fix row
   uses too; an attempt's raw error is never shown.
+- **Fixed after review (2026-10-06).** Let recovery try again on a lock goes
+  back to the agent and keeps the approved hash; on session-gone it is hidden
+  and refused (only the new-session confirmation goes on). Rebuild is hidden
+  for a labels confirmation (no session). A stale-again recovery from the
+  pump takes the batch out of the queue first, keeping the approved hash on
+  the recovery, so a recovery that gives up reads Needs you instead of
+  Queued.
 - **Still open:**
 - Tests: `session-continuity.test.ts` (runner-failed recovery; a stopped batch
   can be rejected; a gone session proposes a new one and only the owner's

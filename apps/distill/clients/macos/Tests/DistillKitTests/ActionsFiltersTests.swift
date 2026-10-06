@@ -53,6 +53,11 @@ final class ActionsFiltersTests: XCTestCase {
         let copied = item("c", "slack", .ready, body: "Hi", events: [ActionEvent(at: now, event: "copied")])
         XCTAssertEqual(ActionFacets.values("slack", "status", notWritten), ["Not written"])
         XCTAssertEqual(ActionFacets.values("slack", "status", ready), ["Ready to paste"])
+        // A button in the Send slot: the filter says what the rows say.
+        var slack = ActionTypeInfo(id: "slack", label: "Slack message")
+        slack.buttons = [ActionButtonInfo(button: AutomationButton(id: "send", label: "Send in Slack", slot: .send))]
+        XCTAssertEqual(ActionFacets.values("slack", "status", ready, types: [slack]), ["Ready to send"])
+        XCTAssertEqual(ActionFacets.fixed("slack", "status", types: [slack]), ["Not written", "Draft", "Ready to send", "Copied"])
         XCTAssertEqual(ActionFacets.values("slack", "status", copied), ["Copied"])
         var f = FacetFilter()
         f.toggle("status", "Ready to paste")

@@ -1278,7 +1278,8 @@ export function createEngine(opts: EngineOptions): Engine {
    */
   function recoverAfterRule(id: string, signature: 'lock' | 'session-gone', approvedSha256?: string): void {
     const job = findJob(id);
-    if (!job || job.state !== 'awaitingApproval') return;
+    // A labels confirmation has no session and no recovery (the core applies it and asks the owner itself).
+    if (!job || job.state !== 'awaitingApproval' || jobKind(job.kind)?.appliesInCore) return;
     const rec = recoveryFor(job.recovery, signature);
     const attempts = rec.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed' as const } : a));
     const approved = approvedSha256 ?? rec.approvedSha256;
@@ -1615,6 +1616,19 @@ export function createEngine(opts: EngineOptions): Engine {
       throw new CoreError('invalid_state', `Job ${id} has nothing for recovery to try again.`);
     }
     const signature = job.recovery.signature;
+    // session-gone's only way on is a new session, which the owner starts from its confirmation (never recovery).
+    if (signature === 'session-gone') {
+      throw new CoreError('invalid_state', 'This batch’s AI session is gone: continue it in a new session, open it in Terminal, or reject it.');
+    }
+    if (signature === 'lock') {
+      // The rule is spent; the agent tries again under the hash the owner approved (kept on the recovery).
+      const approved = job.recovery.approvedSha256;
+      mutate(id, (j) => {
+        delete j.recovery;
+      });
+      recoverAfterRule(id, 'lock', approved);
+      return clone(requireJob(id));
+    }
     mutate(id, (j) => {
       delete j.recovery;
     });
@@ -1755,8 +1769,19 @@ export function createEngine(opts: EngineOptions): Engine {
           }
           return;
         }
-        if (!refreshJob(head.id, true, staleFor(vault.path, q.bundlePath).map((s) => s.path)) && !recover(head.id, 'stale-again')) {
-          backToOwner(head.id, 'Not applied yet: your vault changed after you approved this plan (not by another batch). Reply to have it rebuilt, or reject.');
+        if (!refreshJob(head.id, true, staleFor(vault.path, q.bundlePath).map((s) => s.path))) {
+          // Out of the queue first (as for a lock), the approved hash kept on the recovery: a recovery that gives
+          // up then reads Couldn't fix / Needs you, and the pump doesn't re-inspect it every tick.
+          // (The agent's facts are taken as it starts, while the batch still holds the approved hash.)
+          const approved = q.planSha256;
+          if (recover(head.id, 'stale-again')) {
+            mutate(head.id, (j) => {
+              if (j.queuedApply) delete j.queuedApply.planSha256;
+              if (j.recovery && approved) j.recovery.approvedSha256 = approved;
+            });
+          } else {
+            backToOwner(head.id, 'Not applied yet: your vault changed after you approved this plan (not by another batch). Reply to have it rebuilt, or reject.');
+          }
         }
         return;
       }

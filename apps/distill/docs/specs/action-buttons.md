@@ -754,8 +754,7 @@ Order: core → API → CLI → Mac. Each step is one commit, with `npm test
   and `collectors-add-kind`.
 - **Ready to send (2026-10-06).** A ready Slack message reads "Ready to send"
   when a button holds the Send slot (and is on), not "Ready to paste"
-  (`ActionTypeInfo.readyWords`, the row and the detail). The status filter's
-  options are unchanged.
+  (`ActionTypeInfo.readyWords`): the row, the detail and the status filter.
 
 ## Open questions
 

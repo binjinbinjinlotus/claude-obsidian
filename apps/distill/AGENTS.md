@@ -48,9 +48,9 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Clean up inbox](docs/specs/inbox-cleanup.md) | built (core, API, macOS UI; no CLI) |
 | [Full reads](docs/specs/full-read.md) | built (core, API, CLI, Mac UI; the wiki-ingest skill wording) |
 | [Action summary](docs/specs/action-summary.md) | built (core, API, macOS; Ask rows show the summary, no click-to-open yet) |
-| [Action buttons and script commands](docs/specs/action-buttons.md) | built (canvas row 15, board ScriptActions; `sa-` snapshot states; Add's "What it does" step not yet) |
+| [Action buttons and script commands](docs/specs/action-buttons.md) | built (canvas row 15, board ScriptActions; `sa-` snapshot states; Add's What it does step; Ready to send for a Send-slot button) |
 | [Resizable panes](docs/specs/resizable-panes.md) | built (macOS: every split screen, `PaneSplit.swift`) |
-| [Review queue](docs/specs/review-queue.md) | built (apply queue, refresh, batch list, blocked commands; recovery for blocked commands, stale-again, plan errors and failed runs, its card and Continue in a new session; `distill status` lists the apply queue and recovery; canvas row 16, board ReviewQueue) |
+| [Review queue](docs/specs/review-queue.md) | built (apply queue, refresh, batch list, blocked commands; recovery: the agent where it can choose (blocked commands, stale-again, plan errors, failed runs, a held lock), $0 for session-gone, the journal rule for not-recorded (full-read-stop keeps the v10 option); reinspect/wait retries only under the approved hash, split and discard as proposals; the Couldn't fix card with Rebuild, What was tried and Continue in a new session; `distill status`; canvas row 16, board ReviewQueue) |
 
 ## Layout
 

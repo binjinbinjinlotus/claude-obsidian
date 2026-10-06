@@ -127,6 +127,14 @@ final class ReviewQueueTests: XCTestCase {
                               "\(ModelChoice.shortName("claude-opus-4-1")) · tried something Distill doesn’t know · didn’t help"])
         XCTAssertFalse(rows.joined().contains("529") || rows.joined().contains("/Users"), "never the raw error")
         XCTAssertTrue(RecoveryText.rebuildReply.contains("needs_approval"))
+        var job = Job(id: "j", vaultPath: "/v", files: [], state: .awaitingApproval)
+        job.recovery = RecoveryState(state: .gaveUp, signature: "session-gone", proposal: "new_session")
+        XCTAssertFalse(RecoveryText.offersTryAgain(job), "session-gone goes on only through a new session")
+        job.recovery?.signature = "lock"
+        XCTAssertTrue(RecoveryText.offersTryAgain(job))
+        XCTAssertTrue(RecoveryText.offersRebuild(job))
+        job.kind = "labels"
+        XCTAssertFalse(RecoveryText.offersRebuild(job), "a labels confirmation has no session to reply to")
     }
 
     func testQueueWordsAndTheBadgeRule() {

@@ -496,7 +496,8 @@ async function allow(env: Env, c: Collector): Promise<Collector> {
 describe('Script collector', () => {
   test('Add as "Commands for buttons": created with collects false, and it never collects on its own', async () => {
     const env = setup();
-    const c = await env.svc.createCollector({ kind: 'script', name: 'Slack CLI', script: { source: { inline: 'exit 0' }, interpreter: 'zsh', collects: false } });
+    // As the Mac's Add sheet sends it: with the default schedule (kept, unused while it doesn't collect).
+    const c = await env.svc.createCollector({ kind: 'script', name: 'Slack CLI', schedule: { cron: '0 * * * *' }, script: { source: { inline: 'exit 0' }, interpreter: 'zsh', collects: false } });
     assert.equal(c.script!.collects, false);
     assert.equal((await env.svc.getCollector(c.id))!.script!.collects, false, 'kept');
     await assert.rejects(env.svc.runCollector(c.id), /doesn't collect/);
