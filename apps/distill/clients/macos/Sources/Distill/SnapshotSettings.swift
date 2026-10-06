@@ -65,6 +65,15 @@ extension StatesSnapshot {
         settingsWindow("settings-type-jira-edited", "Actions › Jira ticket · prompt edited",
                        "Create prompt Edited (Reset to default on), Create in Jira locked to your click, default project PX.",
                        e, target: SettingsTarget(.actions, actionType: "jira"), size: CGSize(width: 1140, height: 1080))
+        // Jira pickers (actions.md): the type's defaults picked from the account.
+        e = engine(jiraEdited)
+        e.actions.jiraProjects = JiraProjectList(site: "https://acme.atlassian.net", account: "Jin Liu", fetchedAt: Date().addingTimeInterval(-120),
+                                                 projects: [JiraProject(key: "PX", name: "Project X"), JiraProject(key: "TLS", name: "Telus Platform")])
+        e.actions.jiraTypes = ["PX": [JiraIssueType(id: "10001", name: "Task"), JiraIssueType(id: "10002", name: "Bug")]]
+        e.actions.jiraScreens = ["PX|10001": JiraCreateScreen(project: "PX", typeId: "10001", priorities: ["Highest", "High", "Medium", "Low"])]
+        settingsWindow("jira-fields-settings", "Actions › Jira ticket · defaults from your Jira",
+                       "Default project, type and priority picked from the account, with From your Jira · Refresh.",
+                       e, target: SettingsTarget(.actions, actionType: "jira"), size: CGSize(width: 1140, height: 1080))
         e = engine(jiraEdited)
         e.settingsUI.fixtureConfirmReset = "draft"
         settingsWindow("settings-type-jira-reset-confirm", "Actions › Jira ticket · reset confirmation",

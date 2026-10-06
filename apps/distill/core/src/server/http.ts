@@ -1267,6 +1267,22 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
         return core.runActionButton(params[0]!, params[1]!, { approve: o.approve === true });
       },
     },
+    // ── Jira pickers (actions.md): what the connected account allows; ?refresh=1 reloads the hour's cache. ──
+    {
+      method: 'GET',
+      pattern: /^\/v1\/jira\/projects$/,
+      handler: async ({ query }) => core.jiraProjects({ refresh: query.get('refresh') === '1' }),
+    },
+    {
+      method: 'GET',
+      pattern: /^\/v1\/jira\/projects\/([^/]+)\/types$/,
+      handler: async ({ params, query }) => core.jiraIssueTypes(params[0]!, { refresh: query.get('refresh') === '1' }),
+    },
+    {
+      method: 'GET',
+      pattern: /^\/v1\/jira\/projects\/([^/]+)\/types\/([^/]+)\/fields$/,
+      handler: async ({ params, query }) => core.jiraFields(params[0]!, params[1]!, { refresh: query.get('refresh') === '1' }),
+    },
     // ── Where a Slack message goes (action-buttons.md): remembered names per vault, and an item's To row. ──
     {
       method: 'GET',

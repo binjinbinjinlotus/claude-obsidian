@@ -82,6 +82,7 @@ import { approvalHash, buildArgv, commandTimeout, displayArgv, maskSecrets, pars
 import type { CommandRunHandle, CommandRunInput } from '../collectors/index.js';
 import { buttonsFor, ButtonApprovals, normalizeButton, sampleItem, templateValues } from './buttons.js';
 import { normalizeSlackTarget, resolveSlackTarget, SlackPeople } from './slack-target.js';
+import { checkJiraDraft, JiraMeta } from './jira-meta.js';
 import { buildDraftPrompt, buildFindPrompt, buildImprovePrompt, buildSummarizePrompt, DEFAULT_FIND_PROMPT, type DraftContext, type FindDocument } from './prompts.js';
 import {
   actionTypeDef,
@@ -580,6 +581,7 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         i.status = before === 'pending' ? 'pending' : 'ready';
       });
       progress({ key, kind: 'actions', message: kind === 'draft' ? 'Draft written' : 'Improved', startedAt, finished: true });
+      if (kind === 'draft' && result.type === 'jira') return await alignJira(result);
       return result;
     } catch (err) {
       const cancelled = controller.signal.aborted;
@@ -1578,6 +1580,7 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
   // ───────────── buttons (action-buttons.md) ─────────────
 
   const approvals = new ButtonApprovals(path.join(opts.stateDir, 'actions', 'button-approvals.json'));
+  const jiraMeta = new JiraMeta(atlassian, now);
   const people = new SlackPeople(path.join(opts.stateDir, 'actions', 'slack-people.json'));
 
   /** The vault whose remembered names apply: the item's, else the active one. */
@@ -1806,6 +1809,32 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     return confirmed;
   }
 
+  /**
+   * actions.md, Jira pickers: a drafted ticket's Priority in the project's own spelling ("medium" →
+   * "Medium"); one the project doesn't have is left empty and the field marked. Best effort: not
+   * connected or unreachable changes nothing.
+   */
+  async function alignJira(item: ActionItem): Promise<ActionItem> {
+    const priority = item.fields.priority?.trim();
+    if (item.type !== 'jira' || !priority || !item.fields.project?.trim() || !atlassian.isConnected()) return item;
+    let check;
+    try {
+      check = await checkJiraDraft(jiraMeta, item.fields);
+    } catch {
+      return item;
+    }
+    if (!find(item.id)) return item;
+    if (check.priority && check.priority !== priority) return mutate(item.id, (i) => (i.fields.priority = check.priority!));
+    if (check.problem?.field === 'priority') {
+      return mutate(item.id, (i) => {
+        i.fields.priority = null;
+        i.error = { code: 'refused', message: `${priority} isn’t a priority in ${check.project}, so it was left empty. Pick one.`, field: 'priority' };
+        i.events.push(event(now(), 'edited', 'fields.priority'));
+      });
+    }
+    return item;
+  }
+
   /** The found item's fields for another type: same keys kept; people become a message's To, and back. */
   function mappedFields(item: ActionItem, keys: string[]): Record<string, string | null> {
     const has = new Set(keys);
@@ -1854,6 +1883,18 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
 
     runActionButton(id, buttonId, o) {
       return runButton(id, buttonId, o);
+    },
+
+    jiraProjects(o) {
+      return jiraMeta.projects(o);
+    },
+
+    jiraIssueTypes(project, o) {
+      return jiraMeta.issueTypes(project, o);
+    },
+
+    jiraFields(project, typeId, o) {
+      return jiraMeta.fields(project, typeId, o);
     },
 
     async listSlackPeople(vaultPath) {
@@ -2105,7 +2146,7 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         });
       }
       try {
-        const result = await fn({ item: clone(require(id)), settings: opts.getSettings(), now: now(), services: { atlassian } });
+        const result = await fn({ item: clone(require(id)), settings: opts.getSettings(), now: now(), services: { atlassian, jiraMeta } });
         return mutate(id, (i) => {
           if (result.status) i.status = result.status;
           else if (i.status === 'creating') i.status = before;

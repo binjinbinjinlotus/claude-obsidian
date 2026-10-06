@@ -80,6 +80,20 @@ final class ActionsStore: ObservableObject {
     /// Add as (actions.md): the open panel's draft per found item, and the item whose Add as… menu is open.
     @Published var addingAs: [String: AddAs.Draft] = [:]
     @Published var addAsMenu: String?
+    /// Jira pickers (actions.md): what the connected account allows, and why it couldn't be loaded.
+    @Published var jiraProjects: JiraProjectList?
+    /// Project names from the last list (key → name), kept so the picker reads "TLS · Telus Platform" offline.
+    @Published var jiraProjectNames: [String: String] = (UserDefaults.standard.dictionary(forKey: "jiraProjectNames") as? [String: String]) ?? [:]
+    @Published var jiraProblem: JiraListProblem?
+    @Published var jiraLoading = false
+    @Published var jiraTypes: [String: [JiraIssueType]] = [:]
+    /// By "KEY|typeId".
+    @Published var jiraScreens: [String: JiraCreateScreen] = [:]
+    /// Snapshots fix "updated N min ago".
+    var fixtureNow: Date?
+    /// Snapshots: a Jira picker's menu drawn open ("project", "issueType", "priority").
+    var fixtureJiraMenu: String?
+    func jiraNow() -> Date { fixtureNow ?? Date() }
 
     /// Snapshot fixtures only: open the answer menu / new to-do form / a Found row's type menu or edit on appear.
     var fixtureAnswerMenu = false

@@ -191,7 +191,12 @@ enum SettingsIndex {
                 SettingsEntry(target: target, title: "When to write the draft", note: "When a note is processed, or only when you ask", crumb: crumb),
                 SettingsEntry(target: target, title: "Models", note: "Writing and improving after an edit", keywords: "sonnet", crumb: crumb),
             ]
-            for field in t.defaultFields {
+            if t.id == "jira" {
+                // Jira pickers: one Defaults row (project, type, priority from the account).
+                list.append(SettingsEntry(target: target, title: "Defaults", note: "Project, type and priority for new \(t.pluralLabel)",
+                                          keywords: "default project issue type priority", crumb: crumb))
+            }
+            for field in t.defaultFields where !(t.id == "jira" && JiraFieldPickers.keys.contains(field.key)) {
                 list.append(SettingsEntry(target: target, title: field.title, note: "Used for new \(t.pluralLabel)", crumb: crumb))
             }
             return list

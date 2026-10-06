@@ -562,7 +562,7 @@ struct ExternalCard: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             if let error = item.error, draft == nil, !creating { errorCallout(error) }
-            content
+            content.zIndex(1)
             if draft == nil && !(item.error?.needsSignIn ?? false) { ActionContextBlock(item: item) }
             if draft == nil { ButtonLastRun(store: store, item: item) }
             footer
@@ -600,7 +600,9 @@ struct ExternalCard: View {
         if type.id == "confluence" || item.field("space") != nil {
             return [item.field("space"), item.field("parent")].compactMap { $0 }.joined(separator: " › ")
         }
-        return [item.field("project"), item.field("issueType")].compactMap { $0 }.joined(separator: " · ")
+        // "TLS · Telus Platform · Task" once the account's projects are known.
+        let project = JiraPick.label(item.field("project"), projects: store.jiraProjects?.projects, names: store.jiraProjectNames)
+        return [project, item.field("issueType")].compactMap { $0 }.joined(separator: " · ")
     }
 
     // MARK: Errors
@@ -630,10 +632,10 @@ struct ExternalCard: View {
                     ActionButton(title: "Retry", icon: "arrow.clockwise", kind: .soft, height: 28) { store.perform(item, handler: "create") }
                 }
             case "refused":
-                ActionCallout(title: "\(service) didn't create it: \(error.message)",
-                              text: "Nothing was created and your draft is unchanged. Fix the marked field, then retry.") {
-                    ActionButton(title: "Retry", icon: "arrow.clockwise", kind: .soft, height: 28) { store.perform(item, handler: "create") }
-                }
+                // The core's sentence once ("Jira didn’t create the ticket: …", or a check before Create).
+                // Create in the footer is the retry (canvas ActionsJiraFields, jira-fields-error).
+                ActionCallout(title: error.message.isEmpty ? "\(service) didn't create it" : error.message,
+                              text: "Nothing was created and your draft is unchanged.") { EmptyView() }
             case "unreachable":
                 ActionCallout(icon: "wifi.slash", title: "Couldn't reach \(site)", text: "You might be offline. Nothing was created; the draft is safe.") {
                     ActionButton(title: "Retry", icon: "arrow.clockwise", kind: .soft, height: 28) { store.perform(item, handler: "create") }
@@ -678,7 +680,7 @@ struct ExternalCard: View {
                     }
                     ActionRunLine(title: "Writing the draft with \(model)…") { store.cancelRun(item.id) }
                 } else {
-                    fieldsBlock
+                    fieldsBlock.zIndex(1) // the Jira project menu draws over the body
                     if !(item.error?.needsSignIn ?? false) {
                         ActionBodyText(markdown: item.body ?? "", size: 12,
                                        tinted: store.justImproved.contains(item.id) ? ActionText.addedWords(from: item.previousBody ?? "", to: item.body ?? "") : [])
@@ -711,10 +713,20 @@ struct ExternalCard: View {
         }
     }
 
+    /// Jira: Project, Type and Priority are pickers from the account (actions.md, Jira pickers).
+    private var jiraPicks: Bool { type.id == "jira" && item.status != .created }
+
     /// Type fields (Project, Type, Priority, Assignee, Labels / Space, Parent page), the refused one marked.
     private var fieldsBlock: some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(shownFields, id: \.key) { spec in
+            if jiraPicks {
+                JiraFieldPickers(store: store, values: item.fields.compactMapValues { $0 },
+                                 set: { k, v in store.update(item.id, ActionPatch(fields: [k: v.isEmpty ? nil : v])) },
+                                 marked: item.error?.code == "refused" ? item.error?.field : nil,
+                                 showCaption: false, menuOpen: store.fixtureJiraMenu)
+                    .zIndex(1)
+            }
+            ForEach(shownFields.filter { !jiraPicks || !JiraFieldPickers.keys.contains($0.key) }, id: \.key) { spec in
                 let refused = item.error?.code == "refused" && item.error?.field == spec.key
                 HStack(spacing: 10) {
                     Text(spec.label).font(Theme.body(12)).foregroundStyle(refused ? Theme.peachInk : Theme.muted).frame(width: 70, alignment: .leading)
@@ -738,6 +750,7 @@ struct ExternalCard: View {
                 }
                 .frame(minHeight: 26)
             }
+            if jiraPicks { JiraCaption(store: store) }
         }
     }
 
@@ -837,8 +850,13 @@ struct ExternalCard: View {
                 } else {
                     let label = type.handler("create")?.label ?? "Create"
                     let full = label.lowercased().hasPrefix("create") && label.count > 6 ? label : "Create in \(service)"
-                    PrimaryButton(title: short ? "Create" : full, systemImage: "plus", size: .small, enabled: !busy) { store.perform(item, handler: "create") }
-                        .fixedSize().help(full)
+                    // Jira pickers: a value the account doesn't allow keeps Create off, with what to pick.
+                    let pick = jiraPicks ? store.jiraCheck(item.fields)?.footer : nil
+                    if let pick, !short {
+                        Text(pick).font(Theme.body(11.5)).foregroundStyle(Theme.peachInk).lineLimit(1).fixedSize()
+                    }
+                    PrimaryButton(title: short ? "Create" : full, systemImage: "plus", size: .small, enabled: !busy && pick == nil) { store.perform(item, handler: "create") }
+                        .fixedSize().help(pick ?? full)
                 }
             }
         }

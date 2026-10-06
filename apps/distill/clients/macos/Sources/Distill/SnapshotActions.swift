@@ -480,6 +480,46 @@ extension StatesSnapshot {
         var e = actionsEngine(tab: "jira", select: "j1")
         ext("actions-jira", "jira", "Drafts and created", "Drafts you check, and tickets already created with their status.", e)
 
+        // Jira pickers (actions.md; canvas ActionsJiraFields, Version 93): Project, Type and Priority from the account.
+        func jira(_ priorities: [String] = ["Highest", "High", "Medium", "Low", "Lowest"], _ open: (AppModel) -> Void = { _ in }) -> AppModel {
+            let e = actionsEngine(tab: "jira", select: "j1")
+            e.actions.items["j1"]?.title = "Create Jira tickets for the three migration areas"
+            e.actions.items["j1"]?.body = "## What to do\n- One ticket each for the API layer, the test suites and the deploy scripts\n- Link them to the Telus cut-over epic"
+            e.actions.items["j1"]?.labels = ["migration", "telus"]
+            e.actions.items["j1"]?.fields = ["project": "TLS", "issueType": "Task", "priority": "Medium", "assignee": "Jin Bin Liu"]
+            e.actions.items["j2"]?.fields["project"] = "PAY"
+            e.actions.items["j3"]?.fields["project"] = "TLS"
+            let now = ActionFixtures.at(15, 56)
+            e.actions.fixtureNow = now
+            e.actions.fixtureInlineMenus = true
+            e.actions.jiraProjects = JiraProjectList(site: "https://acme.atlassian.net", account: "jin@lotusflare.com", fetchedAt: now.addingTimeInterval(-2 * 60),
+                                                     projects: [JiraProject(key: "AUTH", name: "Auth service"), JiraProject(key: "DOC", name: "Docs"),
+                                                                JiraProject(key: "OPS", name: "Operations"), JiraProject(key: "PAY", name: "Payments"),
+                                                                JiraProject(key: "PX", name: "Project X"), JiraProject(key: "TLS", name: "Telus Platform")])
+            // The names cached at the last load (never the machine's own defaults): offline still reads TLS · Telus Platform.
+            e.actions.jiraProjectNames = JiraPick.names(e.actions.jiraProjects?.projects ?? [])
+            e.actions.jiraTypes = ["TLS": [JiraIssueType(id: "10001", name: "Task"), JiraIssueType(id: "10002", name: "Bug"), JiraIssueType(id: "10003", name: "Story")]]
+            e.actions.jiraScreens = ["TLS|10001": JiraCreateScreen(project: "TLS", typeId: "10001", priorities: priorities)]
+            open(e)
+            return e
+        }
+        let tlsPriorities = ["P1 · Blocker", "P2 · Critical", "P3 · Major", "P4 · Minor"]
+        e = jira()
+        ext("jira-fields-pickers", "jira", "Pickers from your Jira", "TLS · Telus Platform, Task and Medium from the account; From your Jira (jin@lotusflare… · updated 2 min ago) · Refresh.", e)
+        e = jira { $0.actions.fixtureJiraMenu = "project" }
+        ext("jira-fields-project-menu", "jira", "Choosing a project", "Search projects, RECENT (✓ on the current one), then ALL PROJECTS YOU CAN CREATE IN.", e)
+        e = jira(tlsPriorities) { $0.actions.fixtureJiraMenu = "priority" }
+        ext("jira-fields-invalid", "jira", "A priority TLS doesn't use", "Medium isn’t a priority in TLS. Pick one: the PRIORITIES IN TLS menu open; the footer says Pick a priority TLS uses and Create in Jira is off. No banner.", e)
+        e = jira(tlsPriorities) { e in
+            e.actions.jiraProjects = nil
+            e.actions.jiraProblem = .unreachable("Couldn’t reach acme.atlassian.net.")
+        }
+        ext("jira-fields-offline", "jira", "Couldn't reach Jira", "Muted pickers keep the saved values (TLS · Telus Platform from the cached names); Couldn’t reach Jira to check these · Retry; Create stays on (Jira checks).", e)
+        e = jira { e in
+            e.actions.items["j1"]?.error = ActionError(code: "refused", message: "Jira didn’t create the ticket: The priority selected is invalid.", field: "priority")
+        }
+        ext("jira-fields-error", "jira", "Jira refused it", "Jira didn’t create the ticket: The priority selected is invalid. once, with Nothing was created and your draft is unchanged.", e)
+
         e = actionsEngine(tab: "jira", select: "j1", disconnected: true)
         e.actions.items["j1"]?.error = ActionError(code: "not_connected", message: "Not connected")
         ext("actions-jira-not-connected", "jira", "Not connected", "The draft waits; Set up connection opens Settings → Connections to paste an API token.", e)

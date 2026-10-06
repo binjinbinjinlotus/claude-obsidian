@@ -1664,6 +1664,40 @@ export interface ConfirmAs {
   fields?: Record<string, string | null>;
 }
 
+/** Where a Jira list came from (actions.md, Jira pickers): "From your Jira (Jin Liu · updated 3 min ago)". */
+export interface JiraListBase {
+  site: string;
+  account: string | null;
+  fetchedAt: string;
+}
+
+/** Projects the connected account can create issues in. */
+export interface JiraProjects extends JiraListBase {
+  projects: { key: string; name: string }[];
+}
+
+/** A project's issue types (subtasks left out). */
+export interface JiraIssueTypes extends JiraListBase {
+  project: string;
+  types: { id: string; name: string }[];
+}
+
+/** One field on a create screen; `allowed` for a field with a fixed list (priority). */
+export interface JiraField {
+  id: string;
+  name: string;
+  required: boolean;
+  allowed?: string[];
+}
+
+/** A project + issue type's create screen; `priorities` null when it has no Priority field. */
+export interface JiraFields extends JiraListBase {
+  project: string;
+  typeId: string;
+  fields: JiraField[];
+  priorities: string[] | null;
+}
+
 /** A remembered name → Slack target, per vault (`<state>/actions/slack-people.json`). */
 export interface SlackPerson {
   vaultPath: string;
@@ -2318,6 +2352,14 @@ export interface DistillCore {
   summarizeAction(id: string, opts?: { signal?: AbortSignal }): Promise<ActionItem>;
   /** The exact command a button would run for an item (action-buttons.md). */
   previewActionButton(id: string, buttonId: string): Promise<ActionButtonPreview>;
+  /**
+   * Jira pickers (actions.md): what the connected account allows, cached an hour per account and site
+   * (`refresh` reloads). Not connected, unreachable or a Jira error: invalid_state with `details.jira`
+   * (not_connected | auth_expired | unreachable | error).
+   */
+  jiraProjects(opts?: { refresh?: boolean }): Promise<JiraProjects>;
+  jiraIssueTypes(project: string, opts?: { refresh?: boolean }): Promise<JiraIssueTypes>;
+  jiraFields(project: string, typeId: string, opts?: { refresh?: boolean }): Promise<JiraFields>;
   /** Remembered Slack names (all vaults, or one), sorted by name. */
   listSlackPeople(vaultPath?: string | null): Promise<SlackPerson[]>;
   /**
