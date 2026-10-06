@@ -74,7 +74,9 @@ SettingsNav). Contract: `core/src/contracts.ts` → "Actions (actions.json)",
   To-dos get no improve pass.
 - Slack: context (note, quoted lines, Why), recipient (typed freely; no Slack
   lookup yet), **Copy** then **Mark as sent** (copying isn't sending). A
-  disabled **Send in Slack · Later** slot marks the future handler.
+  disabled **Send in Slack · Later** slot marks the future handler. Designed, not built: the slot
+  becomes a button linked to the Slack CLI, and every type can have buttons
+  that run a script ([Action buttons and script commands](action-buttons.md)).
 - Jira / Confluence: created only on the user's click, never during
   processing. Created items show key/link and status (manual **Refresh**;
   Done in Jira → done). Errors: not connected → "Set up connection"

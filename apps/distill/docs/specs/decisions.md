@@ -17,6 +17,60 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+**Action buttons and script commands: designed, defaults proposed (2026-10-05).** Spec:
+[Action buttons and script commands](action-buttons.md). Canvas: row 15, board
+ScriptActions. Status designed; the owner has not confirmed these yet.
+
+The owner asked to extend collectors into "action performers" that also store
+the scripts actions run, to add buttons to every action type in Settings or in
+the type's tab, to link each button to a script with mapped arguments (the
+Slack CLI's send for "Send in Slack"), to show the result, and to find a
+better name. Proposed defaults:
+
+- **Name: Automations** (the sidebar label for Collectors). Collect and
+  Commands are roles. A Folder automation collects; the Slack CLI offers
+  commands. Records, ids, `/v1/collectors` and the CLI keep "collector", so
+  there is no migration. The alternatives are Scripts, Helpers, Runbooks and
+  Tools. The test: the name must fit a Folder collector, which is not a
+  script.
+- **Commands are declared by hand in the app** (`script.commands`). They are
+  not parsed from `--help`, which would mean running unconsented code, and not
+  read from a file next to the script, because Distill never writes to the
+  owner's own file.
+- **A command's argv is words and flags, then `--`, then positionals**
+  (`endOptions` on by default). It was checked against a copy of the Slack
+  CLI's argparse on python3 3.13.2: a text like `-x` or `--done` fails without
+  `--` and works with it.
+- **Templates:** `{title}`, `{body}`, `{summary}`, `{fields.<key>}`, … Each
+  template is one argv element. Substitution is a single pass. An unknown
+  placeholder is an error. An empty optional flag is left out with its flag.
+- **Ask before running is on by default** (per button). Each button is
+  approved on its first run, and again after any change to the command, the
+  mapping or the script version. The run sheet always shows the exact
+  command line then.
+- **Only the app runs buttons.** The CLI and agents list and preview.
+- **Button runs are script runs with `trigger: action`** in the script's run
+  history.
+  - They never set `lastRun` or the sidebar count.
+  - The timeout is 60 s by default.
+  - They don't wait for collector slots or batches.
+  - There is one run per item at a time.
+- **On success:** read a JSON line or a pattern from stdout into
+  `item.external`, then Mark as sent, Complete, or nothing. On failure: the
+  stderr tail and Try again, and after a timeout "It may have run already".
+- **Send in Slack** becomes a button in the reserved send slot:
+  - it runs `slack_cli.py send [--thread] -- <target> <text>`, with `target ←
+    {fields.to}` (pattern #channel, @handle or an ID) and `text ← {body}`;
+  - on success it marks the message sent and stores the ts as `external.key`.
+- **`{body}` is the stored Markdown, unconverted.**
+- **Secrets:** Distill passes none of its own. Scripts read their own Keychain
+  items, as the Slack CLI does. "Script secrets" (env from Distill's Keychain,
+  per script) are designed for a second pass.
+- **Not changed:** the approval gate, the consent per script version, the
+  network policy, and the absence of any sandbox.
+- **Suggested to the owner, not done:** a `--json` flag on the Slack CLI's
+  `send` that prints the permalink.
+
 **Action summary: every found action says what it is about (2026-10-05).** Spec:
 [Action summary](action-summary.md). Canvas: row 14, board ActionSummary.
 

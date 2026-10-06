@@ -24,6 +24,10 @@ packages, Test run, Run now (v6)"). See "Script files and packages (v6)". The co
 `core/src/contracts.ts`; see "API and contract (built)" for where it differs
 from the proposal.
 
+Designed, not built: scripts that also offer **commands** run from action
+buttons, and the label Automations; see [Action buttons and script
+commands](action-buttons.md).
+
 Collectors bring material into a vault's queue folder automatically, on a
 schedule. They only fill the queue. What they bring is batched, reviewed and
 applied like a file the user drops, so nothing reaches the vault without
