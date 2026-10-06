@@ -1,0 +1,321 @@
+{
+  "$doc": "Review queue (designed 2026-10-05): approvals queue one apply at a time per vault; after each apply waiting batches are re-checked and stale ones rebuilt (unapproved: before the owner looks; approved: rebuilt, then one more OK, decision A); exit 75 reads Updating, never a failure; bounded self-recovery (rules first, then a recovery model, default Opus); the batch tabs become a left list. Spec: docs/specs/review-queue.md.",
+  "row": 64880,
+  "rowNote": {
+    "id": "flow16",
+    "text": "16 · Review queue (approve several batches; they go in one at a time, stale plans rebuild themselves, stuck ones recover)"
+  },
+  "templates": {},
+  "layouts": {
+    "pane": "<div style=\"flex-grow: 1; min-height: 0; overflow: hidden; position: relative\">{detail}</div>"
+  },
+  "bases": {
+    "review": {
+      "window": {
+        "width": 1200,
+        "height": 800
+      },
+      "sidebar": {
+        "section": "review",
+        "reviewCount": "1",
+        "status": "Sonnet · adding Product sync",
+        "height": 760
+      },
+      "layout": "pane",
+      "regions": {
+        "detail": {
+          "frag": "list"
+        }
+      }
+    }
+  },
+  "states": [
+    {
+      "id": "review-list",
+      "base": "review",
+      "label": "A · The batch list: readable names, date, sources, one state, oldest first; Approve says it queues"
+    },
+    {
+      "id": "review-queued",
+      "base": "review",
+      "label": "B · Queued: applies after the batch being added; checked against the pages before it goes in",
+      "set": {
+        "detail": {
+          "frag": "queued"
+        }
+      }
+    },
+    {
+      "id": "review-updating",
+      "base": "review",
+      "label": "C · Not approved yet and stale: rebuilt by its own session before you look (Updating…)",
+      "set": {
+        "detail": {
+          "frag": "updating"
+        }
+      }
+    },
+    {
+      "id": "review-reapprove",
+      "base": "review",
+      "label": "D · Approved but stale: rebuilt, keeps its place, one more OK with What changed since you approved",
+      "set": {
+        "detail": {
+          "frag": "reapprove"
+        },
+        "sidebar.reviewCount": "2",
+        "sidebar.status": "Sonnet · waiting on you"
+      }
+    },
+    {
+      "id": "review-recovering",
+      "base": "review",
+      "label": "E · Recovering · Opus: the rebuild went stale again; attempt 2 of 2, cost shown",
+      "set": {
+        "detail": {
+          "frag": "recovering"
+        },
+        "sidebar.status": "Opus · recovering"
+      }
+    },
+    {
+      "id": "review-gaveup",
+      "base": "review",
+      "label": "F · I couldn’t fix this: what’s wrong, what was tried, the options",
+      "set": {
+        "detail": {
+          "frag": "gaveup"
+        },
+        "sidebar.reviewCount": "2",
+        "sidebar.status": "Needs you"
+      }
+    },
+    {
+      "id": "review-recovering-denial",
+      "base": "review",
+      "label": "G · Claude was blocked from a command: Distill tells it to read the files instead, and it goes on",
+      "set": {
+        "detail": {
+          "frag": "denial-recovering"
+        },
+        "sidebar.status": "Sonnet · recovering"
+      }
+    },
+    {
+      "id": "review-gaveup-denial",
+      "base": "review",
+      "label": "H · Last resort: what Claude wanted, in plain words; the command only behind Show command",
+      "set": {
+        "detail": {
+          "frag": "denial-gaveup"
+        },
+        "sidebar.reviewCount": "2",
+        "sidebar.status": "Needs you"
+      }
+    },
+    {
+      "id": "rq-card-denial",
+      "label": "Blocked commands",
+      "caption": "Answered by Distill first; the owner never sees raw shell by default.",
+      "card": {
+        "height": 380,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-denial"
+      }
+    },
+    {
+      "id": "rq-card-queue",
+      "label": "The queue",
+      "caption": "One apply at a time per vault; fresh or stale is decided by the gate itself.",
+      "card": {
+        "height": 380,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-queue"
+      }
+    },
+    {
+      "id": "rq-card-decision",
+      "label": "Approved but stale",
+      "caption": "Decision A, and why B would break the approval gate.",
+      "card": {
+        "height": 420,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-decision"
+      }
+    },
+    {
+      "id": "rq-card-exit75",
+      "label": "Exit 75 and Updating",
+      "caption": "What happens instead of “Not added to your vault”.",
+      "card": {
+        "height": 380,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-exit75"
+      }
+    },
+    {
+      "id": "rq-card-recovery",
+      "label": "Self-recovery",
+      "caption": "Rules first; the recovery model only picks a fix the core can run and check.",
+      "card": {
+        "height": 420,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-recovery"
+      }
+    },
+    {
+      "id": "rq-card-bounds",
+      "label": "Bounds and cost",
+      "caption": "No loops, a cost cap, automatic by default.",
+      "card": {
+        "height": 360,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-bounds"
+      }
+    },
+    {
+      "id": "rq-card-settings",
+      "label": "Settings",
+      "caption": "Recovery has its own model: Opus by default.",
+      "card": {
+        "height": 380,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-settings"
+      }
+    },
+    {
+      "id": "rq-card-names",
+      "label": "The batch list",
+      "caption": "Names, order, keys.",
+      "card": {
+        "height": 420,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-names"
+      }
+    },
+    {
+      "id": "rq-card-tests",
+      "label": "Tests",
+      "caption": "With a fake runner and a temp vault.",
+      "card": {
+        "height": 380,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-tests"
+      }
+    }
+  ],
+  "boards": [
+    {
+      "file": "ReviewQueue.dc.html",
+      "title": "Review queue · approve several, they go in one at a time",
+      "heading": "Approve as many batches as you like: Distill adds them one at a time and keeps every plan current",
+      "intro": "“it is very bad, it list out each batch much better” and “when the issue happen it is nearly very difficult for the user to recover or fix the issue by itself, it will keep rerun and nothing will fix”. Approving a batch while another is being added queues it; applies run one at a time per vault, oldest approval first. After each apply the core re-checks every waiting batch against the vault. A stale batch you haven’t approved is rebuilt by its own session before you look (Updating…). A stale batch you approved is rebuilt and asks once more, with what changed since you approved: the approval gate binds every byte, so it never carries over (decision A). Exit 75 is never shown as a failure. A batch that still can’t move gets a bounded recovery: rules first, then a recovery model (Opus by default, set in Settings) that picks one fix the core can run and check, at most 2 times and $1.00, then “I couldn’t fix this” with your options. Review’s tabs become a list.",
+      "width": 2520,
+      "sections": [
+        {
+          "title": "The batch list and the queue"
+        },
+        {
+          "row": [
+            "review-list",
+            "review-queued"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
+          "title": "Plans that went stale"
+        },
+        {
+          "row": [
+            "review-updating",
+            "review-reapprove"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
+          "title": "Self-recovery"
+        },
+        {
+          "row": [
+            "review-recovering",
+            "review-gaveup"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
+          "title": "A blocked command"
+        },
+        {
+          "row": [
+            "review-recovering-denial",
+            "review-gaveup-denial"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
+          "title": "The rules"
+        },
+        {
+          "grid": [
+            "rq-card-queue",
+            "rq-card-decision",
+            "rq-card-exit75"
+          ],
+          "cols": 3
+        },
+        {
+          "grid": [
+            "rq-card-recovery",
+            "rq-card-bounds",
+            "rq-card-settings"
+          ],
+          "cols": 3
+        },
+        {
+          "grid": [
+            "rq-card-denial",
+            "rq-card-names",
+            "rq-card-tests"
+          ],
+          "cols": 3
+        }
+      ]
+    }
+  ]
+}

@@ -17,6 +17,71 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+**A blocked tool command never reaches the owner as raw shell (2026-10-05,
+designed).** The owner got "Claude asked to run" with `Bash: diff <(python3
+-c …) <(python3 -c …)` and "Combined command: reply with guidance instead."
+They said: "there's no way I can handle something like this". The session
+already had Read, Grep and Glob. Spec: [Review queue](review-queue.md),
+"Blocked tool commands".
+
+- **The core answers first.** A turn that ends with denials and no plan is
+  answered by the core: "that isn't allowed in Distill sessions; use Read, Grep
+  or Glob on these paths; no shell or python". Then the session resumes.
+  - This is a fixed rule, at most 2 per batch, $0.
+- **Then the recovery agent.** It has a new fix, `answer_denial`, whose guidance
+  the core checks and sends.
+- **The owner card is the last resort, in plain words.** The sentence comes from
+  the core's `denialSummary`. Raw commands, and the allow checkbox for a single
+  write rule, sit only under **Show command**.
+  - Options: Let recovery try again, Rebuild, Open in Terminal, Reject.
+- Logged as `batch.recovery` with `kind: denial`.
+
+**Several approvals go into a queue, one apply at a time per vault. A stale
+approved plan is rebuilt and asked once more; the approval never carries over
+(2026-10-05, designed).** The owner approved several batches at once. All but
+the first hit exit 75 `EXPECTED_HASH_MISMATCH` and each needed a reply and a new
+OK. The owner's rule: "automatic checks over human". Spec:
+[Review queue](review-queue.md), canvas row 16.
+
+- **The apply queue.**
+  - Approve records `job.queuedApply`, and `pumpApplies` starts one apply per
+    vault, oldest approval first.
+  - Before the head starts, `transaction inspect` runs on its approved bundle.
+    The same `approval_sha256` applies under the owner's approval. The gate is
+    used as the freshness check, so batches that don't overlap need no re-ask.
+- **Approved-but-stale: option A (rebuild, then one more OK), not B (carry the
+  approval over when only bookkeeping changed).**
+  - `plan_approval_sha256` binds every write's bytes and mode, and writes are
+    whole-file `create`/`replace`. A regenerated log or hot cache is a hash the
+    owner never approved.
+  - B needs bookkeeping as approved deltas rendered by the Python core (a
+    transaction v2, the repository's mutation protocol).
+  - `hot.md` is free text, not a mechanical merge.
+  - The stale rebuild rewrites concept and entity pages.
+  - B is deferred as an owner decision that needs that format change.
+  - The re-ask is made cheap: the sources are proven unchanged, and "What
+    changed since you approved" lists only the differing pages.
+  - Honest cost: almost every queued batch after the first still needs one
+    click, because every batch writes log and hot cache.
+- **Unapproved stale batches are rebuilt automatically, only once the vault's
+  queue is empty,** so a rebuild never goes stale again at once. Exit 75 reads
+  "Updating against the latest pages", never "Not added".
+- **Self-recovery (owner, verbatim: "we default use the opus, and we should able
+  to change the model in the setting").**
+  - Deterministic rules run first.
+  - Then a recovery task (`AITask.recovery`, default Claude Code · Opus · medium,
+    Settings → AI models → Recovery) picks one fix from a fixed list that the core
+    validates and executes. It is one structured call, with no tools, session or
+    vault access.
+  - It never applies anything, and any new plan needs the owner's OK.
+  - It is automatic, bounded to 2 attempts per batch per failure and $1.00 per
+    batch, and it never re-enters itself. Then "I couldn't fix this" offers the
+    options.
+  - It doesn't use a new session by itself: session continuity asks first.
+- **Review's batch tabs become a left list** (`ReviewBatchList`, `.paneWidth(.reviewList)`).
+  - Rows are oldest first by creation and never jump.
+  - Gemini file names are cleaned in DistillKit (`readableName`).
+
 **Review status after a failed apply follows the plan, and a Terminal apply is
 found in the vault's journal (2026-10-05).** The owner asked for the status to
 update correctly "if the user fixes the issue with the conversation or opens the
