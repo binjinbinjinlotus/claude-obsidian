@@ -66,9 +66,12 @@ if [[ "${1:-}" == "--install" ]]; then
   rm -rf "$HOME/Applications/Distill.app"
   cp -R "$BUNDLE" "$HOME/Applications/"
   echo "Installed $HOME/Applications/Distill.app"
-  # Only the installed copy should show in Launchpad and Spotlight: unregister the build copy and keep
-  # Spotlight out of the build folder.
-  touch "$(dirname "$BUNDLE")/.metadata_never_index"
+  # Only the installed copy may show in Launchpad and Spotlight. Spotlight ignores .metadata_never_index
+  # inside a folder, so the build copy is unregistered and removed (kept as Distill.noindex for inspection:
+  # a ".noindex" folder is never indexed and isn't an app bundle).
   LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
   [[ -x "$LSREG" ]] && "$LSREG" -u "$BUNDLE" >/dev/null 2>&1 || true
+  rm -rf "$BUILD/Distill.noindex"
+  mv "$BUNDLE" "$BUILD/Distill.noindex"
+  [[ -x "$LSREG" ]] && "$LSREG" -f "$HOME/Applications/Distill.app" >/dev/null 2>&1 || true
 fi
