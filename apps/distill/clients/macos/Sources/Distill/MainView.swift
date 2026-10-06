@@ -1205,6 +1205,7 @@ struct JobDetailView: View {
     private func blocked(_ job: Job, _ approval: ApprovalRequest) -> some View {
         BlockedCommandCard(job: job, approval: approval, allowed: $allowed,
                            onTryAgain: { engine.reply(job.id, text: BlockedCommandCard.readInstead) },
+                           onRecover: { engine.recover(job.id) },
                            onTerminal: { engine.openInTerminal(job) },
                            onReject: { engine.reject(job.id, batch: true) },
                            onAllow: { rules in engine.allow(job.id, rules: rules); allowed = [] },

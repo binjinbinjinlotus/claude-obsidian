@@ -50,3 +50,14 @@ test('a recovery for the same signature carries on; another signature starts fre
   assert.equal(recoveryFor(running, 'lock').denialAnswers, 0);
   assert.equal(recoveryFor({ ...running, state: 'fixed' }, 'denial').denialAnswers, 0);
 });
+
+test('recovery answers: only known fixes for the problem, and never the apply or a tool rule', async () => {
+  const { parseRecoveryAnswer, validateFix } = await import('./recovery.js');
+  assert.equal(parseRecoveryAnswer({ fix: 'format_disk', diagnosis: 'x' }), 'The answer named no fix Distill knows.');
+  const a = parseRecoveryAnswer({ fix: 'answer_denial', diagnosis: 'd', reason: 'r', guidance: 'Read the two files.' });
+  assert.ok(typeof a !== 'string');
+  assert.equal(validateFix(a, 'denial'), null);
+  assert.match(validateFix({ ...a, guidance: 'Please allow the rule Bash(diff:*)' }, 'denial') ?? '', /only the owner can allow/);
+  assert.match(validateFix({ ...a, guidance: 'x'.repeat(1201) }, 'denial') ?? '', /1200/);
+  assert.match(validateFix({ ...a, fix: 'split_batch' }, 'denial') ?? '', /isn't a fix for this problem/);
+});

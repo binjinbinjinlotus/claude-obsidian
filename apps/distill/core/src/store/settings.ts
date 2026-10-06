@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_ACTION_PREFERENCES,
   DEFAULT_ASK_PREFERENCES,
+  DEFAULT_RECOVERY_PREFERENCES,
+  type RecoveryPreferences,
   DEFAULT_LABELING_PREFERENCES,
   DEFAULT_SOURCE_TAXONOMY,
   type AITask,
@@ -23,7 +25,7 @@ import {
 import { bool, encodeJSON, isObject, num, preserveUnreadable, readJSON, str, strArray, writeFileAtomic, type JSONObject } from './json.js';
 
 export const DEFAULT_RUNNER_ID = 'claude-code';
-export const AI_TASKS: AITask[] = ['ingest', 'ask', 'labelSuggest', 'imageText', 'actionFind', 'actionDraft', 'actionImprove'];
+export const AI_TASKS: AITask[] = ['ingest', 'ask', 'labelSuggest', 'imageText', 'actionFind', 'actionDraft', 'actionImprove', 'recovery'];
 
 /** Keys the core understands; everything else in settings.json is carried through untouched. */
 const KNOWN_KEYS = [
@@ -42,6 +44,7 @@ const KNOWN_KEYS = [
   'nodePath',
   'sourceTaxonomy',
   'askPreferences',
+  'recovery',
   'labeling',
   'shortcuts',
   'runnerOptions',
@@ -322,6 +325,14 @@ export function decodeSettings(raw: unknown): Settings {
   }
   const askPreferences = decodeAskPreferences(raw.askPreferences);
   if (askPreferences) s.askPreferences = askPreferences;
+  if (isObject(raw.recovery)) {
+    const r = raw.recovery;
+    const rec: Partial<RecoveryPreferences> = {};
+    if (typeof r.automatic === 'boolean') rec.automatic = r.automatic;
+    if (typeof r.maxAttempts === 'number' && Number.isFinite(r.maxAttempts)) rec.maxAttempts = Math.min(5, Math.max(1, Math.round(r.maxAttempts)));
+    if (typeof r.maxCostUSD === 'number' && Number.isFinite(r.maxCostUSD)) rec.maxCostUSD = Math.min(20, Math.max(0, r.maxCostUSD));
+    s.recovery = rec;
+  }
   const labeling = decodeLabeling(raw.labeling);
   if (labeling) s.labeling = labeling;
   const shortcuts = decodeShortcuts(raw.shortcuts);
@@ -377,6 +388,7 @@ export function encodeSettings(s: Settings, raw: JSONObject = {}): JSONObject {
     }));
   }
   if (s.askPreferences != null) out.askPreferences = { ...s.askPreferences };
+  if (s.recovery != null) out.recovery = { ...s.recovery };
   if (s.labeling != null) out.labeling = { ...s.labeling };
   if (s.shortcuts != null) out.shortcuts = { ...s.shortcuts };
   if (s.runnerOptions != null) {
@@ -427,6 +439,8 @@ export function defaultSelection(s: Settings, task: AITask): ModelSelection {
   if (task === 'imageText') return { runnerID: DEFAULT_RUNNER_ID, model: 'haiku', effort: 'low' };
   // Finding actions: Sonnet at medium effort (lead decision 2026-10-02).
   if (task === 'actionFind') return { runnerID: DEFAULT_RUNNER_ID, model: 'sonnet', effort: 'medium' };
+  // Recovery (review-queue.md, owner 2026-10-05: "we default use the opus"): Opus at medium effort.
+  if (task === 'recovery') return { runnerID: DEFAULT_RUNNER_ID, model: 'opus', effort: 'medium' };
   const legacy = task === 'ingest' || task === 'ask' ? s.model : fallbackModel(task);
   return { runnerID: DEFAULT_RUNNER_ID, model: legacy, effort: null };
 }
@@ -438,6 +452,10 @@ export function selectionFor(s: Settings, task: AITask): ModelSelection {
 /** v2 preferences with the contract defaults filled in (settings.json keeps only what the user set). */
 export function labelingPreferences(s: Settings): LabelingPreferences {
   return { ...DEFAULT_LABELING_PREFERENCES, ...(s.labeling ?? {}) };
+}
+
+export function recoveryPreferences(s: Settings): RecoveryPreferences {
+  return { ...DEFAULT_RECOVERY_PREFERENCES, ...(s.recovery ?? {}) };
 }
 
 export function askPreferences(s: Settings): AskPreferences {

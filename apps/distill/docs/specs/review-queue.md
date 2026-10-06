@@ -1,7 +1,7 @@
 ---
 type: spec
 title: Review queue, automatic refresh, self-recovery and the batch list
-status: building
+status: built
 created: 2026-10-05
 updated: 2026-10-05
 tags:
@@ -14,13 +14,13 @@ tags:
 
 Canvas: row 16, board **ReviewQueue** (`design/screens/reviewqueue.json`).
 
-**Build status (2026-10-05).** Built in steps; see "Built so far" at the end.
+**Build status (2026-10-05): built**, in five steps; see "Built so far" at the end for what differs from the design.
 
 1. Blocked commands answered by Distill, and the plain-words card: **built**.
 2. Apply queue: **built**.
 3. Exit 75 → refresh: **built** (with step 2).
 4. Batch list: **built**.
-5. Recovery agent (Opus) and Settings.
+5. Recovery agent (Opus) and Settings: **built** (for blocked commands; see below).
 Related specs: [Approval and review](approval-and-review.md) (the gate, parts,
 exit 75), [Session continuity](session-continuity.md), [Full reads](full-read.md),
 [Live log](live-log.md), [Activity log](activity-log.md),
@@ -846,3 +846,37 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
 - Tests: `ReviewBatchListTests` (the spec's name table plus a transcript
   case, row states, next selection, ordinals, the date). Snapshot state
   `review-list`; `review-multiple` now shows the list.
+
+### Step 5: the recovery agent and Settings (2026-10-05)
+
+- Core: task `recovery` (`TASK_REQUIREMENTS.recovery = [['structuredOutput']]`,
+  default Claude Code · Opus · medium, `taskDefaults.recovery` overrides);
+  `Settings.recovery` (`automatic`, `maxAttempts` 1–5, `maxCostUSD`), read
+  through `recoveryPreferences`. `engine/recovery.ts`: `RECOVERY_SCHEMA`,
+  `parseRecoveryAnswer`, `validateFix` (fixes allowed per problem; guidance
+  that names the vault apply or asks for a tool rule is refused),
+  `recoveryFacts`, `recoveryPrompt`. `runRecoveryAgent` in the engine uses
+  `runStructured` (no tools, a fresh session, a scratch directory under the
+  state dir; never the vault). `tryRecoveryAgain` = `POST /v1/jobs/:id/recover`
+  (activity `batch.recovery`).
+- Recovery is not part of the setup check: a recovery runner that isn't ready
+  never stops batching (it ends in Couldn't fix).
+- Mac: `AITask.recovery`, `fallbackSelection(.recovery)` = Opus · medium; the
+  Recovery row in Settings → AI models; the Recovery group (Recover
+  automatically, Attempts per problem, Cost limit per batch);
+  `RecoveryPreferences`; `CoreClient.recover`; the card's **Let recovery try
+  again** and "Tried twice · last by Opus · $0.04".
+- **Not built yet (open):**
+  - The agent runs for **blocked commands** only. The other signatures keep
+    their rules from steps 2–3 (the lock wait, one rebuild per change, back to
+    the owner with plain words); `ruleFor` and agent calls for `stale-again`,
+    `plan-error`, `runner-failed` are not wired.
+  - No 1-minute backoff between agent attempts (each attempt waits for the
+    session's next turn anyway).
+  - `distill status` does not list queued or recovering batches yet.
+  - `new_session` is a proposal (`recovery.proposal`) shown in the sentence;
+    there is no one-click Continue in a new session from the card yet.
+- Tests: `engine.test.ts` "blocked commands" (6: the agent's guidance is sent
+  and the plan comes back; guidance naming the apply is refused; the cost
+  limit and Recover automatically; Try again), `recovery.test.ts` (4),
+  `backends.test.ts` task lists, `RecoverySettingsTests` (2).

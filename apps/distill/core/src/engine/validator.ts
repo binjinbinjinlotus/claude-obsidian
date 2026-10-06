@@ -52,8 +52,9 @@ export function setupProblems(s: Settings, runners: RunnerRegistry): SetupProble
     out.push(problem.noVault());
   }
   // Every runner that some task is set to use must be ready. Action tasks don't
-  // block batching: finding actions reports its own failure after the apply.
-  const used = [...new Set(AI_TASKS.filter((t) => !t.startsWith('action')).map((t) => selectionFor(s, t).runnerID))].sort();
+  // block batching: finding actions reports its own failure after the apply. Nor does
+  // recovery (review-queue.md): an unusable recovery runner ends in "Couldn't fix", never a stop.
+  const used = [...new Set(AI_TASKS.filter((t) => !t.startsWith('action') && t !== 'recovery').map((t) => selectionFor(s, t).runnerID))].sort();
   for (const id of used) {
     const runner = runners.get(id);
     if (!runner) {

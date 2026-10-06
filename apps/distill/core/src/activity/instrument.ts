@@ -424,6 +424,11 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
 
     // ── batches (jobs) ──
     approve: jobVerb('batch.approved', 'Approved', 'approve'),
+    tryRecoveryAgain: {
+      before: (id) => getJob(id),
+      ok: ([id], _r, job: Job | undefined) => ({ type: 'batch.recovery', object: jobObject(id, job), summary: `Asked recovery to try ${jobName(job)} again` }),
+      fail: ([id], job: Job | undefined) => ({ type: 'batch.recovery', object: jobObject(id, job), summary: `Couldn't start recovery for ${jobName(job)}` }),
+    },
     unqueue: {
       before: (id) => getJob(id),
       ok: ([id], _r, job: Job | undefined) => ({ type: 'batch.unqueued', object: jobObject(id, job), summary: `Took ${jobName(job)} out of the apply queue` }),

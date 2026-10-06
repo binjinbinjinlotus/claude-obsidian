@@ -153,6 +153,7 @@ export const SETTING_LABELS: Record<string, SettingLabel> = {
   'taskDefaults.actionFind': { section: S.models, label: 'Finding actions', word: selection },
   'taskDefaults.actionDraft': { section: S.models, label: 'Action drafts', word: selection },
   'taskDefaults.actionImprove': { section: S.models, label: 'Improving drafts', word: selection },
+  'taskDefaults.recovery': { section: S.models, label: 'Recovery', word: selection },
   // Actions and connections → Actions
   ...Object.fromEntries(
     (['notes', 'ask'] as const).flatMap((src) => [
@@ -192,7 +193,7 @@ function withDefaults(s: Settings): Record<string, unknown> {
   };
 }
 
-const AI_TASKS: AITask[] = ['ingest', 'ask', 'labelSuggest', 'imageText', 'actionFind', 'actionDraft', 'actionImprove'];
+const AI_TASKS: AITask[] = ['ingest', 'ask', 'labelSuggest', 'imageText', 'actionFind', 'actionDraft', 'actionImprove', 'recovery'];
 
 /** Leaf paths (objects walked; arrays and primitives are leaves). */
 function leaves(v: unknown, prefix: string, out: Map<string, unknown>, depth = 0): void {

@@ -46,6 +46,8 @@ public enum AITask: String, Codable, CaseIterable, Sendable {
     case ingest, ask, labelSuggest, imageText
     /// v3: find actions in notes and answers; write and improve action drafts.
     case actionFind, actionDraft, actionImprove
+    /// review-queue.md: the recovery agent for a stuck batch (Opus by default).
+    case recovery
 }
 
 public struct ModelSelection: Codable, Hashable, Sendable {
@@ -162,6 +164,8 @@ public struct Settings: Codable, Equatable, Sendable {
     public var batchSourceTokens: Int?
     /// v10: how much of each source goes into its page, per source type (nil = the core's defaults). Raw object, so unknown keys survive.
     public var detailLevel: DetailLevels?
+    /// review-queue.md: self-recovery bounds (nil fields = the core's defaults: on, 2 attempts, $1.00).
+    public var recovery: RecoveryPreferences?
 
     /// The queue check as the core applies it: absent = 5; clamped to 0…1440.
     public var resolvedQueueScanMinutes: Int { queueScanMinutes.map { min(1440, max(0, $0)) } ?? 5 }
@@ -208,6 +212,7 @@ public struct Settings: Codable, Equatable, Sendable {
         queueScanMinutes = c.lossyInt(.queueScanMinutes).map { min(1440, max(0, $0)) }
         batchSourceTokens = c.lossyInt(.batchSourceTokens).flatMap { $0 > 0 ? $0 : nil }
         detailLevel = c.lossy(DetailLevels.self, .detailLevel)
+        recovery = c.lossy(RecoveryPreferences.self, .recovery)
     }
 
     /// This value as a JSON object (nil optionals omitted).

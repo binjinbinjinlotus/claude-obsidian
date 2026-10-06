@@ -92,7 +92,7 @@ export interface StructuredRun {
 export interface RunOptions {
   runners: RunnerRegistry;
   settings: Settings;
-  task: ActionTask;
+  task: AITask;
   selection: ModelSelection;
   prompt: string;
   schema: string;

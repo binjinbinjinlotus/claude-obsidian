@@ -9,7 +9,7 @@ struct TaskDefaultsSettings: View {
     @ObservedObject var notes: NotesStore
 
     /// Tasks with one model each. Action drafts are set per type (a link to Actions).
-    private let tasks: [AITask] = [.ingest, .ask, .labelSuggest, .imageText, .actionFind]
+    private let tasks: [AITask] = [.ingest, .ask, .labelSuggest, .imageText, .actionFind, .recovery]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -31,7 +31,8 @@ struct TaskDefaultsSettings: View {
                 .padding(.horizontal, 14).padding(.vertical, 12)
             }
             .background(RoundedRectangle(cornerRadius: 16).fill(Theme.panel))
-            Text("Adding notes and Ask need a runner that can read files and respect permissions (Claude Code, Codex). Model APIs like OpenRouter show up only for label suggestions, text from images and actions.")
+            RecoverySettings()
+            Text("Adding notes and Ask need a runner that can read files and respect permissions (Claude Code, Codex). Model APIs like OpenRouter show up only for label suggestions, text from images, actions and recovery.")
                 .font(Theme.body(12)).foregroundStyle(Color(hex: 0x48463F))
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 12).padding(.vertical, 10)
@@ -119,5 +120,57 @@ struct ModelPickers: View {
             .disabled(runner.map { $0.effortLevels.isEmpty } ?? false)
             .accessibilityLabel("Effort for \(name)")
         }
+    }
+}
+
+/// review-queue.md: how far Distill goes on its own when a batch gets stuck (Settings → AI models → Recovery).
+struct RecoverySettings: View {
+    @EnvironmentObject var engine: AppModel
+
+    private var prefs: RecoveryPreferences { engine.settings.recovery ?? RecoveryPreferences() }
+    private func set(_ edit: (inout RecoveryPreferences) -> Void) {
+        var p = prefs
+        edit(&p)
+        engine.settings.recovery = p
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Recover automatically").font(Theme.body(13, .bold))
+                    Text("When a batch is stuck, Distill tries a fix with the Recovery model before it asks you").font(Theme.body(11)).foregroundStyle(Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                PillSwitch(isOn: Binding(get: { prefs.resolvedAutomatic }, set: { v in set { $0.automatic = v } }),
+                           label: "Recover automatically", width: 36, height: 22)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            Divider().overlay(Theme.border)
+            HStack(spacing: 10) {
+                Text("Attempts per problem").font(Theme.body(13, .bold)).frame(maxWidth: .infinity, alignment: .leading)
+                Stepper(value: Binding(get: { prefs.resolvedMaxAttempts }, set: { v in set { $0.maxAttempts = v } }), in: 1...5) {
+                    Text("\(prefs.resolvedMaxAttempts)").font(Theme.body(13))
+                }
+                .fixedSize()
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            Divider().overlay(Theme.border)
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Cost limit per batch").font(Theme.body(13, .bold))
+                    Text("Recovery stops here and asks you").font(Theme.body(11)).foregroundStyle(Theme.muted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Stepper(value: Binding(get: { prefs.resolvedMaxCostUSD }, set: { v in set { $0.maxCostUSD = (v * 4).rounded() / 4 } }), in: 0...10, step: 0.25) {
+                    Text(String(format: "$%.2f", prefs.resolvedMaxCostUSD)).font(Theme.body(13))
+                }
+                .fixedSize()
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+        }
+        .background(RoundedRectangle(cornerRadius: 16).fill(Theme.panel))
+        .settingsAnchor("Recover automatically")
     }
 }

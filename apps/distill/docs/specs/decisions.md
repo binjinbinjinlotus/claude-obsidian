@@ -17,6 +17,18 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+**Recovery agent: built for blocked commands first (2026-10-05).** Step 5 of
+[Review queue](review-queue.md). The `recovery` task defaults to Claude Code ·
+Opus · medium, as the owner asked ("we default use the opus"), and can be
+changed in Settings → AI models → Recovery. Settings → Recovery has Recover
+automatically (on), attempts per problem (2) and a cost limit per batch
+($1.00). The agent is one structured call with no tools and no vault access;
+the core checks its fix (never the vault apply, never a tool rule). It runs
+for blocked commands, which is the owner's reported case. Stale plans and locks
+keep the deterministic rules from steps 2–3, and the agent for those
+signatures is left open in the spec. Recovery is not part of the setup check, so
+a recovery runner that isn't ready never stops batching.
+
 **Apply queue: build choices (2026-10-05, built).** Steps 2–3 of
 [Review queue](review-queue.md). (1) Approve applies at once when nothing is
 ahead in the vault and queues otherwise; the queue re-enters Approve only after

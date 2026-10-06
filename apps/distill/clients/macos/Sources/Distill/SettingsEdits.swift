@@ -149,6 +149,8 @@ enum SettingsEdits {
         case .labelSuggest, .imageText: return ModelSelection(runnerID: "claude-code", model: "haiku", effort: "low")
         case .actionFind: return ModelSelection(runnerID: "claude-code", model: "sonnet", effort: "medium")
         case .actionDraft, .actionImprove: return ModelSelection(runnerID: "claude-code", model: "sonnet")
+        // review-queue.md (owner 2026-10-05: "we default use the opus").
+        case .recovery: return ModelSelection(runnerID: "claude-code", model: "opus", effort: "medium")
         }
     }
 
@@ -191,7 +193,7 @@ enum SettingsEdits {
     /// doesn't list them yet still qualifies by its capabilities.
     static func candidates(for task: AITask, runners: [RunnerInfo], settings: Settings, current: String? = nil) -> [RunnerInfo] {
         let current = current ?? selection(task, settings: settings).runnerID
-        let isAction = task == .actionFind || task == .actionDraft || task == .actionImprove
+        let isAction = task == .actionFind || task == .actionDraft || task == .actionImprove || task == .recovery
         return runners.filter { r in
             (r.enabled || settings.enabledRunners.contains(r.id) || r.id == current)
                 && (r.tasks.contains(task) || (isAction && r.capabilities.contains("structuredOutput")))
@@ -256,6 +258,7 @@ enum SettingsEdits {
         case .actionFind: return ("Finding actions", "After a batch is applied, and on Ask answers")
         case .actionDraft: return ("Action drafts", "Writing drafts, set per type in Actions")
         case .actionImprove: return ("Improving drafts", "After you edit, set per type in Actions")
+        case .recovery: return ("Recovery", "When a batch gets stuck, before it asks you")
         }
     }
 

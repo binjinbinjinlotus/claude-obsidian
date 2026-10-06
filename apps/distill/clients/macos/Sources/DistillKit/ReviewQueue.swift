@@ -369,3 +369,29 @@ extension ReviewBatches {
         return now.first
     }
 }
+
+/// review-queue.md: Settings → Recovery. Only what the owner set is stored (nil = default).
+public struct RecoveryPreferences: Codable, Equatable, Sendable {
+    public var automatic: Bool?
+    public var maxAttempts: Int?
+    public var maxCostUSD: Double?
+    public init(automatic: Bool? = nil, maxAttempts: Int? = nil, maxCostUSD: Double? = nil) {
+        self.automatic = automatic; self.maxAttempts = maxAttempts; self.maxCostUSD = maxCostUSD
+    }
+    enum Keys: String, CodingKey { case automatic, maxAttempts, maxCostUSD }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        automatic = c.lossy(Bool.self, .automatic)
+        maxAttempts = c.lossyInt(.maxAttempts)
+        maxCostUSD = c.lossyDouble(.maxCostUSD)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Keys.self)
+        try c.encodeIfPresent(automatic, forKey: .automatic)
+        try c.encodeIfPresent(maxAttempts, forKey: .maxAttempts)
+        try c.encodeIfPresent(maxCostUSD, forKey: .maxCostUSD)
+    }
+    public var resolvedAutomatic: Bool { automatic ?? true }
+    public var resolvedMaxAttempts: Int { min(5, max(1, maxAttempts ?? 2)) }
+    public var resolvedMaxCostUSD: Double { maxCostUSD ?? 1 }
+}

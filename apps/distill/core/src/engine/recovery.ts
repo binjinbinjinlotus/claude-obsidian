@@ -117,3 +117,99 @@ export function recoveryFor(current: RecoveryState | null | undefined, signature
   if (current && current.signature === signature && current.state !== 'fixed') return current;
   return { state: 'running', signature, attempts: [], denialAnswers: 0 };
 }
+
+// ───────────── the recovery agent (review-queue.md, "The recovery agent") ─────────────
+
+export const RECOVERY_FIXES = [
+  'rebuild_in_session', 'reinspect_same_bundle', 'wait_then_retry', 'split_batch', 'discard_stale_part', 'answer_denial', 'new_session', 'give_up',
+] as const;
+
+export const RECOVERY_SCHEMA = JSON.stringify({
+  type: 'object',
+  properties: {
+    diagnosis: { type: 'string', description: 'At most 400 characters, plain words for the owner: what is wrong.' },
+    fix: { type: 'string', enum: [...RECOVERY_FIXES] },
+    reason: { type: 'string', description: 'At most 300 characters: why this fix.' },
+    guidance: { type: 'string', description: 'answer_denial only: at most 1200 characters Distill sends to the session as its reply.' },
+  },
+  required: ['diagnosis', 'fix', 'reason'],
+  additionalProperties: false,
+});
+
+export interface RecoveryAnswer {
+  diagnosis: string;
+  fix: (typeof RECOVERY_FIXES)[number];
+  reason: string;
+  guidance?: string;
+}
+
+export function parseRecoveryAnswer(v: Record<string, unknown>): RecoveryAnswer | string {
+  const fix = v.fix;
+  if (typeof fix !== 'string' || !(RECOVERY_FIXES as readonly string[]).includes(fix)) return 'The answer named no fix Distill knows.';
+  const diagnosis = typeof v.diagnosis === 'string' ? v.diagnosis.trim().slice(0, 400) : '';
+  if (!diagnosis) return 'The answer had no diagnosis.';
+  const out: RecoveryAnswer = { diagnosis, fix: fix as RecoveryAnswer['fix'], reason: typeof v.reason === 'string' ? v.reason.trim().slice(0, 300) : '' };
+  if (typeof v.guidance === 'string' && v.guidance.trim()) out.guidance = v.guidance.trim();
+  return out;
+}
+
+/** The fixes this problem allows. Anything else is a failed attempt (the core never runs it). */
+const ALLOWED: Record<RecoveryState['signature'], ReadonlyArray<RecoveryAnswer['fix']>> = {
+  denial: ['answer_denial', 'new_session', 'give_up'],
+  'stale-again': ['rebuild_in_session', 'new_session', 'give_up'],
+  lock: ['reinspect_same_bundle', 'give_up'],
+  'plan-error': ['rebuild_in_session', 'new_session', 'give_up'],
+  'not-recorded': ['give_up'],
+  'full-read-stop': ['give_up'],
+  'session-gone': ['new_session', 'give_up'],
+  'runner-failed': ['rebuild_in_session', 'new_session', 'give_up'],
+};
+
+/** Null when the core may carry the fix out; otherwise why not. The approval gate is never negotiable. */
+export function validateFix(a: RecoveryAnswer, signature: RecoveryState['signature']): string | null {
+  if (!ALLOWED[signature].includes(a.fix)) return `${a.fix} isn't a fix for this problem.`;
+  if (a.fix === 'answer_denial') {
+    const g = a.guidance ?? '';
+    if (!g) return 'answer_denial needs guidance.';
+    if (g.length > 1200) return 'The guidance is longer than 1200 characters.';
+    if (/transaction\s+apply|approved-plan-sha256/i.test(g)) return 'The guidance named the vault apply, which only your approval runs.';
+    if (/\b(Bash|Edit|Write)\(/.test(g) || /allow(ing)?\s+(the\s+)?(rule|tool|command)/i.test(g)) return 'The guidance asked for a tool rule; only the owner can allow one.';
+  }
+  return null;
+}
+
+/** What the agent sees: the job's facts, capped near 24k characters. It never sees or touches the vault itself. */
+export function recoveryFacts(o: {
+  signature: RecoveryState['signature'];
+  turns: { author: string; text: string }[];
+  denials: PermissionDenial[];
+  answersSent: string[];
+  attempts: RecoveryState['attempts'];
+  vaultPath: string;
+  jobDir: string;
+}): string {
+  const turns = o.turns.slice(-12).map((t) => `[${t.author}] ${t.text.slice(0, 1500)}`).join('\n\n');
+  const lines = [
+    `Problem: ${o.signature}.`,
+    'This is a Distill batch: an AI session reads sources and writes a transaction bundle in its job directory; the owner approves it before anything reaches the vault.',
+    'The session may use Read, Grep and Glob anywhere in the vault, and Write/Edit only in its job directory. It cannot run shell commands or python.',
+    `Vault: ${o.vaultPath}`,
+    `Job directory: ${o.jobDir}`,
+  ];
+  if (o.denials.length > 0) lines.push('Blocked calls in the last turn:', ...o.denials.slice(0, 6).map((d) => `- ${denialLine(d)}`));
+  if (o.answersSent.length > 0) lines.push('What Distill already told the session:', ...o.answersSent.slice(-3).map((t) => `- ${t.slice(0, 600)}`));
+  if (o.attempts.length > 0) lines.push('Earlier attempts:', ...o.attempts.map((a) => `- ${a.by} ${a.fix}: ${a.result}${a.diagnosis ? ` (${a.diagnosis.slice(0, 200)})` : ''}`));
+  lines.push('Conversation (newest last):', turns);
+  const text = lines.join('\n');
+  return text.length > 24_000 ? text.slice(text.length - 24_000) : text;
+}
+
+export function recoveryPrompt(facts: string): string {
+  return [
+    'You are the recovery step for a stuck Distill batch. Pick exactly one fix from the list and explain it in plain words for the owner.',
+    'Fixes: answer_denial (send the session guidance so it can continue with the tools it has), new_session (suggest the owner start a fresh session), give_up (the owner must decide).',
+    'Never suggest applying anything to the vault, never ask for a tool rule: only the owner approves or allows.',
+    '',
+    facts,
+  ].join('\n');
+}

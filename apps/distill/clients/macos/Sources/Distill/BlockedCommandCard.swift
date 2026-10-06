@@ -9,6 +9,8 @@ struct BlockedCommandCard: View {
     let approval: ApprovalRequest
     @Binding var allowed: Set<String>
     var onTryAgain: () -> Void
+    /// Let recovery try again (a core with recovery); nil shows Tell Claude to read the files.
+    var onRecover: (() -> Void)? = nil
     var onTerminal: () -> Void
     var onReject: () -> Void
     var onAllow: ([String]) -> Void
@@ -32,8 +34,13 @@ struct BlockedCommandCard: View {
                 Text(BlockedText.summary(job)).font(Theme.body(12.5)).foregroundStyle(Theme.softInk).fixedSize(horizontal: false, vertical: true)
                 if let tried = triedLine { Text(tried).font(Theme.body(11.5)).foregroundStyle(Theme.muted) }
                 HStack(spacing: 8) {
-                    SoftButton(title: "Tell Claude to read the files", tint: Theme.peachInk, fill: .white, size: .small, systemImage: "arrow.clockwise", action: onTryAgain)
-                        .fixedSize()
+                    if let onRecover, job.recovery != nil {
+                        SoftButton(title: "Let recovery try again", tint: Theme.peachInk, fill: .white, size: .small, systemImage: "arrow.clockwise", action: onRecover)
+                            .fixedSize()
+                    } else {
+                        SoftButton(title: "Tell Claude to read the files", tint: Theme.peachInk, fill: .white, size: .small, systemImage: "arrow.clockwise", action: onTryAgain)
+                            .fixedSize()
+                    }
                     SoftButton(title: "Open in Terminal", fill: .white, size: .small, systemImage: "terminal", action: onTerminal).fixedSize()
                     SoftButton(title: "Reject batch", tint: Theme.muted, fill: .clear, size: .small, action: onReject).fixedSize()
                 }
@@ -53,7 +60,8 @@ struct BlockedCommandCard: View {
         guard let r = job.recovery, !r.attempts.isEmpty else { return nil }
         let n = r.attempts.count
         let cost = r.costUSD > 0 ? String(format: " · $%.2f", r.costUSD) : ""
-        return "Tried \(n == 1 ? "once" : n == 2 ? "twice" : "\(n) times")\(cost)."
+        let agent = r.attempts.last(where: { $0.by == "agent" }).map { " · last by \(ModelChoice.shortName($0.model ?? "the Recovery model"))" } ?? ""
+        return "Tried \(n == 1 ? "once" : n == 2 ? "twice" : "\(n) times")\(agent)\(cost)."
     }
 
     private var commands: some View {

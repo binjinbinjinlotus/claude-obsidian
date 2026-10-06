@@ -348,6 +348,8 @@ final class AppModel: ObservableObject {
     func cancel(_ id: String) { jobAction { try await $0.cancel(id) } }
     /// review-queue.md: Don't apply yet.
     func unqueue(_ id: String) { jobAction { try await $0.unqueue(id) } }
+    /// review-queue.md: Let recovery try again.
+    func recover(_ id: String) { jobAction { try await $0.recover(id) } }
 
     private func jobAction(_ call: @escaping (CoreClient) async throws -> Job?) {
         perform { client in

@@ -22,6 +22,8 @@ import {
   type JobPart,
   type PendingPart,
   type QueuedApply,
+  type RecoveryAttempt,
+  type RecoverySignature,
   type CoreEvent,
   type DistillCore,
   type Job,
@@ -71,6 +73,7 @@ import {
   defaultQueueDirectory,
   encodeSettings,
   labelingPreferences,
+  recoveryPreferences,
   selectionFor,
   SettingsStore,
 } from '../store/settings.js';
@@ -106,7 +109,19 @@ import {
   type RereadPlan,
 } from './reread.js';
 import { CoreError } from './errors.js';
-import { denialAnswer, denialSummary, MAX_DENIAL_ANSWERS, recoveryFor } from './recovery.js';
+import {
+  denialAnswer,
+  denialSummary,
+  MAX_DENIAL_ANSWERS,
+  parseRecoveryAnswer,
+  RECOVERY_SCHEMA,
+  recoveryFacts,
+  recoveryFor,
+  recoveryPrompt,
+  validateFix,
+  type RecoveryAnswer,
+} from './recovery.js';
+import { runStructured } from '../actions/ai.js';
 import { queueOrder, sinceApproved, staleFor } from './apply-queue.js';
 import { createFullRead, type FullReadStep } from './full-read.js';
 import { archivedCopy, ledgerRecords } from '../coverage/archive.js';
@@ -1128,9 +1143,18 @@ export function createEngine(opts: EngineOptions): Engine {
       mutate(id, (j) => {
         j.recovery = { ...rec, attempts: settled, state: 'gaveUp', summary: denialSummary(denials, { ...where, answers }) + extra };
       });
-    if (answers >= MAX_DENIAL_ANSWERS) {
+    // Settings → Recovery → Recover automatically off: the owner decides (plain words, never the command).
+    if (!recoveryPreferences(settings).automatic) {
       giveUp();
       return false;
+    }
+    if (answers >= MAX_DENIAL_ANSWERS) {
+      // Two answers didn't help: the recovery agent (Opus by default) looks at the facts, within its bounds.
+      mutate(id, (j) => {
+        j.recovery = { ...rec, attempts: settled, state: 'running' };
+      });
+      track(asScheduler(() => runRecoveryAgent(id, 'denial'))().catch((err: unknown) => log('warn', `Recovery: ${(err as Error).message}`)));
+      return true;
     }
     const text = denialAnswer(denials, where);
     if (precheck(job, 'reply', { text })) {
@@ -1156,6 +1180,116 @@ export function createEngine(opts: EngineOptions): Engine {
       return false;
     }
     return true;
+  }
+
+  /**
+   * review-queue.md, "The recovery agent": one structured call (no tools, no session, no vault access) picks one fix
+   * from a fixed list; the core checks it and carries it out. Bounded by Settings → Recovery (attempts, cost).
+   * It never applies anything and never allows a tool rule.
+   */
+  async function runRecoveryAgent(id: string, signature: RecoverySignature): Promise<void> {
+    const job = findJob(id);
+    if (!job?.recovery || job.state !== 'awaitingApproval') return;
+    const prefs = recoveryPreferences(settings);
+    const rec = job.recovery;
+    const where = { vaultPath: job.vaultPath, jobDir: jobStateDirectory(job) };
+    const denials = job.approval?.denials ?? [];
+    const base = signature === 'denial' ? denialSummary(denials, { ...where, answers: rec.denialAnswers ?? 0 }) : 'Distill couldn’t get this batch going again by itself.';
+    const stop = (extra: string, proposal?: 'new_session') =>
+      mutate(id, (j) => {
+        if (!j.recovery) return;
+        j.recovery = { ...j.recovery, state: 'gaveUp', summary: base + extra, ...(proposal ? { proposal } : {}) };
+      });
+    const spent = rec.attempts.reduce((n, a) => n + a.costUSD, 0);
+    if (rec.attempts.filter((a) => a.by === 'agent').length >= prefs.maxAttempts) return stop('');
+    if (spent >= prefs.maxCostUSD) return stop(` Recovery stopped at its $${prefs.maxCostUSD.toFixed(2)} limit.`);
+    const selection = selectionFor(settings, 'recovery');
+    const at = isoDate(now());
+    mutate(id, (j) => {
+      if (!j.recovery) return;
+      j.recovery = {
+        ...j.recovery,
+        state: 'running',
+        attempts: [...j.recovery.attempts, { at, by: 'agent', runnerID: selection.runnerID, ...(selection.model ? { model: selection.model } : {}), fix: 'give_up', result: 'running', costUSD: 0 }],
+      };
+    });
+    let answer: RecoveryAnswer | undefined;
+    let error: string | undefined;
+    let cost = 0;
+    try {
+      const facts = recoveryFacts({
+        signature,
+        turns: job.turns.map((t) => ({ author: t.author, text: t.text })),
+        denials,
+        answersSent: job.turns.filter((t) => t.author === 'app' && /Read, Grep or Glob/.test(t.text)).map((t) => t.text),
+        attempts: rec.attempts,
+        ...where,
+      });
+      const out = await runStructured({
+        runners, settings, task: 'recovery', selection, prompt: recoveryPrompt(facts), schema: RECOVERY_SCHEMA,
+        scratchRoot: path.join(paths.dir, 'recovery', 'scratch'),
+      });
+      cost = out.costUSD;
+      const parsed = parseRecoveryAnswer(out.value);
+      if (typeof parsed === 'string') error = parsed;
+      else {
+        answer = parsed;
+        error = validateFix(parsed, signature) ?? undefined;
+      }
+    } catch (err) {
+      error = (err as Error).message;
+    }
+    const current = findJob(id);
+    if (!current?.recovery || current.state !== 'awaitingApproval') return;
+    const settle = (result: 'running' | 'failed', extra: Partial<RecoveryAttempt> = {}) =>
+      mutate(id, (j) => {
+        if (!j.recovery) return;
+        const attempts = [...j.recovery.attempts];
+        const last = attempts[attempts.length - 1];
+        if (last && last.at === at) {
+          attempts[attempts.length - 1] = { ...last, result, costUSD: cost, ...(answer ? { fix: answer.fix, diagnosis: answer.diagnosis } : {}), ...extra };
+        }
+        j.recovery = { ...j.recovery, attempts };
+      });
+    if (error || !answer) {
+      settle('failed', { error: error ?? 'No answer.' });
+      return stop(answer?.diagnosis ? ` ${answer.diagnosis}` : '');
+    }
+    switch (answer.fix) {
+      case 'answer_denial': {
+        const text = answer.guidance!;
+        if (precheck(current, 'reply', { text })) {
+          settle('failed', { error: 'The batch’s AI session isn’t available anymore.' });
+          return stop(' Its AI session isn’t available anymore.');
+        }
+        settle('running');
+        mutate(id, (j) => j.turns.push(newTurn('app', text, now())));
+        startTurnProgress(findJob(id)!, 'Drafting page changes', 'Recovering · answering a blocked command');
+        const out = resumeBatchSession({ job: findJob(id)!, prompt: WorkerProtocol.replyPrompt(text), action: 'reply', text });
+        if (out.kind === 'session_unavailable') stop(' Its AI session isn’t available anymore.');
+        return;
+      }
+      case 'new_session':
+        // Session continuity asks the owner before a new session (owner decision): a proposal only.
+        settle('failed', { error: 'Only you can start a new session.' });
+        return stop(` ${answer.diagnosis} Recovery suggests continuing in a new session.`, 'new_session');
+      default:
+        settle('failed');
+        return stop(` ${answer.diagnosis}`);
+    }
+  }
+
+  /** Let recovery try again (the owner's click): attempts start over, the rule first. */
+  function tryRecoveryAgain(id: string): Job {
+    const job = requireJob(id);
+    if (job.state !== 'awaitingApproval' || !job.recovery || job.recovery.state !== 'gaveUp') {
+      throw new CoreError('invalid_state', `Job ${id} has nothing for recovery to try again.`);
+    }
+    mutate(id, (j) => {
+      delete j.recovery;
+    });
+    if (!recoverDenial(id)) throw new CoreError('invalid_state', 'Recovery can’t run for this batch now. Reply to Claude, open it in Terminal, or reject it.');
+    return clone(requireJob(id));
   }
 
   // ───────────── the apply queue (review-queue.md) ─────────────
@@ -3614,6 +3748,7 @@ export function createEngine(opts: EngineOptions): Engine {
     },
     approve: (id: string, opts?: ApproveOptions & SessionOptions) => approve(id, opts),
     unqueue,
+    tryRecoveryAgain,
     reply,
     allow,
     reject,

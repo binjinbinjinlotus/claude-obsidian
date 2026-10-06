@@ -15,7 +15,7 @@ export interface VaultProfile {
   queueDirectory: string;
 }
 
-export type AITask = 'ingest' | 'ask' | 'labelSuggest' | 'imageText' | 'actionFind' | 'actionDraft' | 'actionImprove';
+export type AITask = 'ingest' | 'ask' | 'labelSuggest' | 'imageText' | 'actionFind' | 'actionDraft' | 'actionImprove' | 'recovery';
 
 export interface ModelSelection {
   runnerID: string;
@@ -46,6 +46,8 @@ export interface Settings {
   sourceTaxonomy?: SourceGroup[];
   /** Defaults for new Ask chats and Ask history retention. */
   askPreferences?: Partial<AskPreferences>;
+  /** review-queue.md: self-recovery for batches (absent = DEFAULT_RECOVERY_PREFERENCES). */
+  recovery?: Partial<RecoveryPreferences>;
   /** How notes that don't come from the Distill UI get labels. */
   labeling?: Partial<LabelingPreferences>;
   /** Global shortcuts; no defaults (null = off). Stored as e.g. "ctrl+opt+space". */
@@ -298,6 +300,18 @@ export interface Job {
   /** review-queue.md: bounded self-recovery for a batch that can't make progress on its own. */
   recovery?: RecoveryState | null;
 }
+
+/** review-queue.md: self-recovery bounds, in Settings → Recovery. */
+export interface RecoveryPreferences {
+  /** Recover automatically (default on). */
+  automatic: boolean;
+  /** Agent attempts per batch and problem (1–5, default 2). */
+  maxAttempts: number;
+  /** Spend at most this on recovery per batch (default $1.00). */
+  maxCostUSD: number;
+}
+
+export const DEFAULT_RECOVERY_PREFERENCES: RecoveryPreferences = { automatic: true, maxAttempts: 2, maxCostUSD: 1 };
 
 /** review-queue.md: an approval waiting for its turn to apply in the vault. */
 export interface QueuedApply {
@@ -778,6 +792,8 @@ export const TASK_REQUIREMENTS: Record<AITask, RunnerCapability[][]> = {
   actionFind: [['structuredOutput']],
   actionDraft: [['structuredOutput']],
   actionImprove: [['structuredOutput']],
+  // review-queue.md: one structured call, no tools, no session.
+  recovery: [['structuredOutput']],
 };
 
 // ───────────────────────────── Queue & notes ─────────────────────────────
@@ -2131,6 +2147,8 @@ export interface DistillCore {
   reject(id: string, opts?: RejectOptions): Promise<void>;
   /** review-queue.md: Don't apply yet: out of the vault's apply queue, back to Ready with its plan. */
   unqueue(id: string): Job;
+  /** review-queue.md: Let recovery try again (attempts start over). */
+  tryRecoveryAgain(id: string): Job;
   cancel(id: string): Promise<void>;
   /** Finished jobs only (completed/failed/rejected/cancelled); else invalid_state. */
   deleteJob(id: string): Promise<void>;

@@ -181,6 +181,11 @@ public final class CoreClient: Sendable {
     public func job(_ id: String) async throws -> Job { try await get("/v1/jobs/\(Self.segment(id))") }
 
     /// `newSession`: the user confirmed SessionReplaceConfirm; continue in a new, seeded session.
+    /// review-queue.md: Let recovery try again (its attempts start over).
+    @discardableResult public func recover(_ id: String) async throws -> Job? {
+        try await jobAction(id, "recover", body: [String: JSONValue]())
+    }
+
     /// review-queue.md: Don't apply yet (out of the vault's apply queue, back to Ready).
     @discardableResult public func unqueue(_ id: String) async throws -> Job? {
         try await jobAction(id, "unqueue", body: [String: JSONValue]())

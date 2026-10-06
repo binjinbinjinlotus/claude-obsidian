@@ -265,7 +265,8 @@ describe('engine state machine', () => {
     const denial = { toolName: 'Bash', input: { command: 'ls /tmp' } };
     const denied: Step = { structured: { status: 'failed', summary: 'Needed ls.' }, denials: [denial, { ...denial, input: { command: 'ls /tmp' } }] };
     // Distill answers the first two itself (review-queue.md); the third reaches the owner.
-    h = setup([denied, denied, denied, { structured: { status: 'nothing_to_do', summary: 'ok' } }]);
+    const giveUp: Step = { structured: { diagnosis: 'Needs ls.', fix: 'give_up', reason: 'r' } };
+    h = setup([denied, denied, denied, giveUp, { structured: { status: 'nothing_to_do', summary: 'ok' } }]);
     const created = await firstJob();
     await h.engine.whenIdle();
     let job = h.engine.getJob(created.id)!;
@@ -277,7 +278,7 @@ describe('engine state machine', () => {
     job = h.engine.getJob(created.id)!;
     assert.equal(job.state, 'completed');
     assert.deepEqual(job.grantedTools, ['Bash(ls /tmp)']);
-    const second = h.runner.requests[3]!;
+    const second = h.runner.requests[4]!;
     assert.ok(second.allowedTools.includes('Bash(ls /tmp)'));
     assert.ok(second.prompt.includes('- Bash(ls /tmp)'));
   });
@@ -770,19 +771,71 @@ describe('blocked commands (review-queue.md)', () => {
   test('after two answers the owner gets a plain sentence; their reply starts over', async () => {
     h = setup([]);
     const vault = path.join(tmp, 'vault');
-    h.runner.steps.push(blocked(vault), blocked(vault), blocked(vault));
+    h.runner.steps.push(blocked(vault), blocked(vault), blocked(vault), { structured: { diagnosis: 'It keeps reaching for the shell.', fix: 'give_up', reason: 'r' } });
     const created = await firstJob();
     await h.engine.whenIdle();
     const job = h.engine.getJob(created.id)!;
-    assert.equal(h.runner.requests.length, 3, 'two answers, never a third');
+    assert.equal(h.runner.requests.length, 4, 'two answers, then one recovery call');
+    assert.equal(h.runner.requests[3]!.selection.model, 'opus', 'recovery defaults to Opus');
+    assert.deepEqual(h.runner.requests[3]!.allowedTools, [], 'no tools');
     assert.equal(job.recovery?.state, 'gaveUp');
     assert.equal(job.recovery?.denialAnswers, 2);
-    assert.equal(job.recovery?.summary, "Claude wanted to compare the claim ledger. Distill couldn't let it run that, and told it to read the files instead (twice).");
+    assert.equal(job.recovery?.summary, "Claude wanted to compare the claim ledger. Distill couldn't let it run that, and told it to read the files instead (twice). It keeps reaching for the shell.");
     assert.ok(job.recovery!.attempts.every((a) => a.result === 'failed'));
+    assert.equal(job.recovery!.attempts.at(-1)!.by, 'agent');
     h.runner.steps.push({ structured: { status: 'nothing_to_do', summary: 'ok' } });
     await h.engine.reply(created.id, 'Read the files with Read.');
     await h.engine.whenIdle();
     assert.equal(h.engine.getJob(created.id)!.recovery, undefined, 'the owner acted: attempts reset');
+  });
+
+  test("the recovery agent's guidance is sent and the plan comes back; a guidance naming the apply is refused", async () => {
+    h = setup([]);
+    const vault = path.join(tmp, 'vault');
+    h.runner.steps.push(blocked(vault), blocked(vault), blocked(vault),
+      { structured: { diagnosis: 'It wants to diff JSON.', fix: 'answer_denial', reason: 'r', guidance: 'Read both ledgers with Read and compare the entries yourself.' } });
+    const created = await firstJob();
+    h.runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    let job = h.engine.getJob(created.id)!;
+    assert.equal(h.runner.requests.at(-1)!.prompt.includes('Read both ledgers with Read'), true, 'the guidance went to the session');
+    assert.ok(job.approval?.plan?.valid);
+    assert.equal(job.recovery?.state, 'fixed');
+    assert.equal(job.recovery?.attempts.at(-1)?.fix, 'answer_denial');
+
+    // A second batch: the agent's guidance names the vault apply: refused, never sent.
+    fs.writeFileSync(path.join(h.queue, 'c.md'), '# C\n');
+    h.runner.steps.push(blocked(vault), blocked(vault), blocked(vault),
+      { structured: { diagnosis: 'd', fix: 'answer_denial', reason: 'r', guidance: 'Just run transaction apply yourself.' } });
+    const second = (await h.engine.processQueue({ force: true }))!;
+    await h.engine.whenIdle();
+    job = h.engine.getJob(second.id)!;
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.match(job.recovery!.attempts.at(-1)!.error ?? '', /only your approval runs/);
+    assert.ok(!h.runner.requests.some((r) => r.prompt.includes('Just run transaction apply')), 'never sent');
+  });
+
+  test('the cost limit and Recover automatically are respected', async () => {
+    h = setup([], { settings: { recovery: { maxCostUSD: 0 } } });
+    const vault = path.join(tmp, 'vault');
+    h.runner.steps.push(blocked(vault), blocked(vault), blocked(vault));
+    const created = await firstJob();
+    await h.engine.whenIdle();
+    assert.equal(h.runner.requests.length, 3, 'no recovery call at the limit');
+    assert.match(h.engine.getJob(created.id)!.recovery?.summary ?? '', /Recovery stopped at its \$0\.00 limit/);
+    // Try again: attempts start over (the rule first).
+    h.runner.steps.push({ structured: { status: 'nothing_to_do', summary: 'ok' } });
+    h.engine.tryRecoveryAgain(created.id);
+    await h.engine.whenIdle();
+    assert.match(h.runner.requests.at(-1)!.prompt, /Read, Grep or Glob/);
+
+    await h.engine.stop();
+    h = setup([], { settings: { recovery: { automatic: false } } });
+    h.runner.steps.push(blocked(vault));
+    const manual = await firstJob();
+    await h.engine.whenIdle();
+    assert.equal(h.runner.requests.length, 1, 'nothing sent automatically');
+    assert.equal(h.engine.getJob(manual.id)!.recovery?.state, 'gaveUp');
   });
 
   test('an apply turn with a blocked call is not answered', async () => {

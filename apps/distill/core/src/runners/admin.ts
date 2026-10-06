@@ -22,7 +22,7 @@ export interface RunnerAdminDeps {
 
 export type RunnerAdmin = Pick<DistillCore, RunnerAdminOwned>;
 
-const TASKS: AITask[] = ['ingest', 'ask', 'labelSuggest', 'imageText', 'actionFind', 'actionDraft', 'actionImprove'];
+const TASKS: AITask[] = ['ingest', 'ask', 'labelSuggest', 'imageText', 'actionFind', 'actionDraft', 'actionImprove', 'recovery'];
 
 export function createRunnerAdmin(deps: RunnerAdminDeps): RunnerAdmin {
   const secrets = deps.secrets ?? defaultSecretStore();
