@@ -764,11 +764,70 @@ Order: core → API → CLI → Mac. Each step is one commit, with `npm test
   when a button holds the Send slot (and is on), not "Ready to paste"
   (`ActionTypeInfo.readyWords`): the row, the detail and the status filter.
 
+## Where to send (2026-10-06)
+
+The owner's Send in Slack failed with `target: "Aditya Pradhan" isn't
+#channel, @handle or an ID`: the extractor writes the name as written into
+`fields.to`, and the button maps `target` to `{fields.to}`. Now:
+
+- **The To row has a kind.** Channel (`#name` or a `C…`/`G…` ID), Person (a
+  DM: `@handle` or a `U…`/`W…`/`D…` ID) or Thread (the `thread` field holds a
+  Slack message link, `channel ts`, or a bare ts; a link's `thread_ts` wins).
+  It reads "To [Person] Aditya Pradhan (@aditya) · direct message",
+  "To [Channel] #general · channel" or "To [Thread] #eng · reply in its
+  thread".
+- **A plain name is never sent.** When a button on the type uses `{fields.to}`
+  and the name isn't known, the card shows "Who is Aditya Pradhan in Slack?"
+  with a field for the `@handle` or ID, and the button is off with the reason
+  as its tooltip. The core refuses the run with the same plain words, before
+  it builds any argument, so the pattern line never reaches the owner. Copy
+  and paste still work with any name; a type with no such button shows no
+  question.
+- **Remembered names.** Save remembers name → target for the item's vault
+  (else the active one) in `<state>/actions/slack-people.json`, keyed by the
+  vault id (core state, not the vault: [User data](user-data.md)). Only an
+  exact name matches, ignoring case and extra spaces ("Mei" is not "Mei
+  Tanaka"). The next item for the same name resolves by itself. The To menu
+  has Change who … is and Forget …. A bare lower-case handle gets its `@`;
+  anything that isn't `#channel`, `@handle` or an ID is refused, and the field
+  also checks the Send button's declared target pattern.
+- **Templates.** For a Slack message, `{fields.to}` (and `{recipient}`) is the
+  resolved target (a thread's channel for a link) and `{fields.thread}` is the
+  ts. The item keeps the name as written.
+- **Threads never become channel posts.** A Thread whose button doesn't use
+  `{fields.thread}` is refused: "This message replies in a thread, but Send in
+  Slack doesn't fill in a thread. Edit the button and set thread to
+  {fields.thread}." A new button guesses `thread` → `{fields.thread}`.
+- **Groups.** "Mei, Aditya" is refused ("A button sends to one person or one
+  channel. Pick one."); the CLI can't send to a group.
+- **Extractor.** The Slack type gains a `thread` field, and its description
+  (always in the find prompt, also under an edited one) asks for channels as
+  `#name` and a Slack message link in `thread` when the source has one.
+- **Find in Slack: not built.** It would be offered only when the script
+  declares a lookup command in its COMMANDS block. The owner's Slack CLI
+  declares only `send`, so there is nothing to offer, and Distill doesn't
+  invent one.
+- **API.** `GET /v1/slack-people[?vault=]`, `PUT /v1/slack-people` `{name,
+  target, vaultPath?}`, `POST /v1/slack-people/forget` `{name, vaultPath?}`,
+  `GET /v1/actions/:id/slack-target`. Activity logs `action.slack_name_saved`
+  and `action.slack_name_forgot`.
+- **One rule, two places.** The core (`actions/slack-target.ts`) decides; the
+  app mirrors it to draw the row and turn Send off early
+  (`DistillKit/SlackTarget.swift`). Both test suites read
+  `core/src/actions/slack-target.cases.json`.
+- Tests: `slack-target.test.ts` (shared cases, links, typed handles, the
+  store: per vault, change, forget, unreadable file set aside, unknown keys
+  kept), `buttons.e2e.test.ts` (refusal in plain words, remember, the next
+  item resolves, other vaults, forget; thread with and without
+  `{fields.thread}`), `actions.test.ts` (the find prompt), and
+  `SlackTargetTests` (shared cases, To row words, Send off, routes).
+  Snapshot states `sa-to-unresolved`, `sa-to-resolved`, `sa-to-panel`,
+  `sa-to-thread`, `sa-to-thread-off`.
+
 ## Open questions
 
-- A Slack people and channel lookup for the To field, so that "Mei Tanaka"
-  becomes `@mei.tanaka` without typing. This needs a `users` command in the
-  CLI, or the `dms`/`channels` output parsed.
+- Find in Slack, once the CLI has a lookup command (`users`, or the
+  `dms`/`channels` output parsed) and it is declared in COMMANDS.
 - Buttons on Ask's "Found in this answer" rows. These rows are pending items,
   and buttons show only from `open` and `ready`, so not for now.
 - Running one button on several selected items (the to-do bulk bar).

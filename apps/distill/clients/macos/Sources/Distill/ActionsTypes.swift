@@ -53,6 +53,9 @@ struct MessageCard: View {
     let item: ActionItem
     @State private var menu: String?
     @State private var someone = ""
+    @State private var threadLink = ""
+    /// Slack: "Change who … is" reopens the Who is row with the remembered handle.
+    @State private var changingName = false
 
     init(store: ActionsStore, type: ActionTypeInfo, item: ActionItem, menu: String? = nil) {
         self.store = store
@@ -61,6 +64,8 @@ struct MessageCard: View {
         _menu = State(initialValue: menu)
         inlineMenus = menu != nil
     }
+
+    private var isSlack: Bool { type.id == "slack" }
 
     /// Snapshots draw the recipient panel in place; the app uses a popover (the list scrolls).
     private let inlineMenus: Bool
@@ -71,7 +76,9 @@ struct MessageCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            header
+            // The inline To menu (snapshots) draws over the rows below it.
+            header.zIndex(menu == nil ? 0 : 1)
+            if isSlack && draft == nil { whereToSend }
             content
             if draft == nil { ActionContextBlock(item: item); ButtonLastRun(store: store, item: item) }
             footer
@@ -109,10 +116,31 @@ struct MessageCard: View {
         }
     }
 
+    /// Slack: the Who is row for a name Distill doesn't know, or why Send is off (a group, a thread
+    /// the button can't reach). Nothing when the message can go.
+    @ViewBuilder private var whereToSend: some View {
+        let t = store.slackTarget(item)
+        if let ask = t.ask, store.slackSendsToField(type) {
+            SlackWhoIsRow(question: ask, name: t.written, pattern: store.slackTargetPattern(type)) { value in
+                store.rememberSlack(item, name: t.written, target: value)
+            }
+        } else if changingName, let name = t.name {
+            SlackWhoIsRow(question: "Who is \(name) in Slack?", name: name, pattern: store.slackTargetPattern(type), initial: t.target ?? "") { value in
+                store.rememberSlack(item, name: name, target: value)
+                changingName = false
+            }
+        } else if let send = AutomationText.slots(type.buttons, for: item).send, let why = t.blocks(send.button) {
+            ActionCallout(title: "\(send.button.label) is off for this message", text: why) { EmptyView() }
+        }
+    }
+
     private var recipient: some View {
         let to = item.field("to") ?? ""
         return Button { menu = menu == "to" ? nil : "to" } label: {
             HStack(spacing: 6) {
+                if isSlack {
+                    SlackToLabel(target: store.slackTarget(item), needsTarget: store.slackSendsToField(type))
+                } else {
                 Text("To")
                 if to.isEmpty {
                     Text("Choose who gets it").foregroundStyle(Theme.primary)
@@ -125,6 +153,7 @@ struct MessageCard: View {
                     PersonChip(name: names[0], size: 18, showName: false)
                     Text(to).fontWeight(.bold).lineLimit(1)
                     Text(names.count > 1 ? "· group message" : "· direct message").fontWeight(.regular).foregroundStyle(Theme.faint)
+                }
                 }
             }
             .font(Theme.body(13, .semibold))
@@ -163,10 +192,47 @@ struct MessageCard: View {
                     }
             }
             .padding(.horizontal, 10).padding(.vertical, 8)
+            if isSlack { slackRows } else {
             Text("Distill doesn't look anything up in Slack yet, so names are typed freely.")
                 .font(Theme.body(11)).foregroundStyle(Theme.muted).padding(.horizontal, 10).padding(.bottom, 4)
                 .fixedSize(horizontal: false, vertical: true)
+            }
         }
+    }
+
+    /// Slack: change or forget a remembered name, and the thread to reply in.
+    @ViewBuilder private var slackRows: some View {
+        let t = store.slackTarget(item)
+        if let name = t.name, let target = t.target {
+            ActionMenuRow(title: "Change who \(name) is", detail: "Now \(target), for this vault", icon: "pencil") {
+                changingName = true; menu = nil
+            }
+            ActionMenuRow(title: "Forget \(name)", detail: "\(target) · asks again next time", icon: "person.crop.circle.badge.minus") {
+                store.forgetSlack(item, name: name); menu = nil
+            }
+        }
+        if t.kind == .thread, item.field("thread") != nil {
+            ActionMenuRow(title: "Post in the channel instead", detail: "Not as a reply in the thread", icon: "arrowshape.turn.up.left") {
+                store.update(item.id, ActionPatch(fields: ["thread": String?.none])); menu = nil
+            }
+        } else {
+            HStack(spacing: 8) {
+                Image(systemName: "arrowshape.turn.up.left").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted).frame(width: 16)
+                TextField("Reply in a thread: paste its Slack link", text: $threadLink).textFieldStyle(.plain).font(Theme.body(13))
+                    .onSubmit {
+                        let v = threadLink.trimmingCharacters(in: .whitespaces)
+                        if SlackTarget.parseThread(v) != nil { store.update(item.id, ActionPatch(fields: ["thread": v])); threadLink = ""; menu = nil }
+                    }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            if !threadLink.trimmingCharacters(in: .whitespaces).isEmpty && SlackTarget.parseThread(threadLink) == nil {
+                Text("That isn’t a Slack message link (…slack.com/archives/C…/p…).")
+                    .font(Theme.body(11)).foregroundStyle(Theme.peachInk).padding(.horizontal, 10).padding(.bottom, 4)
+            }
+        }
+        Text("A name becomes its @handle once you say who it is; Distill keeps that for this vault.")
+            .font(Theme.body(11)).foregroundStyle(Theme.muted).padding(.horizontal, 10).padding(.bottom, 4)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     @ViewBuilder private var status: some View {

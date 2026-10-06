@@ -13,6 +13,7 @@ import type {
   Job,
   QueueEntry,
   Settings,
+  SlackPerson,
   TrashItem,
 } from '../contracts.js';
 import type { EngineExtras } from '../engine/index.js';
@@ -250,6 +251,30 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
     previewActionButton: 'read',
     previewButtonDraft: 'read',
     stopActionButtonRun: 'read', // the run's end is on the item
+    listSlackPeople: 'read',
+    slackTarget: 'read',
+    // action-buttons.md, "Where to send": a remembered name is the owner's change; the name and handle, no message.
+    rememberSlackPerson: {
+      ok: (_args, p: SlackPerson) => ({
+        type: 'action.slack_name_saved',
+        object: { kind: 'settings', name: 'Slack names' },
+        summary: `Remembered ${q(p.name)} as ${p.target} in Slack`,
+        details: { name: p.name, target: p.target, vault: p.vaultPath },
+      }),
+      fail: ([input]) => ({ type: 'action.slack_name_saved', object: { kind: 'settings', name: 'Slack names' }, summary: `Couldn't remember who ${q(input.name)} is in Slack` }),
+    },
+    forgetSlackPerson: {
+      ok: ([input], r: { forgotten: boolean }) =>
+        r.forgotten
+          ? {
+              type: 'action.slack_name_forgot',
+              object: { kind: 'settings', name: 'Slack names' },
+              summary: `Forgot who ${q(input.name)} is in Slack`,
+              details: { name: input.name },
+            }
+          : null,
+      fail: ([input]) => ({ type: 'action.slack_name_forgot', object: { kind: 'settings', name: 'Slack names' }, summary: `Couldn't forget ${q(input.name)}` }),
+    },
     // action-buttons.md: who ran which button; never the argv values (they can hold message text).
     runActionButton: {
       before: (id: string) => getAction(id),

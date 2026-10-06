@@ -1,0 +1,32 @@
+{
+  "about": "Where a Slack message goes: resolveSlackTarget (core) and SlackTarget.resolve (DistillKit) both pass every case. people: remembered names in normal form.",
+  "people": { "aditya pradhan": "@aditya", "design team": "#design" },
+  "cases": [
+    { "to": "#general", "expect": { "kind": "channel", "written": "#general", "target": "#general" } },
+    { "to": "C0123ABCD", "expect": { "kind": "channel", "written": "C0123ABCD", "target": "C0123ABCD" } },
+    { "to": "@mei.tanaka", "expect": { "kind": "person", "written": "@mei.tanaka", "target": "@mei.tanaka" } },
+    { "to": "U0456EFGH", "expect": { "kind": "person", "written": "U0456EFGH", "target": "U0456EFGH" } },
+    { "to": "Aditya Pradhan", "expect": { "kind": "person", "written": "Aditya Pradhan", "target": "@aditya", "name": "Aditya Pradhan" } },
+    { "to": "  aditya   PRADHAN ", "expect": { "kind": "person", "written": "aditya   PRADHAN", "target": "@aditya", "name": "aditya   PRADHAN" } },
+    { "to": "Design team", "expect": { "kind": "channel", "written": "Design team", "target": "#design", "name": "Design team" } },
+    { "to": "Aditya", "expect": { "kind": "person", "written": "Aditya", "target": null, "ask": "Who is Aditya in Slack?", "problem": "Distill doesn’t know who Aditya is in Slack yet. Add their @handle or ID in the To row." } },
+    { "to": "Mei Tanaka", "expect": { "kind": "person", "written": "Mei Tanaka", "target": null, "ask": "Who is Mei Tanaka in Slack?", "problem": "Distill doesn’t know who Mei Tanaka is in Slack yet. Add their @handle or ID in the To row." } },
+    { "to": "", "expect": { "kind": "person", "written": "", "target": null, "problem": "Choose who gets it first." } },
+    { "to": "Mei, Aditya Pradhan", "expect": { "kind": "person", "written": "Mei, Aditya Pradhan", "target": null, "problem": "A button sends to one person or one channel. Pick one." } },
+    { "to": "#eng", "thread": "https://acme.slack.com/archives/C0123ABCD/p1759600000123456", "expect": { "kind": "thread", "written": "#eng", "target": "C0123ABCD", "threadTs": "1759600000.123456" } },
+    { "to": "Mei Tanaka", "thread": "https://acme.slack.com/archives/C0123ABCD/p1759600111000222?thread_ts=1759600000.123456&cid=C0123ABCD", "expect": { "kind": "thread", "written": "Mei Tanaka", "target": "C0123ABCD", "threadTs": "1759600000.123456" } },
+    { "to": "#eng", "thread": "1759600000.123456", "expect": { "kind": "thread", "written": "#eng", "target": "#eng", "threadTs": "1759600000.123456" } },
+    { "to": "Aditya Pradhan", "thread": "1759600000.123456", "expect": { "kind": "thread", "written": "Aditya Pradhan", "target": "@aditya", "name": "Aditya Pradhan", "threadTs": "1759600000.123456" } },
+    { "to": "Mei Tanaka", "thread": "1759600000.123456", "expect": { "kind": "thread", "written": "Mei Tanaka", "target": null, "threadTs": "1759600000.123456", "ask": "Who is Mei Tanaka in Slack?", "problem": "Distill doesn’t know who Mei Tanaka is in Slack yet. Add their @handle or ID in the To row." } },
+    { "to": "", "thread": "#eng 1759600000.123456", "expect": { "kind": "thread", "written": "", "target": "#eng", "threadTs": "1759600000.123456" } },
+    { "to": "#eng", "thread": "the standup thread", "expect": { "kind": "thread", "written": "#eng", "target": null, "problem": "“the standup thread” isn’t a Slack message link, so Distill can’t tell which thread to reply in." } }
+  ],
+  "typed": [
+    { "in": "@aditya", "out": "@aditya" },
+    { "in": " aditya.p ", "out": "@aditya.p" },
+    { "in": "U0456EFGH", "out": "U0456EFGH" },
+    { "in": "#design", "out": "#design" },
+    { "in": "Aditya Pradhan", "out": null },
+    { "in": "", "out": null }
+  ]
+}

@@ -1629,6 +1629,36 @@ export interface ActionButtonPreview {
   approvalHash: string;
 }
 
+/**
+ * Where a Slack message goes (action-buttons.md, "Where to send"): the To row resolved against the
+ * names remembered for the item's vault. `target` is what a button's `{fields.to}` becomes; null
+ * while a plain name is unknown, and then `problem` says why nothing can be sent.
+ */
+export interface SlackTarget {
+  kind: 'channel' | 'person' | 'thread';
+  /** The item's `to` field as written ("Aditya Pradhan", "#general", "@mei"). */
+  written: string;
+  /** #channel, @handle or an ID; for a thread, the channel (or person) it is in. */
+  target: string | null;
+  /** The written name, when a remembered name resolved it ("Aditya Pradhan" → @aditya). */
+  name?: string;
+  /** Thread: the ts to reply under (`{fields.thread}`). */
+  threadTs?: string;
+  /** An unknown name: "Who is Aditya Pradhan in Slack?" */
+  ask?: string;
+  /** Why a button can't send it, in plain words. */
+  problem?: string;
+}
+
+/** A remembered name → Slack target, per vault (`<state>/actions/slack-people.json`). */
+export interface SlackPerson {
+  vaultPath: string;
+  name: string;
+  /** @handle, a user ID, or a #channel. */
+  target: string;
+  savedAt: string;
+}
+
 /** One button run kept on an item (newest 10). */
 export interface ActionButtonRun {
   runId: string;
@@ -2274,6 +2304,17 @@ export interface DistillCore {
   summarizeAction(id: string, opts?: { signal?: AbortSignal }): Promise<ActionItem>;
   /** The exact command a button would run for an item (action-buttons.md). */
   previewActionButton(id: string, buttonId: string): Promise<ActionButtonPreview>;
+  /** Remembered Slack names (all vaults, or one), sorted by name. */
+  listSlackPeople(vaultPath?: string | null): Promise<SlackPerson[]>;
+  /**
+   * Remember who a name is in Slack for a vault (the item's, else the active one). `target` is an
+   * @handle, an ID or a #channel; a bare lower-case handle gets its @. Anything else is invalid_request.
+   */
+  rememberSlackPerson(input: { name: string; target: string; vaultPath?: string | null }): Promise<SlackPerson>;
+  /** Forget a remembered name; false when there was none. */
+  forgetSlackPerson(input: { name: string; vaultPath?: string | null }): Promise<{ forgotten: boolean }>;
+  /** Where a Slack message would go now: its To row resolved (not_found for another type). */
+  slackTarget(id: string): Promise<SlackTarget>;
   /** The preview for a button being edited (Settings), on an item or a built-in sample. */
   previewButtonDraft(input: { typeId: string; button: ActionButton; itemId?: string | null }): Promise<ActionButtonPreview>;
   /**

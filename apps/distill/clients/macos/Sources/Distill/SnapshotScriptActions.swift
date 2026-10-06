@@ -51,8 +51,8 @@ enum ScriptActionFixtures {
     static let shortMessage = "Hi @Mei, I booked the tasting room for Saturday at 2 PM. Could you bring the new 50 g gyokuro tin?"
 
     static var preview: ActionButtonPreview {
-        let argv = ["python3", scriptPath, "send", "--", "Mei Tanaka", shortMessage]
-        return ActionButtonPreview(argv: argv, display: "python3 ~/Scripts/slack-cli/slack_send.py send -- 'Mei Tanaka' '\(shortMessage)'",
+        let argv = ["python3", scriptPath, "send", "--", "@mei.tanaka", shortMessage]
+        return ActionButtonPreview(argv: argv, display: "python3 ~/Scripts/slack-cli/slack_send.py send -- @mei.tanaka '\(shortMessage)'",
                                    needsApproval: true, approvalHash: "a1")
     }
 
@@ -73,6 +73,10 @@ enum ScriptActionFixtures {
         e.actions.items["s1"]?.body = shortMessage
         e.settingsUI.connections = [ConnectionInfo(id: "atlassian", label: "Atlassian", status: .connected, site: "https://acme.atlassian.net", account: "Jin Liu")]
         _ = F.load(e, [F.inbox(), ScriptFixtures.pocket(), slackCLI()], select: "slack-cli", now: F.at(9, 32))
+        // The owner already said who Mei Tanaka is in Slack (the To row's Who is …).
+        let vault = F.home + "/Documents/Tea Vault"
+        e.actions.items["s1"]?.vaultPath = vault
+        e.actions.slackPeople = [SlackPerson(vaultPath: vault, name: "Mei Tanaka", target: "@mei.tanaka", savedAt: "2026-10-06T09:00:00Z")]
         return e
     }
 }
@@ -160,6 +164,58 @@ extension StatesSnapshot {
                                                        stderrTail: "Looking up Mei Tanaka…\nerror: no Slack user named “Mei Tanaka” in acme.slack.com\n",
                                                        message: "Exited with 1")]
         main("sa-slack-failed", f, "Actions · Slack messages", "F · Couldn't send", "The error on the item with Show log; the message stays Ready to send.", e, section: .actions) {
+            ActionsScreen()
+        }
+
+        // Where to send (2026-10-06): a name Distill doesn't know, the same name remembered, and a thread.
+        e = S.engine()
+        e.actions.slackPeople = []
+        e.actions.tab = "slack"
+        e.actions.selected["slack"] = "s1"
+        main("sa-to-unresolved", f, "Actions · Slack messages", "Who is Mei Tanaka in Slack?", "A plain name: the To row asks for the @handle or ID; Send in Slack stays off with that reason until it resolves.",
+             e, section: .actions) {
+            ActionsScreen()
+        }
+
+        e = S.engine()
+        e.actions.tab = "slack"
+        e.actions.selected["slack"] = "s1"
+        main("sa-to-resolved", f, "Actions · Slack messages", "A remembered name", "Mei Tanaka (@mei.tanaka) · direct message: remembered for this vault; Send in Slack is on.",
+             e, section: .actions) {
+            ActionsScreen()
+        }
+
+        e = S.engine()
+        if let type = e.actions.type("slack"), let item = e.actions.items["s1"] {
+            natural("sa-to-panel", f, "Actions", "Change or forget a name", "The To menu: Change who Mei Tanaka is, Forget, and a thread link to reply in.", e) {
+                MessageCard(store: e.actions, type: type, item: item, menu: "to").frame(width: 640, height: 560, alignment: .top)
+            }
+        }
+
+        e = S.engine()
+        var threaded = S.sendButton
+        threaded.bindings["thread"] = "{fields.thread}"
+        e.actions.types = e.actions.types.map { t in
+            var t = t
+            if t.id == "slack" { t.buttons = [S.info(threaded)] }
+            return t
+        }
+        e.actions.items["s1"]?.fields["to"] = "#tea-club"
+        e.actions.items["s1"]?.fields["thread"] = "https://acme.slack.com/archives/C07TEA1CLB/p1759600000123456"
+        e.actions.tab = "slack"
+        e.actions.selected["slack"] = "s1"
+        main("sa-to-thread", f, "Actions · Slack messages", "A reply in a thread", "To: Thread · #tea-club · reply in its thread; the button fills --thread from {fields.thread}.",
+             e, section: .actions) {
+            ActionsScreen()
+        }
+
+        e = S.engine()
+        e.actions.items["s1"]?.fields["to"] = "#tea-club"
+        e.actions.items["s1"]?.fields["thread"] = "https://acme.slack.com/archives/C07TEA1CLB/p1759600000123456"
+        e.actions.tab = "slack"
+        e.actions.selected["slack"] = "s1"
+        main("sa-to-thread-off", f, "Actions · Slack messages", "A thread the button can't reach", "Send in Slack leaves thread empty, so it is off with the reason, never a post to the channel.",
+             e, section: .actions) {
             ActionsScreen()
         }
 

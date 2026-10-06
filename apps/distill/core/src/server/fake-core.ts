@@ -626,6 +626,22 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       record('previewButtonDraft', input.typeId);
       return { argv: ['python3', '/x/slack_cli.py', 'send'], display: 'python3 /x/slack_cli.py send', problems: [], needsApproval: true, needsConsent: false, approvalHash: 'h' };
     },
+    async listSlackPeople(vaultPath) {
+      record('listSlackPeople', vaultPath ?? undefined);
+      return [{ vaultPath: '/v', name: 'Aditya Pradhan', target: '@aditya', savedAt: '2026-10-06T12:00:00Z' }];
+    },
+    async rememberSlackPerson(input) {
+      record('rememberSlackPerson', input.name, input.target, input.vaultPath ?? undefined);
+      return { vaultPath: input.vaultPath ?? '/v', name: input.name, target: input.target, savedAt: '2026-10-06T12:00:00Z' };
+    },
+    async forgetSlackPerson(input) {
+      record('forgetSlackPerson', input.name, input.vaultPath ?? undefined);
+      return { forgotten: true };
+    },
+    async slackTarget(id) {
+      record('slackTarget', id);
+      return { kind: 'person' as const, written: 'Aditya Pradhan', target: '@aditya', name: 'Aditya Pradhan' };
+    },
     async runActionButton(id, buttonId, opts) {
       record('runActionButton', id, buttonId, opts?.approve ? 'approve' : undefined);
       const item = requireAction(id);

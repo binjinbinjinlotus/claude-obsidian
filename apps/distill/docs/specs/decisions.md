@@ -17,6 +17,17 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**A Slack name is resolved by the owner once per vault, never sent raw
+(2026-10-06).** The extractor keeps a person's name as written, so a button
+bound to `{fields.to}` sent "Aditya Pradhan" and the script's pattern refused
+it. The name stays on the item; the core resolves it through names the owner
+saved ("Who is Aditya Pradhan in Slack?"), per vault, in core state
+(`actions/slack-people.json`; the vault gets only approved notes). Until it
+resolves, the run is refused in plain words and Send is off. Exact match only,
+so a first name never picks someone. A thread a button can't reach, or a
+group, is refused rather than posted somewhere else. Find in Slack waits for a
+declared lookup command; none is guessed. (action-buttons.md, Where to send.)
+
 **The button editor never shows an argument's name twice (2026-10-06).** The
 owner's `text` argument read "text / text required": its hint only repeated
 the name, and the name could wrap. A hint that comes from the same word as the

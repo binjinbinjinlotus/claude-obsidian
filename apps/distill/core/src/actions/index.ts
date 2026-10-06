@@ -38,6 +38,7 @@ import {
   type Progress,
   type RunnerRegistry,
   type Settings,
+  type SlackTarget,
 } from '../contracts.js';
 import type { ActionsOwned, ReviewReadyInfo } from '../engine/index.js';
 import { makeReadingCopy } from '../coverage/copy.js';
@@ -76,9 +77,10 @@ import { isoDate } from '../store/json.js';
 import { actionPreferences, defaultSelection as settingsDefaultSelection } from '../store/settings.js';
 import { DRAFT_SCHEMA, FIND_SCHEMA, fieldsFrom, IMPROVE_SCHEMA, modelName, runStructured, SUMMARIZE_SCHEMA, type ActionTask } from './ai.js';
 import { ActionHandlerError, API_TOKEN_URL, ATLASSIAN, AtlassianClient, ConnectionFile } from './atlassian.js';
-import { approvalHash, buildArgv, commandTimeout, displayArgv, maskSecrets, parseResult } from '../collectors/commands.js';
+import { approvalHash, buildArgv, commandTimeout, displayArgv, maskSecrets, parseResult, placeholdersIn, type TemplateValues } from '../collectors/commands.js';
 import type { CommandRunHandle, CommandRunInput } from '../collectors/index.js';
 import { buttonsFor, ButtonApprovals, normalizeButton, sampleItem, templateValues } from './buttons.js';
+import { normalizeSlackTarget, resolveSlackTarget, SlackPeople } from './slack-target.js';
 import { buildDraftPrompt, buildFindPrompt, buildImprovePrompt, buildSummarizePrompt, DEFAULT_FIND_PROMPT, type DraftContext, type FindDocument } from './prompts.js';
 import {
   actionTypeDef,
@@ -1575,6 +1577,35 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
   // ───────────── buttons (action-buttons.md) ─────────────
 
   const approvals = new ButtonApprovals(path.join(opts.stateDir, 'actions', 'button-approvals.json'));
+  const people = new SlackPeople(path.join(opts.stateDir, 'actions', 'slack-people.json'));
+
+  /** The vault whose remembered names apply: the item's, else the active one. */
+  function peopleVault(vaultPath?: string | null): string | null {
+    return vaultPath ?? opts.getSettings().activeVaultPath ?? null;
+  }
+
+  function slackTargetOf(item: ActionItem): SlackTarget {
+    const vault = peopleVault(item.vaultPath);
+    return resolveSlackTarget(item.fields.to, item.fields.thread, (n) => people.lookup(vault, n));
+  }
+
+  /**
+   * A Slack message's `{fields.to}` is where it goes (a remembered name becomes its @handle) and
+   * `{fields.thread}` the ts to reply under. A plain name, a group or a thread the button can't
+   * reach refuses the run here, in plain words, before any argument is built.
+   */
+  function slackProblem(item: ActionItem, button: ActionButton, values: TemplateValues): string | undefined {
+    const t = slackTargetOf(item);
+    const uses = (key: string) => Object.values(button.bindings).some((b) => placeholdersIn(b).includes(key));
+    values['fields.thread'] = t.threadTs ?? '';
+    if (!uses('fields.to') && !uses('recipient')) return undefined;
+    if (t.problem) return t.problem;
+    values['fields.to'] = values.recipient = t.target ?? '';
+    if (t.kind === 'thread' && !uses('fields.thread')) {
+      return `This message replies in a thread, but ${button.label} doesn’t fill in a thread. Edit the button and set thread to {fields.thread}.`;
+    }
+    return undefined;
+  }
   const buttonRuns = new Map<string, { stop(): void }>();
 
   interface ResolvedButton {
@@ -1616,6 +1647,11 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     const def = actionTypeDef(item.type);
     const ctx = promptContext(item);
     const values = templateValues(item, { fieldKeys: (def?.fields ?? []).map((f) => f.key), noteTitle: ctx.noteTitle, notePath: ctx.notePath, now: now() });
+    const where = item.type === 'slack' ? slackProblem(item, button, values) : undefined;
+    if (where) {
+      out.problems.push(where);
+      return { ...out, resolved };
+    }
     const built = buildArgv(resolved.command, button.bindings, values);
     out.problems.push(...built.problems);
     const scriptPath = 'file' in script.source ? script.source.file : `(${resolved.collector.name}, kept by Distill)`;
@@ -1763,6 +1799,31 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
 
     runActionButton(id, buttonId, o) {
       return runButton(id, buttonId, o);
+    },
+
+    async listSlackPeople(vaultPath) {
+      return people.list(vaultPath ?? null);
+    },
+
+    async rememberSlackPerson(input) {
+      const name = (input.name ?? '').trim();
+      if (!name) throw new CoreError('invalid_request', 'Which name is this?');
+      const vault = peopleVault(input.vaultPath);
+      if (!vault) throw new CoreError('invalid_state', 'Pick a vault first: names are remembered per vault.');
+      const person = people.remember(vault, name, normalizeSlackTarget(input.target ?? ''), now());
+      return person;
+    },
+
+    async forgetSlackPerson(input) {
+      const vault = peopleVault(input.vaultPath);
+      const forgotten = vault ? people.forget(vault, input.name ?? '') : false;
+      return { forgotten };
+    },
+
+    async slackTarget(id) {
+      const item = require(id);
+      if (item.type !== 'slack') throw new CoreError('not_found', `${id} isn’t a Slack message.`);
+      return slackTargetOf(item);
     },
 
     async stopActionButtonRun(id) {

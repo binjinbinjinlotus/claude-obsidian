@@ -75,6 +75,8 @@ final class ActionsStore: ObservableObject {
     @Published var buttonEditor: ButtonEditorTarget?
     /// Buttons whose run request is on its way (a spinner in the button).
     @Published var buttonStarting: Set<String> = []
+    /// Remembered Slack names, all vaults (GET /v1/slack-people): the To row resolves names with them.
+    @Published var slackPeople: [SlackPerson] = []
 
     /// Snapshot fixtures only: open the answer menu / new to-do form / a Found row's type menu or edit on appear.
     var fixtureAnswerMenu = false
@@ -147,6 +149,7 @@ final class ActionsStore: ObservableObject {
                 for item in items { map[item.id] = item }
                 self.items = map
                 phase = .loaded
+                loadSlackPeople()
             } catch let e as CoreClientError where e.isNotAvailable {
                 phase = .unavailable
             } catch {

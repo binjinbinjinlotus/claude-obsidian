@@ -146,7 +146,8 @@ struct ItemAutomationButtons: View {
             if !slots.more.isEmpty {
                 Menu {
                     ForEach(slots.more) { info in
-                        Button(info.button.label) { store.press(item, info) }.disabled(!info.available || item.activeRun != nil)
+                        Button(info.button.label) { store.press(item, info) }
+                            .disabled(!info.available || item.activeRun != nil || store.slackBlock(item, info.button) != nil)
                     }
                 } label: {
                     Image(systemName: "ellipsis").font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.muted)
@@ -178,21 +179,23 @@ struct AutomationItemButton: View {
     var body: some View {
         let running = item.activeRun?.buttonId == info.id || store.buttonStarting.contains(item.id + "/" + info.id)
         let busy = item.activeRun != nil
+        // A Slack message whose To row doesn't resolve: off, with the reason (the core refuses it too).
+        let blocked = running ? nil : store.slackBlock(item, info.button)
         let icon = running ? nil : (info.button.icon ?? (primary ? "paperplane" : "play"))
         Group {
             if primary {
-                PrimaryButton(title: running ? "Running…" : info.button.label, systemImage: icon, size: .small, enabled: !busy || running) {
+                PrimaryButton(title: running ? "Running…" : info.button.label, systemImage: icon, size: .small, enabled: (!busy || running) && blocked == nil) {
                     if !running { store.press(item, info) }
                 }
             } else {
                 SoftButton(title: running ? "Running…" : info.button.label, size: .small, stroke: true, systemImage: icon) {
                     if !running { store.press(item, info) }
                 }
-                .disabled(busy && !running).opacity(busy && !running ? 0.45 : info.available ? 1 : 0.6)
+                .disabled((busy && !running) || blocked != nil).opacity((busy && !running) || blocked != nil ? 0.45 : info.available ? 1 : 0.6)
             }
         }
         .fixedSize()
-        .help(info.available ? "Runs \([info.scriptName, info.commandLabel].compactMap { $0 }.joined(separator: " › "))" : (info.reason ?? "Can’t run now"))
+        .help(blocked ?? (info.available ? "Runs \([info.scriptName, info.commandLabel].compactMap { $0 }.joined(separator: " › "))" : (info.reason ?? "Can’t run now")))
         .contextMenu {
             Button("Edit button…") { store.buttonEditor = ButtonEditorTarget(typeID: item.type, button: info.button, itemID: item.id) }
         }

@@ -3,7 +3,7 @@ type: spec
 title: User data
 status: built
 created: 2026-10-02
-updated: 2026-10-05
+updated: 2026-10-06
 tags:
   - distill
   - data
@@ -38,6 +38,7 @@ Nothing goes into the vault except approved notes and pages.
 | A batch's live log: its steps in plain words, never contents (2,000 steps / 512 KB per job; removed with the job) | `steps/<job-id>.jsonl` (v7, 0600) |
 | Activity log: what changed, when, from where (never secrets or content; 2 MB files, 10 rotated, 180 days) | `activity/activity.jsonl` + `activity/activity-<time>-<pid>-<rand>.jsonl` (v6, append-only, 0600) |
 | Distill's trash: deleted Ask chats and collectors, 30 days (at most 200 items, 50 MB) | `trash/<trash-id>.json` (v6, dir 0700, files 0600; holds inline scripts), plus `trash/<trash-id>.files/` for a kept script's folder without `node_modules`/`.venv` |
+| Who names are in Slack, per vault (name → @handle, ID or #channel; the Send in Slack To row) | `actions/slack-people.json` (2026-10-06; keyed by vault id; backed up and restored) |
 | API keys and connection tokens | macOS Keychain, never a file |
 | Backups | `backups/<time>[-tag]/` |
 | Runtime only | `server.json`, `server.log`, `token`, `ask/workspace/` |

@@ -134,8 +134,12 @@ export const BUILTIN_TYPES: ActionTypeDef[] = [
     id: 'slack',
     label: 'Slack message',
     pluralLabel: 'Slack messages',
-    recognizes: 'A message someone (a person or a channel) should get from the user.',
-    fields: [{ key: 'to', label: 'To', kind: 'person', required: true }],
+    recognizes:
+      'A message someone (a person or a channel) should get from the user. For to: a person’s name as written, or a channel as #name (keep the #). For thread: the Slack message link (https://….slack.com/archives/…) when the documents give one for the conversation to reply in; otherwise leave it out.',
+    fields: [
+      { key: 'to', label: 'To', kind: 'person', required: true },
+      { key: 'thread', label: 'Thread', kind: 'text' },
+    ],
     handlers: [
       { id: 'copy', label: 'Copy' },
       { id: 'markSent', label: 'Mark as sent' },

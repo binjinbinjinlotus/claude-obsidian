@@ -189,7 +189,7 @@ on a Slack message item:
 |---|---|
 | Label | `Send in Slack` |
 | Runs | `Slack CLI › send` |
-| `thread` | *empty* (left out of the command) |
+| `thread` | `{fields.thread}` (the ts of the thread to reply in; left out when the message has none) |
 | `target` | `{fields.to}` |
 | `text` | `{body}` |
 | When it works | **Mark it sent** |
@@ -205,9 +205,13 @@ python3 …/apps/scripts/slack/slack_cli.py send -- @mei.tanaka 'Hi Mei, …'
 
 ### 5.4 Send
 
-1. Open a Slack message under **Actions**. Set **To** to `@handle`, `#channel`
-   or a `C…`/`U…` ID. A plain name like "Mei Tanaka" fails the check and the run
-   is refused.
+1. Open a Slack message under **Actions**. The **To** row says where it goes:
+   a channel, a person, or a thread. If it holds a plain name like "Mei
+   Tanaka", it asks **Who is Mei Tanaka in Slack?**: type their `@handle` or
+   `U…` ID and click **Save**. Distill remembers it for this vault, so the
+   next message to the same name finds them (the To menu has **Change who …
+   is** and **Forget …**). Until then **Send in Slack** is off. To reply in a
+   thread, paste the message's Slack link in the To menu.
 2. Click **Send in Slack**. The first run, and the first run after any change,
    shows the exact command. Approve it.
 3. When it works, the item becomes **sent** and keeps the message `ts` as its

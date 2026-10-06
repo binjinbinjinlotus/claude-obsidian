@@ -11,7 +11,7 @@
 #   update     back up your data, run tests, rebuild, install to ~/Applications,
 #              check your data is still there, relaunch if it was running
 #   backup [TAG]  copy settings, job history, Ask history, actions, connections, collectors (with their
-#                 script files) and batch step logs to <state>/backups/<time>
+#                 script files), batch step logs and remembered Slack names to <state>/backups/<time>
 #   backups    list the backups (newest first)
 #   restore NAME  put a backup back (app and core must be stopped; backs up the current data first)
 #   status     show the app, the core, and running / awaiting-approval jobs
@@ -186,6 +186,8 @@ do_backup() {
   for f in "$STATE_DIR"/ask/*.json(N); do cp -p "$f" "$dest/ask/"; done
   # Label state for notes in the vault's inbox/ (kept out of inbox/ itself).
   [[ -f "$STATE_DIR/labels/notes.json" ]] && { mkdir -p "$dest/labels"; cp -p "$STATE_DIR/labels/notes.json" "$dest/labels/"; }
+  # Who names are in Slack, per vault (the Send in Slack To row).
+  [[ -f "$STATE_DIR/actions/slack-people.json" ]] && { mkdir -p "$dest/actions"; cp -p "$STATE_DIR/actions/slack-people.json" "$dest/actions/"; }
   chmod 700 "$BACKUPS" "$dest"
   local old=( "$BACKUPS"/*(N/On[$((KEEP_BACKUPS + 1)),-1]) )
   (( ${#old} )) && rm -rf -- "${old[@]}"
@@ -224,6 +226,7 @@ do_restore() {
   mkdir -p "$STATE_DIR/ask"
   for f in "$src"/ask/*.json(N); do cp -p "$f" "$STATE_DIR/ask/"; done
   [[ -f "$src/labels/notes.json" ]] && { mkdir -p "$STATE_DIR/labels"; cp -p "$src/labels/notes.json" "$STATE_DIR/labels/notes.json"; }
+  [[ -f "$src/actions/slack-people.json" ]] && { mkdir -p "$STATE_DIR/actions"; cp -p "$src/actions/slack-people.json" "$STATE_DIR/actions/slack-people.json"; }
   echo "Restored $name ($(describe_data "$(data_summary)")). Start with: $SCRIPT start"
 }
 

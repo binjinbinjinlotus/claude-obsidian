@@ -1244,6 +1244,33 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
         return core.runActionButton(params[0]!, params[1]!, { approve: o.approve === true });
       },
     },
+    // ── Where a Slack message goes (action-buttons.md): remembered names per vault, and an item's To row. ──
+    {
+      method: 'GET',
+      pattern: /^\/v1\/slack-people$/,
+      handler: async ({ query }) => core.listSlackPeople(query.get('vault') || null),
+    },
+    {
+      method: 'PUT',
+      pattern: /^\/v1\/slack-people$/,
+      handler: async ({ body }) => {
+        const o = asObject(await body(), false);
+        return core.rememberSlackPerson({ name: reqString(o, 'name'), target: reqString(o, 'target'), vaultPath: optString(o, 'vaultPath') ?? null });
+      },
+    },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/slack-people\/forget$/,
+      handler: async ({ body }) => {
+        const o = asObject(await body(), false);
+        return core.forgetSlackPerson({ name: reqString(o, 'name'), vaultPath: optString(o, 'vaultPath') ?? null });
+      },
+    },
+    {
+      method: 'GET',
+      pattern: /^\/v1\/actions\/([^/]+)\/slack-target$/,
+      handler: async ({ params }) => core.slackTarget(params[0]!),
+    },
     {
       method: 'POST',
       pattern: /^\/v1\/actions\/([^/]+)\/buttons\/stop$/,

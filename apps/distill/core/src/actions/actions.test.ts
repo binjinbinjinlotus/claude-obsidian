@@ -23,7 +23,7 @@ import { DRAFT_SCHEMA, FIND_SCHEMA, IMPROVE_SCHEMA, SUMMARIZE_SCHEMA } from './a
 import { normalizeSite, refusal } from './atlassian.js';
 import { createActionsService, describeByType, isDuplicate, type ActionsService } from './index.js';
 import { markdownToADF, markdownToStorage, parseBlocks } from './markdown.js';
-import { DEFAULT_FIND_PROMPT } from './prompts.js';
+import { buildFindPrompt, DEFAULT_FIND_PROMPT } from './prompts.js';
 import { actionTypeDef, actionTypeDefs, effectiveType, renderPrompt, resolveTypeID, typeInfo } from './registry.js';
 import { ActionStore, decodeAction } from './store.js';
 
@@ -215,6 +215,19 @@ const prefsWith = (patch: (p: ReturnType<typeof actionPreferences>) => void) => 
 // ───────────── registry ─────────────
 
 describe('registry', () => {
+  test('the find prompt asks for #channel names and a thread link, even under an edited prompt', () => {
+    const slack = actionTypeDef('slack')!;
+    const prompt = buildFindPrompt({
+      instructions: 'My own find prompt.',
+      types: [{ id: 'slack', label: slack.label, recognizes: slack.recognizes, fields: slack.fields.map((f) => f.key) }],
+      documents: [],
+      today: '2026-10-06',
+    });
+    assert.match(prompt, /Fields: to, thread\./);
+    assert.match(prompt, /a channel as #name \(keep the #\)/);
+    assert.match(prompt, /For thread: the Slack message link/);
+  });
+
   test('built-in types, handlers, defaults and prompts', () => {
     const ids = actionTypeDefs().map((d) => d.id);
     assert.deepEqual(ids, ['todo', 'slack', 'jira', 'confluence', 'email']);
@@ -224,7 +237,7 @@ describe('registry', () => {
     assert.deepEqual(infos.todo!.handlers.map((h) => h.id), ['complete']);
     assert.equal(infos.todo!.improveAfterEdit, false);
     assert.equal(infos.todo!.defaultDraftPrompt, null);
-    assert.deepEqual(infos.slack!.fields.map((f) => f.key), ['to']);
+    assert.deepEqual(infos.slack!.fields.map((f) => f.key), ['to', 'thread'], 'the thread a reply goes under (action-buttons.md)');
     assert.deepEqual(infos.slack!.handlers.map((h) => [h.id, h.available]), [['copy', true], ['markSent', true], ['complete', true], ['send', false]]);
     assert.equal(infos.slack!.handlers[3]!.reason, 'Later');
     for (const id of ['todo', 'slack', 'jira', 'confluence']) assert.equal(infos[id]!.handlers.find((x) => x.id === 'complete')!.label, 'Complete');

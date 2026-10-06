@@ -167,10 +167,66 @@ test('a button runs its command with the exact argv, never through a shell, and 
 });
 
 test('a pattern miss is shown in the preview and refuses the run', async () => {
-  const item = (await request('POST', '/v1/actions', { type: 'slack', title: 'Tell Mei', body: 'hi', fields: { to: 'Mei Tanaka' } })).body;
+  const item = (await request('POST', '/v1/actions', { type: 'slack', title: 'Tell Mei', body: 'hi', fields: { to: '@' } })).body;
   const preview = (await request('POST', `/v1/actions/${item.id}/buttons/btn-send/preview`)).body;
-  assert.match(preview.problems[0], /“Mei Tanaka” isn’t #channel, @handle or an ID/);
+  assert.match(preview.problems[0], /“@” isn’t #channel, @handle or an ID/);
   assert.equal((await request('POST', `/v1/actions/${item.id}/buttons/btn-send/run`, { approve: true })).status, 400);
+});
+
+test('a plain name is never sent: it asks who they are, and a remembered name resolves the next item', async () => {
+  const item = (await request('POST', '/v1/actions', { type: 'slack', title: 'Tell Aditya', body: 'hi', fields: { to: 'Aditya Pradhan' } })).body;
+  const where = (await request('GET', `/v1/actions/${item.id}/slack-target`)).body;
+  assert.equal(where.target, null);
+  assert.equal(where.ask, 'Who is Aditya Pradhan in Slack?');
+  const preview = (await request('POST', `/v1/actions/${item.id}/buttons/btn-send/preview`)).body;
+  assert.deepEqual(preview.problems, ['Distill doesn’t know who Aditya Pradhan is in Slack yet. Add their @handle or ID in the To row.'], 'plain words, not the pattern line');
+  const refused = await request('POST', `/v1/actions/${item.id}/buttons/btn-send/run`, { approve: true });
+  assert.equal(refused.status, 400);
+  assert.doesNotMatch(refused.body.error.message, /target:|isn’t #channel/);
+
+  // A name that isn't a handle is refused; a bare handle gets its @.
+  assert.equal((await request('PUT', '/v1/slack-people', { name: 'Aditya Pradhan', target: 'Aditya P' })).status, 400);
+  const saved = await request('PUT', '/v1/slack-people', { name: 'Aditya Pradhan', target: 'aditya' });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.equal(saved.body.target, '@aditya');
+  assert.deepEqual((await request('GET', '/v1/slack-people')).body.map((p: any) => [p.name, p.target]), [['Aditya Pradhan', '@aditya']]);
+
+  const next = (await request('POST', '/v1/actions', { type: 'slack', title: 'Tell Aditya again', body: 'hello', fields: { to: 'aditya pradhan' } })).body;
+  const resolved = (await request('GET', `/v1/actions/${next.id}/slack-target`)).body;
+  assert.deepEqual([resolved.kind, resolved.target, resolved.name], ['person', '@aditya', 'aditya pradhan']);
+  const ok = (await request('POST', `/v1/actions/${next.id}/buttons/btn-send/preview`)).body;
+  assert.deepEqual(ok.problems, []);
+  assert.deepEqual(ok.argv.slice(2), ['send', '--', '@aditya', 'hello']);
+  assert.equal((await request('GET', `/v1/actions/${next.id}`)).body.fields.to, 'aditya pradhan', 'the item keeps the name');
+
+  // Another vault doesn't see it; forgetting asks again.
+  assert.deepEqual((await request('GET', `/v1/slack-people?vault=${encodeURIComponent(path.join(root, 'elsewhere'))}`)).body, []);
+  assert.deepEqual((await request('POST', '/v1/slack-people/forget', { name: 'ADITYA PRADHAN' })).body, { forgotten: true });
+  assert.equal((await request('GET', `/v1/actions/${next.id}/slack-target`)).body.target, null);
+  assert.equal((await request('GET', '/v1/slack-people')).status, 200);
+});
+
+test('a thread reply goes to the link’s channel with --thread, and never as a top-level post', async () => {
+  const link = 'https://acme.slack.com/archives/C0123ABCD/p1759600000123456';
+  const item = (await request('POST', '/v1/actions', { type: 'slack', title: 'Reply', body: 'on it', fields: { to: '#eng', thread: link } })).body;
+  const where = (await request('GET', `/v1/actions/${item.id}/slack-target`)).body;
+  assert.deepEqual([where.kind, where.target, where.threadTs], ['thread', 'C0123ABCD', '1759600000.123456']);
+  // The button leaves thread empty: refused rather than posted to the channel.
+  const refused = (await request('POST', `/v1/actions/${item.id}/buttons/btn-send/preview`)).body;
+  assert.deepEqual(refused.problems, ['This message replies in a thread, but Send in Slack doesn’t fill in a thread. Edit the button and set thread to {fields.thread}.']);
+
+  const settings = (await request('GET', '/v1/settings')).body;
+  const slack = settings.actionPreferences.types.slack;
+  const buttons = slack.buttons.map((b: any) => (b.id === 'btn-send' ? { ...b, bindings: { ...b.bindings, thread: '{fields.thread}' } } : b));
+  const prefs = { ...settings.actionPreferences, types: { ...settings.actionPreferences.types, slack: { ...slack, buttons } } };
+  assert.equal((await request('PUT', '/v1/settings', { actionPreferences: prefs })).status, 200);
+  const preview = (await request('POST', `/v1/actions/${item.id}/buttons/btn-send/preview`)).body;
+  assert.deepEqual(preview.problems, []);
+  assert.deepEqual(preview.argv.slice(2), ['send', '--thread', '1759600000.123456', '--', 'C0123ABCD', 'on it']);
+
+  // Without a thread the same button leaves --thread out.
+  const plain = (await request('POST', '/v1/actions', { type: 'slack', title: 'Post', body: 'hi', fields: { to: '#eng' } })).body;
+  assert.deepEqual((await request('POST', `/v1/actions/${plain.id}/buttons/btn-send/preview`)).body.argv.slice(2), ['send', '--', '#eng', 'hi']);
 });
 
 test('a commands-only automation never collects', async () => {
