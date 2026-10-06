@@ -17,6 +17,25 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+**A blocked tool command never reaches the owner as raw shell (2026-10-05,
+designed).** The owner got "Claude asked to run" with `Bash: diff <(python3
+-c …) <(python3 -c …)` and "Combined command: reply with guidance instead."
+They said: "there's no way I can handle something like this". The session
+already had Read, Grep and Glob. Spec: [Review queue](review-queue.md),
+"Blocked tool commands".
+
+- **The core answers first.** A turn that ends with denials and no plan is
+  answered by the core: "that isn't allowed in Distill sessions; use Read, Grep
+  or Glob on these paths; no shell or python". Then the session resumes.
+  - This is a fixed rule, at most 2 per batch, $0.
+- **Then the recovery agent.** It has a new fix, `answer_denial`, whose guidance
+  the core checks and sends.
+- **The owner card is the last resort, in plain words.** The sentence comes from
+  the core's `denialSummary`. Raw commands, and the allow checkbox for a single
+  write rule, sit only under **Show command**.
+  - Options: Let recovery try again, Rebuild, Open in Terminal, Reject.
+- Logged as `batch.recovery` with `kind: denial`.
+
 **Several approvals go into a queue, one apply at a time per vault. A stale
 approved plan is rebuilt and asked once more; the approval never carries over
 (2026-10-05, designed).** The owner approved several batches at once. All but

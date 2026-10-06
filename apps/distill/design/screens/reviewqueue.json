@@ -91,6 +91,43 @@
       }
     },
     {
+      "id": "review-recovering-denial",
+      "base": "review",
+      "label": "G · Claude was blocked from a command: Distill tells it to read the files instead, and it goes on",
+      "set": {
+        "detail": {
+          "frag": "denial-recovering"
+        },
+        "sidebar.status": "Sonnet · recovering"
+      }
+    },
+    {
+      "id": "review-gaveup-denial",
+      "base": "review",
+      "label": "H · Last resort: what Claude wanted, in plain words; the command only behind Show command",
+      "set": {
+        "detail": {
+          "frag": "denial-gaveup"
+        },
+        "sidebar.reviewCount": "2",
+        "sidebar.status": "Needs you"
+      }
+    },
+    {
+      "id": "rq-card-denial",
+      "label": "Blocked commands",
+      "caption": "Answered by Distill first; the owner never sees raw shell by default.",
+      "card": {
+        "height": 380,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-denial"
+      }
+    },
+    {
       "id": "rq-card-queue",
       "label": "The queue",
       "caption": "One apply at a time per vault; fresh or stale is decided by the gate itself.",
@@ -242,6 +279,16 @@
           "style": "display: flex; gap: 40px; align-items: flex-start"
         },
         {
+          "title": "A blocked command"
+        },
+        {
+          "row": [
+            "review-recovering-denial",
+            "review-gaveup-denial"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
           "title": "The rules"
         },
         {
@@ -262,6 +309,7 @@
         },
         {
           "grid": [
+            "rq-card-denial",
             "rq-card-names",
             "rq-card-tests"
           ],

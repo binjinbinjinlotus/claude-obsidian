@@ -269,6 +269,7 @@ The triggers, by **failure signature** (`kind` plus a short key):
 | `full-read-stop`: a source couldn't be read in full | can't be approved |
 | `session-gone` during a queued or background step | SessionReplaceConfirm |
 | `runner-failed`: the runner failed or the core stopped mid-apply | failed |
+| `denial`: a turn ended with blocked tool calls (`approval.denials`) and no valid plan | the "Claude asked to run" card, which shows raw shell |
 
 ### Rules first, then the agent
 
@@ -282,9 +283,86 @@ verifiable.
 | `not-recorded` | check the vault journal (`adoptOutsideApplies`); if `complete` with the approved hash, record it as applied | journal |
 | `session-gone` | none: session continuity asks first (owner decision, row 10). Needs you with SessionReplaceConfirm, pre-selected | owner |
 | `full-read-stop` | none: excluding sources changes what is approved; the v10 path offers it | owner |
+| `denial` | auto-answer the session (below), at most 2 per batch | the next turn has no new denial for the same command |
 
 **The recovery agent** runs when no rule applies, or when a rule already failed
 once for the same signature.
+
+### Blocked tool commands never reach the owner as raw shell
+
+On 2026-10-05 the owner got a Review card, "Claude asked to run", with
+`Bash: diff <(python3 -c "import json;d=json.load(open('…/wiki/meta/ledgers/claim-ledger.json'))…") <(python3 -c "…/.vault-meta/worker/job-2…")`
+and "Combined command: reply with guidance instead." (`MainView.swift`
+`blocked(_:_:)`). The owner said: "there's no way I can handle something like
+this".
+
+The session already has Read, Grep and Glob (`JobContext.planningTools`), so the
+AI only needed to use them. Denials are now a recovery case, answered by Distill
+first.
+
+1. **Auto-answer (a rule, no AI, no owner).**
+   - **When.** In `requestDecision`, a turn ends with `denials` and **no valid
+     plan**. A turn with a valid plan shows the plan; its denials are history.
+   - **What the core does.** It answers the batch's session itself, once per
+     turn, with an app-authored turn, then resumes (`resumeBatchSession`, action
+     `reply`). The words come from `denialAnswer(denials, job)` in
+     `engine/recovery.ts`:
+
+     > Distill sessions can't run `Bash: diff <(python3 …) …` (no shell or python
+     > here). Use Read, Grep or Glob to inspect files instead, for example:
+     > `/…/wiki/meta/ledgers/claim-ledger.json`,
+     > `/…/.vault-meta/worker/job-2…/bundle.json`. Compare them by reading both.
+     > Don't run shell commands or python. Then continue the task and finish
+     > with the structured status.
+
+     The paths are the absolute paths found in the denied commands, those in
+     the vault or the job directory only, at most 8. The command shown is cut to
+     200 characters.
+   - **Limits.** At most **2** auto-answers per batch (`recovery.denialAnswers`,
+     persisted). Each one is an attempt `{ by: 'rule', fix: 'answer_denial',
+     costUSD: 0 }` under the signature `denial`.
+   - **Verified by.** The next turn has no denial for the same command.
+   - **While it runs,** the batch reads **Recovering** ("Recovering · told Claude
+     to read the files instead"), and nothing counts as Needs you.
+2. **Recovery agent.** The AI is still blocked after 2 auto-answers. The
+   recovery agent gets the facts (the denied commands, the auto-answers sent,
+   and the turns) and can pick the new fix **`answer_denial`**, with a
+   `guidance` text of at most 1,200 characters.
+   - The core sends that text as the app's reply. It refuses guidance that
+     names `transaction apply` or suggests allowing a gate-breaking rule
+     (`gateBreakingReason`).
+   - Other fixes stay open, for example `rebuild_in_session`. The usual bounds
+     apply: 2 agent attempts and the cost cap.
+3. **The owner card, only as a last resort** (recovery `gaveUp` with the
+   signature `denial`). It is the Couldn't fix card, in plain language:
+   - **What's wrong** comes from `denialSummary(denials, job)`. It is
+     deterministic: a verb from the command (`diff`/`cmp` → compare;
+     `cat`/`head`/`less`/`sed -n` → read; `python3 -c`/`node -e` → run a
+     script; `rm`/`mv`/`>` → change), plus friendly names for the paths:
+     - `wiki/meta/ledgers/claim-ledger.json` → "the claim ledger";
+     - the source ledger likewise;
+     - `.vault-meta/worker/<this job>/…` → "this batch's copy";
+     - `wiki/**.md` → the page title;
+     - anything else → its file name.
+
+     For example: "Claude wanted to compare the claim ledger with this batch's
+     copy. Distill couldn't let it run that, and told it to read the files
+     instead (twice)." When the agent ran, its diagnosis comes next.
+   - **Raw commands** are only behind **Show command**, a disclosure that is
+     closed by default. Under it are the monospaced `denial.display` lines. A
+     denial with a single allowable `suggestedRule` that is a write keeps
+     today's checkbox, its "Allowing this lets Claude change files without your
+     review." warning, and **Allow & continue**, all inside the disclosure.
+   - **Options:** **Let recovery try again** (resets once), **Rebuild**, **Open
+     in Terminal**, **Reject**.
+   - The old "Claude asked to run" card and "Combined command: reply with
+     guidance instead." are gone from Review's default view.
+4. **Log.**
+   - The live log has a `recover-<n>` step: "Recovering · told Claude to read
+     the files instead", or "Recovering · Opus · answering a blocked command".
+   - Activity gets `batch.recovery` with `kind: 'denial'`, the fix, the result
+     and the cost. The raw command goes in the entry's detail and is redacted by
+     `activity/redact.ts`, never in its title.
 
 ### The recovery agent
 
@@ -314,8 +392,9 @@ once for the same signature.
 
   ```json
   { "diagnosis": "≤ 400 chars, plain words for the owner",
-    "fix": "rebuild_in_session | reinspect_same_bundle | wait_then_retry | split_batch | discard_stale_part | new_session | give_up",
+    "fix": "rebuild_in_session | reinspect_same_bundle | wait_then_retry | split_batch | discard_stale_part | answer_denial | new_session | give_up",
     "reason": "≤ 300 chars",
+    "guidance": "≤ 1200 chars (answer_denial)",
     "waitFor": "job id (wait_then_retry)",
     "groups": [["wiki/sources/a.md"]] }
   ```
@@ -331,6 +410,7 @@ once for the same signature.
   | `wait_then_retry` | `waitFor` must exist and touch the same paths; retry after it ends | as the retried step |
   | `split_batch` | `groups` must split the active sources; one part is rebuilt, the rest wait (`startPart('partial')`) | new plan → owner's OK |
   | `discard_stale_part` | today's discard of a rebuilt part (`reject(id)`) | nothing applied |
+  | `answer_denial` | sends `guidance` as the app's reply in the batch's session and resumes; refused if it names `transaction apply` or a gate-breaking rule | any plan → owner's OK |
   | `new_session` | **proposal only**: Needs you with SessionReplaceConfirm, "Recovery suggests a new session" | owner |
   | `give_up` | the Couldn't fix state | owner |
 
@@ -392,8 +472,8 @@ card with:
   for the vault lock (30 s)".
 - **Review.** A blue notice on the batch with the same words, plus the attempt
   rows. The batch row's state reads **Recovering**.
-- **Activity.** `batch.recovery` entries: `{ job, attempt, signature, by,
-  model, fix, result, costUSD }`, with the actor `scheduler`, or `app` for Try
+- **Activity.** `batch.recovery` entries: `{ job, attempt, kind (= signature,
+  e.g. 'denial'), by, model, fix, result, costUSD }`, with the actor `scheduler`, or `app` for Try
   again.
 - **Cost.** Shown on each attempt row and summed on the Couldn't fix card.
 
@@ -476,7 +556,8 @@ Cases for the unit tests (`ReviewLogicTests`):
 - **`contracts.ts`:**
   - `AITask` gains `'recovery'`, and `TASK_REQUIREMENTS.recovery`;
   - new types `QueuedApply`, `RefreshState`, `RecoveryState`, `RecoveryAttempt`,
-    `SinceApproved`;
+    `SinceApproved` (`RecoveryState` also holds `denialAnswers: number` and
+    `summary?: string`; `RecoveryAttempt.fix` includes `answer_denial`);
   - `Job.queuedApply?`, `Job.refresh?`, `Job.recovery?`,
     `ApprovalRequest.sinceApproved?`;
   - `Settings.recovery?: { automatic, maxAttempts, maxCostUSD }`;
@@ -499,7 +580,11 @@ Cases for the unit tests (`ReviewLogicTests`):
   - `RECOVERY_SCHEMA`;
   - `parseRecoveryAnswer`;
   - `validateFix(answer, job, jobs)`;
-  - `ruleFor(signature, attempts)`.
+  - `ruleFor(signature, attempts)`;
+  - `denialAnswer(denials, job)`, the auto-answer text with the vault and job
+    paths;
+  - `denialSummary(denials, job)`, the plain-language owner sentence. The Mac
+    shows the core's string and never builds one from argv.
 
   It runs `runRecovery(selection, facts)` through `runners.get(...).run`, with
   structured output and no tools.
@@ -520,6 +605,11 @@ Cases for the unit tests (`ReviewLogicTests`):
     request.bundlePath)` when the job has `queuedApply`, then deletes
     `queuedApply.planSha256` (Needs you, `order` kept).
   - `requestDecision` clears `refresh`.
+  - `requestDecision`: denials with no valid plan go to `recover(id, 'denial')`.
+    Below 2 `recovery.denialAnswers`, it sends `denialAnswer` and resumes
+    (`resumeBatchSession`, action `reply`). Then the agent runs (`answer_denial`
+    sends `guidance`), then `gaveUp` with `recovery.summary =
+    denialSummary(…)`.
   - New `recover(id, signature)` and `tryRecoveryAgain(id)`.
   - `status().pendingApprovals` excludes queued, refreshing and recovering jobs.
   - `start()` pumps applies and resumes recovery waits.
@@ -571,6 +661,13 @@ Cases for the unit tests (`ReviewLogicTests`):
   - the footer: Approve label "Approve · applies after X", Don't apply yet, and
     "Approve rebuilt plan";
   - `SinceApprovedCard`, `RecoveryNotice` and `RecoveryGaveUpCard`.
+- **`Distill/MainView.swift` `blocked(_:_:)`:**
+  - It is replaced by `RecoveryGaveUpCard` for the signature `denial`: the
+    `recovery.summary` sentence first, then the raw `denial.display` lines and
+    the existing allow checkbox inside a closed **Show command**
+    (`DisclosureGroup`).
+  - "Combined command: reply with guidance instead." is removed.
+  - A job still in recovery shows `RecoveryNotice`, never the denials.
 - **`Distill/ApplyProgress.swift`:** the Updating state (a blue running step) and
   the recovery attempt rows.
 - **`Distill/PaneSplit.swift`:** `PaneSpec.reviewList` (220–380), added to
@@ -582,7 +679,8 @@ Cases for the unit tests (`ReviewLogicTests`):
 - **`AppModel`:** the badges exclude queued, refreshing and recovering jobs (the
   same rule as the core).
 - **Snapshot states:** `review-list`, `review-queued`, `review-updating`,
-  `review-reapprove`, `review-recovering` and `review-gaveup`, matching the board.
+  `review-reapprove`, `review-recovering`, `review-gaveup`,
+  `review-recovering-denial` and `review-gaveup-denial`, matching the board.
 
 ### Tests (fake runner)
 
@@ -618,6 +716,19 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
    - attempts reset on Approve.
 9. The recovery selection defaults to Opus; `taskDefaults.recovery` overrides it.
 10. Swift parity (`swift-parity.test.ts`): `AI_TASKS` includes `recovery`.
+11. Denials (`recovery.test.ts`):
+    - A FakeRunner turn ends with a denial (`Bash: diff <(python3 …) …`) and no
+      plan. The core sends `denialAnswer`, which names Read, Grep and Glob and
+      the ledger and job paths, and resumes the same session.
+    - The next scripted turn returns `needs_approval`. Review shows the plan;
+      nothing counted as Needs you in between.
+    - The cap: three denying turns in a row. Answers 1 and 2 are rules; the
+      third goes to the recovery agent, whose `answer_denial` guidance is sent.
+      A guidance naming `transaction apply` is refused, the attempt fails, and
+      the job ends `gaveUp`, with the signature `denial` and a `recovery.summary`
+      like "Claude wanted to compare the claim ledger with this batch's copy…".
+    - The `denialSummary` text never contains the argv: no `python3`, `<(`,
+      `-c` or absolute path.
 
 **Mac** (`DistillKitTests`):
 
@@ -629,5 +740,8 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
 - `ApplyTimelineTests`: a job with `refresh` is not failed and has heading
   "Updating against the latest pages".
 - `ModelsTests`: lenient decode of the new fields; old jobs without them decode.
+- Denial card (`DistillTests`, or a snapshot check of `review-gaveup-denial`):
+  the card's visible text by default is the summary and the options. No
+  `denial.display` text appears until Show command is opened.
 - `SettingsEditsTests`: the Recovery fallback is Opus.
 - The snapshot states render; the design drift test passes.
