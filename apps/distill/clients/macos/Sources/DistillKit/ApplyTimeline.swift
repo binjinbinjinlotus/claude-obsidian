@@ -25,7 +25,9 @@ public struct ApplyTimeline: Equatable, Sendable {
     /// Time of each shown row, in order (approved, starting?, applying, applied, finding).
     public var times: [Date?]
 
-    public var isFailed: Bool { failedAt != nil && failedAt != .finding }
+    /// review-queue.md: another batch changed the same pages first; the plan is being rebuilt (never a failure).
+    public var updating = false
+    public var isFailed: Bool { !updating && failedAt != nil && failedAt != .finding }
     public var isAdded: Bool { !isFailed && [.applied, .finding, .done].contains(stage) }
     public var isRunning: Bool { !isFailed && [.approved, .starting, .applying].contains(stage) }
 
@@ -79,6 +81,12 @@ public struct ApplyTimeline: Equatable, Sendable {
                               operation: change.operationID, actions: actionsWords(job.actionsFound))
         let actionsTime = actionsStep?.endedAt ?? actionsStep?.at
         t.times = [approvedStep?.endedAt ?? change.at] + (core ? [] : [start?.at]) + [apply?.at, addedStep?.at, actionsTime]
+        if job.refresh != nil {
+            t.updating = true
+            t.stage = .applying
+            t.help = "Another batch changed the same pages first. This batch’s session is rebuilding the plan against the pages as they are now."
+            return t
+        }
         // Applied in Terminal after an attempt here failed: the vault's journal is the evidence, not the old steps.
         let outside = change.appliedOutside && job.state == .completed && job.operationID == change.operationID
         let addedNow = outside || addedStep != nil || (job.state == .completed && job.operationID == change.operationID && apply == nil)
@@ -152,7 +160,9 @@ public struct ApplyTimeline: Equatable, Sendable {
 
     /// Review lists the batches waiting for the user (oldest first), then the approved ones not yet Done.
     public static func reviewList(_ jobs: [Job]) -> [Job] {
-        let waiting = ReviewBatches.ordered(jobs.filter { $0.state == .awaitingApproval || ($0.state == .running && $0.pendingPart != nil) })
+        let waiting = ReviewBatches.ordered(jobs.filter {
+            $0.state == .awaitingApproval || ($0.state == .running && ($0.pendingPart != nil || $0.refresh != nil))
+        })
         let approved = jobs.filter(showsInReview).sorted { ($0.approvedChange?.at ?? $0.updatedAt, $0.id) < ($1.approvedChange?.at ?? $1.updatedAt, $1.id) }
         return waiting + approved
     }
@@ -187,5 +197,7 @@ public struct ApplyTimeline: Equatable, Sendable {
         }
     }
 
-    public var heading: String { isFailed ? "Not added to your vault" : isAdded ? "Added to \(vault)" : "Adding to \(vault)…" }
+    public var heading: String {
+        updating ? "Updating against the latest pages" : isFailed ? "Not added to your vault" : isAdded ? "Added to \(vault)" : "Adding to \(vault)…"
+    }
 }

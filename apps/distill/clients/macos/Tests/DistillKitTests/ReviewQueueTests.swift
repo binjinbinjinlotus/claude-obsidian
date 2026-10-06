@@ -35,4 +35,45 @@ final class ReviewQueueTests: XCTestCase {
         job.recovery?.state = .running
         XCTAssertEqual(BlockedText.heading(job), "Recovering")
     }
+
+    func testQueueWordsAndTheBadgeRule() {
+        let now = Date()
+        var a = Job(id: "a", vaultPath: "/v", files: ["inbox/Product sync.md"], state: .running)
+        a.approvedChange = try? JSONDecoder.core.decode(ApprovedChange.self, from: Data(#"{"at":"2026-10-05T10:00:00Z","operationID":"op-a","changes":3}"#.utf8))
+        a.turns = [TurnRecord(date: now, author: .user, text: "Approved op-a (abc…)")]
+        var b = Job(id: "b", vaultPath: "/v", files: ["inbox/Telus stand-up.md", "inbox/x.md"], state: .awaitingApproval)
+        b.queuedApply = QueuedApply(at: now, order: 2, planSha256: "h")
+        var c = Job(id: "c", vaultPath: "/v", files: ["inbox/c.md"], state: .awaitingApproval)
+        XCTAssertEqual(ReviewQueueText.queuedLine(b, in: [a, b, c]), "Queued · applies after “Product sync”")
+        XCTAssertEqual(ReviewQueueText.approveNote(c, in: [a, b, c]), "Applies after “Product sync”")
+        XCTAssertEqual(ReviewQueueText.approveNote(c, in: [b, c]), "Applies after “Telus stand-up” +1", "an earlier approval goes first")
+        XCTAssertNil(ReviewQueueText.approveNote(c, in: [c]))
+        XCTAssertFalse(ReviewQueueText.needsOwner(b), "waiting to apply")
+        XCTAssertTrue(ReviewQueueText.needsOwner(c))
+        b.queuedApply?.planSha256 = nil
+        XCTAssertTrue(ReviewQueueText.needsOwner(b), "rebuilt: needs the owner once more")
+        c.refresh = RefreshState(since: now)
+        XCTAssertFalse(ReviewQueueText.needsOwner(c), "being rebuilt")
+        c.refresh = nil
+        c.recovery = RecoveryState(state: .running, signature: "denial")
+        XCTAssertFalse(ReviewQueueText.needsOwner(c), "recovering")
+    }
+
+    func testSinceApprovedLines() {
+        let s = SinceApproved(content: ["wiki/concepts/retry-policy.md"], added: ["wiki/entities/auth.md"], dropped: [],
+                              bookkeeping: ["wiki/log.md", "wiki/hot.md", "wiki/meta/ledgers/claim-ledger.json", "wiki/meta/ledgers/source-ledger.json"])
+        XCTAssertEqual(ReviewQueueText.sinceLines(s), ["Your source pages: unchanged", "2 pages differ: retry policy, auth",
+                                                        "Bookkeeping written again: log, hot cache, 2 ledgers"])
+    }
+
+    func testARefreshIsUpdatingNeverAFailure() throws {
+        var job = Job(id: "j", vaultPath: "/v/Research", files: [], state: .running)
+        job.approvedChange = try JSONDecoder.core.decode(ApprovedChange.self, from: Data(#"{"at":"2026-10-05T10:00:00Z","operationID":"op","changes":3}"#.utf8))
+        job.turns = [TurnRecord(date: Date(), author: .user, text: "Approved op (abc…)")]
+        job.refresh = RefreshState(since: Date(), stalePaths: ["wiki/log.md"], approved: true)
+        let failed = JobStep(id: "apply-1", at: Date(), phase: "apply", state: "failed", verb: "apply", text: "Not applied")
+        let t = try XCTUnwrap(ApplyTimeline.make(job: job, steps: [failed]))
+        XCTAssertFalse(t.isFailed)
+        XCTAssertEqual(t.heading, "Updating against the latest pages")
+    }
 }

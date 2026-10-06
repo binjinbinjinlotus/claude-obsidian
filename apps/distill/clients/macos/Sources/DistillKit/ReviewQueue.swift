@@ -144,3 +144,92 @@ public enum BlockedText {
         job.recovery?.state == .running ? "Recovering" : "Claude got stuck"
     }
 }
+
+/// review-queue.md: the Review words for the apply queue (the core decides; these only describe it).
+public enum ReviewQueueText {
+    /// The batch needs the owner: the same rule as the core's pendingApprovals (badges).
+    public static func needsOwner(_ j: Job) -> Bool {
+        guard j.state == .awaitingApproval else { return false }
+        if j.queuedApply?.waitingToApply == true || j.refresh != nil { return false }
+        if let r = j.recovery, r.state == .running || r.state == .waiting { return false }
+        return true
+    }
+
+    /// A batch's short name: its first file without folder and extension, "+2" for the rest.
+    public static func shortName(_ j: Job) -> String {
+        guard let first = j.files.first else { return j.id }
+        let name = ((first as NSString).lastPathComponent as NSString).deletingPathExtension
+        return "“\(name)”" + (j.files.count > 1 ? " +\(j.files.count - 1)" : "")
+    }
+
+    /// What applies before this batch in its vault: the one applying now, or an earlier approval.
+    public static func ahead(of job: Job, in jobs: [Job]) -> Job? {
+        let others = jobs.filter { $0.id != job.id && $0.vaultPath == job.vaultPath }
+        if let applying = others.first(where: { $0.state == .running && $0.approvedChange != nil && $0.refresh == nil && $0.pendingPart == nil
+            && ApplyTimeline.approvalIsLatest($0) }) { return applying }
+        let mine = job.queuedApply?.order ?? .infinity
+        return others.filter { $0.queuedApply != nil && ($0.state == .awaitingApproval || $0.refresh != nil) && $0.queuedApply!.order < mine }
+            .min { $0.queuedApply!.order < $1.queuedApply!.order }
+    }
+
+    /// "Queued · applies after “Product sync”" for a batch waiting to apply.
+    public static func queuedLine(_ job: Job, in jobs: [Job]) -> String {
+        if let a = ahead(of: job, in: jobs) { return "Queued · applies after \(shortName(a))" }
+        return "Queued · applies next"
+    }
+
+    /// The footer note when Approve would queue: "Applies after “Product sync”".
+    public static func approveNote(_ job: Job, in jobs: [Job]) -> String? {
+        ahead(of: job, in: jobs).map { "Applies after \(shortName($0))" }
+    }
+
+    /// A rebuilt plan the owner had approved: it keeps its place and asks once more.
+    public static func asksAgain(_ job: Job) -> Bool {
+        job.state == .awaitingApproval && job.queuedApply != nil && job.queuedApply?.waitingToApply == false && job.approval?.canApplyPlan == true
+    }
+
+    /// "What changed since you approved" lines.
+    public static func sinceLines(_ s: SinceApproved) -> [String] {
+        var out = ["Your source pages: unchanged"]
+        let pages = s.content + s.added
+        if !pages.isEmpty {
+            let names = pages.prefix(4).map { (($0 as NSString).lastPathComponent as NSString).deletingPathExtension.replacingOccurrences(of: "-", with: " ") }
+            out.append("\(pages.count == 1 ? "1 page differs" : "\(pages.count) pages differ"): \(names.joined(separator: ", "))\(pages.count > 4 ? ", …" : "")")
+        }
+        if !s.dropped.isEmpty { out.append("\(s.dropped.count == 1 ? "1 page is" : "\(s.dropped.count) pages are") no longer changed") }
+        if !s.bookkeeping.isEmpty {
+            let names = s.bookkeeping.map { p -> String in
+                switch (p as NSString).lastPathComponent {
+                case "hot.md": return "hot cache"
+                case "log.md": return "log"
+                case "index.md": return "index"
+                case "overview.md": return "overview"
+                default: return "ledger"
+                }
+            }
+            var counts: [String: Int] = [:]
+            names.forEach { counts[$0, default: 0] += 1 }
+            let order = ["log", "hot cache", "index", "overview", "ledger"].filter { counts[$0] != nil }
+            out.append("Bookkeeping written again: " + order.map { counts[$0]! > 1 ? "\(counts[$0]!) \($0)s" : $0 }.joined(separator: ", "))
+        }
+        return out
+    }
+}
+
+public struct SinceApproved: Codable, Equatable, Sendable {
+    public var content: [String]
+    public var added: [String]
+    public var dropped: [String]
+    public var bookkeeping: [String]
+    public init(content: [String] = [], added: [String] = [], dropped: [String] = [], bookkeeping: [String] = []) {
+        self.content = content; self.added = added; self.dropped = dropped; self.bookkeeping = bookkeeping
+    }
+    enum Keys: String, CodingKey { case content, added, dropped, bookkeeping }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        content = c.lossyArray(String.self, .content)
+        added = c.lossyArray(String.self, .added)
+        dropped = c.lossyArray(String.self, .dropped)
+        bookkeeping = c.lossyArray(String.self, .bookkeeping)
+    }
+}

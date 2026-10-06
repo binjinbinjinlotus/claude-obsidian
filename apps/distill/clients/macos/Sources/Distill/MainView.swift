@@ -856,6 +856,18 @@ struct StateStyle {
     let ink: Color
     let dot: Color
 
+    /// review-queue.md: what the batch is doing in the queue, when it isn't simply waiting for the owner.
+    static func of(_ job: Job) -> StateStyle {
+        if job.refresh != nil { return .init(label: "Updating…", fill: Theme.primaryTint, ink: Theme.primary, dot: Theme.primary) }
+        if job.recovery?.state == .running { return .init(label: "Recovering", fill: Theme.primaryTint, ink: Theme.primary, dot: Theme.primary) }
+        if job.state == .awaitingApproval {
+            if job.queuedApply?.waitingToApply == true { return .init(label: "Queued", fill: Theme.panel, ink: Theme.softInk, dot: Theme.faint) }
+            if job.recovery?.state == .gaveUp { return .init(label: "Needs you", fill: Theme.peachTint, ink: Theme.peachInk, dot: Theme.peachInk) }
+            if ReviewQueueText.asksAgain(job) { return .init(label: "Needs you · approve the rebuilt plan", fill: Theme.peachTint, ink: Theme.peachInk, dot: Theme.peachInk) }
+        }
+        return of(job.state)
+    }
+
     static func of(_ state: JobState) -> StateStyle {
         switch state {
         case .running: return .init(label: "Working", fill: Theme.primaryTint, ink: Theme.primary, dot: Theme.primary)
@@ -1031,7 +1043,8 @@ struct JobDetailView: View {
     }
 
     private func pill(_ job: Job) -> StateStyle {
-        let style = StateStyle.of(job.state)
+        let style = StateStyle.of(job)
+        if job.refresh != nil { return style }
         // v8 Review after Approve: "Adding to your vault" while the approved change goes in.
         if ApplyTimeline.isApplying(job) {
             return StateStyle(label: "Adding to your vault", fill: Theme.primaryTint, ink: Theme.primary, dot: Theme.primary)
@@ -1113,9 +1126,17 @@ struct JobDetailView: View {
                         text: approval.questions.map { "• \($0)" }.joined(separator: "\n"))
             }
             if !approval.denials.isEmpty { blocked(job, approval) }
+            // review-queue.md: approved and waiting for the vault, or rebuilt after another batch changed the same pages.
+            if job.queuedApply?.waitingToApply == true {
+                ReviewNotice(tone: .blue, title: ReviewQueueText.queuedLine(job, in: engine.jobs),
+                             text: "You approved this plan. Distill applies it as soon as the batch before it is in, after checking nothing it changes moved.",
+                             systemImage: "clock")
+            } else if ReviewQueueText.asksAgain(job) {
+                SinceApprovedCard(since: approval.sinceApproved)
+            }
             // v10: sources one session couldn't finish are read next, in a fresh session (the covered part).
             if let later = job.coverage?.later, !later.isEmpty { LaterNotice(later: later) }
-            if let rebuilt = approval.rebuilt, rebuilt.reason != .covered {
+            if let rebuilt = approval.rebuilt, rebuilt.reason != .covered, !ReviewQueueText.asksAgain(job) {
                 rebuiltNotice(rebuilt)
             }
             if approval.needsRebuild == true {
@@ -1265,13 +1286,25 @@ struct JobDetailView: View {
                 }
                 .disabled(applying).opacity(applying ? 0.35 : 1)
                 Spacer()
-                if !applying { footerStatus(approval, blocker: blocker, stopped: job.stopped.count) }
+                if !applying {
+                    if job.queuedApply?.waitingToApply == true {
+                        Text(ReviewQueueText.queuedLine(job, in: engine.jobs)).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
+                    } else if blocker == nil, approval?.canApplyPlan == true, let note = ReviewQueueText.approveNote(job, in: engine.jobs) {
+                        Text(note).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
+                    } else {
+                        footerStatus(approval, blocker: blocker, stopped: job.stopped.count)
+                    }
+                }
                 SoftButton(title: "Send reply") { send(job) }
                     .disabled(applying || reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .opacity(applying ? 0.35 : 1)
                 if applying {
                     let s = summary(job)
                     ApplyingButton(count: s.sourcePages.count + s.newPages.count + s.updated.count)
+                } else if job.queuedApply?.waitingToApply == true {
+                    SoftButton(title: "Don't apply yet") { engine.unqueue(job.id) }
+                        .help("Take it out of the queue; it stays here with its plan")
+                    PrimaryButton(title: "Queued", systemImage: "clock", enabled: false) {}
                 } else if approval?.canApplyPlan == true {
                     approveButton(job, approval: approval, enabled: blocker == nil && editingPage == nil)
                 } else if approval?.needsRebuild == true {
@@ -1290,6 +1323,12 @@ struct JobDetailView: View {
                     }
                     PrimaryButton(title: n == 1 ? "Approve 1 source" : "Approve \(n) sources",
                                   systemImage: "checkmark", enabled: false) {}
+                } else if job.refresh != nil {
+                    Spacer()
+                    HStack(spacing: 6) {
+                        Spinner(color: Theme.muted, size: 11)
+                        Text("Updating against the latest pages…").font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
+                    }
                 } else if ApplyTimeline.isApplying(job) {
                     // v8: nothing needs you while the approved change goes in (Show steps is in the heading and the card).
                     Spacer()

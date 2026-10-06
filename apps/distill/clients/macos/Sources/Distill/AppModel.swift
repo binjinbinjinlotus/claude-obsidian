@@ -101,7 +101,8 @@ final class AppModel: ObservableObject {
 
     var activeVault: VaultProfile? { settings.activeVault }
     var problems: [SetupProblem] { status?.problems ?? [] }
-    var pendingApprovals: [Job] { jobs.filter { $0.state == .awaitingApproval } }
+    /// Batches that need the owner (badges, auto-open): the core's rule; queued, refreshing and recovering ones wait without them.
+    var pendingApprovals: [Job] { jobs.filter(ReviewQueueText.needsOwner) }
     var runningJobs: [Job] { jobs.filter { $0.state == .running } }
     var nextBatchAt: Date? { status?.nextBatchAt }
     var isConnected: Bool { connection == .connected }
@@ -345,6 +346,8 @@ final class AppModel: ObservableObject {
     /// A rebuilt part: `batch: false` discards only that part; `batch: true` rejects the whole batch.
     func reject(_ id: String, batch: Bool = false) { jobAction { try await $0.reject(id, batch: batch) } }
     func cancel(_ id: String) { jobAction { try await $0.cancel(id) } }
+    /// review-queue.md: Don't apply yet.
+    func unqueue(_ id: String) { jobAction { try await $0.unqueue(id) } }
 
     private func jobAction(_ call: @escaping (CoreClient) async throws -> Job?) {
         perform { client in

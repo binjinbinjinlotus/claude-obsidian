@@ -17,8 +17,8 @@ Canvas: row 16, board **ReviewQueue** (`design/screens/reviewqueue.json`).
 **Build status (2026-10-05).** Built in steps; see "Built so far" at the end.
 
 1. Blocked commands answered by Distill, and the plain-words card: **built**.
-2. Apply queue: next.
-3. Exit 75 → refresh.
+2. Apply queue: **built**.
+3. Exit 75 → refresh: **built** (with step 2).
 4. Batch list.
 5. Recovery agent (Opus) and Settings.
 Related specs: [Approval and review](approval-and-review.md) (the gate, parts,
@@ -783,3 +783,45 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
 - Tests: `engine/recovery.test.ts` (3), `engine.test.ts` "blocked commands"
   (4), `ReviewQueueTests` (2). Snapshot states `review-recovering-denial` and
   `review-gaveup-denial`.
+
+### Steps 2 and 3: the apply queue and the refresh (2026-10-05)
+
+- Core: `engine/apply-queue.ts` (`staleFor`, `queueOrder`, `isBookkeeping`,
+  `sinceApproved`); in `engine/index.ts` the queue gate in `approve`,
+  `pumpApplies`, `refreshWaiting`, `refreshJob`, `unqueue`, the LOCK wait,
+  `needsOwner` for `status().pendingApprovals`. `POST /v1/jobs/:id/unqueue`
+  (activity `batch.unqueued`). `ApprovalRequest.sinceApproved`.
+- **Differences from the design:**
+  - **No separate `startApply`.** `approve` applies at once when nothing is
+    ahead in the vault (so a gone session still reaches the caller), and
+    queues otherwise. The pump calls `approve(id, …, fromQueue)` after
+    `transaction inspect` proves the approved hash; every check and apply exit
+    is the one Approve already has.
+  - While an apply runs, `queuedApply` stays on the job **without**
+    `planSha256` (it keeps its `order`). A batch that comes back (exit 75, a
+    restart mid-apply) therefore never re-applies by itself.
+  - **One rebuild per change.** A batch is rebuilt at most once for each apply
+    that lands in its vault (in memory). A plan still stale after its rebuild
+    changed for another reason (an edit outside Distill): it goes to the owner
+    with "Reply to have it rebuilt", never into a loop.
+  - **Rebuilds only after an apply lands**, never at start or after a
+    planning turn. At start only the queue moves. A plan made stale before
+    this build, or by a hand edit, keeps today's handling until the next apply
+    in its vault.
+  - **LOCK_TIMEOUT** keeps the approval (`planSha256` set back) and holds the
+    vault's queue 30 s, then 2 min; after that the owner is asked. The turn
+    says "Distill tries again shortly".
+  - An apply turn (Claude's session) that came back with stale pages also
+    goes to the refresh (`staleFor` on the approved bundle).
+- Mac: `ReviewQueueText` (needs-owner rule, queued and approve notes, What
+  changed lines), `SinceApproved`, `CoreClient.unqueue`; `AppModel.pendingApprovals`
+  uses the core's rule (badges). Review: a blue "Queued · applies after …"
+  notice, footer **Don't apply yet** and a disabled **Queued**; "Applies after
+  …" next to Approve when another batch is ahead; `SinceApprovedCard`
+  ("Rebuilt after you approved it", What changed since you approved);
+  `ApplyTimeline.updating` ("Updating against the latest pages", never a
+  failure); pills Queued, Updating…, Recovering, Needs you.
+- Tests: `apply-queue.test.ts` (3), `engine.test.ts` "the apply queue" (4) and
+  the exit-75 tests rewritten (LOCK waits under the same approval; stale is
+  rebuilt and asks once more). `ReviewQueueTests` (5). Snapshot states
+  `review-queued`, `review-reapprove`, `review-updating`.

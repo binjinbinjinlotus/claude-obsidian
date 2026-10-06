@@ -624,6 +624,39 @@ extension StatesSnapshot {
             JobDetailView(jobID: e.jobs[0].id)
         }
 
+        // review-queue.md: approved and waiting (frame B), rebuilt and asking once more (frame D), updating (frame C).
+        e = engine()
+        var first = awaiting(e, id: "job-20261005-091000-aaaa", files: ["inbox/Product sync.md"], minutesAgo: 40)
+        first.state = .running
+        first.approvedChange = try? JSONDecoder.core.decode(ApprovedChange.self, from: Data(#"{"at":"2026-10-05T10:00:00Z","operationID":"op-1","changes":6}"#.utf8))
+        first.turns.append(TurnRecord(date: Date().addingTimeInterval(-30), author: .user, text: "Approved op-1 (3f2a91c0aa11…)"))
+        var queuedJob = awaiting(e, minutesAgo: 20)
+        queuedJob.queuedApply = QueuedApply(at: Date().addingTimeInterval(-20), order: 2, planSha256: "a")
+        queuedJob.turns.append(TurnRecord(date: Date().addingTimeInterval(-20), author: .user, text: "Approved op-7f3a (aaaaaaaaaaaa…). Queued: it applies after “Product sync”."))
+        e.jobs = [first, queuedJob]
+        main("review-queued", f, "Review", "Approved · queued", "Waits for the batch applying before it; Don't apply yet; never Needs you.", e, section: .review, job: queuedJob.id) {
+            JobDetailView(jobID: queuedJob.id)
+        }
+        e = engine()
+        var again = awaiting(e, minutesAgo: 20)
+        again.queuedApply = QueuedApply(at: Date().addingTimeInterval(-600), order: 2)
+        again.approval?.rebuilt = RebuiltPlan(reason: .stale, pages: ["wiki/sources/tea-brewing-session.md"])
+        again.approval?.sinceApproved = SinceApproved(content: ["wiki/concepts/green-tea.md"], bookkeeping: ["wiki/log.md", "wiki/hot.md", "wiki/meta/ledgers/claim-ledger.json"])
+        e.jobs = [again]
+        main("review-reapprove", f, "Review", "Rebuilt after you approved", "Another batch changed the same pages first: What changed since you approved, one more OK, same place.", e, section: .review, job: again.id) {
+            JobDetailView(jobID: again.id)
+        }
+        e = engine()
+        var updating = awaiting(e, minutesAgo: 20)
+        updating.state = .running
+        updating.approvedChange = first.approvedChange
+        updating.turns.append(TurnRecord(date: Date().addingTimeInterval(-60), author: .user, text: "Approved op-7f3a (aaaaaaaaaaaa…)"))
+        updating.refresh = RefreshState(since: Date().addingTimeInterval(-20), stalePaths: ["wiki/log.md"], approved: true)
+        e.jobs = [updating]
+        main("review-updating", f, "Review", "Updating against the latest pages", "Exit 75 is never a failure: the plan is rebuilt in the batch's session.", e, section: .review, job: updating.id) {
+            JobDetailView(jobID: updating.id)
+        }
+
         e = engine()
         e.jobs = [awaiting(e, planError: "The bundle changed wiki/index.md, but the page changed on disk since Claude read it. Reply to have Claude redo the plan.",
                            worker: "The plan could not be verified.")]

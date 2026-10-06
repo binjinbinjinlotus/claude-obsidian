@@ -34,7 +34,7 @@ struct ApplyProgress: View {
     init(_ t: ApplyTimeline, folded: Bool = false, part: String = "", onShowSteps: @escaping () -> Void = {}) {
         self.init(stage: t.stage, failedAt: t.failedAt, core: t.core, folded: folded, runner: t.runner, vault: t.vault, sources: t.sources,
                   changes: t.changes, added: t.added, operation: t.operation, actions: t.actions, error: t.error, help: t.help,
-                  part: part, times: t.times, onShowSteps: onShowSteps)
+                  heading: t.updating ? t.heading : "", part: part, times: t.times, onShowSteps: onShowSteps)
     }
 
     private var timeline: ApplyTimeline {

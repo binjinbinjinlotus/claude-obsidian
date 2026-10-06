@@ -706,7 +706,7 @@ interface Route {
   status?: number;
 }
 
-const JOB_ACTIONS = ['approve', 'reply', 'allow', 'reject', 'cancel'] as const;
+const JOB_ACTIONS = ['approve', 'reply', 'allow', 'reject', 'cancel', 'unqueue'] as const;
 
 function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream: (end: () => void) => () => void }): Route[] {
   const requireJob = (id: string) => {
@@ -1120,6 +1120,10 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
           }
           case 'cancel':
             await core.cancel(id);
+            break;
+          case 'unqueue':
+            // review-queue.md: Don't apply yet.
+            core.unqueue(id);
             break;
         }
         const job = core.getJob(id);

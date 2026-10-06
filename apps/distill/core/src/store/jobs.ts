@@ -138,6 +138,13 @@ function decodeApproval(v: unknown): ApprovalRequest | undefined {
     }
   }
   if (v.needsRebuild === true) a.needsRebuild = true;
+  if (isObject(v.sinceApproved)) {
+    const s = v.sinceApproved;
+    a.sinceApproved = {
+      sources: 'same', content: strArray(s.content) ?? [], added: strArray(s.added) ?? [],
+      dropped: strArray(s.dropped) ?? [], bookkeeping: strArray(s.bookkeeping) ?? [],
+    };
+  }
   return a;
 }
 
@@ -456,6 +463,7 @@ function encodeApproval(a: ApprovalRequest): JSONObject {
     };
   }
   if (a.planError != null) out.planError = a.planError;
+  if (a.sinceApproved != null) out.sinceApproved = JSON.parse(JSON.stringify(a.sinceApproved)) as JSONObject;
   if (a.sources) {
     out.sources = a.sources.map((src) => {
       const o: JSONObject = { page: src.page, title: src.title, labels: [...src.labels], by: src.by };

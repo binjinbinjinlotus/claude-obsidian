@@ -84,7 +84,9 @@ function setup(
     runner?: FakeRunner; jobs?: unknown; queueIsInbox?: boolean; tickMs?: number; now?: () => Date; settings?: Record<string, unknown>;
     onJobApplied?: (job: Job) => void;
     /** What `transaction apply` returns (core-applies path); inspect always returns PLAN. */
-    apply?: () => ProcessOutput;
+    apply?: () => ProcessOutput | Promise<ProcessOutput>;
+    /** What `transaction inspect` returns (default PLAN). */
+    inspect?: (bundle: string) => ProcessOutput;
   } = {},
 ): Harness {
   const root = tmp;
@@ -118,6 +120,7 @@ function setup(
   const launch = async (opts: RunProcessOptions): Promise<ProcessOutput> => {
     inspectCalls.push([opts.executable, ...opts.args]);
     if (opts.args.includes('apply') && o.apply) return o.apply();
+    if (opts.args.includes('inspect') && o.inspect) return o.inspect(opts.args[opts.args.indexOf('inspect') + 1]!);
     return { status: 0, stdout: Buffer.from(JSON.stringify(PLAN)), stderr: Buffer.alloc(0) };
   };
   const engine = createEngine({
@@ -700,13 +703,15 @@ describe('exit 75 from a core apply is worded by its error code', () => {
     return h.engine.getJob(created.id)!;
   }
 
-  test('LOCK_TIMEOUT: another process held the lock; the plan is kept so Approve retries', async () => {
+  test('LOCK_TIMEOUT: the plan is kept and waits in the queue under the same approval (review-queue.md)', async () => {
     const job = await approveWith('LOCK_TIMEOUT');
     assert.equal(job.state, 'awaitingApproval');
     assert.ok(job.approval?.plan, 'plan kept');
     assert.equal(job.approval?.planError, undefined);
-    assert.match(job.turns.at(-1)!.text, /another process held the vault lock .*approve again/);
-    assert.ok(!job.turns.some((t) => t.text.includes('vault changed')));
+    assert.equal(job.queuedApply?.planSha256, job.approval?.plan?.approval_sha256, 'still approved: it applies when the lock is free');
+    assert.match(job.turns.at(-1)!.text, /another process held the vault lock\. Nothing changed; Distill tries again shortly/);
+    assert.equal(h.inspectCalls.filter((c) => c.includes('apply')).length, 1, 'no retry before the wait');
+    assert.equal((await h.engine.status()).pendingApprovals, 0, 'waiting to apply is not Needs you');
   });
 
   test('OPERATION_ID_REUSED: says the id was used, not that the vault changed', async () => {
@@ -716,10 +721,23 @@ describe('exit 75 from a core apply is worded by its error code', () => {
     assert.equal(job.turns.at(-1)!.text, 'Not applied: this operation ID was already used in the vault.');
   });
 
-  test('stale hashes keep the "vault changed" wording, with the code', async () => {
-    const job = await approveWith('EXPECTED_HASH_MISMATCH');
-    assert.match(job.approval?.planError ?? '', /^The vault changed after this plan was reviewed \(transaction apply exited 75, EXPECTED_HASH_MISMATCH\)/);
-    assert.equal(job.turns.at(-1)!.text, 'Not applied: the vault changed after review.');
+  test('stale hashes: the plan is rebuilt in its session and asks the owner once more (review-queue.md)', async () => {
+    const runner = sandboxed();
+    h = setup([], { runner, apply: () => conflict('EXPECTED_HASH_MISMATCH') });
+    const created = await firstJob();
+    runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.approve(created.id);
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.match(runner.requests.at(-1)!.prompt, /The vault changed after this plan was built/);
+    assert.equal(job.state, 'awaitingApproval');
+    assert.equal(job.approval?.planError, undefined, 'never a failure card');
+    assert.ok(job.approval?.plan?.valid);
+    assert.ok(job.queuedApply && !job.queuedApply.planSha256, 'keeps its place; needs the owner');
+    assert.equal(job.refresh, undefined);
+    assert.equal((await h.engine.status()).pendingApprovals, 1);
   });
 });
 
@@ -801,5 +819,114 @@ describe('blocked commands (review-queue.md)', () => {
     await h.engine.whenIdle();
     assert.equal(h.runner.requests.length, 1);
     assert.match(h.runner.requests[0]!.prompt, /Read, Grep or Glob/);
+  });
+});
+
+describe('the apply queue (review-queue.md)', () => {
+  const sandboxed = (steps: Step[] = []) => new FakeRunner(steps, new Set<RunnerCapability>(['agentTools', 'sandboxedWrites', 'sessionResume', 'structuredOutput']));
+  const ok = (op: string): ProcessOutput => ({ status: 0, stdout: Buffer.from(JSON.stringify({ operation_id: op, changed_paths: ['wiki/a.md'] })), stderr: Buffer.alloc(0) });
+
+  /** Two batches in Review in one vault; the first apply is held until `release()`. */
+  async function twoBatches(o: { inspect?: (bundle: string) => ProcessOutput } = {}) {
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let applies = 0;
+    const runner = sandboxed();
+    h = setup([], {
+      runner,
+      ...(o.inspect ? { inspect: o.inspect } : {}),
+      apply: async () => {
+        applies += 1;
+        if (applies === 1) await held;
+        return ok(`op-${applies}`);
+      },
+    });
+    const a = await firstJob();
+    runner.steps.push(needsApproval(h.bundle(a)));
+    await h.engine.whenIdle();
+    fs.writeFileSync(path.join(h.queue, 'b.md'), '# B\n');
+    const b = await h.engine.processQueue({ force: true });
+    assert.ok(b && b.id !== a.id, 'a second batch');
+    runner.steps.push(needsApproval(h.bundle(b)));
+    await h.engine.whenIdle();
+    return { a, b: b!, runner, release, applies: () => applies };
+  }
+
+  test('a second approval waits for the first apply, then applies under its own approval', async () => {
+    const t = await twoBatches();
+    const first = h.engine.approve(t.a.id);
+    await new Promise((r) => setImmediate(r));
+    await h.engine.approve(t.b.id);
+    let b = h.engine.getJob(t.b.id)!;
+    assert.equal(b.state, 'awaitingApproval');
+    assert.equal(b.queuedApply?.planSha256, PLAN.approval_sha256, 'queued');
+    assert.match(b.turns.at(-1)!.text, /Queued: it applies after/);
+    assert.equal(t.applies(), 1, 'never two applies at once');
+    assert.equal((await h.engine.status()).pendingApprovals, 0, 'queued is not Needs you');
+    t.release();
+    await first;
+    await h.engine.whenIdle();
+    await new Promise((r) => setTimeout(r, 20));
+    await h.engine.whenIdle();
+    b = h.engine.getJob(t.b.id)!;
+    assert.equal(h.engine.getJob(t.a.id)!.state, 'completed');
+    assert.equal(b.state, 'completed', 'applied once the vault was free');
+    assert.equal(b.queuedApply, undefined);
+    assert.equal(t.applies(), 2);
+  });
+
+  test("Don't apply yet takes it out of the queue; nothing applies it", async () => {
+    const t = await twoBatches();
+    const first = h.engine.approve(t.a.id);
+    await new Promise((r) => setImmediate(r));
+    await h.engine.approve(t.b.id);
+    h.engine.unqueue(t.b.id);
+    t.release();
+    await first;
+    await h.engine.whenIdle();
+    await new Promise((r) => setTimeout(r, 20));
+    const b = h.engine.getJob(t.b.id)!;
+    assert.equal(b.state, 'awaitingApproval');
+    assert.equal(b.queuedApply, undefined);
+    assert.equal(t.applies(), 1);
+    assert.throws(() => h.engine.unqueue(t.b.id), /not waiting to apply/);
+  });
+
+  test('a queued plan the first apply made stale is rebuilt and asks once more, keeping its place', async () => {
+    let stale = false;
+    const t = await twoBatches({
+      inspect: () => ({ status: 0, stdout: Buffer.from(JSON.stringify(stale ? { ...PLAN, approval_sha256: 'e'.repeat(64) } : PLAN)), stderr: Buffer.alloc(0) }),
+    });
+    const first = h.engine.approve(t.a.id);
+    await new Promise((r) => setImmediate(r));
+    await h.engine.approve(t.b.id);
+    const order = h.engine.getJob(t.b.id)!.queuedApply!.order;
+    stale = true;
+    t.runner.steps.push(needsApproval(h.bundle(t.b)));
+    t.release();
+    await first;
+    await h.engine.whenIdle();
+    await new Promise((r) => setTimeout(r, 20));
+    await h.engine.whenIdle();
+    const b = h.engine.getJob(t.b.id)!;
+    assert.match(t.runner.requests.at(-1)!.prompt, /The vault changed after this plan was built/, 'rebuilt in its own session');
+    assert.equal(b.state, 'awaitingApproval');
+    assert.equal(b.queuedApply?.order, order, 'keeps its place');
+    assert.equal(b.queuedApply?.planSha256, undefined, 'needs the owner once more');
+    assert.equal(t.applies(), 1, 'the stale plan never applied');
+    assert.equal((await h.engine.status()).pendingApprovals, 1);
+  });
+
+  test('reject takes a batch out of the queue', async () => {
+    const t = await twoBatches();
+    const first = h.engine.approve(t.a.id);
+    await new Promise((r) => setImmediate(r));
+    await h.engine.approve(t.b.id);
+    await h.engine.reject(t.b.id);
+    t.release();
+    await first;
+    await h.engine.whenIdle();
+    assert.equal(h.engine.getJob(t.b.id)!.queuedApply, undefined);
+    assert.equal(t.applies(), 1);
   });
 });

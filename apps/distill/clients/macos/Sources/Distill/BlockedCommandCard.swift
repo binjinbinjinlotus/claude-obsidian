@@ -81,3 +81,28 @@ struct BlockedCommandCard: View {
         }
     }
 }
+
+/// review-queue.md: a plan the owner approved was rebuilt after another batch changed the same pages; one more OK.
+struct SinceApprovedCard: View {
+    let since: SinceApproved?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Rebuilt after you approved it", systemImage: "arrow.triangle.2.circlepath").font(Theme.body(13, .bold))
+            Text("Another batch changed the same pages first, so this batch’s session rebuilt the plan for your vault as it is now. Approve it once more; it keeps its place.")
+                .font(Theme.body(12.5)).foregroundStyle(Theme.softInk).fixedSize(horizontal: false, vertical: true)
+            if let since {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("WHAT CHANGED SINCE YOU APPROVED").font(Theme.body(10.5, .heavy)).kerning(0.5).foregroundStyle(Theme.muted)
+                    ForEach(ReviewQueueText.sinceLines(since), id: \.self) { line in
+                        Text("• " + line).font(Theme.body(12)).foregroundStyle(Theme.softInk)
+                    }
+                }
+                .padding(.top, 2)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Theme.primaryTint))
+    }
+}

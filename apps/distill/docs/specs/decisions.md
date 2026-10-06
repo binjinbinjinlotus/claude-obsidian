@@ -17,6 +17,15 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+**Apply queue: build choices (2026-10-05, built).** Steps 2–3 of
+[Review queue](review-queue.md). (1) Approve applies at once when nothing is
+ahead in the vault and queues otherwise; the queue re-enters Approve only after
+`transaction inspect` proves the approved hash. (2) A batch is rebuilt at most
+once per apply that lands in its vault, so a plan made stale by an outside edit
+never loops; it goes to the owner. (3) Stale plans are rebuilt only after an
+apply lands, not at start: a restart never spends tokens by itself.
+(4) LOCK_TIMEOUT keeps the approval and retries after 30 s and 2 min, then asks.
+
 **Blocked commands: two build choices (2026-10-05, built).** Step 1 of
 [Review queue](review-queue.md). (1) An apply turn with a blocked call is not
 answered by Distill: the approved command is what ran there. (2) A batch an

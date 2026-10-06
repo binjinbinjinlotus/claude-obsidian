@@ -177,6 +177,8 @@ export interface PermissionDenial {
 }
 
 export interface ApprovalRequest {
+  /** review-queue.md: a rebuilt plan the owner had approved: what differs from the approved one. */
+  sinceApproved?: SinceApproved | null;
   summary: string;
   questions: string[];
   bundlePath?: string | null;
@@ -309,6 +311,15 @@ export interface QueuedApply {
   bundlePath: string;
   labels: 'confirm' | 'later';
   carries: 'confirm' | 'later';
+}
+
+/** review-queue.md: the approved bundle against the rebuilt one (source pages are proven the same). */
+export interface SinceApproved {
+  sources: 'same';
+  content: string[];
+  added: string[];
+  dropped: string[];
+  bookkeeping: string[];
 }
 
 /** review-queue.md: a plan being rebuilt because the vault changed under it. */
@@ -2118,6 +2129,8 @@ export interface DistillCore {
   allow(id: string, rules: string[], opts?: SessionOptions): Promise<void>;
   /** A rebuilt part of a batch: discards only that part unless `scope: 'batch'` (approval-and-review.md). */
   reject(id: string, opts?: RejectOptions): Promise<void>;
+  /** review-queue.md: Don't apply yet: out of the vault's apply queue, back to Ready with its plan. */
+  unqueue(id: string): Job;
   cancel(id: string): Promise<void>;
   /** Finished jobs only (completed/failed/rejected/cancelled); else invalid_state. */
   deleteJob(id: string): Promise<void>;

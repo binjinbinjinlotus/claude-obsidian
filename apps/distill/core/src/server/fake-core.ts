@@ -421,6 +421,10 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
     async approve(id) {
       record('approve', id);
     },
+    unqueue(id) {
+      record('unqueue', id);
+      return fake.jobs.find((j) => j.id === id)!;
+    },
     async reply(id, text) {
       record('reply', id, text);
     },

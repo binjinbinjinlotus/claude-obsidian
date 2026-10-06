@@ -21,6 +21,7 @@ import {
   type RejectOptions,
   type JobPart,
   type PendingPart,
+  type QueuedApply,
   type CoreEvent,
   type DistillCore,
   type Job,
@@ -106,6 +107,7 @@ import {
 } from './reread.js';
 import { CoreError } from './errors.js';
 import { denialAnswer, denialSummary, MAX_DENIAL_ANSWERS, recoveryFor } from './recovery.js';
+import { queueOrder, sinceApproved, staleFor } from './apply-queue.js';
 import { createFullRead, type FullReadStep } from './full-read.js';
 import { archivedCopy, ledgerRecords } from '../coverage/archive.js';
 import { estimateTokens } from '../coverage/copy.js';
@@ -621,6 +623,11 @@ export function createEngine(opts: EngineOptions): Engine {
     const wasCompleted = job.state === 'completed';
     const stateBefore = job.state;
     change(job);
+    // review-queue.md: a finished batch is out of the apply queue.
+    if (job.state !== 'awaitingApproval' && job.state !== 'running') {
+      delete job.queuedApply;
+      delete job.refresh;
+    }
     job.updatedAt = isoDate(now());
     persistJobs();
     emit({ type: 'job', job: clone(job) });
@@ -628,11 +635,18 @@ export function createEngine(opts: EngineOptions): Engine {
     if (job.reread && job.state === 'cancelled') dropReread(job.reread.id, `${job.id} was cancelled`);
     // A batch that stops running frees its vault: the next re-read group may start (after this change settles).
     if (job.state !== 'running' && rereads.pending()) track(Promise.resolve().then(() => pumpRereads()));
+    // review-queue.md: an apply (or a refresh) ended: the vault's next queued approval may apply.
+    if (stateBefore === 'running' && job.state !== 'running') {
+      const vault = job.vaultPath;
+      const afterApply = job.state === 'completed' && !!job.operationID;
+      track(Promise.resolve().then(() => pumpApplies(vault, { afterApply })).catch((err: unknown) => log('warn', `Apply queue: ${(err as Error).message}`)));
+    }
     // v10: the queue was split by size: the next batch starts as soon as this one leaves `running`.
     if (job.state !== 'running' && job.batchOf && job.batchOf.index < job.batchOf.total && overflow && overflow.index === job.batchOf.index) {
       track(Promise.resolve().then(() => processQueue({ overflow: true })).then(() => undefined).catch((err: unknown) => log('warn', `Next batch: ${(err as Error).message}`)));
     }
     // v10: pages applied: record what was read in full, then look for sources never read in full.
+    if (!wasCompleted && job.state === 'completed' && job.operationID) appliesIn.set(job.vaultPath, (appliesIn.get(job.vaultPath) ?? 0) + 1);
     if (!wasCompleted && job.state === 'completed' && job.kind === queueConsumer().id && job.operationID) {
       const vault = vaultProfileFor(job);
       track(Promise.resolve().then(() => fullRead.repairScan(vault, { force: true })).then(() => undefined));
@@ -827,6 +841,9 @@ export function createEngine(opts: EngineOptions): Engine {
 
   function tick(): void {
     adoptOutsideApplies();
+    for (const v of new Set(jobs.filter((j) => j.queuedApply && j.state === 'awaitingApproval').map((j) => j.vaultPath))) {
+      track(pumpApplies(v).catch((err: unknown) => log('warn', `Apply queue: ${(err as Error).message}`)));
+    }
     if (nextQueueScanAt && now() >= nextQueueScanAt) scanQueueNow('periodic');
     else refreshQueue();
     if (rereads.pending()) pumpRereads();
@@ -1060,6 +1077,7 @@ export function createEngine(opts: EngineOptions): Engine {
     mutate(id, (j) => {
       j.state = 'awaitingApproval';
       j.approval = request;
+      delete j.refresh;
       // review-queue.md: a plan that came back ends a blocked-command recovery.
       if (request.plan?.valid && j.recovery?.signature === 'denial') {
         j.recovery = { ...j.recovery, state: 'fixed', attempts: j.recovery.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'fixed' } : a)) };
@@ -1068,6 +1086,12 @@ export function createEngine(opts: EngineOptions): Engine {
     // review-queue.md: blocked tool calls and no plan: Distill answers the session itself first.
     // Not on an apply turn: there the approved command itself is what ran (or was refused).
     if (!applyTurn && request.denials.length > 0 && !request.plan?.valid && recoverDenial(id)) return;
+    // review-queue.md: an apply turn that came back because another batch changed the same pages first.
+    const queued = findJob(id)?.queuedApply;
+    if (applyTurn && queued) {
+      const stale = staleFor(vault.path, queued.bundlePath);
+      if (stale.length > 0 && refreshJob(id, true, stale.map((x) => x.path))) return;
+    }
     if (confirm) track(reviseReviewLabels(id, undefined, true).catch((err: unknown) => log('warn', `Review labels: ${(err as Error).message}`)));
     // v11 (action-context.md): actions are looked for in the batch's sources while it waits in Review.
     const reviewed = findJob(id);
@@ -1132,6 +1156,205 @@ export function createEngine(opts: EngineOptions): Engine {
       return false;
     }
     return true;
+  }
+
+  // ───────────── the apply queue (review-queue.md) ─────────────
+
+  /** A batch in Review that needs the owner: not waiting to apply, not being rebuilt, not recovering. */
+  function needsOwner(j: Job): boolean {
+    if (j.state !== 'awaitingApproval') return false;
+    if (j.queuedApply?.planSha256) return false;
+    if (j.refresh) return false;
+    if (j.recovery?.state === 'running' || j.recovery?.state === 'waiting') return false;
+    return true;
+  }
+
+  /** The job applying in this vault now (an apply turn or the core's apply). */
+  function applyingIn(vaultPath: string, except?: string): Job | undefined {
+    return jobs.find((j) => j.id !== except && j.vaultPath === vaultPath && j.state === 'running' && activeProgress.get(j.id)?.kind === 'apply');
+  }
+
+  /** Batches in the vault's queue: approved and waiting, rebuilt and waiting for the owner, or being refreshed. */
+  function vaultQueue(vaultPath: string): Job[] {
+    return queueOrder(
+      jobs.map((j) => (j.state === 'running' && j.refresh && j.queuedApply ? { ...j, state: 'awaitingApproval' as const } : j)),
+      vaultPath,
+    ).map((j) => findJob(j.id)!);
+  }
+
+  /** What must apply (or be decided) before an approval with this order. */
+  function applyAhead(job: Job, order: number): Job | undefined {
+    return applyingIn(job.vaultPath, job.id) ?? vaultQueue(job.vaultPath).find((j) => j.id !== job.id && j.queuedApply!.order < order);
+  }
+
+  function batchName(j: Job): string {
+    const first = j.files[0];
+    return first ? `“${path.basename(first).replace(/\.[^.]+$/, '')}”${j.files.length > 1 ? ` +${j.files.length - 1}` : ''}` : j.id;
+  }
+
+  function planFor(j: Job, labels: 'confirm' | 'later'): TransactionPlan | undefined {
+    const a = j.approval;
+    if (!a?.plan?.valid) return undefined;
+    return labels === 'later' && !a.rebuilt && a.unconfirmed ? a.unconfirmed.plan : a.plan;
+  }
+
+  function backToOwner(id: string, why: string): void {
+    mutate(id, (j) => {
+      if (j.queuedApply) delete j.queuedApply.planSha256;
+      j.turns.push(newTurn('app', why, now()));
+    });
+  }
+
+  const pumping = new Set<string>();
+  const lockRetries = new Map<string, number>();
+  const lockHeldUntil = new Map<string, number>();
+  /** Applies that landed per vault (this run), and the count each batch was last rebuilt against: one rebuild per change. */
+  const appliesIn = new Map<string, number>();
+  const refreshedAt = new Map<string, number>();
+
+  /** LOCK_TIMEOUT: wait 30 s, then 2 min, and pump again (the head re-inspects, so nothing applies blindly). */
+  function scheduleLockRetry(vaultPath: string): void {
+    const n = lockRetries.get(vaultPath) ?? 0;
+    if (n >= 2) {
+      lockRetries.delete(vaultPath);
+      const head = vaultQueue(vaultPath)[0];
+      if (head) backToOwner(head.id, 'Not applied: another app kept your vault locked for several minutes. Approve again when it is closed.');
+      return;
+    }
+    lockRetries.set(vaultPath, n + 1);
+    const wait = n === 0 ? 30_000 : 120_000;
+    lockHeldUntil.set(vaultPath, Date.now() + wait);
+    const t = setTimeout(() => {
+      lockHeldUntil.delete(vaultPath);
+      void pumpApplies(vaultPath).catch(() => undefined);
+    }, wait);
+    t.unref?.();
+  }
+
+  /**
+   * The vault's queue moves: the head applies when `transaction inspect` proves its approved hash unchanged;
+   * a stale head is rebuilt and asks the owner once more; a head that needs the owner holds the rest (strict
+   * order). When nothing is queued, stale batches nobody approved yet are rebuilt, one at a time.
+   */
+  async function pumpApplies(vaultPath: string, o: { afterApply?: boolean } = {}): Promise<void> {
+    if (pumping.has(vaultPath)) return;
+    if ((lockHeldUntil.get(vaultPath) ?? 0) > Date.now()) return;
+    pumping.add(vaultPath);
+    try {
+      for (let guard = 0; guard < 20; guard++) {
+        if (applyingIn(vaultPath)) return;
+        const head = vaultQueue(vaultPath)[0];
+        if (!head) {
+          // Plans nobody approved yet go stale only when an apply lands (or were left stale before a restart).
+          if (o.afterApply) refreshWaiting(vaultPath);
+          return;
+        }
+        const q = head.queuedApply!;
+        if (head.state !== 'awaitingApproval' || !q.planSha256) return;
+        const plan = planFor(head, q.labels);
+        if (!plan || plan.approval_sha256 !== q.planSha256 || !head.approval?.bundlePath) {
+          backToOwner(head.id, 'Not applied yet: the plan changed after you approved it. Approve the plan as it is now.');
+          continue;
+        }
+        const vault = vaultProfileFor(head);
+        const outcome = await inspect(q.bundlePath, vault);
+        const now_ = findJob(head.id);
+        if (!now_ || now_.state !== 'awaitingApproval' || now_.queuedApply?.planSha256 !== q.planSha256) continue;
+        if (applyingIn(vaultPath)) return;
+        if ('plan' in outcome && outcome.plan.valid && outcome.plan.approval_sha256 === q.planSha256) {
+          const again = q.labels === 'later' ? { labels: 'later' as const } : {};
+          const gone = coreApplies(now_) ? null : precheck(now_, 'approve', again);
+          if (gone) {
+            mutate(head.id, (j) => {
+              j.sessionUnavailable = { ...gone, action: 'approve' };
+              if (j.queuedApply) delete j.queuedApply.planSha256;
+              j.turns.push(newTurn('app', 'Not applied yet: this batch’s AI session isn’t available anymore. Continue in a new session to apply it.', now()));
+            });
+            return;
+          }
+          lockRetries.delete(vaultPath);
+          try {
+            await approve(head.id, again, true);
+          } catch (err) {
+            backToOwner(head.id, `Not applied yet: ${(err as Error).message}`);
+          }
+          return;
+        }
+        if (!refreshJob(head.id, true, staleFor(vault.path, q.bundlePath).map((s) => s.path))) {
+          backToOwner(head.id, 'Not applied yet: your vault changed after you approved this plan (not by another batch). Reply to have it rebuilt, or reject.');
+        }
+        return;
+      }
+    } finally {
+      pumping.delete(vaultPath);
+    }
+  }
+
+  /** Batches nobody approved yet whose plan the vault overtook: rebuilt before the owner looks, one at a time. */
+  function refreshWaiting(vaultPath: string): void {
+    if (jobs.some((j) => j.vaultPath === vaultPath && j.refresh)) return;
+    if (jobs.some((j) => j.vaultPath === vaultPath && j.state === 'running')) return;
+    const waiting = jobs
+      .filter((j) => j.vaultPath === vaultPath && j.state === 'awaitingApproval' && !j.queuedApply && !j.refresh && !j.recovery)
+      .filter((j) => j.approval?.plan?.valid && j.approval.bundlePath && !j.pendingPart && !j.sessionUnavailable)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    for (const j of waiting) {
+      const stale = staleFor(vaultPath, j.approval!.bundlePath!);
+      if (stale.length === 0) continue;
+      if (refreshJob(j.id, false, stale.map((s) => s.path))) return;
+    }
+  }
+
+  /** The words the core sends when a batch without sources (an older job) needs its plan rebuilt. */
+  const STALE_REBUILD_PROMPT =
+    'The vault changed after this plan was built (another batch applied first). Rebuild the bundle against the pages as they are now, ' +
+    'run `transaction inspect`, and finish with `needs_approval`.';
+
+  /** Rebuild a batch's plan against the vault as it is now, in its own session. False when it can't start. */
+  function refreshJob(id: string, approved: boolean, stalePaths: string[]): boolean {
+    const job = findJob(id);
+    if (!job || job.state !== 'awaitingApproval' || jobKind(job.kind)?.appliesInCore) return false;
+    // Never twice against the same vault: a plan still stale after its rebuild changed for another reason.
+    const applies = appliesIn.get(job.vaultPath) ?? 0;
+    if (refreshedAt.get(id) === applies) return false;
+    refreshedAt.set(id, applies);
+    const attempt = (job.refresh?.attempt ?? 0) + 1;
+    mutate(id, (j) => {
+      j.refresh = { since: isoDate(now()), reason: 'stale', stalePaths, approved, attempt };
+      if (j.queuedApply) delete j.queuedApply.planSha256;
+      if (j.approval) delete j.approval.planError;
+    });
+    const current = findJob(id)!;
+    if (current.kind === queueConsumer().id && (current.approval?.sources?.length ?? 0) > 0 && startPart(id, 'stale', undefined)) return true;
+    if (precheck(current, 'reply', { text: STALE_REBUILD_PROMPT })) {
+      mutate(id, (j) => {
+        delete j.refresh;
+        if (j.approval) j.approval.planError = 'The vault changed after this plan was built, and its AI session isn’t available anymore. Reply in a new session to rebuild it, or reject.';
+      });
+      return false;
+    }
+    mutate(id, (j) => j.turns.push(newTurn('app', STALE_REBUILD_PROMPT, now())));
+    startTurnProgress(findJob(id)!, 'Drafting page changes', 'Updating against the latest pages');
+    const out = resumeBatchSession({ job: findJob(id)!, prompt: WorkerProtocol.replyPrompt(STALE_REBUILD_PROMPT), action: 'reply', text: STALE_REBUILD_PROMPT });
+    if (out.kind === 'session_unavailable') {
+      mutate(id, (j) => {
+        delete j.refresh;
+      });
+      return false;
+    }
+    return true;
+  }
+
+  /** Don't apply yet: out of the queue, back to Ready with its plan. */
+  function unqueue(id: string): Job {
+    const job = requireJob(id);
+    if (job.state !== 'awaitingApproval' || !job.queuedApply) throw new CoreError('invalid_state', `Job ${id} is not waiting to apply.`);
+    mutate(id, (j) => {
+      delete j.queuedApply;
+      j.turns.push(newTurn('user', 'Not applied yet: taken out of the queue. Approve it when you want it applied.', now()));
+    });
+    track(pumpApplies(job.vaultPath));
+    return clone(requireJob(id));
   }
 
   // ───────────── labels in Review (review-labels.ts) ─────────────
@@ -1554,6 +1777,7 @@ export function createEngine(opts: EngineOptions): Engine {
       const { kind: _k, ...gone } = out;
       mutate(id, (j) => {
         j.sessionUnavailable = { ...gone, action: 'approve' };
+        delete j.refresh;
       });
     }
   }
@@ -1654,6 +1878,9 @@ export function createEngine(opts: EngineOptions): Engine {
       return false;
     }
     request.rebuilt = { reason: part.reason === 'unread' ? 'covered' : part.reason, pages: Object.keys(part.expected), labels: part.labels };
+    // review-queue.md: the owner had approved it: say what differs from what they approved (they approve once more).
+    const queued = findJob(id)?.queuedApply;
+    if (queued && part.reason === 'stale') request.sinceApproved = sinceApproved(queued.bundlePath, request.bundlePath, Object.keys(part.expected));
     request.sources = clone(part.shown ?? []);
     request.labels =
       part.labels === 'confirm'
@@ -2120,7 +2347,7 @@ export function createEngine(opts: EngineOptions): Engine {
    * session goes through resumeBatchSession; `newSession` (after SessionReplaceConfirm) continues
    * the same approval in a new session, with the same plan and bundle.
    */
-  async function approve(id: string, given: ApproveOptions & SessionOptions = {}): Promise<void> {
+  async function approve(id: string, given: ApproveOptions & SessionOptions = {}, fromQueue = false): Promise<void> {
     const job = requireJob(id);
     if (job.state !== 'awaitingApproval') throw new CoreError('invalid_state', `Job ${id} is not awaiting approval.`);
     // Continue after the runner refused mid-turn: the approval the refused call carried is on the job marker.
@@ -2174,6 +2401,27 @@ export function createEngine(opts: EngineOptions): Engine {
       bundle = approval.unconfirmed.bundlePath;
     }
     const carries = approval.rebuilt?.labels ?? mode;
+    // review-queue.md: one apply at a time per vault, in the order the owner approved (a re-approval keeps its place).
+    const order = job.queuedApply?.order ?? now().getTime();
+    const queued: QueuedApply = { at: isoDate(now()), order, bundlePath: bundle, labels: mode, carries };
+    if (!fromQueue && !opts.newSession) {
+      const ahead = applyAhead(job, order);
+      if (ahead) {
+        mutate(id, (j) => {
+          j.queuedApply = { ...queued, planSha256: plan.approval_sha256 };
+          delete j.recovery;
+          delete j.refresh;
+          delete j.approval?.sinceApproved;
+          j.turns.push(newTurn('user', `Approved ${plan.operation_id} (${plan.approval_sha256.slice(0, 12)}…). Queued: it applies after ${batchName(ahead)}.`, now()));
+        });
+        return;
+      }
+    }
+    const startingApply = (j: Job) => {
+      j.queuedApply = queued; // no planSha256: it never re-applies by itself if it comes back
+      delete j.recovery;
+      delete j.refresh;
+    };
     const applying = (agent: boolean) =>
       startProgress({
         key: id,
@@ -2185,6 +2433,7 @@ export function createEngine(opts: EngineOptions): Engine {
       mutate(id, (j) => {
         j.approvedChange = approvedChangeOf(j, plan);
         delete j.reviewDoneAt;
+        startingApply(j);
       });
     const approvedTurn = `Approved ${plan.operation_id} (${plan.approval_sha256.slice(0, 12)}…)${mode === 'later' && !approval.rebuilt ? ', labels left to review' : ''}`;
     const applyByCore = () => {
@@ -2231,6 +2480,7 @@ export function createEngine(opts: EngineOptions): Engine {
     mutate(id, (j) => {
       j.approvedChange = approvedChangeOf(j, plan);
       delete j.reviewDoneAt;
+      startingApply(j);
       j.turns.push(newTurn('user', approvedTurn, now()));
     });
     applying(true);
@@ -3219,14 +3469,15 @@ export function createEngine(opts: EngineOptions): Engine {
         // operation id. The core prints `ERR <CODE>: <message>` on stderr.
         const code = /^ERR ([A-Z_]+):/m.exec(out.stderr.toString('utf8'))?.[1];
         if (code === 'LOCK_TIMEOUT') {
-          // Nothing changed and the plan is still valid: Approve again retries it.
+          // Nothing changed and the plan is still valid: it goes back to the head of the queue and applies
+          // again under the same approval once the lock is free (the pump re-inspects first).
           mutate(id, (j) => {
             j.state = 'awaitingApproval';
             if (j.approval) delete j.approval.planError;
-            j.turns.push(
-              newTurn('app', 'Not applied: another process held the vault lock (LOCK_TIMEOUT). Nothing changed; approve again to try again.', now()),
-            );
+            if (j.queuedApply) j.queuedApply.planSha256 = plan.approval_sha256;
+            j.turns.push(newTurn('app', 'Not applied yet: another process held the vault lock. Nothing changed; Distill tries again shortly.', now()));
           });
+          scheduleLockRetry(job.vaultPath);
           return;
         }
         const request =
@@ -3241,7 +3492,13 @@ export function createEngine(opts: EngineOptions): Engine {
           return;
         }
         const reused = code === 'OPERATION_ID_REUSED';
-        if (!reused && job.kind === queueConsumer().id && (job.approval?.sources?.length ?? 0) > 0 && startPart(id, 'stale', undefined)) return;
+        // review-queue.md: another batch changed the same pages first: rebuilt against the vault as it is now.
+        if (!reused) {
+          mutate(id, (j) => {
+            j.state = 'awaitingApproval';
+          });
+          if (refreshJob(id, true, staleFor(vault.path, bundle).map((s) => s.path))) return;
+        }
         mutate(id, (j) => {
           j.state = 'awaitingApproval';
           if (j.approval) {
@@ -3269,7 +3526,7 @@ export function createEngine(opts: EngineOptions): Engine {
       activeVault: activeVault(settings) ?? null,
       problems: probs,
       queueCount: queueEntries().length,
-      pendingApprovals: jobs.filter((j) => j.state === 'awaitingApproval').length,
+      pendingApprovals: jobs.filter(needsOwner).length,
       runningJobs: jobs.filter((j) => j.state === 'running').length,
       nextBatchAt: nextBatchAt ? isoDate(nextBatchAt) : null,
       lastQueueScanAt: lastQueueScanAt ? isoDate(lastQueueScanAt) : null,
@@ -3300,6 +3557,10 @@ export function createEngine(opts: EngineOptions): Engine {
         if (j.state === 'awaitingApproval' && (st === undefined || st === 'confirming' || st === 'suggesting')) {
           track(prepareReviewLabels(j.id).catch((err: unknown) => log('warn', `Review labels for ${j.id}: ${(err as Error).message}`)));
         }
+      }
+      // review-queue.md: queued approvals go on after a restart. Stale plans are rebuilt only after an apply lands.
+      for (const v of new Set(jobs.filter((j) => j.state === 'awaitingApproval').map((j) => j.vaultPath))) {
+        track(asScheduler(() => pumpApplies(v))().catch((err: unknown) => log('warn', `Apply queue: ${(err as Error).message}`)));
       }
       // review-queue.md: a batch left waiting on blocked calls (before this build) gets Distill's answer once.
       for (const j of jobs) {
@@ -3351,7 +3612,8 @@ export function createEngine(opts: EngineOptions): Engine {
       const j = findJob(id);
       return j ? clone(j) : undefined;
     },
-    approve,
+    approve: (id: string, opts?: ApproveOptions & SessionOptions) => approve(id, opts),
+    unqueue,
     reply,
     allow,
     reject,

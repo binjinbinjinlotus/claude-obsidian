@@ -289,6 +289,8 @@ public struct ApprovalRequest: Codable, Equatable, Sendable {
     public var rebuilt: RebuiltPlan?
     /// v6: the user discarded the rebuilt change for these sources; nothing was applied. Approve rebuilds it again.
     public var needsRebuild: Bool?
+    /// review-queue.md: a rebuilt plan the owner had approved: what differs from the approved one.
+    public var sinceApproved: SinceApproved?
 
     public var canApplyPlan: Bool { plan?.valid == true && bundlePath != nil }
     /// v6: a rebuilt part of a batch (Reject discards only it) or a discarded one (Approve rebuilds it).
@@ -326,6 +328,7 @@ public struct ApprovalRequest: Codable, Equatable, Sendable {
         unconfirmed = c.lossy(UnconfirmedPlan.self, .unconfirmed).flatMap { $0.bundlePath.isEmpty ? nil : $0 }
         rebuilt = c.lossy(RebuiltPlan.self, .rebuilt)
         needsRebuild = c.lossy(Bool.self, .needsRebuild).flatMap { $0 ? true : nil }
+        sinceApproved = c.lossy(SinceApproved.self, .sinceApproved)
     }
 }
 

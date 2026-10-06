@@ -424,6 +424,11 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
 
     // ── batches (jobs) ──
     approve: jobVerb('batch.approved', 'Approved', 'approve'),
+    unqueue: {
+      before: (id) => getJob(id),
+      ok: ([id], _r, job: Job | undefined) => ({ type: 'batch.unqueued', object: jobObject(id, job), summary: `Took ${jobName(job)} out of the apply queue` }),
+      fail: ([id], job: Job | undefined) => ({ type: 'batch.unqueued', object: jobObject(id, job), summary: `Couldn't take ${jobName(job)} out of the apply queue` }),
+    },
     reply: {
       before: (id) => getJob(id),
       // The reply text is not logged (it can be anything); its length says it was there.
