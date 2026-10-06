@@ -33,6 +33,8 @@ export interface RereadFacts {
   bundlePath?: string;
   /** v10: a word about this part ("The other sources of this batch were already added: …"). */
   partNote?: string;
+  /** actions-routing.md: the Others' actions sections the user's Actions add to existing pages (othersPrompt). */
+  othersActions?: string;
 }
 
 /** v10: what the core found about one input before the turn (full-read.md, sections 1, 2 and 4). */
@@ -509,7 +511,7 @@ Agreed scope: exactly these ${ctx.job.files.length} local file(s); no network \
 egress; the source budget is the full size of these files; ${pageBudget}. Media \
 you cannot read must be reported as unsupported, not invented.
 
-${FULL_READ_PROMPT}${detailPrompt(ctx.settings)}${readingPlanPrompt(ctx)}${rereadPrompt(ctx)}${manifestPrompt(ctx)}${folderPrompt(ctx)}${labelsPrompt(ctx.labelPlan)}${archivePrompt(ctx)}${ctx.reread?.partNote ? `\n\n${ctx.reread.partNote}` : ''}
+${FULL_READ_PROMPT}${detailPrompt(ctx.settings)}${readingPlanPrompt(ctx)}${rereadPrompt(ctx)}${manifestPrompt(ctx)}${folderPrompt(ctx)}${labelsPrompt(ctx.labelPlan)}${archivePrompt(ctx)}${ctx.reread?.partNote ? `\n\n${ctx.reread.partNote}` : ''}${ctx.reread?.othersActions ?? ''}
 
 Build ONE \`claude-obsidian.transaction.v1\` ingest bundle for the whole batch \
 at ${ctx.bundlePath}, then run:

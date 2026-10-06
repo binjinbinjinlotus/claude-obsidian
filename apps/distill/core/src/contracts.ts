@@ -647,6 +647,9 @@ export interface JobActionsSummary {
   sources?: number;
   /** v11: found again by a re-read or repair and already in Actions (not added twice). */
   duplicates?: number;
+  /** actions-routing.md: found for other people: to Pending (`waiting`) and to Highlights (`others`). Not in `found`. */
+  waiting?: number;
+  others?: number;
 }
 
 /** v11: one action found in a batch, as Review shows it (GET /v1/jobs/:id/actions). */
@@ -1332,6 +1335,44 @@ export interface ActionItem {
   activeRun?: { runId: string; buttonId: string } | null;
   /** Timeline, oldest first. */
   events: ActionEvent[];
+  /**
+   * actions-routing.md: whose it is, as the find step read it. `owner` has to do it and `owedTo`
+   * is who a promise is for, both as the note writes them ("A", "@jin") or "me" for the user.
+   * Absent on items found before routing (they stay where they are).
+   */
+  owner?: string | null;
+  owedTo?: string | null;
+  /** The People entries those names matched ("you" for the user), when one did. */
+  ownerID?: string | null;
+  owedToID?: string | null;
+  /** Where it went: absent or `list` = your lists (To confirm and on); `waiting` = Pending; `others` = the note's Highlights. */
+  route?: ActionRoute;
+  /** Distill couldn't tell whose it is: To confirm asks "Whose is this?". */
+  ownerUnclear?: boolean;
+  /** A promise's thing in a few words ("the ticket links"), for Nudge. */
+  what?: string | null;
+  /** When it was promised by (YYYY-MM-DD), as the note says. */
+  due?: string | null;
+  /** Pending: a later note looks like it was delivered. Only a suggestion; the item stays open. */
+  received?: ActionReceived | null;
+}
+
+/** actions-routing.md: list = your lists, waiting = Pending, others = Highlights → Others' actions. */
+export type ActionRoute = 'list' | 'waiting' | 'others';
+
+export interface ActionReceived {
+  notePath: string;
+  pageTitle?: string | null;
+  quote?: string | null;
+  at: string;
+}
+
+/** Settings → Actions → Whose items Distill handles: a person and the names the notes use for them. */
+export interface ActionPerson {
+  /** "you" for the user (always first); others get a stable id. */
+  id: string;
+  name: string;
+  aliases: string[];
 }
 
 export interface ActionFieldSpec {
@@ -1399,6 +1440,8 @@ export interface ActionTypePreferences {
   fieldDefaults?: Record<string, string>;
   /** Buttons that run an automation's command (action-buttons.md). */
   buttons?: ActionButton[];
+  /** actions-routing.md: People ids whose items of this type go to your lists. Absent = ["you"]. */
+  handlesFor?: string[];
 }
 
 export interface ActionPreferences {
@@ -1412,6 +1455,11 @@ export interface ActionPreferences {
   todo: { defaultSort: 'due' | 'created' | 'priority' | 'note'; defaultGroup: 'due' | 'note' | 'none'; remindOverdue: boolean };
   /** Removed / done / sent items stay in History this many days. Default 90; 0 or less = forever. */
   historyDays: number;
+  /**
+   * actions-routing.md: the user first (id "you"), then others. Routing is on once the user has a
+   * name or an alias; until then every found item goes to your lists, as before.
+   */
+  people?: ActionPerson[];
 }
 
 export const DEFAULT_ACTION_PREFERENCES: ActionPreferences = {
@@ -1431,6 +1479,63 @@ export interface ActionQuery {
   history?: boolean;
   vaultPath?: string;
   text?: string;
+  /** actions-routing.md: which items: `list` (default) = your lists, `waiting` = Pending, `others` = Highlights, `all`. */
+  route?: ActionRoute | 'all';
+}
+
+/** "In the last 7 days this would have sent …" (Settings → Whose items Distill handles). */
+export interface RoutingPreview {
+  days: number;
+  lists: number;
+  waiting: number;
+  others: number;
+}
+
+/** One note's Highlights (actions-routing.md). */
+export interface HighlightNote {
+  /** The note's wiki source page (vault-relative), the card's key. */
+  notePath: string;
+  title: string;
+  /** YYYY-MM-DD: the page's `date`, else when its items were found. */
+  date: string;
+  /** "meeting" when the page says so (frontmatter), else "note". */
+  kind: 'meeting' | 'note';
+  /** "45 min", from the page's `duration`, when it has one. */
+  duration?: string | null;
+  /** Everyone its items name, the user first ("Jin"). */
+  people: string[];
+  /** Read from the wiki page; never extracted by Distill. Absent when the page is gone. */
+  wiki?: HighlightWiki | null;
+  /** Others' actions, by person (People order, then by name). */
+  others: { person: string; personID?: string | null; items: HighlightItem[] }[];
+  /** Your items from this note: counts by type in your lists, and Pending. */
+  yours: { lists: Record<string, number>; waiting: { id: string; person: string; what: string }[] };
+  counts: { others: number; decisions: number; lists: number; waiting: number };
+  /** Newest found-at of its items (sorting). */
+  foundAt: string;
+}
+
+export interface HighlightWiki {
+  path: string;
+  title: string;
+  summary?: string | null;
+  keyPoints: { text: string; line: number }[];
+  decisions: { text: string; line: number }[];
+}
+
+export interface HighlightItem {
+  id: string;
+  title: string;
+  due?: string | null;
+  /** The original's lines, when known. */
+  line?: number | null;
+  /** Already in the page's Others' actions section; false = added in the next batch. */
+  onPage: boolean;
+}
+
+/** Whose is this?: you, a People id, a name as written, or null for Not mine. */
+export interface AssignOwner {
+  owner: string | null;
 }
 
 export interface NewActionInput {
@@ -2193,7 +2298,9 @@ export type CoreEvent =
   // v7: a step of a job's live log, new or changed (older Mac builds decode it as `.unknown`).
   | { type: 'job.step'; jobId: string; step: JobStep }
   // v10: the automatic repair queued re-reads of sources never read in full (full-read.md, section 6).
-  | { type: 'repair.queued'; vaultPath: string; rereadId: string; sources: number; batches: number; files: string[]; missing?: string[] };
+  | { type: 'repair.queued'; vaultPath: string; rereadId: string; sources: number; batches: number; files: string[]; missing?: string[] }
+  // actions-routing.md: where a batch's new items went (one Activity entry per batch; older Mac builds decode it as `.unknown`).
+  | { type: 'actions.routed'; jobID: string; lists: number; waiting: number; others: number; unclear: number };
 
 // ───────────────────────────── The core facade ─────────────────────────────
 
@@ -2398,6 +2505,25 @@ export interface DistillCore {
   deleteActionForever(id: string): Promise<void>;
   /** Find actions in one Ask turn (also runs by itself after each answer when Settings say so). Returns the found items. */
   detectAskActions(conversationID: string, turnIndex?: number): Promise<ActionItem[]>;
+
+  // ── actions-routing.md: whose items, Pending and Highlights ──
+  /** Whose is this?: "you", a People id or a name sets the owner and routes the item again; null = Not mine (→ Highlights). */
+  assignActionOwner(id: string, owner: string | null): Promise<ActionItem>;
+  /** Highlights → Track as Pending: an Others' action becomes something you wait for. */
+  trackAsPending(id: string): Promise<ActionItem>;
+  /** Highlights → It's mine: an Others' action goes to its type's list as yours. */
+  claimAction(id: string): Promise<ActionItem>;
+  /** Pending → Mark received (done, event `received`). */
+  markReceived(id: string): Promise<ActionItem>;
+  /** Pending → Not waiting anymore (removed, event `not-waiting`; restorable from History). */
+  stopWaiting(id: string): Promise<ActionItem>;
+  /** Pending → Nudge: a Slack message to the person (ready, fromActionID = the pending item). */
+  nudgeAction(id: string, message: { to: string; text: string }): Promise<{ item: ActionItem; message: ActionItem }>;
+  /** What the last 7 days of found items would have done with these People settings (default: the saved ones). */
+  routingPreview(prefs?: Pick<ActionPreferences, 'people' | 'types'>): Promise<RoutingPreview>;
+  /** Highlights: one card per note with routed items, newest first. */
+  listHighlights(): Promise<HighlightNote[]>;
+  getHighlight(notePath: string): Promise<HighlightNote>;
 
   // ── v3: connections (owner: core-actions) ──
   listConnections(): Promise<ConnectionInfo[]>;

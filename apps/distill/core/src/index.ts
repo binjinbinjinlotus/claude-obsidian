@@ -50,6 +50,8 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras &
       await opts.onJobEnded?.(job);
       await actions?.jobEnded(job);
     },
+    // actions-routing.md: Others' actions reach the wiki only inside the next batch the user approves.
+    othersActionsPrompt: (vaultPath) => opts.othersActionsPrompt?.(vaultPath) ?? actions?.othersActionsPrompt(vaultPath) ?? '',
     steps: {
       runnerStep: (jobId, step) => {
         opts.steps?.runnerStep(jobId, step);
@@ -161,6 +163,7 @@ export function createCore(opts: CoreOptions = {}): DistillCore & EngineExtras &
     findForReview: _findForReview,
     jobEnded: _jobEnded,
     jobActions: _jobActions,
+    othersActionsPrompt: _othersActionsPrompt,
     sweepHistory: _sweepHistory,
     whenIdle: _actionsIdle,
     ...actionMethods

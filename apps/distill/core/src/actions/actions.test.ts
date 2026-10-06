@@ -26,6 +26,8 @@ import { markdownToADF, markdownToStorage, parseBlocks } from './markdown.js';
 import { buildFindPrompt, DEFAULT_FIND_PROMPT } from './prompts.js';
 import { actionTypeDef, actionTypeDefs, effectiveType, renderPrompt, resolveTypeID, typeInfo } from './registry.js';
 import { ActionStore, decodeAction } from './store.js';
+import { handlesFor, matchPerson, nudgeText, peopleOf, routeItem, routingOn } from './routing.js';
+import { withOthersSection } from './highlights.js';
 
 // ───────────── fakes ─────────────
 
@@ -1360,5 +1362,338 @@ describe('action summary (action-summary.md)', () => {
     const ok = await h.service.summarizeAction(t.id);
     assert.equal(ok.summary, 'Now it works.');
     assert.equal(ok.error ?? null, null);
+  });
+});
+
+// ───────────── whose items (actions-routing.md) ─────────────
+
+const PEOPLE = [
+  { id: 'you', name: 'Jin Bin Liu', aliases: ['Jin', 'Jin Liu', '@jin'] },
+  { id: 'p-aditya', name: 'Aditya Pradhan', aliases: ['A', 'Aditya', '@aditya'] },
+];
+const routedPrefs = (patch?: (p: ReturnType<typeof actionPreferences>) => void) =>
+  prefsWith((p) => {
+    p.people = structuredClone(PEOPLE);
+    p.types = { todo: { handlesFor: ['you', 'p-aditya'] } };
+    patch?.(p);
+  });
+
+const SYNC_NOTE = [
+  '# 2026-10-05 AI FE Platform Sync',
+  '',
+  '- storybook: one shared instance for both FE teams',
+  '- A: can you set it up? we need it for the audit',
+  '- Jin: yes, this week',
+  '- tickets for migration: A creating them today',
+  '- A: "I\'ll send you the links by Friday"',
+  '- Vladan to benchmark the Redis cache on staging by Wed',
+  '- someone should update the onboarding doc',
+  '- I\'ll tell Anant the mock server is ready',
+  '',
+].join('\n');
+
+const SYNC_PAGE = [
+  '---',
+  'title: "2026-10-05 AI FE Platform Sync"',
+  'source_path: inbox/sync.md',
+  'type: meeting',
+  'date: 2026-10-05',
+  'duration: 45 min',
+  '---',
+  '',
+  '# 2026-10-05 AI FE Platform Sync',
+  '',
+  'The FE platform teams agreed on one shared Storybook and set the mock server live before the test switch.',
+  '',
+  '## Key points',
+  '',
+  '- One shared Storybook for both FE teams',
+  '- Mock server goes live before the test switch',
+  '',
+  '## Decisions',
+  '',
+  '- Storybook lives in the design-system repo',
+  '',
+].join('\n');
+
+const SYNC_FOUND = {
+  items: [
+    { type: 'todo', title: 'Set up the shared Storybook for the design system', summary: 's', fields: [], why: 'Aditya asked', quote: 'A: can you set it up? we need it for the audit', notePath: 'inbox/sync.md', owner: 'A' },
+    { type: 'todo', title: 'Aditya will send you the ticket links', summary: 's', fields: [], why: 'He promised', quote: 'A: "I\'ll send you the links by Friday"', notePath: 'inbox/sync.md', owner: 'Aditya', owedTo: 'me', what: 'the ticket links', due: '2026-10-09' },
+    { type: 'todo', title: 'Benchmark the Redis cache on staging', summary: 's', fields: [], why: 'Vladan will', quote: '- Vladan to benchmark the Redis cache on staging by Wed', notePath: 'inbox/sync.md', owner: 'Vladan', due: '2026-10-07' },
+    { type: 'todo', title: 'Update the onboarding doc for the new repo layout', summary: 's', fields: [], why: 'Nobody named', quote: 'someone should update the onboarding doc', notePath: 'inbox/sync.md', owner: '' },
+    { type: 'slack', title: 'Tell Anant the mock server is ready', summary: 's', fields: [{ key: 'to', value: 'Anant' }], why: 'You said so', quote: 'I\'ll tell Anant the mock server is ready', notePath: 'inbox/sync.md', owner: 'me' },
+  ],
+};
+
+function writeSync(h: Harness): void {
+  fs.writeFileSync(path.join(h.vault, 'inbox', 'sync.md'), SYNC_NOTE);
+  fs.writeFileSync(path.join(h.vault, 'wiki', 'sources', 'sync.md'), SYNC_PAGE);
+}
+
+function wikiHashes(vault: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const walk = (dir: string) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const abs = path.join(dir, e.name);
+      if (e.isDirectory()) walk(abs);
+      else out[path.relative(vault, abs)] = fs.readFileSync(abs, 'utf8');
+    }
+  };
+  walk(path.join(vault, 'wiki'));
+  return out;
+}
+
+describe('whose items: the routing table (actions-routing.md)', () => {
+  const p = routedPrefs();
+  test('owner and owed-to decide where an item goes', () => {
+    assert.deepEqual(routeItem({ type: 'todo', owner: 'me' }, p), { route: 'list', ownerID: 'you', owedToID: null, unclear: false });
+    assert.equal(routeItem({ type: 'todo', owner: 'A' }, p).route, 'list', 'you handle to-dos for Aditya');
+    assert.equal(routeItem({ type: 'todo', owner: 'A' }, p).ownerID, 'p-aditya');
+    assert.equal(routeItem({ type: 'slack', owner: 'A' }, p).route, 'others', 'Slack messages only for you');
+    assert.equal(routeItem({ type: 'todo', owner: 'Vladan', owedTo: 'me' }, p).route, 'waiting', 'not in People, owes you: Pending');
+    assert.equal(routeItem({ type: 'todo', owner: 'Aditya', owedTo: 'Jin' }, p).route, 'waiting', 'a promise to you beats a handled owner');
+    assert.equal(routeItem({ type: 'todo', owner: 'Vladan', owedTo: 'Anant' }, p).route, 'others');
+    assert.equal(routeItem({ type: 'todo', owner: 'Vladan' }, p).route, 'others', 'anyone not in People → Highlights');
+    assert.equal(routeItem({ type: 'todo', owner: 'me', owedTo: 'me' }, p).route, 'list');
+    assert.deepEqual(routeItem({ type: 'todo', owner: '' }, p), { route: 'list', ownerID: null, owedToID: null, unclear: true });
+    assert.equal(routeItem({ type: 'todo', owner: '  ' }, p).unclear, true);
+  });
+
+  test('names match exactly, ignoring case; an alias two people share asks', () => {
+    const people = peopleOf(p);
+    assert.equal(matchPerson('aditya', people), 'p-aditya');
+    assert.equal(matchPerson('  @ADITYA ', people), 'p-aditya');
+    assert.equal(matchPerson('JIN LIU', people), 'you');
+    assert.equal(matchPerson('Adit', people), undefined);
+    assert.equal(matchPerson('Aditya P.', people), undefined);
+    assert.equal(matchPerson('I', people), 'you');
+    const shared = routedPrefs((x) => x.people!.forEach((q) => q.aliases.push('J')));
+    assert.equal(matchPerson('j', peopleOf(shared)), null);
+    assert.equal(routeItem({ type: 'todo', owner: 'J' }, shared).unclear, true);
+  });
+
+  test('until the user has a name or an alias, everything goes to your lists', () => {
+    const off = prefsWith((x) => (x.people = [{ id: 'you', name: '', aliases: [] }, PEOPLE[1]!]));
+    assert.equal(routingOn(off), false);
+    assert.deepEqual(routeItem({ type: 'todo', owner: 'Vladan', owedTo: 'me' }, off), { route: 'list', ownerID: null, owedToID: null, unclear: false });
+    assert.equal(routingOn(prefsWith(() => undefined)), false);
+  });
+
+  test('the nudge text uses the first name', () => {
+    assert.equal(nudgeText('Aditya Pradhan', 'the ticket links'), 'Hi Aditya, any update on the ticket links?');
+  });
+
+  test('settings keep People (you first) and each type’s handlesFor', () => {
+    const s = decodeSettings({ actionPreferences: { people: [PEOPLE[1], { id: 'x', name: '' }, PEOPLE[0]], types: { todo: { handlesFor: ['you', 'p-aditya', 'you'] } } } });
+    const ap = actionPreferences(s);
+    assert.deepEqual(ap.people!.map((x) => x.id), ['you', 'p-aditya']);
+    assert.deepEqual(ap.types.todo!.handlesFor, ['you', 'p-aditya']);
+    assert.deepEqual(handlesFor(ap, 'slack'), ['you']);
+  });
+});
+
+describe('whose items: routing found items (actions-routing.md)', () => {
+  test('a batch: yours to To confirm, promises to Pending, everyone else’s to Highlights; existing items stay', async () => {
+    const h = harness({ prefs: routedPrefs() });
+    writeSync(h);
+    const before = await h.service.createAction({ type: 'todo', title: 'Old to-do from before routing' });
+    h.runner.find = () => ({ structured: SYNC_FOUND });
+    await h.service.findInJob(job(h, 'job-r', ['inbox/sync.md'], ['wiki/sources/sync.md']));
+    await h.service.whenIdle();
+    const prompt = h.runner.requests[0]!.prompt;
+    assert.match(prompt, /- owner: who has to do it/);
+    assert.match(prompt, /the notes call them "Jin Bin Liu", "Jin", "Jin Liu", "@jin"/);
+
+    const lists = await h.service.listActions();
+    assert.deepEqual(lists.map((i) => i.title).sort(), [
+      'Old to-do from before routing',
+      'Set up the shared Storybook for the design system',
+      'Tell Anant the mock server is ready',
+      'Update the onboarding doc for the new repo layout',
+    ]);
+    assert.equal(lists.find((i) => i.id === before.id)!.route, undefined, 'existing items never move');
+    const storybook = lists.find((i) => i.title.startsWith('Set up'))!;
+    assert.equal(storybook.ownerID, 'p-aditya');
+    assert.equal(storybook.status, 'pending');
+    const unclear = lists.find((i) => i.title.startsWith('Update'))!;
+    assert.equal(unclear.ownerUnclear, true);
+    assert.equal(unclear.status, 'pending');
+
+    const waiting = await h.service.listActions({ route: 'waiting' });
+    assert.deepEqual(waiting.map((i) => [i.title, i.status, i.what, i.due]), [['Aditya will send you the ticket links', 'open', 'the ticket links', '2026-10-09']]);
+    const others = await h.service.listActions({ route: 'others' });
+    assert.deepEqual(others.map((i) => [i.title, i.owner, i.status]), [['Benchmark the Redis cache on staging', 'Vladan', 'open']]);
+    assert.equal((await h.service.listActions({ route: 'all' })).length, 6);
+
+    // The batch's summary counts only yours; the rest are counted apart; one routed event per batch.
+    const summary = h.summaries.get('job-r')!;
+    assert.equal(summary.found, 3);
+    assert.equal(summary.pending, 3);
+    assert.equal(summary.waiting, 1);
+    assert.equal(summary.others, 1);
+    const routed = h.events.filter((e) => e.type === 'actions.routed');
+    assert.deepEqual(routed, [{ type: 'actions.routed', jobID: 'job-r', lists: 2, waiting: 1, others: 1, unclear: 1 }]);
+    // Nothing for other people is drafted.
+    assert.ok(h.runner.requests.every((r) => r.outputSchema === FIND_SCHEMA));
+  });
+
+  test('confirm off: an unclear owner still asks; Pending and Highlights items are never drafted', async () => {
+    const h = harness({ prefs: routedPrefs((p) => (p.sources.notes.confirm = false)) });
+    writeSync(h);
+    h.runner.find = () => ({ structured: SYNC_FOUND });
+    await h.service.findInJob(job(h, 'job-r2', ['inbox/sync.md'], ['wiki/sources/sync.md']));
+    await h.service.whenIdle();
+    const all = await h.service.listActions({ route: 'all' });
+    assert.equal(all.find((i) => i.ownerUnclear)!.status, 'pending');
+    assert.equal(all.find((i) => i.title.startsWith('Tell Anant'))!.status, 'ready', 'yours is drafted');
+    assert.equal(h.runner.requests.filter((r) => r.outputSchema === DRAFT_SCHEMA).length, 1);
+  });
+
+  test('routing off: no owner instruction and every item in your lists, as before', async () => {
+    const h = harness();
+    writeSync(h);
+    h.runner.find = () => ({ structured: SYNC_FOUND });
+    await h.service.findInJob(job(h, 'job-r3', ['inbox/sync.md'], ['wiki/sources/sync.md']));
+    assert.doesNotMatch(h.runner.requests[0]!.prompt, /- owner:/);
+    const all = await h.service.listActions();
+    assert.equal(all.length, 5);
+    assert.ok(all.every((i) => i.route === undefined));
+  });
+
+  test('Pending only suggests a later note delivered it; Mark received and Not waiting anymore are yours', async () => {
+    const h = harness({ prefs: routedPrefs() });
+    writeSync(h);
+    h.runner.find = () => ({ structured: SYNC_FOUND });
+    await h.service.findInJob(job(h, 'job-p1', ['inbox/sync.md'], ['wiki/sources/sync.md']));
+    const [links] = await h.service.listActions({ route: 'waiting' });
+    fs.writeFileSync(path.join(h.vault, 'inbox', 'standup.md'), '# 2026-10-06 Standup\n\n- Aditya sent the ticket links in #fe-platform\n');
+    fs.writeFileSync(path.join(h.vault, 'wiki', 'sources', 'standup.md'), '---\ntitle: "2026-10-06 Standup"\nsource_path: inbox/standup.md\n---\n\n- Aditya sent the ticket links\n');
+    h.runner.find = () => ({ structured: { items: [], received: [{ id: 'w1', quote: 'Aditya sent the ticket links in #fe-platform' }] } });
+    await h.service.findInJob(job(h, 'job-p2', ['inbox/standup.md'], ['wiki/sources/standup.md']));
+    assert.match(h.runner.requests.at(-1)!.prompt, /- w1: Aditya will send you the ticket links \(promised in 2026-10-05 AI FE Platform Sync\)/);
+    const after = (await h.service.getAction(links!.id))!;
+    assert.equal(after.status, 'open', 'never closed on its own');
+    assert.equal(after.received?.pageTitle, '2026-10-06 Standup');
+    assert.equal(after.received?.notePath, 'wiki/sources/standup.md');
+
+    const done = await h.service.markReceived(links!.id);
+    assert.equal(done.status, 'done');
+    assert.ok(done.events.some((e) => e.event === 'received'));
+    assert.equal((await h.service.restoreAction(links!.id)).status, 'open');
+    const gone = await h.service.stopWaiting(links!.id);
+    assert.equal(gone.status, 'removed');
+    assert.equal((await h.service.listActions({ route: 'waiting' })).length, 0);
+    assert.ok((await h.service.listActions({ history: true })).some((i) => i.id === links!.id), 'restorable from History');
+    await assert.rejects(h.service.markReceived(gone.id), /waiting for/);
+  });
+
+  test('Whose is this?, Track as Pending, It’s mine and Nudge', async () => {
+    const h = harness({ prefs: routedPrefs() });
+    writeSync(h);
+    h.runner.find = () => ({ structured: SYNC_FOUND });
+    await h.service.findInJob(job(h, 'job-w', ['inbox/sync.md'], ['wiki/sources/sync.md']));
+    const all = await h.service.listActions({ route: 'all' });
+    const unclear = all.find((i) => i.ownerUnclear)!;
+    const mine = await h.service.assignActionOwner(unclear.id, 'you');
+    assert.deepEqual([mine.route, mine.ownerID, mine.ownerUnclear, mine.status], ['list', 'you', undefined, 'pending']);
+    const someone = await h.service.assignActionOwner((await h.service.createAction({ type: 'todo', title: 'x' })).id, 'Vladan').catch((e: Error) => e);
+    assert.match(String(someone), /waiting for you to confirm/);
+    const notMine = await h.service.assignActionOwner(all.find((i) => i.title.startsWith('Set up'))!.id, null);
+    assert.deepEqual([notMine.route, notMine.status], ['others', 'open']);
+
+    const bench = all.find((i) => i.title.startsWith('Benchmark'))!;
+    const tracked = await h.service.trackAsPending(bench.id);
+    assert.deepEqual([tracked.route, tracked.owedToID], ['waiting', 'you']);
+    const claimed = await h.service.claimAction(notMine.id);
+    assert.deepEqual([claimed.route, claimed.ownerID, claimed.status], ['list', 'you', 'open']);
+
+    const links = all.find((i) => i.route === 'waiting')!;
+    const { item, message } = await h.service.nudgeAction(links.id, { to: 'Aditya Pradhan (@aditya)', text: 'Hi Aditya, any update on the ticket links?' });
+    assert.equal(message.type, 'slack');
+    assert.equal(message.status, 'ready');
+    assert.equal(message.fromActionID, links.id);
+    assert.equal(message.body, 'Hi Aditya, any update on the ticket links?');
+    assert.equal(message.route, undefined, 'the nudge is yours');
+    assert.ok(item.events.some((e) => e.event === 'nudged' && e.detail === message.id));
+    assert.equal(item.status, 'open', 'still waiting');
+  });
+
+  test('the preview counts the last 7 days with the People being edited', async () => {
+    const h = harness({ prefs: routedPrefs() });
+    writeSync(h);
+    h.runner.find = () => ({ structured: SYNC_FOUND });
+    await h.service.findInJob(job(h, 'job-v', ['inbox/sync.md'], ['wiki/sources/sync.md']));
+    assert.deepEqual(await h.service.routingPreview(), { days: 7, lists: 3, waiting: 1, others: 1 });
+    // Handling Vladan's to-dos too would send his benchmark to your lists.
+    const people = [...PEOPLE, { id: 'p-vladan', name: 'Vladan Dimitrijevic', aliases: ['Vladan'] }];
+    assert.deepEqual(await h.service.routingPreview({ people, types: { todo: { handlesFor: ['you', 'p-aditya', 'p-vladan'] } } }), { days: 7, lists: 4, waiting: 1, others: 0 });
+    h.clock.t = new Date('2026-10-12T15:00:00Z');
+    assert.deepEqual(await h.service.routingPreview(), { days: 7, lists: 0, waiting: 0, others: 0 });
+  });
+});
+
+describe('Highlights (actions-routing.md)', () => {
+  test('reads the wiki page’s summary, key points and decisions with their lines; never extracts its own', async () => {
+    const h = harness({ prefs: routedPrefs() });
+    writeSync(h);
+    h.runner.find = () => ({ structured: SYNC_FOUND });
+    await h.service.findInJob(job(h, 'job-h', ['inbox/sync.md'], ['wiki/sources/sync.md']));
+    const [note] = await h.service.listHighlights();
+    assert.equal(note!.notePath, 'wiki/sources/sync.md');
+    assert.equal(note!.title, '2026-10-05 AI FE Platform Sync');
+    assert.deepEqual([note!.date, note!.kind, note!.duration], ['2026-10-05', 'meeting', '45 min']);
+    assert.equal(note!.wiki!.summary, 'The FE platform teams agreed on one shared Storybook and set the mock server live before the test switch.');
+    assert.deepEqual(note!.wiki!.keyPoints, [
+      { text: 'One shared Storybook for both FE teams', line: 15 },
+      { text: 'Mock server goes live before the test switch', line: 16 },
+    ]);
+    assert.deepEqual(note!.wiki!.decisions, [{ text: 'Storybook lives in the design-system repo', line: 20 }]);
+    assert.deepEqual(note!.others.map((g) => [g.person, g.items.map((i) => [i.title, i.due, i.onPage])]), [['Vladan', [['Benchmark the Redis cache on staging', '2026-10-07', false]]]]);
+    assert.deepEqual(note!.counts, { others: 1, decisions: 1, lists: 3, waiting: 1 });
+    assert.deepEqual(note!.yours.waiting.map((w) => [w.person, w.what]), [['Aditya Pradhan', 'the ticket links']]);
+    assert.deepEqual(note!.people, ['Jin Bin Liu', 'Aditya Pradhan', 'Vladan', 'Anant']);
+    // No AI run reads the page for Highlights.
+    assert.equal(h.runner.requests.length, 1, 'only the find pass');
+    assert.deepEqual(await h.service.getHighlight('wiki/sources/sync.md'), note);
+    await assert.rejects(h.service.getHighlight('wiki/sources/none.md'), /No Highlights/);
+  });
+
+  test('Others’ actions reach the page only through the next batch’s prompt; nothing writes the wiki', async () => {
+    const h = harness({ prefs: routedPrefs() });
+    writeSync(h);
+    h.runner.find = () => ({ structured: SYNC_FOUND });
+    await h.service.findInJob(job(h, 'job-o', ['inbox/sync.md'], ['wiki/sources/sync.md']));
+    const before = wikiHashes(h.vault);
+    const prompt = h.service.othersActionsPrompt(h.vault);
+    assert.match(prompt, /<page path="wiki\/sources\/sync.md">\n## Others' actions\n\n- \*\*Vladan\*\*: Benchmark the Redis cache on staging \(by 2026-10-07\)\n<\/page>/);
+    assert.match(prompt, /Change nothing else on these pages/);
+    assert.deepEqual(wikiHashes(h.vault), before, 'the page is unchanged until a batch applies');
+
+    // The approved batch wrote the section: nothing is due, and the item reads as on the page.
+    const page = path.join(h.vault, 'wiki', 'sources', 'sync.md');
+    fs.writeFileSync(page, withOthersSection(fs.readFileSync(page, 'utf8'), ['- **Vladan**: Benchmark the Redis cache on staging (by 2026-10-07)']));
+    assert.equal(h.service.othersActionsPrompt(h.vault), '');
+    assert.equal((await h.service.getHighlight('wiki/sources/sync.md')).others[0]!.items[0]!.onPage, true);
+
+    // It's mine: the next batch is asked to take it off the page (the section goes when it is empty).
+    const bench = (await h.service.listActions({ route: 'others' }))[0]!;
+    await h.service.claimAction(bench.id);
+    await h.service.whenIdle();
+    assert.match(h.service.othersActionsPrompt(h.vault), /<page path="wiki\/sources\/sync.md" remove="true"><\/page>/);
+
+    // The actions code never writes files itself (only its state dir, through the store).
+    for (const f of ['index.ts', 'highlights.ts', 'routing.ts']) {
+      const src = fs.readFileSync(new URL(`./${f}`, import.meta.url).pathname.replace(/\/dist\//, '/src/').replace(/\.js$/, '.ts'), 'utf8');
+      if (f !== 'index.ts') assert.doesNotMatch(src, /writeFile|appendFile|renameSync|\.vault-meta/, f);
+    }
+  });
+
+  test('the section is replaced, never doubled, and removed when empty', () => {
+    const page = '# P\n\nText.\n\n## Others\' actions\n\n- **A**: old\n\n## Links\n\n- x\n';
+    const next = withOthersSection(page, ['- **B**: new']);
+    assert.equal(next, '# P\n\nText.\n\n## Others\' actions\n\n- **B**: new\n\n## Links\n\n- x\n');
+    assert.equal(withOthersSection(next, []), '# P\n\nText.\n\n## Links\n\n- x\n');
+    assert.equal(withOthersSection('# P\n\nText.\n', ['- **B**: new']), '# P\n\nText.\n\n## Others\' actions\n\n- **B**: new\n');
   });
 });

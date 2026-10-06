@@ -41,6 +41,11 @@ export const FIND_SCHEMA = JSON.stringify({
           why: { type: 'string' },
           quote: { type: 'string' },
           notePath: { type: 'string' },
+          // actions-routing.md: whose it is (the core routes it from these).
+          owner: { type: 'string' },
+          owedTo: { type: 'string' },
+          what: { type: 'string' },
+          due: { type: 'string' },
           // v11 (action-context.md): the window's line numbers and the wiki sections it relates to.
           lines: { type: 'string' },
           wiki: {
@@ -54,6 +59,16 @@ export const FIND_SCHEMA = JSON.stringify({
           },
         },
         required: ['type', 'title', 'summary', 'fields', 'why', 'quote'],
+      },
+    },
+    // actions-routing.md: open Pending promises these lines show delivered (a suggestion only).
+    received: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { id: { type: 'string' }, quote: { type: 'string' } },
+        required: ['id', 'quote'],
       },
     },
   },

@@ -525,6 +525,36 @@ describe('instrumentCore', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  test('whose items: one routed entry per batch; received, nudge, it\'s mine and whose-is-this (actions-routing.md)', async () => {
+    const dir = tmp('distill-activity-routing-');
+    const log = new ActivityLog({ dir });
+    const trash = new Trash({ dir: path.join(dir, 'trash') });
+    const fake = createFakeCore();
+    const item = (patch: Record<string, unknown>) => ({ id: 'act-1', type: 'todo', title: 'Ticket links', status: 'open', ...patch });
+    (fake as unknown as Record<string, unknown>).getAction = async () => item({});
+    (fake as unknown as Record<string, unknown>).markReceived = async () => item({ status: 'done', received: { notePath: 'wiki/s.md', at: '' } });
+    (fake as unknown as Record<string, unknown>).claimAction = async () => item({ route: 'list', ownerID: 'you' });
+    (fake as unknown as Record<string, unknown>).assignActionOwner = async () => item({ route: 'others' });
+    (fake as unknown as Record<string, unknown>).nudgeAction = async () => ({ item: item({ route: 'waiting' }), message: { id: 'act-2', type: 'slack', title: 'Nudge', status: 'ready' } });
+    const core = instrumentCore(fake, { log, trash, askDir: path.join(dir, 'ask') });
+    await runWithSource('app', () => core.markReceived('act-1'));
+    await runWithSource('app', () => core.claimAction('act-1'));
+    await runWithSource('app', () => core.assignActionOwner('act-1', null));
+    await runWithSource('app', () => core.nudgeAction('act-1', { to: '@aditya', text: 'secret words' }));
+    const logEvent = createEventLogger({ log, getSettings: () => ({}) as never, collectorName: () => '' }, []);
+    logEvent({ type: 'actions.routed', jobID: 'job-9', lists: 3, waiting: 2, others: 6, unclear: 1 });
+    const entries = log.list().entries.reverse();
+    assert.deepEqual(entries.map((e) => [e.type, e.summary]), [
+      ['action.received', 'Marked “Ticket links” received'],
+      ['action.claimed', 'It\'s mine: “Ticket links” went to to-dos'],
+      ['action.routed', 'Not mine: “Ticket links” went to Highlights'],
+      ['action.nudged', 'Nudge for “Ticket links” added as a Slack message'],
+      ['action.routed', 'Sorted the actions found in job-9: 3 to your lists, 1 to ask whose, 2 to Pending, 6 to Highlights'],
+    ]);
+    assert.ok(!JSON.stringify(entries).includes('secret words'), 'the message text is never logged');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   test('a spec that throws never drops the entry, and never replaces the core\'s error (2026-10-04)', async (t) => {
     const dir = tmp('distill-activity-spec-error-');
     const log = new ActivityLog({ dir });

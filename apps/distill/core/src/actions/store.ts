@@ -166,6 +166,23 @@ export function decodeAction(v: unknown, now = new Date()): ActionItem | undefin
   }
   const error = decodeError(v.error);
   if (error) item.error = error;
+  // actions-routing.md
+  for (const k of ['owner', 'owedTo', 'ownerID', 'owedToID', 'what', 'due'] as const) {
+    const x = nullableStr(v[k]);
+    if (x !== undefined) item[k] = x;
+  }
+  if (v.route === 'list' || v.route === 'waiting' || v.route === 'others') item.route = v.route;
+  if (v.ownerUnclear === true) item.ownerUnclear = true;
+  if (isObject(v.received)) {
+    const notePath = str(v.received.notePath);
+    if (notePath) {
+      item.received = { notePath, at: normalizeDate(v.received.at, now) };
+      for (const k of ['pageTitle', 'quote'] as const) {
+        const x = nullableStr(v.received[k]);
+        if (x !== undefined) item.received[k] = x;
+      }
+    }
+  }
   return item;
 }
 
@@ -175,6 +192,7 @@ const SOURCE_KEYS = ['kind', 'jobID', 'notePath', 'pageTitle', 'quote', 'convers
 const ITEM_KEYS = [
   'id', 'type', 'status', 'title', 'body', 'fields', 'why', 'summary', 'source', 'vaultPath', 'labels', 'createdAt', 'updatedAt',
   'draftModel', 'previousBody', 'external', 'error', 'fromActionID', 'events',
+  'owner', 'owedTo', 'ownerID', 'owedToID', 'route', 'ownerUnclear', 'what', 'due', 'received',
 ];
 
 /** Strip undefined (JSON drops it anyway) and copy, so stored objects never alias live ones. */

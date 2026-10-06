@@ -262,6 +262,9 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
     jiraProjects: 'read',
     jiraIssueTypes: 'read',
     jiraFields: 'read',
+    routingPreview: 'read',
+    listHighlights: 'read',
+    getHighlight: 'read',
     slackTarget: 'read',
     // action-buttons.md, "Where to send": a remembered name is the owner's change; the name and handle, no message.
     rememberSlackPerson: {
@@ -699,6 +702,41 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
           ? null
           : { type: 'action.found', object: { kind: 'chat', id: conversationID }, summary: `Found ${plural(items.length, 'action')} in an Ask answer`, details: { actions: items.map((i) => i.title) } },
       fail: ([conversationID]) => ({ type: 'action.found', object: { kind: 'chat', id: conversationID }, summary: `Couldn't find actions in the answer` }),
+    },
+
+    // ── actions-routing.md ──
+    assignActionOwner: {
+      before: (id) => getAction(id),
+      ok: ([, owner], item) => ({
+        type: 'action.routed',
+        object: actionObject(item.id, item),
+        summary: owner === null
+          ? `Not mine: ${q(item.title)} went to Highlights`
+          : `${q(item.title)} is ${item.ownerID === 'you' ? 'yours' : `for ${item.owner ?? 'someone'}`}${item.route === 'waiting' ? ': to Pending' : item.route === 'others' ? ': to Highlights' : ''}`,
+        details: { route: item.route ?? 'list', owner: owner === null ? null : (item.ownerID ?? 'named') },
+      }),
+      fail: ([id], before: ActionItem | undefined) => ({ type: 'action.routed', object: actionObject(id, before), summary: `Couldn't set whose ${q(before?.title)} is`.replace('  ', ' ') }),
+    },
+    trackAsPending: {
+      ok: (_a, item) => ({ type: 'action.routed', object: actionObject(item.id, item), summary: `Tracking ${q(item.title)} as Pending`, details: { route: 'waiting' } }),
+      fail: ([id]) => ({ type: 'action.routed', object: { kind: 'action', id }, summary: `Couldn't track it as Pending` }),
+    },
+    claimAction: {
+      ok: (_a, item) => ({ type: 'action.claimed', object: actionObject(item.id, item), summary: `It's mine: ${q(item.title)} went to ${typeWords(item.type)}s`, details: { actionType: item.type, status: item.status } }),
+      fail: ([id]) => ({ type: 'action.claimed', object: { kind: 'action', id }, summary: `Couldn't move it to your list` }),
+    },
+    markReceived: {
+      ok: (_a, item) => ({ type: 'action.received', object: actionObject(item.id, item), summary: `Marked ${q(item.title)} received`, details: { suggested: !!item.received } }),
+      fail: ([id]) => ({ type: 'action.received', object: { kind: 'action', id }, summary: `Couldn't mark it received` }),
+    },
+    stopWaiting: {
+      ok: (_a, item) => ({ type: 'action.not_waiting', object: actionObject(item.id, item), summary: `Not waiting for ${q(item.title)} anymore` }),
+      fail: ([id]) => ({ type: 'action.not_waiting', object: { kind: 'action', id }, summary: `Couldn't stop waiting for it` }),
+    },
+    nudgeAction: {
+      // Who it goes to, never the message text.
+      ok: ([, m], r) => ({ type: 'action.nudged', object: actionObject(r.item.id, r.item), summary: `Nudge for ${q(r.item.title)} added as a Slack message`, details: { messageID: r.message.id, to: m.to } }),
+      fail: ([id]) => ({ type: 'action.nudged', object: { kind: 'action', id }, summary: `Couldn't add the nudge` }),
     },
 
     // ── connections ──
@@ -1169,6 +1207,25 @@ export function createEventLogger(deps: EventLoggerDeps, seedJobs: Job[]): (even
               recovery: { kind: 'none', reason: 'Actions History keeps items for the days set in Settings → Actions.' },
             },
             'scheduler',
+          );
+          return;
+        }
+        case 'actions.routed': {
+          // actions-routing.md: one entry per batch, where its new items went.
+          const parts = [
+            event.lists ? `${event.lists} to your lists` : '',
+            event.unclear ? `${event.unclear} to ask whose` : '',
+            event.waiting ? `${event.waiting} to Pending` : '',
+            event.others ? `${event.others} to Highlights` : '',
+          ].filter(Boolean);
+          write(
+            {
+              type: 'action.routed',
+              object: { kind: 'batch', id: event.jobID, name: event.jobID },
+              summary: `Sorted the actions found in ${event.jobID}: ${parts.join(', ')}`,
+              details: { lists: event.lists, unclear: event.unclear, waiting: event.waiting, others: event.others },
+            },
+            'core',
           );
           return;
         }
