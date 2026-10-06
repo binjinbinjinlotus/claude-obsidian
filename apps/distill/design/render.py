@@ -513,11 +513,31 @@ def same_board(a, b):
     return ja == jb and a.replace(pa.group(0), '') == b.replace(pb.group(0), '')
 
 
+def drop_pages(c):
+    """One implicit page: pages [] and no "page" key on launch, a board or a note.
+    Explicit pages blank the canvas viewer (v98, 2026-10-06: every board stayed undrawn), so they are removed.
+    Returns what was removed."""
+    removed = []
+    if c.get('pages'):
+        removed.append('explicit pages %s removed' % [p.get('id') for p in c['pages']])
+    c['pages'] = []
+    launch = c.setdefault('launch', {'view': 'canvas'})
+    if launch.pop('page', None) is not None:
+        removed.append('"page" key removed from launch')
+    for sec in ('boards', 'notes'):
+        keyed = [k for k, v in c.get(sec, {}).items() if v.pop('page', None) is not None]
+        if keyed:
+            removed.append('"page" key removed from %d %s' % (len(keyed), sec))
+    return removed
+
+
 def merge_canvas(live_path, out_dir, built, written):
     """Live canvas.json + this render → OUT_DIR/canvas.json. Prints the boards that changed."""
     live_dir = os.path.dirname(os.path.abspath(live_path))
     with open(live_path, encoding='utf-8') as f:
         c = json.load(f)
+    for msg in drop_pages(c):
+        print('warning:', msg, file=sys.stderr)
     boards, order = c['boards'], c['order']
     changed, added, resized = [], [], []
     for f in written:
@@ -541,8 +561,6 @@ def merge_canvas(live_path, out_dir, built, written):
         in_row = [k for k, v in boards.items() if v['y'] == row]
         x = max((boards[k]['x'] + boards[k]['w'] for k in in_row), default=-80) + 80
         boards[f] = {'x': x, 'y': row, 'w': W, 'h': h or 400, 'title': title}
-        if c.get('pages'):  # a canvas with explicit pages: a new board joins the first one
-            boards[f]['page'] = c['pages'][0]['id']
         last = max((order.index(k) for k in in_row if k in order), default=len(order) - 1)
         order.insert(last + 1, f)
         added.append(f)
@@ -551,8 +569,6 @@ def merge_canvas(live_path, out_dir, built, written):
         n = s.get('rowNote')
         if n and n['id'] not in notes:
             notes[n['id']] = {'kind': 'title1', 'maxW': 8000, 'text': n['text'], 'w': 240, 'x': 0, 'y': s['row'] - 240}
-            if c.get('pages'):
-                notes[n['id']]['page'] = c['pages'][0]['id']
             print('note   ', n['id'], n['text'])
     with open(os.path.join(out_dir, 'canvas.json'), 'w', encoding='utf-8') as fh:
         json.dump(c, fh, indent=2, ensure_ascii=False)

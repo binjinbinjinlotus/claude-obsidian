@@ -220,6 +220,28 @@ class Screens(unittest.TestCase):
         self.assertNotIn('chips', base['regions']['toolbar']['props'], 'the base must not change')
 
 
+class Canvas(unittest.TestCase):
+    def test_merged_canvas_has_no_explicit_pages(self):
+        # Explicit pages and "page" keys blank the canvas viewer (v98, 2026-10-06), so a merge removes them.
+        import contextlib
+        import io
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            live = os.path.join(d, 'live.json')
+            with open(live, 'w', encoding='utf-8') as f:
+                json.dump({'v': 3, 'pages': [{'id': 'p', 'name': 'P'}], 'launch': {'view': 'canvas', 'page': 'p'}, 'order': ['A.dc.html'],
+                           'boards': {'A.dc.html': {'x': 0, 'y': 0, 'w': 100, 'h': 100, 'title': 'A', 'page': 'p'}},
+                           'notes': {'n': {'kind': 'title1', 'text': 'N', 'x': 0, 'y': -240, 'page': 'p'}}}, f)
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                render.merge_canvas(live, d, {}, [])
+            with open(os.path.join(d, 'canvas.json'), encoding='utf-8') as f:
+                c = json.load(f)
+        self.assertEqual(c['pages'], [])
+        self.assertEqual(c['launch'], {'view': 'canvas'})
+        keyed = [k for sec in ('boards', 'notes') for k, v in c[sec].items() if 'page' in v]
+        self.assertEqual(keyed, [], 'boards or notes with a "page" key')
+
+
 def report():
     pending = [c['name'] for c in COMPONENTS if not c.get('swift')]
     design_only = sum(1 for c in COMPONENTS for p in c['props'] if p.get('swift') is False)
