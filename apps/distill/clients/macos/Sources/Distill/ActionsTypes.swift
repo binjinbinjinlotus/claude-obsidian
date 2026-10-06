@@ -246,8 +246,9 @@ struct MessageCard: View {
             StatusBadge(text: "Polishing", fill: Theme.primaryTint, ink: Theme.primary, busy: true)
         } else if let copied = store.copiedAt[item.id] {
             StatusBadge(text: "Copied at \(ActionsClock.time(copied))", fill: ActionsTheme.doneFill, ink: Theme.limeInk)
-        } else if item.status == .ready, type.readyWords(for: item.type == "slack" ? store.slackTarget(item) : nil) == ActionTypeInfo.needsRecipient {
-            StatusBadge(text: ActionTypeInfo.needsRecipient, fill: Theme.peachTint, ink: Theme.peachInk)
+        } else if item.status == .ready, case let words = type.readyWords(for: item.type == "slack" ? store.slackTarget(item) : nil),
+                  ActionTypeInfo.isBlocked(words) {
+            StatusBadge(text: words, fill: Theme.peachTint, ink: Theme.peachInk)
         } else if item.status == .ready {
             StatusBadge(text: type.readyWords, fill: ActionsTheme.doneFill, ink: Theme.limeInk)
         } else {

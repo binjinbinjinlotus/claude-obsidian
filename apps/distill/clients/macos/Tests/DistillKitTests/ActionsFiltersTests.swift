@@ -74,6 +74,29 @@ final class ActionsFiltersTests: XCTestCase {
         XCTAssertEqual(slack.readyWords(for: SlackTarget.resolve(to: "Mei, Aditya", thread: nil, lookup: { _ in nil })), "Ready to send")
     }
 
+    func testAThreadTheButtonCannotReachCannotBeRepliedIn() {
+        let ready = item("b", "slack", .ready, body: "Hi", fields: ["to": "#eng", "thread": "1759600000.123456"])
+        var slack = ActionTypeInfo(id: "slack", label: "Slack message")
+        let send = AutomationButton(id: "send", label: "Send in Slack", bindings: ["thread": "", "target": "{fields.to}", "text": "{body}"], slot: .send)
+        slack.buttons = [ActionButtonInfo(button: send)]
+        let thread = SlackTarget.resolve(to: "#eng", thread: "1759600000.123456", lookup: { _ in nil })
+        // The pill and the filter say what the card's callout says: Send is off.
+        XCTAssertEqual(slack.readyWords(for: thread), "Can’t reply in thread")
+        XCTAssertTrue(ActionTypeInfo.isBlocked(slack.readyWords(for: thread)))
+        XCTAssertEqual(ActionFacets.values("slack", "status", ready, types: [slack], slackTarget: thread), ["Can’t reply in thread"])
+        var f = FacetFilter()
+        f.toggle("status", "Can’t reply in thread")
+        XCTAssertTrue(ActionFacets.matches("slack", f, ready, types: [slack], slackTarget: thread))
+        // An unreadable link is the same: a reply that can't find its thread.
+        let unreadable = SlackTarget.resolve(to: "#eng", thread: "the standup thread", lookup: { _ in nil })
+        XCTAssertEqual(slack.readyWords(for: unreadable), "Can’t reply in thread")
+        // A button that fills in the thread is ready.
+        var threaded = slack
+        threaded.buttons[0].button.bindings["thread"] = "{fields.thread}"
+        XCTAssertEqual(threaded.readyWords(for: thread), "Ready to send")
+        XCTAssertFalse(ActionTypeInfo.isBlocked("Ready to send"))
+    }
+
     func testSlackStatusesAndMatching() {
         let notWritten = item("a", "slack", .open)
         let ready = item("b", "slack", .ready, body: "Hi", fields: ["to": "Mei Tanaka"], labels: ["tea-club"])
@@ -84,7 +107,7 @@ final class ActionsFiltersTests: XCTestCase {
         var slack = ActionTypeInfo(id: "slack", label: "Slack message")
         slack.buttons = [ActionButtonInfo(button: AutomationButton(id: "send", label: "Send in Slack", slot: .send))]
         XCTAssertEqual(ActionFacets.values("slack", "status", ready, types: [slack]), ["Ready to send"])
-        XCTAssertEqual(ActionFacets.fixed("slack", "status", types: [slack]), ["Not written", "Draft", "Ready to send", "Needs a recipient", "Copied"])
+        XCTAssertEqual(ActionFacets.fixed("slack", "status", types: [slack]), ["Not written", "Draft", "Ready to send", "Needs a recipient", "Can’t reply in thread", "Copied"])
         XCTAssertEqual(ActionFacets.values("slack", "status", copied), ["Copied"])
         var f = FacetFilter()
         f.toggle("status", "Ready to paste")

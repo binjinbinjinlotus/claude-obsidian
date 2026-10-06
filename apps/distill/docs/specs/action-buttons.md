@@ -772,6 +772,12 @@ Order: core → API → CLI → Mac. Each step is one commit, with `npm test
   A remembered name, a button that doesn't use the To field, or Copy keep
   "Ready to send"; other To problems (a group, a handle with spaces) keep their
   own words on the To row.
+- **Can't reply in thread (2026-10-06).** The same for a thread the sending
+  button can't reach (it leaves `thread` empty, or the link can't be read):
+  the pill, the detail badge and the status filter read **Can't reply in
+  thread** (peach), matching the card's callout, not "Ready to send"
+  (`ActionTypeInfo.cantReplyInThread`, `isBlocked`). Snapshot
+  `sa-to-thread-off`.
 
 ## Where to send (2026-10-06)
 

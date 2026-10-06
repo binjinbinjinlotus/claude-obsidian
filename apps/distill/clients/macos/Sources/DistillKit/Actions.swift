@@ -414,12 +414,19 @@ public struct ActionTypeInfo: Codable, Hashable, Identifiable, Sendable {
     }
     /// One ready item's words (action-buttons.md, "Where to send"): a Slack message whose To is a name Distill
     /// doesn't know yet, while a button sends to {fields.to}, reads "Needs a recipient" instead of "Ready to send".
+    /// A thread the sending button can't reach (it leaves thread empty, or the link can't be read) reads
+    /// "Can't reply in thread", like the card's callout.
     public func readyWords(for target: SlackTarget?) -> String {
-        if id == "slack", let target, target.ask != nil,
-           buttons.contains(where: { $0.button.enabled && target.blocks($0.button) != nil }) { return Self.needsRecipient }
+        guard id == "slack", let target,
+              buttons.contains(where: { $0.button.enabled && target.blocks($0.button) != nil }) else { return readyWords }
+        if target.ask != nil { return Self.needsRecipient }
+        if target.kind == .thread { return Self.cantReplyInThread }
         return readyWords
     }
     public static let needsRecipient = "Needs a recipient"
+    public static let cantReplyInThread = "Can’t reply in thread"
+    /// Ready words that mean Send is off: drawn peach, never as ready.
+    public static func isBlocked(_ words: String) -> Bool { words == needsRecipient || words == cantReplyInThread }
     /// Usable now: on, and not a reserved slot (Email).
     public var isUsable: Bool { enabled && !reserved }
 }

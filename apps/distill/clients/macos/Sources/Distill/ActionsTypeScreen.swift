@@ -227,7 +227,7 @@ struct TypeListScreen: View {
             if item.status == .ready && (store.copiedAt[item.id] != nil || item.lastEvent("copied") != nil) { return ("Copied", .ready) }
             if item.status == .ready {
                 let words = type.readyWords(for: item.type == "slack" ? store.slackTarget(item) : nil)
-                return (words, words == ActionTypeInfo.needsRecipient ? .error : .ready) // peach, like Needs you
+                return (words, ActionTypeInfo.isBlocked(words) ? .error : .ready) // peach, like Needs you
             }
         }
         return ("Draft", .draft)

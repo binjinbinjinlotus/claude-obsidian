@@ -102,8 +102,8 @@ public enum ActionFacets {
         switch (kind, key) {
         case ("slack", "status"):
             let ready = types.first { $0.id == "slack" }?.readyWords ?? "Ready to paste"
-            // A button that sends: a message whose To is a name Distill doesn't know needs a recipient first.
-            return ["Not written", "Draft", ready] + (ready == "Ready to send" ? [ActionTypeInfo.needsRecipient] : []) + ["Copied"]
+            // A button that sends: a name Distill doesn't know needs a recipient first; a thread it can't reach can't be replied in.
+            return ["Not written", "Draft", ready] + (ready == "Ready to send" ? [ActionTypeInfo.needsRecipient, ActionTypeInfo.cantReplyInThread] : []) + ["Copied"]
         case ("jira", "status"), ("confluence", "status"): return ["Not written", "Draft", "Created"]
         case ("history", "type"):
             let builtin = ["To do", "Slack message", "Jira ticket", "Confluence page"]
