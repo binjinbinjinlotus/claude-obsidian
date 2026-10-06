@@ -66,4 +66,9 @@ if [[ "${1:-}" == "--install" ]]; then
   rm -rf "$HOME/Applications/Distill.app"
   cp -R "$BUNDLE" "$HOME/Applications/"
   echo "Installed $HOME/Applications/Distill.app"
+  # Only the installed copy should show in Launchpad and Spotlight: unregister the build copy and keep
+  # Spotlight out of the build folder.
+  touch "$(dirname "$BUNDLE")/.metadata_never_index"
+  LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+  [[ -x "$LSREG" ]] && "$LSREG" -u "$BUNDLE" >/dev/null 2>&1 || true
 fi
