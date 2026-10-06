@@ -17,6 +17,14 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**The button editor never shows an argument's name twice (2026-10-06).** The
+owner's `text` argument read "text / text required": its hint only repeated
+the name, and the name could wrap. A hint that comes from the same word as the
+name (`text`, `<text>`, `--text`, any case) is dropped for the generic "{a
+field} or text"; a real hint ("#channel, @handle or an ID") stays. Names sit
+on one line that never wraps; the grey note gives way first.
+(`ScriptCommandArg.editorNote` / `editorPlaceholder`, action-buttons.md.)
+
 **Rebuild on the Couldn't fix card is a reply (2026-10-06).** It sends a fixed
 "rebuild against the pages as they are now" reply rather than a new core
 action: the owner's click resets recovery like any reply, it works for a

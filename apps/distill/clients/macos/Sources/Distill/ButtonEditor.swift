@@ -116,15 +116,18 @@ struct ButtonEditorSheet: View {
             ForEach(command.bindable) { arg in
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
+                        // The name never wraps; the note gives way first.
                         Text(arg.name).font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        Text(kindNote(arg)).font(Theme.body(11)).foregroundStyle(Theme.faint)
+                            .lineLimit(1).fixedSize().layoutPriority(1)
+                        Text(arg.editorNote).font(Theme.body(11)).foregroundStyle(Theme.faint)
+                            .lineLimit(1).truncationMode(.tail)
                         Spacer()
                         Menu {
                             ForEach(keys, id: \.self) { k in Button("{\(k)}") { insert(k, into: arg.name) } }
                         } label: { Text("Insert field ▾").font(Theme.body(11.5, .semibold)).foregroundStyle(Theme.muted) }
                             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
                     }
-                    TextField(arg.kind == .switch ? "true / false, or {a field}" : (arg.hint ?? "{a field} or text"),
+                    TextField(arg.editorPlaceholder,
                               text: Binding(get: { draft.bindings[arg.name] ?? "" }, set: { draft.bindings[arg.name] = $0 }))
                         .textFieldStyle(.roundedBorder).font(.system(size: 12, design: .monospaced))
                 }
@@ -197,15 +200,6 @@ struct ButtonEditorSheet: View {
             Text(title).font(Theme.body(12.5)).foregroundStyle(Theme.muted).frame(width: 80, alignment: .leading)
             content()
             Spacer(minLength: 0)
-        }
-    }
-
-    private func kindNote(_ arg: ScriptCommandArg) -> String {
-        switch arg.kind {
-        case .flag: return "\(arg.flag ?? "") value" + (arg.isRequired ? "" : " · optional, left out when empty")
-        case .switch: return "\(arg.flag ?? "") on or off"
-        case .positional: return arg.isRequired ? "required" : "optional"
-        case .word: return ""
         }
     }
 

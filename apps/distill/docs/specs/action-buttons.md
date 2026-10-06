@@ -754,6 +754,12 @@ Order: core → API → CLI → Mac. Each step is one commit, with `npm test
   `collectors-add-kind`, and the Commands path `collectors-add-commands-source`
   and `collectors-add-commands`. For Commands, the Source step's hint says the
   arguments come from buttons (not the vault and queue paths).
+- **Argument rows (2026-10-06).** Each row is the name on one line (it never
+  wraps), a grey note ("--thread value · optional, left out when empty",
+  "required") and the template field. The field's placeholder is the hint,
+  unless the hint only repeats the name (`text` for `text`), which showed the
+  word twice; then it is "{a field} or text" (`ScriptCommandArg.editorNote`,
+  `editorPlaceholder`). Snapshot state `sa-card-editor-empty`.
 - **Ready to send (2026-10-06).** A ready Slack message reads "Ready to send"
   when a button holds the Send slot (and is on), not "Ready to paste"
   (`ActionTypeInfo.readyWords`): the row, the detail and the status filter.

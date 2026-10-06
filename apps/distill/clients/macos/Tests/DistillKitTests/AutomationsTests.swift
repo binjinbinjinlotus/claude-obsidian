@@ -110,6 +110,27 @@ final class AutomationsTests: XCTestCase {
         XCTAssertEqual(type.readyWords, "Ready to paste", "another slot doesn't send it")
     }
 
+    func testButtonEditorArgumentWordsNeverRepeatTheName() {
+        // The owner's `text` argument read "text / text required": its hint only repeated the name.
+        for hint in ["text", "Text", "<text>", " TEXT ", "--text"] {
+            let arg = ScriptCommandArg(name: "text", kind: .positional, hint: hint)
+            XCTAssertEqual(arg.editorPlaceholder, "{a field} or text", hint)
+            XCTAssertEqual(arg.editorNote, "required")
+        }
+        XCTAssertEqual(ScriptCommandArg(name: "text", kind: .positional).editorPlaceholder, "{a field} or text")
+        XCTAssertEqual(ScriptCommandArg(name: "text", kind: .positional, hint: "  ").editorPlaceholder, "{a field} or text")
+        let target = ScriptCommandArg(name: "target", kind: .positional, required: true, hint: "#channel, @handle or an ID")
+        XCTAssertEqual(target.editorPlaceholder, "#channel, @handle or an ID", "a real hint stays")
+        XCTAssertEqual(target.editorNote, "required")
+        let thread = ScriptCommandArg(name: "thread", kind: .flag, flag: "--thread", required: false)
+        XCTAssertEqual(thread.editorNote, "--thread value · optional, left out when empty")
+        XCTAssertEqual(thread.editorPlaceholder, "{a field} or text")
+        let loud = ScriptCommandArg(name: "loud", kind: .switch, flag: "--loud", hint: "loud")
+        XCTAssertEqual(loud.editorNote, "--loud on or off")
+        XCTAssertEqual(loud.editorPlaceholder, "true / false, or {a field}")
+        XCTAssertEqual(ScriptCommandArg(name: "note", kind: .positional, required: false).editorNote, "optional")
+    }
+
     func testDisplayText() {
         let run = ActionButtonRun(runId: "r", buttonId: "b", label: "Send in Slack", durationMs: 1200, result: "failed", exitCode: 3)
         XCTAssertEqual(AutomationText.runLine(run, time: "10:42 AM"), "Send in Slack · exit 3 · 1.2 s · 10:42 AM")

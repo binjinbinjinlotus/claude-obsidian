@@ -34,6 +34,33 @@ public struct ScriptCommandArg: Codable, Hashable, Sendable, Identifiable {
 
     /// What the core assumes when `required` is absent.
     public var isRequired: Bool { required ?? (kind == .positional) }
+
+    /// The grey words beside the name in the button editor ("--thread value · optional, left out
+    /// when empty", "required").
+    public var editorNote: String {
+        switch kind {
+        case .flag: return "\(flag ?? "") value" + (isRequired ? "" : " · optional, left out when empty")
+        case .switch: return "\(flag ?? "") on or off"
+        case .positional: return isRequired ? "required" : "optional"
+        case .word: return ""
+        }
+    }
+
+    /// The field's placeholder. A hint that only repeats the name ("text" for `text`, "<text>")
+    /// says nothing new, so the generic one shows instead.
+    public var editorPlaceholder: String {
+        if kind == .switch { return "true / false, or {a field}" }
+        guard let hint, !hint.trimmingCharacters(in: .whitespaces).isEmpty, !Self.sameWord(hint, name) else {
+            return "{a field} or text"
+        }
+        return hint
+    }
+
+    /// "text", "<text>", "TEXT", "--text" and "text_" all come from the declared word `text`.
+    static func sameWord(_ a: String, _ b: String) -> Bool {
+        func bare(_ s: String) -> String { s.lowercased().filter { $0.isLetter || $0.isNumber } }
+        return !bare(a).isEmpty && bare(a) == bare(b)
+    }
 }
 
 public struct ScriptResultParse: Codable, Hashable, Sendable {

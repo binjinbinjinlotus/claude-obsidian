@@ -15,7 +15,8 @@ enum ScriptActionFixtures {
         args: [ScriptCommandArg(name: "send", kind: .word, value: "send"),
                ScriptCommandArg(name: "thread", kind: .flag, flag: "--thread", required: false, hint: "a message ts, to reply in its thread"),
                ScriptCommandArg(name: "target", kind: .positional, hint: "@person or #channel"),
-               ScriptCommandArg(name: "text", kind: .positional)],
+               // The owner's own declaration: a hint that only repeats the name (the editor drops it).
+               ScriptCommandArg(name: "text", kind: .positional, hint: "text")],
         endOptions: true, timeoutSeconds: 30, result: ScriptResultParse(json: true, keyPattern: "ts"))
 
     /// Slack CLI: the owner's own Python file; it collects nothing, it offers `send` to buttons.
@@ -173,6 +174,15 @@ extension StatesSnapshot {
         e = S.engine()
         natural("sa-card-editor", f, "Actions", "The button editor", "Runs Slack CLI › Send a message; each argument a template; the preview on the selected item.", e) {
             ButtonEditorSheet(target: ButtonEditorTarget(typeID: "slack", button: S.sendButton, itemID: "s1"), close: {}, preview: S.preview)
+                .background(RoundedRectangle(cornerRadius: 14).fill(Color.white))
+        }
+
+        // The same editor before any argument is filled: placeholders, never the name twice.
+        e = S.engine()
+        var blank = S.sendButton
+        blank.bindings = [:]
+        natural("sa-card-editor-empty", f, "Actions", "The button editor, nothing filled", "Each argument's name on one line; the placeholder is its hint, or “{a field} or text” when the hint only repeats the name.", e) {
+            ButtonEditorSheet(target: ButtonEditorTarget(typeID: "slack", button: blank, itemID: "s1"), close: {}, preview: nil)
                 .background(RoundedRectangle(cornerRadius: 14).fill(Color.white))
         }
 
