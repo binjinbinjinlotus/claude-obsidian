@@ -217,10 +217,31 @@ public struct JobActions: Codable, Hashable, Sendable {
 /// Plain words for the preview (shared by To confirm, Ask and Review).
 public enum ActionContextText {
     /// "Tomasz and Jin" from a source path / page title.
+    /// A title as plain text (action-summary.md): "**✍ Quick notes**" → "✍ Quick notes"; emoji stay.
+    /// Same rules as the core's `plainTitle`, so older stored items show clean names too.
+    public static func plainTitle(_ s: String) -> String {
+        var t = s.trimmingCharacters(in: .whitespaces)
+        func sub(_ pattern: String, _ template: String) {
+            guard let re = try? NSRegularExpression(pattern: pattern) else { return }
+            t = re.stringByReplacingMatches(in: t, range: NSRange(t.startIndex..., in: t), withTemplate: template)
+        }
+        sub("^#{1,6}\\s+", "")
+        sub("\\[\\[([^\\]|]+)\\|([^\\]]+)\\]\\]", "$2")
+        sub("\\[\\[([^\\]]+)\\]\\]", "$1")
+        sub("\\[([^\\]]+)\\]\\([^)]*\\)", "$1")
+        sub("(\\*\\*|__)(.+?)\\1", "$2")
+        sub("(^|[^\\w*])([*_])(?=\\S)(.+?)(?<=\\S)\\2(?!\\w)", "$1$3")
+        sub("`([^`]*)`", "$1")
+        sub("\\*\\*|__", "")
+        sub("\\s+", " ")
+        t = t.trimmingCharacters(in: .whitespaces)
+        return t.isEmpty ? s.trimmingCharacters(in: .whitespaces) : t
+    }
+
     public static func sourceName(_ item: ActionItem) -> String? {
         switch item.source {
         case .note(_, let path, let title, _):
-            if let title, !title.isEmpty { return title }
+            if let title, !title.isEmpty { return plainTitle(title) }
             if let path { return ((path as NSString).lastPathComponent as NSString).deletingPathExtension }
             return item.context.raw.map { (($0.inboxPath ?? $0.path) as NSString).lastPathComponent }
         case .ask(_, _, _, let cited, _, _):

@@ -199,6 +199,8 @@ struct ActionPreview: View {
     @EnvironmentObject var engine: AppModel
     @ObservedObject var store: ActionsStore
     let item: ActionItem
+    /// action-summary.md: inside ConfirmDetail (the right pane), without the row's indent.
+    var inPane = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
@@ -210,7 +212,7 @@ struct ActionPreview: View {
             filled
             willWrite
         }
-        .padding(.leading, 46).padding(.trailing, 14).padding(.bottom, 14).padding(.top, 2)
+        .padding(.leading, inPane ? 0 : 46).padding(.trailing, inPane ? 0 : 14).padding(.bottom, inPane ? 0 : 14).padding(.top, 2)
     }
 
     @ViewBuilder private var filled: some View {
@@ -262,36 +264,52 @@ struct ActionConfirmRow: View {
     var buttons = true
     /// Review: its source is left out of this change.
     var leftOut: String? = nil
+    /// action-summary.md: on screens with a right pane, a click selects the row into the pane (no chevron,
+    /// no inline preview, no row buttons); nil keeps the in-place expand (Review).
+    var onSelect: (() -> Void)? = nil
+    var isSelected = false
+
+    private var selects: Bool { onSelect != nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Theme.muted).frame(width: 12).padding(.top, 6)
+                if !selects {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Theme.muted).frame(width: 12).padding(.top, 6)
+                }
                 let style = ActionsTheme.typeStyle(item.type)
                 Image(systemName: style.0).font(.system(size: 11, weight: .semibold)).foregroundStyle(style.2)
                     .frame(width: 22, height: 22).background(RoundedRectangle(cornerRadius: 7).fill(style.1))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(item.title).font(Theme.body(14, .semibold)).lineLimit(expanded ? nil : 2)
+                    Text(item.title).font(Theme.body(14, .semibold)).lineLimit(selects ? 1 : (expanded ? nil : 2))
                         .fixedSize(horizontal: false, vertical: true)
+                    if selects, let line = ActionSummaryText.rowLine(item, summarizing: store.summarizing.contains(item.id)) {
+                        Text(line.text).font(Theme.body(12.5)).italic(line.italic)
+                            .foregroundStyle(line.italic ? Theme.muted : Theme.ink.opacity(0.8)).lineLimit(1)
+                    }
                     meta
                 }
                 Spacer(minLength: 6)
-                if buttons {
+                if buttons && !selects {
                     ActionButton(title: item.type == "todo" ? "Add" : "Create draft", icon: "plus", kind: .soft, height: 26) { store.confirm([item.id]) }
                     IconButton(systemImage: "xmark", size: 26, help: "Dismiss") { store.dismiss([item.id]) }
                 }
             }
             .padding(.horizontal, 12).padding(.vertical, 9)
             .contentShape(Rectangle())
-            .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() } }
-            .help(expanded ? "Hide the preview" : "Show what it will create")
-            if expanded { ActionPreview(store: store, item: item) }
+            .onTapGesture {
+                if let onSelect { onSelect() } else { withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() } }
+            }
+            .help(selects ? "Show what it is about" : (expanded ? "Hide the preview" : "Show what it will create"))
+            if expanded && !selects { ActionPreview(store: store, item: item) }
         }
-        .background(RoundedRectangle(cornerRadius: 12).fill(expanded ? Color.white : Theme.primaryTint.opacity(0.35)))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(expanded ? ActionsTheme.selectedStroke : .clear, lineWidth: 1.5))
+        .background(RoundedRectangle(cornerRadius: 12).fill(highlighted ? Color.white : Theme.primaryTint.opacity(0.35)))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(highlighted ? ActionsTheme.selectedStroke : .clear, lineWidth: 1.5))
         .opacity(leftOut == nil ? 1 : 0.5)
     }
+
+    private var highlighted: Bool { selects ? isSelected : expanded }
 
     private var meta: some View {
         let label = store.type(item.type)?.label ?? item.type
@@ -304,5 +322,100 @@ struct ActionConfirmRow: View {
         }
         return Text(parts.joined(separator: " · "))
             .font(Theme.body(11)).foregroundStyle(leftOut == nil ? Theme.muted : Theme.peachInk).lineLimit(2)
+    }
+}
+
+
+/// action-summary.md: the one line under a To-confirm row's title.
+enum ActionSummaryText {
+    struct Line: Equatable { let text: String; let italic: Bool }
+
+    static func rowLine(_ item: ActionItem, summarizing: Bool) -> Line? {
+        if let s = item.summary?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty { return Line(text: s, italic: false) }
+        if summarizing { return Line(text: "Summarizing…", italic: true) }
+        if let why = item.why?.trimmingCharacters(in: .whitespacesAndNewlines), !why.isEmpty { return Line(text: "Why: \(why)", italic: true) }
+        return nil
+    }
+}
+
+
+/// action-summary.md: a To-confirm item in the right pane: what it is about, where it came from, and
+/// what Add / Create draft will do; the owner decides here. An older item without a summary gets one
+/// after the selection rests for 600 ms.
+struct ConfirmDetail: View {
+    @ObservedObject var store: ActionsStore
+    let item: ActionItem
+    /// Position among the To-confirm rows, for "2 of 12".
+    var position: (Int, Int)? = nil
+    var onDone: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Scrolling {
+                VStack(alignment: .leading, spacing: 14) {
+                    header
+                    Text(item.title).font(Theme.display(20)).foregroundStyle(Theme.ink)
+                        .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    summaryBlock
+                    ActionPreview(store: store, item: item, inPane: true)
+                }
+                .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 24)
+            }
+            Divider().overlay(Theme.border)
+            HStack(spacing: 10) {
+                ActionButton(title: "Dismiss", icon: "xmark", kind: .plain, height: 32) { store.dismiss([item.id]); onDone?() }
+                    .keyboardShortcut(.delete, modifiers: .command)
+                Spacer()
+                ActionButton(title: item.type == "todo" ? "Add" : "Create draft", icon: "plus", kind: .primary, height: 32) {
+                    store.confirm([item.id]); onDone?()
+                }
+                .keyboardShortcut(.return, modifiers: .command)
+            }
+            .padding(.horizontal, 22).padding(.vertical, 12)
+        }
+        .task(id: item.id) {
+            guard item.summary == nil else { return }
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            if !Task.isCancelled { store.summarize(item) }
+        }
+    }
+
+    private var header: some View {
+        let label = store.type(item.type)?.label ?? item.type
+        return HStack(spacing: 8) {
+            Text("To confirm").font(Theme.body(11.5, .bold)).foregroundStyle(Theme.primary)
+                .padding(.horizontal, 10).padding(.vertical, 4).background(Capsule().fill(Theme.primaryTint))
+            Text(ActionContextText.target(item, typeLabel: label)).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
+            Spacer(minLength: 4)
+            if let position { Text("\(position.0) of \(position.1)").font(Theme.body(11.5)).foregroundStyle(Theme.faint) }
+        }
+    }
+
+    @ViewBuilder private var summaryBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("WHAT IT’S ABOUT").font(Theme.body(10.5, .bold)).tracking(0.6).foregroundStyle(Theme.faint)
+            if let summary = item.summary, !summary.isEmpty {
+                Text(summary).font(Theme.body(14)).foregroundStyle(Theme.ink)
+                    .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            } else if store.summarizing.contains(item.id) {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Summarizing…").font(Theme.body(13).italic()).foregroundStyle(Theme.muted)
+                }
+            } else if let error = item.error, error.message.hasPrefix("Couldn’t summarize") {
+                HStack(spacing: 8) {
+                    Text("Couldn’t summarize.").font(Theme.body(13)).foregroundStyle(Theme.peachInk)
+                    Button("Try again") { store.summarize(item) }.buttonStyle(.plain)
+                        .font(Theme.body(13, .semibold)).foregroundStyle(Theme.primary)
+                }
+            } else if case .manual = item.source {
+                Text("Added by you.").font(Theme.body(13).italic()).foregroundStyle(Theme.muted)
+            } else {
+                Text("Summarizing…").font(Theme.body(13).italic()).foregroundStyle(Theme.muted)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panel))
     }
 }

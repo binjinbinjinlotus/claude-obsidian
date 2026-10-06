@@ -1,7 +1,7 @@
 ---
 type: spec
 title: Action summary (what a found action is about)
-status: designed
+status: built
 created: 2026-10-05
 updated: 2026-10-05
 tags:
@@ -354,3 +354,28 @@ Older clients ignore the field. Older items decode with `summary: null`.
   one-line rows keep the list readable.
 - **The original is gone.** A summary from wiki-only context is thinner. The
   pane's FROM card already says "wiki only".
+
+## Built (2026-10-05)
+
+Built in core, API and macOS:
+
+- `summary` on every found item. The find prompts ask for it, and edited find
+  prompts get it too, because the instruction is appended.
+- `summarizeAction`, also as `POST /v1/actions/:id/summarize`.
+- A confirmed to-do without a note takes the summary as its note.
+- Send to copies the summary.
+- Plain source titles, in the core and in the app.
+- To-confirm rows select into the pane (`ConfirmDetail`) on To do and on each
+  type screen, with ↑/↓, Return and Delete.
+- Older items are summarized 600 ms after they are selected.
+- The "Found by by" fix.
+- Ask rows show the summary.
+
+Not built yet:
+
+- **Ask rows:** the click-to-open-in-place behaviour and the pencil for editing
+  the title. A click on the title still edits it.
+- **"Summarize all"** on the group.
+- **Snapshot states:** `asum-todo-confirm`, `asum-jira-confirm` and
+  `asum-todo-summarizing`.
+

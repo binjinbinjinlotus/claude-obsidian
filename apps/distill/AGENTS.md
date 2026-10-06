@@ -47,6 +47,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Live log](docs/specs/live-log.md) | built (core, API, macOS UI; no CLI) |
 | [Clean up inbox](docs/specs/inbox-cleanup.md) | built (core, API, macOS UI; no CLI) |
 | [Full reads](docs/specs/full-read.md) | built (core, API, CLI, Mac UI; the wiki-ingest skill wording) |
+| [Action summary](docs/specs/action-summary.md) | built (core, API, macOS; Ask rows show the summary, no click-to-open yet) |
 | [Resizable panes](docs/specs/resizable-panes.md) | built (macOS: every split screen, `PaneSplit.swift`) |
 
 ## Layout

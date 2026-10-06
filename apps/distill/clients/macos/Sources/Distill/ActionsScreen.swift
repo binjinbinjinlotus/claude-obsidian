@@ -129,6 +129,15 @@ struct TodoScreen: View {
         if let id = store.selected["todo"], let item = store.items[id], item.type == "todo", item.status == .open || item.status == .done { return item }
         return nil
     }
+    /// action-summary.md: a To-confirm row selected into the pane (any type: To do lists them all).
+    private var selectedPending: ActionItem? {
+        guard let id = store.selected["todo"], let item = store.items[id], item.status == .pending,
+              toConfirm.contains(where: { $0.id == id }) else { return nil }
+        return item
+    }
+    private var confirmSelection: Binding<String?> {
+        Binding(get: { store.selected["todo"] }, set: { store.selected["todo"] = $0 })
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -142,7 +151,16 @@ struct TodoScreen: View {
                 .zIndex(5)
             HStack(alignment: .top, spacing: 8) {
                 list
-                if let item = selectedItem ?? (visible.first { $0.status == .open }), store.phase == .loaded, !visible.isEmpty {
+                if let pending = selectedPending, store.phase == .loaded {
+                    let ids = toConfirm.map(\.id)
+                    ConfirmDetail(store: store, item: pending, position: ids.firstIndex(of: pending.id).map { ($0 + 1, ids.count) }) {
+                        store.selected["todo"] = ConfirmSelection.next(after: pending.id, in: ids)
+                    }
+                    .paneWidth(.todoDetail, automatic: 330)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .overlay(alignment: .leading) { Rectangle().fill(Theme.border).frame(width: 1) }
+                    .zIndex(4)
+                } else if let item = selectedItem ?? (visible.first { $0.status == .open }), store.phase == .loaded, !visible.isEmpty {
                     TodoDetail(store: store, item: item, editing: $ui.editing, menu: $ui.menu, now: now)
                         .paneWidth(.todoDetail, automatic: 330)
                         .frame(maxHeight: .infinity, alignment: .top)
@@ -179,7 +197,7 @@ struct TodoScreen: View {
                 } else if visible.isEmpty && toConfirm.isEmpty && ui.adding == nil {
                     emptyState.padding(.top, 60)
                 } else {
-                    if !toConfirm.isEmpty { ToConfirmGroup(store: store, items: toConfirm, expanded: ui.previewing) }
+                    if !toConfirm.isEmpty { ToConfirmGroup(store: store, items: toConfirm, expanded: ui.previewing, selection: confirmSelection) }
                     if case .context(let line)? = searchContext, !ui.filter.text.isEmpty {
                         Text("\(visible.count) of \(todos.filter { ui.filter.statusMatches($0) }.count) to-dos match")
                             .font(Theme.body(12)).foregroundStyle(Theme.muted).padding(.horizontal, 12).padding(.vertical, 6)
@@ -398,6 +416,9 @@ struct ToConfirmGroup: View {
     let items: [ActionItem]
     /// Rows open on their preview (snapshots start with some open).
     @State var expanded: Set<String> = []
+    /// action-summary.md: on screens with a right pane, the selected row (shown in the pane). Nil keeps
+    /// the in-place expand.
+    var selection: Binding<String?>? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -412,12 +433,67 @@ struct ToConfirmGroup: View {
             }
             ForEach(items) { item in
                 // v11 (action-context.md): the full title and where it goes; open it for the preview.
-                ActionConfirmRow(store: store, item: item, expanded: Binding(
-                    get: { expanded.contains(item.id) },
-                    set: { open in if open { expanded.insert(item.id) } else { expanded.remove(item.id) } }))
+                if let selection {
+                    ActionConfirmRow(store: store, item: item, expanded: .constant(false),
+                                     onSelect: { selection.wrappedValue = item.id }, isSelected: selection.wrappedValue == item.id)
+                } else {
+                    ActionConfirmRow(store: store, item: item, expanded: Binding(
+                        get: { expanded.contains(item.id) },
+                        set: { open in if open { expanded.insert(item.id) } else { expanded.remove(item.id) } }))
+                }
             }
         }
         .padding(.bottom, 6)
+        .modifier(ConfirmKeys(store: store, items: items, selection: selection))
+    }
+}
+
+/// action-summary.md: ↑/↓ move, Return adds, Delete dismisses, while the To-confirm list has focus.
+/// After Add or Dismiss the selection moves to the next row.
+private struct ConfirmKeys: ViewModifier {
+    @ObservedObject var store: ActionsStore
+    let items: [ActionItem]
+    let selection: Binding<String?>?
+
+    func body(content: Content) -> some View {
+        if let selection {
+            content
+                .focusable()
+                .focusEffectDisabled()
+                .onKeyPress(.downArrow) { move(selection, by: 1) }
+                .onKeyPress(.upArrow) { move(selection, by: -1) }
+                .onKeyPress(.return) { act(selection) { store.confirm([$0]) } }
+                .onKeyPress(.delete) { act(selection) { store.dismiss([$0]) } }
+        } else {
+            content
+        }
+    }
+
+    private func index(_ selection: Binding<String?>) -> Int? {
+        items.firstIndex { $0.id == selection.wrappedValue }
+    }
+
+    private func move(_ selection: Binding<String?>, by step: Int) -> KeyPress.Result {
+        guard !items.isEmpty else { return .ignored }
+        let i = index(selection).map { $0 + step } ?? (step > 0 ? 0 : items.count - 1)
+        selection.wrappedValue = items[max(0, min(items.count - 1, i))].id
+        return .handled
+    }
+
+    private func act(_ selection: Binding<String?>, _ run: (String) -> Void) -> KeyPress.Result {
+        guard let i = index(selection) else { return .ignored }
+        run(items[i].id)
+        selection.wrappedValue = ConfirmSelection.next(after: items[i].id, in: items.map(\.id))
+        return .handled
+    }
+}
+
+/// The row selected after one is added or dismissed: the next, else the one before, else none.
+enum ConfirmSelection {
+    static func next(after id: String, in ids: [String]) -> String? {
+        guard let i = ids.firstIndex(of: id) else { return ids.first }
+        if i + 1 < ids.count { return ids[i + 1] }
+        return i > 0 ? ids[i - 1] : nil
     }
 }
 

@@ -248,6 +248,11 @@ struct AskFoundBlock: View {
                         .onTapGesture { if item.status == .pending { editText = item.title; editing = item.id } }
                         .help(compact ? (item.why ?? "") : "Click to fix it before adding")
                 }
+                // action-summary.md: what it is about, before the reason.
+                if !compact, let summary = item.summary, !summary.isEmpty {
+                    Text(summary).font(Theme.body(11.5)).foregroundStyle(Theme.ink.opacity(0.8)).lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if !compact, let why = item.why, !why.isEmpty {
                     (Text("Why: ").fontWeight(.bold).foregroundColor(Theme.softInk) + Text(why))
                         .font(Theme.body(11)).foregroundStyle(Theme.muted).lineLimit(2)

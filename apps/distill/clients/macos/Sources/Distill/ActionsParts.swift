@@ -426,8 +426,10 @@ struct ActionContextBlock: View {
         case .manual: return "Added by you · \(created)"
         case .agent: return "Added by an agent · \(created)"
         default:
+            // The stored detail is already "by Sonnet"; never "Found by by Sonnet".
             let model = item.lastEvent("found")?.detail ?? item.draftModel ?? "Sonnet"
-            return "Found by \(model) · \(created)"
+            let by = model.hasPrefix("by ") ? model : "by \(model)"
+            return "Found \(by) · \(created)"
         }
     }
 

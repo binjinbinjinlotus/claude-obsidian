@@ -397,6 +397,27 @@ final class ActionsStore: ObservableObject {
         }
     }
 
+    /// Items whose summary is being written (action-summary.md); separate from `running`, so a summary
+    /// never blocks Add, Create draft or an edit.
+    @Published var summarizing: Set<String> = []
+
+    /// An older item's summary, written on first open. One call per item; a failure shows on the item
+    /// (`error` "Couldn’t summarize…") with Try again.
+    func summarize(_ item: ActionItem) {
+        guard let client, item.summary == nil, !summarizing.contains(item.id) else { return }
+        if case .manual = item.source { return }
+        summarizing.insert(item.id)
+        Task {
+            defer { summarizing.remove(item.id) }
+            do {
+                let result = try await client.summarizeAction(item.id)
+                if let current = items[result.id] { var merged = current; merged.summary = result.summary; merged.error = result.error; items[result.id] = merged }
+            } catch {
+                engine?.report(error)
+            }
+        }
+    }
+
     /// Create message / Write draft; Cancel keeps what was there.
     func draft(_ item: ActionItem) { longRun(item, .drafting(Date())) { try await $0.draftAction(item.id) } }
 

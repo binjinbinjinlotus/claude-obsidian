@@ -59,8 +59,10 @@ struct TypeListScreen: View {
         let list = visible
         let groups = grouped(list)
         let ordered = groups.flatMap(\.1)
-        let selected = ordered.first { $0.id == store.selected[type.id] && !store.completing.contains($0.id) }
-            ?? ordered.first { !store.completing.contains($0.id) }
+        // action-summary.md: a selected To-confirm row shows in the pane instead of a live item.
+        let selectedPending = pending.first { $0.id == store.selected[type.id] }
+        let selected = selectedPending != nil ? nil : (ordered.first { $0.id == store.selected[type.id] && !store.completing.contains($0.id) }
+            ?? ordered.first { !store.completing.contains($0.id) })
         VStack(alignment: .leading, spacing: 0) {
             ActionsHeader(eyebrow: "ACTIONS", title: type.pluralLabel, subtitle: store.lastFound(type: type.id)) {
                 SoftButton(title: "History", fill: .white, size: .small, stroke: true, systemImage: "clock") { store.historyRequest += 1 }
@@ -83,7 +85,10 @@ struct TypeListScreen: View {
                     HStack(alignment: .top, spacing: 14) {
                         Scrolling {
                             VStack(alignment: .leading, spacing: 2) {
-                                if !pending.isEmpty { ToConfirmGroup(store: store, items: pending) }
+                                if !pending.isEmpty {
+                                    ToConfirmGroup(store: store, items: pending,
+                                                   selection: Binding(get: { store.selected[type.id] }, set: { store.selected[type.id] = $0 }))
+                                }
                                 ForEach(groups, id: \.0) { title, items in
                                     ActionGroupHeader(title: title, count: items.count, icon: "chevron.down")
                                     ForEach(items) { row($0, selected: $0.id == selected?.id) }
@@ -92,10 +97,18 @@ struct TypeListScreen: View {
                             .padding(.bottom, 60)
                         }
                         .paneWidth(.actionsList(type.id), automatic: listWidth, container: geo.size.width)
-                        Scrolling {
-                            if let selected { detail(selected).padding(2).padding(.bottom, 60) }
+                        if let p = selectedPending {
+                            let ids = pending.map(\.id)
+                            ConfirmDetail(store: store, item: p, position: ids.firstIndex(of: p.id).map { ($0 + 1, ids.count) }) {
+                                store.selected[type.id] = ConfirmSelection.next(after: p.id, in: ids)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        } else {
+                            Scrolling {
+                                if let selected { detail(selected).padding(2).padding(.bottom, 60) }
+                            }
+                            .frame(maxWidth: .infinity)
                         }
-                        .frame(maxWidth: .infinity)
                     }
                     .padding(.leading, 20).padding(.trailing, 24)
                 }

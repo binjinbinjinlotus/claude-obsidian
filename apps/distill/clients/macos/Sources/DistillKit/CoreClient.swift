@@ -422,6 +422,8 @@ public final class CoreClient: Sendable {
     /// `POST /v1/actions/:id/draft`: Create message / Write draft. Long-running (AI); cancelling
     /// the task closes the request, which stops the run, and throws `CancellationError`.
     public func draftAction(_ id: String) async throws -> ActionItem { try await longAction(id, "draft") }
+    /// action-summary.md: write an older item's summary (POST /v1/actions/:id/summarize).
+    public func summarizeAction(_ id: String) async throws -> ActionItem { try await longAction(id, "summarize") }
 
     /// `POST /v1/actions/:id/improve`: the type's improve pass after an edit (Done). Cancellable like `draftAction`.
     public func improveAction(_ id: String) async throws -> ActionItem { try await longAction(id, "improve") }

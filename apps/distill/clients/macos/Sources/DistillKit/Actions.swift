@@ -193,6 +193,8 @@ public struct ActionItem: Codable, Hashable, Identifiable, Sendable {
     /// Type-specific fields (to, due, priority, person, project, issueType, space, parent, labels…). Nulls are dropped.
     public var fields: [String: String]
     public var why: String?
+    /// What the action is about, 2–4 plain sentences (action-summary.md). Nil on older items until summarized.
+    public var summary: String?
     public var source: ActionSource
     /// v11: the original's lines and the wiki refs, read from the same `source` object (action-context.md).
     public var context: ActionContextRefs = .none
@@ -211,16 +213,17 @@ public struct ActionItem: Codable, Hashable, Identifiable, Sendable {
                 fields: [String: String] = [:], why: String? = nil, source: ActionSource = .manual, vaultPath: String? = nil,
                 labels: [String] = [], createdAt: Date = Date(), updatedAt: Date? = nil, draftModel: String? = nil,
                 previousBody: String? = nil, external: ActionExternal? = nil, error: ActionError? = nil,
-                fromActionID: String? = nil, events: [ActionEvent] = [], context: ActionContextRefs = .none) {
+                fromActionID: String? = nil, events: [ActionEvent] = [], context: ActionContextRefs = .none,
+                summary: String? = nil) {
         self.id = id; self.type = type; self.status = status; self.title = title; self.body = body; self.fields = fields
         self.why = why; self.source = source; self.vaultPath = vaultPath; self.labels = labels; self.createdAt = createdAt
         self.updatedAt = updatedAt ?? createdAt; self.draftModel = draftModel; self.previousBody = previousBody
         self.external = external; self.error = error; self.fromActionID = fromActionID; self.events = events
-        self.context = context
+        self.context = context; self.summary = summary
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, type, status, title, body, fields, why, source, vaultPath, labels, createdAt, updatedAt, draftModel
+        case id, type, status, title, body, fields, why, summary, source, vaultPath, labels, createdAt, updatedAt, draftModel
         case previousBody, external, error, fromActionID, events
     }
 
@@ -233,6 +236,7 @@ public struct ActionItem: Codable, Hashable, Identifiable, Sendable {
         body = c.lossy(String.self, .body)
         fields = Self.decodeFields(c.lossy(JSONValue.self, .fields))
         why = c.lossy(String.self, .why)
+        summary = c.lossy(String.self, .summary).flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
         source = c.lossy(ActionSource.self, .source) ?? .manual
         context = c.lossy(ActionContextRefs.self, .source) ?? .none
         vaultPath = c.lossy(String.self, .vaultPath)
@@ -256,6 +260,7 @@ public struct ActionItem: Codable, Hashable, Identifiable, Sendable {
         try c.encodeIfPresent(body, forKey: .body)
         try c.encode(fields, forKey: .fields)
         try c.encodeIfPresent(why, forKey: .why)
+        try c.encodeIfPresent(summary, forKey: .summary)
         // The source's own keys and the context keys share one object.
         let sourceEncoder = c.superEncoder(forKey: .source)
         try source.encode(to: sourceEncoder)
