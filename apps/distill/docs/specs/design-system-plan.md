@@ -1,7 +1,7 @@
 ---
 type: spec
 title: Design system and canvas structure plan
-status: designed
+status: developing
 created: 2026-10-06
 updated: 2026-10-06
 tags:
@@ -21,12 +21,17 @@ proposes a structure and a migration. Related: [design-process.md](design-proces
   canvas with explicit `pages`, per-board and per-note `page` keys and
   `launch.page` draws. That held for a small canvas and for all 141 real
   boards split over 7 pages, and for a board on one page importing a
-  component on another. The 2026-10-06 blank canvas was not caused by using
-  pages per the docs. Each page also has its own link (`#page-<id>`), which
+  component on another. The 2026-10-06 blank canvas was not caused by pages:
+  it is the size of one page. All 141 boards on a single page stayed blank
+  past 85 s in 4 of 4 runs: with one explicit page, with no pages, on a
+  fresh artifact, and on the live main canvas itself. The same 141 boards
+  split over 7 pages drew in 3 of 3 runs. Each page also has its own link (`#page-<id>`), which
   gives the owner a deep link per area.
 - **A Design System artifact works.** A Design System holding Distill's
   tokens (from `Theme.swift`) and two real components (`PrimaryButton`,
   `Pill`) installs on a canvas, and boards mount the components by name.
+  Not verified: the canvas Theme menu and colour pickers listing the tokens
+  (menus did not open in the test browser).
 - **A hidden component kit works too.** `.dc.html` files under
   `project/ds/<folder>/` are not boards, and a board can still `<dc-import>`
   them by a root path (`name="ds/kit/Chip2"`). The current 44 components can
@@ -45,25 +50,32 @@ proposes a structure and a migration. Related: [design-process.md](design-proces
 | B: pages + cross-page import | https://claude.ai/artifact/VKsyEjY1sv87vv8fvUWYEN | A, plus `Chip.dc.html` on page Shell, imported by a board on page Review | Drew without a click: "Imported from page Shell" chip shown inside Review one. With `launch.page` = shell, the Shell page showed Shell one, Shell two and the Chip board. Opening `…#page-39984a4260aa` showed Review whatever `launch.page` said. |
 | B (later): hidden kit | same | `project/ds/kit/Chip2.dc.html` and `Nest.dc.html`, not in `boards` | `<dc-import name="ds/kit/Chip2">` drew; `name="Chip2"` (bare) drew an empty placeholder. Inside `ds/kit/Nest`, the bare `Chip2` failed and `ds/kit/Chip2` drew: import names resolve from `project/`, not from the importing file. Neither kit file appeared as a board on any page. |
 | C: real boards on pages | https://claude.ai/artifact/D6uy69PjyLsb9ipxCj6M6Z | All 141 boards of the main canvas (read from it, unchanged) on 7 pages: 0 Components (84), 1 Capture & Queue (17), 2 Review (13), 3 Ask (3), 4 Actions (12), 5 Automations (6), 6 Settings & Shell (6); 19 row notes | Launch page Capture & Queue: a blank window (no toolbar) for about 40 s, then all 17 boards drew, with their Sidebar, Pill and button imports from page 0. Launch page Actions: toolbar after about 60 s, all boards drawn by about 90 s. |
+| C (control): one page | same | The main canvas's own layout, every board and note on one page `distill`, `launch.page` = distill (the config that blanked the old canvas) | Toolbar, then an empty canvas at 5% zoom past 100 s, also after a click. |
+| C (control): no pages | same | The same layout with `pages: []` and no `page` keys (the main canvas's config) | Toolbar after about 30 s, empty canvas past 100 s, also after a click. Republishing the 7-page index on the same artifact drew again: the artifact was not stale. |
+| E: one page, fresh | https://claude.ai/artifact/1wYxMAC6P5jKjSfF7otiY9 | A new artifact with the one-page config and the 141 boards | Toolbar, then empty past 150 s. |
+| Main canvas, viewed only | https://claude.ai/artifact/7PAQ8AKofpY9yPvakwvUMB | Unchanged (no pages) | In the same browser: toolbar, then empty past 85 s. |
 | DS: tokens + components | https://claude.ai/artifact/QENafzc1iM5wYA3gKnMsmz | `tokens.json` (20 colours, 2 families, 6 type styles, 5 spacing, 2 radius, 4 size tokens), `components/bundle.js` (`window.Distill`: PrimaryButton, Pill), `bundle.css` on token variables, previews, README, cover | The page opened. The cover drew in Distill's colours from the tokens. No `tokens.css` was written to its files (`list` showed none); the page only generates it in the browser. |
-| DS install | https://claude.ai/artifact/3dgqZT45pbx1QgYQ7zf6xb | `designSystems` record; `ds/distill/tokens.json`, `bundle.js` and `bundle.css` copied server side with `{artifact, path}`; a `tokens.css` written by hand; two boards using `<x-import component-from-global-scope="Distill.PrimaryButton" …>` | Both boards drew after a click on the canvas: four PrimaryButtons (regular, small, mini, disabled at 45%), five Pills (count, Ready with checkmark, Writing with spinner, small stroked Draft, dashed Not set), and a card built from token variables. Clicking Approve in Play was not verified: the test browser's clicks did not reach controls inside the editor. |
+| DS install | https://claude.ai/artifact/3dgqZT45pbx1QgYQ7zf6xb | `designSystems` record; `ds/distill/tokens.json`, `bundle.js` and `bundle.css` copied server side with `{artifact, path}`; a `tokens.css` written by hand; two boards using `<x-import component-from-global-scope="Distill.PrimaryButton" …>` | Both boards drew after a click on the canvas: four PrimaryButtons (regular, small, mini, disabled at 45%), five Pills (count, Ready with checkmark, Writing with spinner, small stroked Draft, dashed Not set), and a card built from token variables. Not verified: clicking Approve in Play, and the Theme menu listing the installed tokens; the test browser's clicks did not reach controls or menus inside the editor. |
 
 Viewer behaviour observed in these tests:
 
-- Large canvases show a blank window with no toolbar for 40–60 s before
-  anything draws. Splitting into pages did not make the first draw faster.
+- A page with all 141 boards (75,000 px each way) never drew in our runs;
+  a page with 13–17 of them drew in 40–90 s, with a blank window and no
+  toolbar for the first 40–60 s. The decision log says the main canvas drew
+  in about 30 s on 2026-10-06, so the single-page canvas works only
+  sometimes. Small pages are the reliable shape.
 - Some loads left the frames white until the first click on the canvas.
 - One tab crashed ("Error loading tab") 20 s after opening test A.
 - Every board shows scrollbars, even when its root is exactly `w`×`h`.
 - The page menu and sidebar did not respond to the test browser's clicks,
   so pages were switched with `launch.page` or a `#page-<id>` link.
 
-What blanked `VSqHFPZjcqY2bMqFEnPqpG` is still open. Its failing index (one page
-`distill` holding all 141 boards, `launch.page` = distill) is valid per the
-docs, and test C shows the same boards draw on pages. The likeliest causes are
-the long first draw read as "blank", or stale state in that artifact (the
-decision log says it stayed blank after its index matched a working copy).
-Neither is a reason to avoid pages.
+What blanked `VSqHFPZjcqY2bMqFEnPqpG`: its failing index (one page `distill`
+holding all 141 boards) is valid per the docs, and the controls show the
+failure follows the one huge page, not the `pages` key. The 2026-10-06 bisect
+that blamed pages compared a run that drew once (no pages) with runs that
+didn't; the same no-pages layout fails today. Pages are part of the fix, not
+the cause.
 
 ## Audit against the Design type's guidance
 
@@ -210,8 +222,9 @@ proposals.
 `docs/specs/design-process.md` keeps one table of canvas and page links (each
 page by its `#page-<id>` link): the owner's index.
 
-Why separate canvases and not only pages: test C shows pages fix
-findability, not load time (40–90 s with everything in one artifact). With
+Why separate canvases and not only pages: test C shows pages make the canvas
+draw and findable, but each page still took 40–90 s with everything in one
+artifact. With
 components in the system and the kit, no board imports across canvases, so
 splitting costs nothing.
 
@@ -282,7 +295,8 @@ rollback until step 7.
 
 1. **Pages on the current canvas (no file changes).** Add the 7 pages of
    test C to the main canvas's `canvas.json`, set `page` on boards and notes,
-   and repack rows per page. In `render.py`, replace `drop_pages` with
+   and repack rows per page. Test C is this step on a copy; it also makes the
+   canvas draw where the one-page canvas stays blank. In `render.py`, replace `drop_pages` with
    page-aware placement. Check: each page's link opens that page with all its
    boards drawn; the board count stays 141.
 2. **Create the Distill Design System.** Tokens only plus README and cover,
@@ -307,7 +321,7 @@ rollback until step 7.
    reviews the page.
 7. **Split into area canvases.** Create each `Distill · <Area>` canvas, install
    the system, publish its pages, and add its links to design-process.md.
-   Check: each loads in under 15 s; every state id in `screens/*.json`
+   Check: each loads in under 15 s (a target, not yet measured); every state id in `screens/*.json`
    maps to exactly one board on exactly one canvas (a test). Then mark the
    main canvas "archived" in its title and stop publishing to it. Never
    delete it.
@@ -323,7 +337,10 @@ one-place token changes. Steps 4–7 can wait.
   editor that was invalid. Mitigations: small canvases, each step on a test
   copy first, and the main canvas kept until the area canvases are trusted.
 - **Undocumented behaviour.** Root-path `<dc-import name="ds/…">` and the hidden kit
-  work but are not in the type's docs, so a type release could change them.
+  work but are not in the type's docs, and the kit bends its rule that only
+  a design-system install writes under `project/ds/`. A type release could
+  break it. Keep the kit in its own folder (`ds/distill-kit/`), never inside
+  an installed system's folder, so a re-install's removals can't touch it.
   The bundle (documented) is the long-term home, and the kit is a bridge.
 - **The page doesn't write `tokens.css`.** Canvases need it for
   `bundle.css`. We generate it ourselves in the format the type documents. If
