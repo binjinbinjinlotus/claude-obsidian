@@ -557,6 +557,11 @@ function parseNewCollector(body: unknown): NewCollectorInput {
     const timeoutSeconds = optTimeout(so);
     const manifest = optString(so, 'manifest');
     input.script = { source, interpreter, ...(timeoutSeconds !== undefined ? { timeoutSeconds } : {}), ...(manifest !== undefined ? { manifest } : {}) };
+    // Automations: Add's "Commands for buttons" creates a script that never collects on its own.
+    if (so.collects !== undefined) {
+      if (typeof so.collects !== 'boolean') throw bad('"collects" must be a boolean');
+      input.script.collects = so.collects;
+    }
   }
   if (kind === 'script' && !input.script) throw bad('a script collector needs "script"');
   return input;

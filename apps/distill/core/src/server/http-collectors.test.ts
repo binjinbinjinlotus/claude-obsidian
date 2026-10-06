@@ -62,6 +62,12 @@ describe('HTTP API: collectors', () => {
     const script = await request(port, 'POST', '/v1/collectors', { kind: 'script', script: { source: { inline: 'echo hi' }, interpreter: 'python3', timeoutSeconds: 60 } });
     assert.equal(script.status, 201);
     assert.deepEqual(last('createCollector')!.args[0], { kind: 'script', script: { source: { inline: 'echo hi' }, interpreter: 'python3', timeoutSeconds: 60 } });
+    // Add's "Commands for buttons": created with collects false (never collects on its own schedule).
+    const commands = await request(port, 'POST', '/v1/collectors', { kind: 'script', script: { source: { inline: 'echo hi' }, interpreter: 'python3', collects: false } });
+    assert.equal(commands.status, 201);
+    assert.deepEqual(last('createCollector')!.args[0], { kind: 'script', script: { source: { inline: 'echo hi' }, interpreter: 'python3', collects: false } });
+    const wrong = await request(port, 'POST', '/v1/collectors', { kind: 'script', script: { source: { inline: 'echo hi' }, interpreter: 'python3', collects: 'no' } });
+    assert.equal(wrong.status, 400);
 
     for (const bad of [
       {},
