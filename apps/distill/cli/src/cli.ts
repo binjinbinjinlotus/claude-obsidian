@@ -154,7 +154,8 @@ Commands:
   history       List past Ask conversations (newest first; pinned ones are kept).
                 \`history show ID\` prints every question and answer; \`history rm ID\`
                 deletes one. Continue one with \`distill ask --conversation ID\`.
-  status       Server, active vault, queue size, reviews waiting, runner problems.
+  status        Server, active vault, queue size, reviews waiting, approvals waiting to
+                apply (in order), batches recovery is working on, runner problems.
   queue scan    Check the active queue folder for changes now (the app's Refresh): new
                 files and folders appear, files removed by hand drop out, folders are
                 read again. Prints what changed. \`queue sync\` is the same command.
@@ -244,6 +245,8 @@ or $DISTILL_STATE_DIR.
             {"id", "deleted": true}
   status    {"version", "activeVault": {"path","queueDirectory"}|null, "problems": [{"code","message"}],
              "queueCount", "pendingApprovals", "runningJobs", "nextBatchAt",
+             "applyQueue": [{"id","name","vaultPath","position"}],
+             "recovering": [{"id","name","signature","state","waitUntil"?}],
              "runners": [{"id","displayName","enabled","problems"}],
              "server": {"pid","port","startedAt","version"}}
   queue scan
@@ -1158,11 +1161,36 @@ async function status(args: string[], io: CliIO, api: ApiFactory): Promise<numbe
   return 0;
 }
 
+/** The problem a recovering batch has, in plain words (review-queue.md, failure signatures). */
+const RECOVERY_PROBLEM: Record<string, string> = {
+  'stale-again': 'its plan keeps going out of date',
+  'plan-error': 'the vault core couldn’t check its plan',
+  'runner-failed': 'the AI run stopped with an error',
+  denial: 'Claude was blocked from running a command',
+  lock: 'the vault was locked',
+  'not-recorded': 'the apply wasn’t recorded',
+  'full-read-stop': 'a source couldn’t be read in full',
+  'session-gone': 'its AI session is gone',
+};
+
+function recoveryState(r: NonNullable<StatusResponse['recovering']>[number]): string {
+  if (r.state === 'waiting') return r.waitUntil ? `next try at ${r.waitUntil}` : 'waiting to try again';
+  if (r.state === 'gaveUp') return 'couldn’t fix it, needs you (in the Distill app)';
+  return 'recovering';
+}
+
 function formatStatus(s: StatusResponse, server: ServerLock): string {
   const lines = [`Distill ${s.version} · server pid ${server.pid} on 127.0.0.1:${server.port}`];
   lines.push(s.activeVault ? `Vault:   ${s.activeVault.path}\nQueue:   ${s.activeVault.queueDirectory}` : 'Vault:   none selected');
   lines.push(`Queued:  ${s.queueCount} file${s.queueCount === 1 ? '' : 's'}${s.nextBatchAt ? ` · next batch ${s.nextBatchAt}` : ''}`);
   lines.push(`Jobs:    ${s.runningJobs} running · ${s.pendingApprovals} waiting for review${s.pendingApprovals ? ' (review in the Distill app)' : ''}`);
+  // review-queue.md: approvals waiting their turn to apply, and batches recovery works on.
+  for (const q of s.applyQueue ?? []) {
+    lines.push(`Applies: ${q.position}. ${q.name} (approved, waiting its turn in ${path.basename(q.vaultPath)}) [${q.id}]`);
+  }
+  for (const r of s.recovering ?? []) {
+    lines.push(`Recovery: ${r.name} · ${RECOVERY_PROBLEM[r.signature] ?? r.signature} · ${recoveryState(r)} [${r.id}]`);
+  }
   for (const r of s.runners) {
     lines.push(`Runner:  ${r.displayName} (${r.id})${r.enabled ? '' : ' disabled'}${r.problems.length ? ` · ${r.problems.length} problem(s)` : ''}`);
   }

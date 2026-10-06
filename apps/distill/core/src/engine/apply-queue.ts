@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Job, SinceApproved } from '../contracts.js';
+import type { Job, SinceApproved, StatusResponse } from '../contracts.js';
 import { pageShas, readBundle } from './review-labels.js';
 
 export interface StalePath {
@@ -49,6 +49,32 @@ export function queueOrder(jobs: Job[], vaultPath: string): Job[] {
   return jobs
     .filter((j) => j.vaultPath === vaultPath && j.state === 'awaitingApproval' && j.queuedApply)
     .sort((a, b) => a.queuedApply!.order - b.queuedApply!.order || a.createdAt.localeCompare(b.createdAt));
+}
+
+/** A batch's plain name for status lines: its first file without folder and extension, "+2" for the rest. */
+export function plainBatchName(j: Job): string {
+  const first = j.files[0];
+  return first ? `${path.basename(first).replace(/\.[^.]+$/, '')}${j.files.length > 1 ? ` +${j.files.length - 1}` : ''}` : j.id;
+}
+
+/** `distill status`: the apply queue (approvals waiting their turn, head first per vault) and recovering batches. */
+export function queueStatus(jobs: Job[]): Pick<StatusResponse, 'applyQueue' | 'recovering'> {
+  const vaults = [...new Set(jobs.filter((j) => j.queuedApply?.planSha256).map((j) => j.vaultPath))];
+  const applyQueue = vaults.flatMap((v) =>
+    queueOrder(jobs, v)
+      .filter((j) => j.queuedApply!.planSha256)
+      .map((j, i) => ({ id: j.id, name: plainBatchName(j), vaultPath: v, position: i + 1 })),
+  );
+  const recovering = jobs
+    .filter((j) => j.recovery && j.recovery.state !== 'fixed' && (j.state === 'awaitingApproval' || j.state === 'failed' || j.state === 'running'))
+    .map((j) => ({
+      id: j.id,
+      name: plainBatchName(j),
+      signature: j.recovery!.signature,
+      state: j.recovery!.state,
+      ...(j.recovery!.state === 'waiting' && j.recovery!.waitUntil ? { waitUntil: j.recovery!.waitUntil } : {}),
+    }));
+  return { applyQueue, recovering };
 }
 
 /** Bookkeeping pages every batch writes again (review-queue.md, What changed since you approved). */

@@ -122,7 +122,7 @@ import {
   type RecoveryAnswer,
 } from './recovery.js';
 import { runStructured } from '../actions/ai.js';
-import { queueOrder, sinceApproved, staleFor } from './apply-queue.js';
+import { queueOrder, queueStatus, sinceApproved, staleFor } from './apply-queue.js';
 import { createFullRead, type FullReadStep } from './full-read.js';
 import { archivedCopy, ledgerRecords } from '../coverage/archive.js';
 import { estimateTokens } from '../coverage/copy.js';
@@ -3795,6 +3795,7 @@ export function createEngine(opts: EngineOptions): Engine {
       queueCount: queueEntries().length,
       pendingApprovals: jobs.filter(needsOwner).length,
       runningJobs: jobs.filter((j) => j.state === 'running').length,
+      ...queueStatus(jobs),
       nextBatchAt: nextBatchAt ? isoDate(nextBatchAt) : null,
       lastQueueScanAt: lastQueueScanAt ? isoDate(lastQueueScanAt) : null,
       nextQueueScanAt: nextQueueScanAt ? isoDate(nextQueueScanAt) : null,

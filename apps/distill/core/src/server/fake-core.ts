@@ -27,6 +27,7 @@ import type {
   StatusResponse,
 } from '../contracts.js';
 import type { EngineExtras } from '../engine/index.js';
+import { queueStatus } from '../engine/apply-queue.js';
 
 /**
  * In-memory DistillCore for server/CLI tests and client development. Records
@@ -328,6 +329,7 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
         queueCount: queue.length,
         pendingApprovals: fake.jobs.filter((j) => j.state === 'awaitingApproval').length,
         runningJobs: fake.jobs.filter((j) => j.state === 'running').length,
+        ...queueStatus(fake.jobs),
         nextBatchAt: null,
         runners: [{ id: 'claude-code', displayName: 'Claude Code', enabled: true, problems: [] }],
       };

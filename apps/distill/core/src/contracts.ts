@@ -2119,6 +2119,10 @@ export interface StatusResponse {
   batchBudget?: { tokens: number; contextWindow: number; model: string; automatic: boolean } | null;
   /** v10: sources held in inbox/ because they couldn't be read in full. */
   heldCount?: number;
+  /** review-queue.md: approved batches waiting their turn to apply, per vault, `position` 1 = next. */
+  applyQueue?: { id: string; name: string; vaultPath: string; position: number }[];
+  /** review-queue.md: batches recovery is working on, waiting to try again (`waitUntil`), or gave up on. */
+  recovering?: { id: string; name: string; signature: RecoverySignature; state: RecoveryState['state']; waitUntil?: string }[];
 }
 
 /**

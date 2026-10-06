@@ -10,6 +10,7 @@ import {
   ensureToken,
   releaseLock,
   sampleConversation,
+  sampleJob,
   startServer,
   statePaths,
   writeLock,
@@ -657,6 +658,34 @@ describe('distill CLI', () => {
       const r = await cli(['status']);
       assert.match(r.stdout, /Vault: +\/tmp\/vault/);
       assert.match(r.stdout, /1 waiting for review/);
+    });
+    it('lists approvals waiting to apply, in order, and recovering batches (review-queue.md)', async () => {
+      const saved = core.jobs;
+      const at = '2026-10-06T10:00:00Z';
+      core.jobs = [
+        sampleJob({ id: 'job-b', files: ['inbox/Telus stand-up.md', 'inbox/x.md'], queuedApply: { at, order: 2, planSha256: 'h', bundlePath: '/b', labels: 'confirm' } }),
+        sampleJob({ id: 'job-a', files: ['inbox/Product sync.md'], queuedApply: { at, order: 1, planSha256: 'h', bundlePath: '/a', labels: 'confirm' } }),
+        sampleJob({ id: 'job-r', state: 'awaitingApproval', files: ['inbox/Tea.md'],
+          recovery: { state: 'waiting', signature: 'plan-error', attempts: [], waitUntil: '2026-10-06T10:01:00Z' } }),
+        sampleJob({ id: 'job-f', state: 'failed', files: ['inbox/Guide.pdf'], recovery: { state: 'gaveUp', signature: 'runner-failed', attempts: [] } }),
+        sampleJob({ id: 'job-ok', recovery: { state: 'fixed', signature: 'denial', attempts: [] } }),
+      ];
+      try {
+        const j = JSON.parse((await cli(['status', '--json'])).stdout);
+        assert.deepEqual(j.applyQueue.map((q: { id: string; position: number; name: string }) => [q.position, q.id, q.name]),
+          [[1, 'job-a', 'Product sync'], [2, 'job-b', 'Telus stand-up +1']]);
+        assert.deepEqual(j.recovering, [
+          { id: 'job-r', name: 'Tea', signature: 'plan-error', state: 'waiting', waitUntil: '2026-10-06T10:01:00Z' },
+          { id: 'job-f', name: 'Guide', signature: 'runner-failed', state: 'gaveUp' },
+        ]);
+        const r = await cli(['status']);
+        assert.match(r.stdout, /Applies: 1\. Product sync \(approved, waiting its turn in vault\) \[job-a\]\nApplies: 2\. Telus stand-up \+1/);
+        assert.match(r.stdout, /Recovery: Tea · the vault core couldn’t check its plan · next try at 2026-10-06T10:01:00Z \[job-r\]/);
+        assert.match(r.stdout, /Recovery: Guide · the AI run stopped with an error · couldn’t fix it, needs you/);
+        assert.doesNotMatch(r.stdout, /job-ok/);
+      } finally {
+        core.jobs = saved;
+      }
     });
   });
 
