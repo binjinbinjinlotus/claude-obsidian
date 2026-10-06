@@ -104,6 +104,8 @@ public struct SlackTarget: Codable, Hashable, Sendable {
     /// (or when the button doesn't use the To field).
     public func blocks(_ button: AutomationButton) -> String? {
         let used = Set(button.bindings.values.flatMap(Self.placeholders))
+        // A thread Distill can't read is never left out: that would post at the top level (as the core).
+        if used.contains("fields.thread"), kind == .thread, threadTs == nil { return problem }
         guard used.contains("fields.to") || used.contains("recipient") else { return nil }
         if let problem { return problem }
         if kind == .thread && !used.contains("fields.thread") {

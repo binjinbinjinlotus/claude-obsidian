@@ -77,6 +77,12 @@ final class SlackTargetTests: XCTestCase {
         var threaded = send
         threaded.bindings["thread"] = "{fields.thread}"
         XCTAssertNil(thread.blocks(threaded))
+        // A fixed target with thread {fields.thread}: a thread Distill can't read is off, never a top-level post (as the core).
+        let fixedThread = AutomationButton(id: "eng", label: "Reply in #eng", scriptId: "s", commandId: "send",
+                                           bindings: ["thread": "{fields.thread}", "target": "#eng", "text": "{body}"])
+        let unreadable = SlackTarget.resolve(to: "#eng", thread: "the standup thread", lookup: { _ in nil })
+        XCTAssertEqual(unreadable.blocks(fixedThread), "“the standup thread” isn’t a Slack message link, so Distill can’t tell which thread to reply in.")
+        XCTAssertNil(thread.blocks(fixedThread))
         XCTAssertEqual(SlackTarget.placeholders("{a}{{b}}{ c }"), ["a", "c"])
     }
 
