@@ -171,7 +171,7 @@ Collect off, and two commands:
 
 | Command | argv after the script | Arguments |
 | --- | --- | --- |
-| `send` · Send a message | `send [--thread TS] -- <target> <text>` | `send` (word); `thread` (flag `--thread`, optional); `target` (positional, required, pattern `^(#\S+|@\S+|[CGDUW][A-Z0-9]+)$`, hint "#channel, @handle or an ID"); `text` (positional, required) |
+| `send` · Send a message | `send [--thread TS] -- <target> <text>` | `send` (word); `thread` (flag `--thread`, optional); `target` (positional, required, pattern `^(#\S+\|@\S+\|[CGDUW][A-Z0-9]+)$`, hint "#channel, @handle or an ID"); `text` (positional, required) |
 | `mark` · Mark read | `mark [--ts TS] -- <target>` | `mark` (word); `ts` (flag `--ts`, optional); `target` (positional, required, same pattern) |
 
 - Result for `send`: `keyPattern` `ts ([0-9]+\.[0-9]+)\)`. The CLI prints
@@ -209,7 +209,7 @@ CLI itself) on the owner's `python3` 3.13.2:
 | `send @x "-x"`, `send @x "--done"`, `send @x "--thread"` | **fails** (exit 2): argparse reads the text as an option |
 | `send @x -- "--thread"`, `send -- @x "-x"` | works |
 | `send --thread 1.2 @x -- "- item"` | works |
-| `send @x '$(rm -rf ~) "q" \`x\` '"'"'s'` | works: the text arrives byte for byte |
+| `send @x TEXT`, where TEXT holds `$(rm -rf ~)`, double and single quotes, and backticks | works: the text arrives byte for byte |
 
 So `endOptions` defaults to **on**: Distill puts `--` before the first
 positional. A body like `--` or `-x` then reaches the script as text.
@@ -351,6 +351,13 @@ python3 /Users/jin/…/apps/scripts/slack/slack_cli.py send -- @mei.tanaka 'Hi @
 - **Only the app runs buttons.** The CLI and agents can list buttons and
   preview a command, but they can't run one, just as they can't grant a
   collector consent. (Owner decision; see "Decisions for the owner".)
+  - Enforcement: the CLI and the plugin have no run command. The run and
+    approve routes also refuse a request whose source isn't the app (the
+    `X-Distill-Client` header or the Mac app's User-Agent, read in
+    `activity/context.ts`), answering 403 `forbidden_client`.
+  - What this limits: which Distill client offers the action. It is not a
+    boundary against a program that holds the local API token and sends the
+    app's header. Collector Allow has the same limit today.
 
 ### The run sheet
 
@@ -526,7 +533,7 @@ Actions and the timeline list every run.
 | `PATCH /v1/collectors/:id {script: {commands?, collects?}}` | `updateCollector` | the collector; commands are validated (unique ids, known kinds, compilable patterns) |
 | `POST /v1/actions/:id/buttons/:buttonId/preview` | `previewActionButton(id, buttonId)` | `{argv, display, problems: [{arg, message}], approved, script: {state: 'ok' \| 'needsConsent' \| 'missing', name}}` |
 | `POST /v1/action-buttons/preview {typeId, button, actionId?}` | `previewButtonDraft` | the same, for an unsaved button in the editor |
-| `POST /v1/actions/:id/buttons/:buttonId/run {approve?: hash}` | `runActionButton` | 202 `{run, item}`; 409 `needsApproval {hash, argv, display}`; 409 `notAllowed` (script consent); 409 `busy`; 400 `invalid_request` with problems |
+| `POST /v1/actions/:id/buttons/:buttonId/run {approve?: hash}` | `runActionButton` | 202 `{run, item}`; 409 `needsApproval {hash, argv, display}`; 409 `notAllowed` (script consent); 409 `busy`; 400 `invalid_request` with problems; 403 `forbidden_client` when the source isn't the app |
 | `POST /v1/actions/:id/buttons/:buttonId/stop` | `stopActionButtonRun` | `{run}` |
 
 - Events: `collector.run.started` / `collector.run.output` /
@@ -652,7 +659,7 @@ Order: core → API → CLI → Mac. Each step is one commit, with `npm test
 
 **API**
 
-9. `server/http.ts`: the routes in "API (designed)", with
+9. `server/http.ts`: the routes in "API (designed)" (run and approve refuse non-app sources), with
    `http-buttons.test.ts`.
 
 **CLI**
