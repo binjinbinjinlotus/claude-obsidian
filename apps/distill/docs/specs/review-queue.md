@@ -998,9 +998,14 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
     recovery. A batch back in the queue under its approved hash counts as
     worked on (not settled, not Needs you).
   - Snapshot state `review-gaveup-split`.
+- **Rebuild and What was tried (2026-10-06).** The Couldn't fix card has
+  **Rebuild against the latest pages**: the owner's reply with a fixed text
+  (`RecoveryText.rebuildReply`), so it clears the recovery, works for a stopped
+  batch too, and a gone session asks first as every reply does. WHAT WAS TRIED
+  lists one row per attempt ("Opus · asked Claude to rebuild the plan · didn’t
+  help · $0.04"), words from `RecoveryText.fixWords`, which Activity's Fix row
+  uses too; an attempt's raw error is never shown.
 - **Still open:**
-  - The Couldn't fix card has no **Rebuild** option yet, and the attempts are
-    one line, not one row each.
 - Tests: `session-continuity.test.ts` (runner-failed recovery; a stopped batch
   can be rejected; a gone session proposes a new one and only the owner's
   Continue starts it), `engine.test.ts` (plan-error rule then agent with the

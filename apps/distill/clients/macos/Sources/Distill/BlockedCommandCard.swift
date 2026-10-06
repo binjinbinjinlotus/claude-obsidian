@@ -105,6 +105,8 @@ struct RecoveryCard: View {
     var onReject: (() -> Void)?
     /// Continue in a new session, after the owner confirms (recovery suggested it).
     var onNewSession: (() -> Void)? = nil
+    /// Rebuild against the latest pages (the owner's click; a reply to the batch's session).
+    var onRebuild: (() -> Void)? = nil
     /// Recovery's split proposal: rebuild these sources first (Approve with them picked).
     var onSplit: (([String]) -> Void)? = nil
     /// Recovery's discard proposal: discard the rebuilt part (its sources stay).
@@ -118,8 +120,21 @@ struct RecoveryCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 Label("Distill couldn’t fix this", systemImage: "exclamationmark.bubble").font(Theme.body(13, .bold))
                 Text(RecoveryText.summary(recovery)).font(Theme.body(12.5)).foregroundStyle(Theme.softInk).fixedSize(horizontal: false, vertical: true)
-                if let tried = RecoveryText.tried(recovery) { Text(tried).font(Theme.body(11.5)).foregroundStyle(Theme.muted) }
+                if !recovery.attempts.isEmpty {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("WHAT WAS TRIED").font(Theme.body(10.5, .heavy)).kerning(0.5).foregroundStyle(Theme.muted)
+                        ForEach(Array(RecoveryText.attemptRows(recovery).enumerated()), id: \.offset) { i, row in
+                            Text("\(i + 1). \(row)").font(Theme.body(12)).foregroundStyle(Theme.softInk)
+                        }
+                    }
+                }
                 FlowLayout(spacing: 8) {
+                    if let onRebuild {
+                        SoftButton(title: "Rebuild against the latest pages", tint: Theme.peachInk, fill: .white, size: .small,
+                                   systemImage: "arrow.triangle.2.circlepath", action: onRebuild)
+                            .fixedSize()
+                            .help("Asks this batch’s session to rebuild the plan for your vault as it is now. The new plan comes back for your OK.")
+                    }
                     if let group = RecoveryText.splitGroup(job), let onSplit {
                         SoftButton(title: group.count == 1 ? "Rebuild 1 source first" : "Rebuild \(group.count) sources first", tint: Theme.peachInk, fill: .white,
                                    size: .small, systemImage: "square.split.2x1") { onSplit(group) }

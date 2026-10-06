@@ -17,6 +17,11 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**Rebuild on the Couldn't fix card is a reply (2026-10-06).** It sends a fixed
+"rebuild against the pages as they are now" reply rather than a new core
+action: the owner's click resets recovery like any reply, it works for a
+stopped batch, and a gone session gets the usual confirmation. No new route.
+
 **Recovery after a spent rule: an agent call only where it can choose
 (2026-10-06).** Lock hands over to the recovery agent after its waits (it can
 check again, wait for another batch, or give up). Session-gone and

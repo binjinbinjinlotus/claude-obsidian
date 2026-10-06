@@ -432,6 +432,23 @@ describe('batches: approve, reply, allow, Open in Terminal', () => {
     assert.match(after.error ?? '', /overloaded/);
   });
 
+  test('Rebuild against the latest pages (the card) is the owner’s reply: recovery starts over, the same session rebuilds', async () => {
+    h = engineSetup(new FakeAgent([]));
+    const job = await reviewedBatch(h);
+    h.runner.steps.push({ throws: new RunnerError('Exited 1: 529 overloaded', 'nonZeroExit') });
+    await h.engine.reply(job.id, 'again');
+    await h.engine.whenIdle();
+    assert.equal(h.engine.getJob(job.id)!.recovery?.state, 'gaveUp');
+    h.runner.steps.push({ structured: { status: 'needs_input', summary: 'Rebuilding.', questions: [] } });
+    await h.engine.reply(job.id, 'Rebuild this batch’s plan against the pages as they are now.');
+    await h.engine.whenIdle();
+    const after = h.engine.getJob(job.id)!;
+    assert.equal(after.recovery, undefined, 'the owner acted');
+    assert.ok('resume' in h.runner.requests.at(-1)!.session, 'the same session');
+    assert.match(h.runner.requests.at(-1)!.prompt, /as they are now/);
+    assert.equal(after.state, 'awaitingApproval', 'a stopped batch comes back to Review');
+  });
+
   test('a stopped batch recovery gave up on can be rejected (review-queue.md)', async () => {
     h = engineSetup(new FakeAgent([]));
     const job = await reviewedBatch(h);

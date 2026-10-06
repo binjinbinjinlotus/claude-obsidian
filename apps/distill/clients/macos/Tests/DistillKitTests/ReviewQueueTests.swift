@@ -115,6 +115,20 @@ final class ReviewQueueTests: XCTestCase {
         XCTAssertTrue(RecoveryText.isActive(job), "back in the queue under the approved hash")
     }
 
+    func testAttemptRowsArePlainWordsNeverTheRawError() {
+        let r = RecoveryState(state: .gaveUp, signature: "runner-failed", attempts: [
+            RecoveryAttempt(at: Date(), fix: "rebuild_in_session", result: "failed", error: "Exited 1: API Error: 529 {\"type\":\"overloaded_error\"}"),
+            RecoveryAttempt(at: Date(), by: "agent", model: "opus", fix: "wait_then_retry", result: "fixed", costUSD: 0.04),
+            RecoveryAttempt(at: Date(), by: "agent", model: "claude-opus-4-1", fix: "made_up", result: "failed", error: "/Users/me/x.py"),
+        ])
+        let rows = RecoveryText.attemptRows(r)
+        XCTAssertEqual(rows, ["Distill · asked Claude to rebuild the plan · didn’t help",
+                              "Opus · waited, then tried your approved plan again · worked · $0.04",
+                              "\(ModelChoice.shortName("claude-opus-4-1")) · tried something Distill doesn’t know · didn’t help"])
+        XCTAssertFalse(rows.joined().contains("529") || rows.joined().contains("/Users"), "never the raw error")
+        XCTAssertTrue(RecoveryText.rebuildReply.contains("needs_approval"))
+    }
+
     func testQueueWordsAndTheBadgeRule() {
         let now = Date()
         var a = Job(id: "a", vaultPath: "/v", files: ["inbox/Product sync.md"], state: .running)

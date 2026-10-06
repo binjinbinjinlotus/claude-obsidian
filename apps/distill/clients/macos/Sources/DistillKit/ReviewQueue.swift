@@ -237,6 +237,36 @@ public enum RecoveryText {
         return job.sessionUnavailable == nil
     }
 
+    /// What a fix did, in plain words (Review's attempt rows and Activity). Never an attempt's raw error.
+    public static func fixWords(_ fix: String) -> String {
+        switch fix {
+        case "answer_denial": "told Claude to read the files instead"
+        case "rebuild_in_session": "asked Claude to rebuild the plan"
+        case "reinspect_same_bundle": "checked your approved plan again"
+        case "wait_then_retry": "waited, then tried your approved plan again"
+        case "split_batch": "suggested splitting the batch"
+        case "discard_stale_part": "suggested discarding the rebuilt part"
+        case "new_session": "suggested a new session"
+        case "give_up": "handed it to you"
+        default: "tried something Distill doesn’t know"
+        }
+    }
+
+    public static func sentenceCase(_ s: String) -> String { s.prefix(1).uppercased() + s.dropFirst() }
+
+    /// review-queue.md, "What was tried": one row per attempt, oldest first. "Opus · asked Claude to rebuild the plan · didn’t help · $0.04".
+    public static func attemptRows(_ r: RecoveryState) -> [String] {
+        r.attempts.map { a in
+            let who = a.by == "agent" ? ModelChoice.shortName(a.model ?? "the Recovery model") : "Distill"
+            let result = switch a.result { case "fixed": "worked"; case "running": "in progress"; default: "didn’t help" }
+            let cost = a.costUSD > 0 ? String(format: " · $%.2f", a.costUSD) : ""
+            return "\(who) · \(fixWords(a.fix)) · \(result)\(cost)"
+        }
+    }
+
+    /// What the card's Rebuild sends, as the owner's reply (a gone session asks first, as every reply does).
+    public static let rebuildReply = "Rebuild this batch’s plan against the pages as they are now: write the bundle again in this job’s directory and finish with needs_approval. Distill runs inspect and the approved apply itself."
+
     /// split_batch: the owner's one click rebuilds the first group (Approve with those pages); the rest wait.
     public static func splitGroup(_ job: Job) -> [String]? {
         guard job.state == .awaitingApproval, let r = job.recovery, r.state == .gaveUp, r.proposal == "split_batch",

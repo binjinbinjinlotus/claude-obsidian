@@ -429,11 +429,8 @@ public struct ActivityText: Sendable {
             case "plan-error": "The plan couldn't be checked"; case "runner-failed": "The AI run failed"; case let k?: k; case nil: nil
             }
             add("Problem", problem, keys: ["kind"])
-            let fix: String? = switch e.string("fix") {
-            case "answer_denial": "Told Claude to read the files instead"; case "rebuild_in_session": "Rebuilt against the latest pages"
-            case "new_session": "Suggested a new session"; case "give_up": "Asked you"; case let f?: f; case nil: nil
-            }
-            add("Fix", fix, keys: ["fix"])
+            // The same words as Review's attempt rows (RecoveryText.fixWords), never the raw error.
+            add("Fix", e.string("fix").map { RecoveryText.sentenceCase(RecoveryText.fixWords($0)) }, keys: ["fix"])
             add("By", e.string("by") == "agent" ? e.string("model").map { ModelChoice.shortName($0) } ?? "Recovery model" : e.string("by") == "rule" ? "Distill (a rule)" : nil,
                 keys: ["by", "model"])
             add("Tried", e.int("attempts").map { $0 == 1 ? "once" : "\($0) times" }, keys: ["attempts"])
