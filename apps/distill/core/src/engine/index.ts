@@ -1200,7 +1200,10 @@ export function createEngine(opts: EngineOptions): Engine {
     if (old) clearTimeout(old);
     const t = setTimeout(() => {
       recoveryWakes.delete(id);
-      void asScheduler(() => runRecoveryAgent(id, signature))().catch((err: unknown) => log('warn', `Recovery: ${(err as Error).message}`));
+      // Only the wait it was set for: the owner may have acted since (the recovery reset, gave up or was fixed).
+      const rec = findJob(id)?.recovery;
+      if (rec?.state !== 'waiting' || rec.signature !== signature) return;
+      track(asScheduler(() => runRecoveryAgent(id, signature))().catch((err: unknown) => log('warn', `Recovery: ${(err as Error).message}`)));
     }, Math.max(0, ms));
     t.unref?.();
     recoveryWakes.set(id, t);

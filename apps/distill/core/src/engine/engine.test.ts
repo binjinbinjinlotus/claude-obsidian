@@ -869,6 +869,50 @@ describe('blocked commands (review-queue.md)', () => {
     assert.deepEqual(job.recovery?.attempts.map((a) => a.by), ['rule', 'agent']);
   });
 
+  test('the minute’s wake runs the next agent attempt', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    let clock = Date.parse('2026-10-05T10:00:00Z');
+    h = setup([], { now: () => new Date(clock) });
+    const bad = needsApproval('/tmp/elsewhere/bundle.json');
+    h.runner.steps.push(bad, bad,
+      { structured: { diagnosis: 'Wrong folder.', fix: 'rebuild_in_session', reason: 'r', guidance: 'Write the bundle inside the job directory.' } },
+      bad, { structured: { diagnosis: 'It needs you.', fix: 'give_up', reason: 'r' } });
+    const created = await firstJob();
+    await h.engine.whenIdle();
+    assert.equal(h.engine.getJob(created.id)!.recovery?.state, 'waiting');
+    clock += 61_000;
+    t.mock.timers.tick(61_000);
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(h.runner.requests.length, 5, 'the second agent call');
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.deepEqual(job.recovery?.attempts.map((a) => a.by), ['rule', 'agent', 'agent']);
+  });
+
+  test('a wake left from an earlier recovery never revives one the owner reset', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const clock = Date.parse('2026-10-05T10:00:00Z');
+    h = setup([], { now: () => new Date(clock) });
+    const bad = needsApproval('/tmp/elsewhere/bundle.json');
+    h.runner.steps.push(bad, bad,
+      { structured: { diagnosis: 'Wrong folder.', fix: 'rebuild_in_session', reason: 'r', guidance: 'Write the bundle inside the job directory.' } },
+      bad);
+    const created = await firstJob();
+    await h.engine.whenIdle();
+    assert.equal(h.engine.getJob(created.id)!.recovery?.state, 'waiting');
+    // The owner replies inside the minute: recovery starts over, and this time gives up.
+    h.runner.steps.push(bad, bad, { structured: { diagnosis: 'It needs you.', fix: 'give_up', reason: 'r' } });
+    await h.engine.reply(created.id, 'try again');
+    await h.engine.whenIdle();
+    assert.equal(h.engine.getJob(created.id)!.recovery?.state, 'gaveUp');
+    const calls = h.runner.requests.length;
+    t.mock.timers.tick(61_000);
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(job.recovery?.state, 'gaveUp', 'the old wake leaves the owner’s Couldn’t fix alone');
+    assert.equal(h.runner.requests.length, calls);
+  });
+
   test('an apply turn with a blocked call is not answered', async () => {
     h = setup([]);
     const created = await firstJob();
