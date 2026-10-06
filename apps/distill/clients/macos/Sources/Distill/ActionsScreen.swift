@@ -450,7 +450,7 @@ struct ToConfirmGroup: View {
     }
 }
 
-/// action-summary.md: ↑/↓ move, Return adds, Delete dismisses, while the To-confirm list has focus.
+/// action-summary.md: ↑/↓ move, Return adds (⌥Return: Add as…), Delete dismisses, while the To-confirm list has focus.
 /// After Add or Dismiss the selection moves to the next row.
 private struct ConfirmKeys: ViewModifier {
     @ObservedObject var store: ActionsStore
@@ -464,7 +464,16 @@ private struct ConfirmKeys: ViewModifier {
                 .focusEffectDisabled()
                 .onKeyPress(.downArrow) { move(selection, by: 1) }
                 .onKeyPress(.upArrow) { move(selection, by: -1) }
-                .onKeyPress(.return) { act(selection) { store.confirm([$0]) } }
+                // Return adds as the found type; ⌥Return opens Add as… (actions.md).
+                .onKeyPress(keys: [.return]) { press in
+                    switch AddAs.key(returnWithOption: press.modifiers.contains(.option)) {
+                    case .add: return act(selection) { store.confirm([$0]) }
+                    case .openMenu:
+                        guard let id = selection.wrappedValue else { return .ignored }
+                        store.addAsMenu = id
+                        return .handled
+                    }
+                }
                 .onKeyPress(.delete) { act(selection) { store.dismiss([$0]) } }
         } else {
             content

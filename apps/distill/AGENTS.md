@@ -39,7 +39,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Labels and sources](docs/specs/labels-and-sources.md) | built (queue-file labels and the label gate: core, API, macOS UI) |
 | [Quick actions and shortcuts](docs/specs/quick-actions.md) | built |
 | [App icon](docs/specs/app-icon.md) | built |
-| [Actions](docs/specs/actions.md) | built (core, API, CLI, macOS UI; answer selection bar not yet) |
+| [Actions](docs/specs/actions.md) | built (core, API, CLI, macOS UI, Add as at confirm time; answer selection bar not yet) |
 | [Action context](docs/specs/action-context.md) | built (core, API, CLI, macOS UI: found in the batch before Review, raw + wiki refs, preview, Review "Actions found") |
 | [Collectors](docs/specs/collectors.md) | built (core, API, CLI, macOS UI incl. script files, TypeScript, packages and Test run; queue rows don't name the collector yet) |
 | [Activity log and trash](docs/specs/activity-log.md) | built (core, API, CLI, macOS UI) |

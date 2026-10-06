@@ -337,6 +337,32 @@ extension StatesSnapshot {
         e = actionsEngine(items: ActionFixtures.live() + ActionFixtures.pending(), select: "t3")
         todo("actions-todo-to-confirm", "To confirm", "Found items wait at the top with Add and ×, Add all and Dismiss all.", e)
 
+        // Add as at confirm time (actions.md): the menu, the Slack panel prefilled, and a required field left empty.
+        func addAs(_ open: (AppModel) -> Void) -> AppModel {
+            var items = ActionFixtures.live() + ActionFixtures.pending()
+            if let i = items.firstIndex(where: { $0.id == "p1" }) {
+                items[i].title = "Tell Mei the tasting room is booked for Saturday"
+                items[i].summary = "Mei brings the tea for the club. You booked the tasting room for Saturday at 2 PM and said you would tell her."
+            }
+            let e = actionsEngine(items: items, select: "p1")
+            e.actions.types = ScriptActionFixtures.types
+            e.actions.fixtureInlineMenus = true
+            open(e)
+            return e
+        }
+        e = addAs { $0.actions.addAsMenu = "p1" }
+        todo("actions-confirm-addas-menu", "Add as…", "Dismiss | Add as to-do ▾: the menu lists To-do first, then the types with a handler or button, each with what happens.", e)
+
+        e = addAs { e in
+            if let item = e.actions.items["p1"], let slack = e.actions.type("slack") { e.actions.addingAs["p1"] = AddAs.prefill(item, as: slack) }
+        }
+        todo("actions-confirm-addas-slack", "Add as Slack message", "The panel, prefilled: title, To from the person, the summary as the text; Who is Mei Tanaka in Slack? right there.", e)
+
+        e = addAs { e in
+            if let item = e.actions.items["p1"], let jira = e.actions.type("jira") { e.actions.addingAs["p1"] = AddAs.prefill(item, as: jira) }
+        }
+        todo("actions-confirm-addas-blocked", "A required field empty", "Add as Jira ticket with no Project: Add is off and says Fill in Project first.", e)
+
         e = actionsEngine(select: "t2")
         e.actions.toast = ActionToast(text: "Added 2 to-dos and created 1 draft from Tea club planning", undo: {})
         todo("actions-todo-auto-added", "Added without confirming", "Confirm off: items are added at once; Undo dismisses them.", e)

@@ -127,6 +127,13 @@ time.
   draft. A converted Slack message resolves its To exactly like a found one.
   Tests: `actions.test.ts` ("Add as: …"), `http-actions.test.ts`,
   `activity.test.ts`.
+- **Mac (built):** `AddAsViews.swift` (split button, Add as… menu, panel and
+  its footer), `DistillKit/AddAs.swift` (options, prefill, what blocks Add,
+  the keys, `ConfirmAs` and `CoreClient.confirmAction(_:as:)`). The panel
+  sits above What it's about in the To-confirm detail; in a row without the
+  right pane it opens under the row. Tests: `AddAsTests`. Snapshot states
+  `actions-confirm-addas-menu`, `actions-confirm-addas-slack`,
+  `actions-confirm-addas-blocked`.
 
 ## Settings
 
@@ -552,7 +559,9 @@ Status per part; `built` parts ship in `clients/macos`.
   (title, due, priority, people, labels; saved as you type); Add to-do row (↩
   adds, Esc cancels, labels you filter by pre-filled); ⌘/⇧-click selects for
   the bulk bar (Complete, Due date, Priority, Label, Send to, Remove, Clear);
-  "To confirm" group with Add / Create draft, ×, Add all, Dismiss all; empty,
+  "To confirm" group with Add / Create draft, ×, Add all, Dismiss all (the
+  detail's footer: Dismiss | Add as <found type> ▾, see Add as at confirm
+  time); empty,
   no-match (names the filters, Clear filters, Show completed), finding strip,
   first-load shimmer and "Couldn't find actions" with Try again.
 - **Handler tabs: Slack, Jira, Confluence and other types** (built,

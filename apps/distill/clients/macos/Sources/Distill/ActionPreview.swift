@@ -302,7 +302,29 @@ struct ActionConfirmRow: View {
                 if let onSelect { onSelect() } else { withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() } }
             }
             .help(selects ? "Show what it is about" : (expanded ? "Hide the preview" : "Show what it will create"))
-            if expanded && !selects { ActionPreview(store: store, item: item) }
+            .contextMenu {
+                if buttons && leftOut == nil {
+                    Menu("Add as") {
+                        ForEach(AddAs.options(store.types)) { o in
+                            Button(o.label + (o.id == item.type ? " (found as)" : "")) {
+                                store.addAs(item, o.id)
+                                if o.id != item.type { if let onSelect { onSelect() } else { expanded = true } }
+                            }
+                        }
+                    }
+                    Button("Dismiss") { store.dismiss([item.id]) }
+                }
+            }
+            if expanded && !selects {
+                if let draft = store.addingAs[item.id], let type = store.type(draft.type) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        AddAsPanel(store: store, item: item, type: type)
+                        AddAsPanelFooter(store: store, item: item, type: type)
+                    }
+                    .padding(.horizontal, 12).padding(.bottom, 10)
+                }
+                ActionPreview(store: store, item: item)
+            }
         }
         .background(RoundedRectangle(cornerRadius: 12).fill(highlighted ? Color.white : Theme.primaryTint.opacity(0.35)))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(highlighted ? ActionsTheme.selectedStroke : .clear, lineWidth: 1.5))
@@ -356,22 +378,29 @@ struct ConfirmDetail: View {
                     header
                     Text(item.title).font(Theme.display(20)).foregroundStyle(Theme.ink)
                         .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    if let type = addingType {
+                        AddAsPanel(store: store, item: item, type: type)
+                    }
                     summaryBlock
                     ActionPreview(store: store, item: item, inPane: true)
                 }
                 .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 24)
             }
             Divider().overlay(Theme.border)
-            HStack(spacing: 10) {
-                ActionButton(title: "Dismiss", icon: "xmark", kind: .plain, height: 32) { store.dismiss([item.id]); onDone?() }
-                    .keyboardShortcut(.delete, modifiers: .command)
-                Spacer()
-                ActionButton(title: item.type == "todo" ? "Add" : "Create draft", icon: "plus", kind: .primary, height: 32) {
-                    store.confirm([item.id]); onDone?()
+            Group {
+                if let type = addingType {
+                    AddAsPanelFooter(store: store, item: item, type: type, onDone: onDone)
+                } else {
+                    HStack(spacing: 10) {
+                        ActionButton(title: "Dismiss", icon: "xmark", kind: .plain, height: 32) { store.dismiss([item.id]); onDone?() }
+                            .keyboardShortcut(.delete, modifiers: .command)
+                        Spacer()
+                        AddAsSplitButton(store: store, item: item, onDone: onDone)
+                    }
                 }
-                .keyboardShortcut(.return, modifiers: .command)
             }
             .padding(.horizontal, 22).padding(.vertical, 12)
+            .zIndex(1)
         }
         .task(id: item.id) {
             guard item.summary == nil else { return }
@@ -379,6 +408,9 @@ struct ConfirmDetail: View {
             if !Task.isCancelled { store.summarize(item) }
         }
     }
+
+    /// Add as: the type whose panel is open for this item.
+    private var addingType: ActionTypeInfo? { store.addingAs[item.id].flatMap { store.type($0.type) } }
 
     private var header: some View {
         let label = store.type(item.type)?.label ?? item.type

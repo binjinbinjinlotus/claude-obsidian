@@ -77,12 +77,17 @@ final class ActionsStore: ObservableObject {
     @Published var buttonStarting: Set<String> = []
     /// Remembered Slack names, all vaults (GET /v1/slack-people): the To row resolves names with them.
     @Published var slackPeople: [SlackPerson] = []
+    /// Add as (actions.md): the open panel's draft per found item, and the item whose Add as… menu is open.
+    @Published var addingAs: [String: AddAs.Draft] = [:]
+    @Published var addAsMenu: String?
 
     /// Snapshot fixtures only: open the answer menu / new to-do form / a Found row's type menu or edit on appear.
     var fixtureAnswerMenu = false
     var fixtureTodoForm: NewTodo?
     var fixtureFoundMenu: String?
     var fixtureFoundEdit: String?
+    /// Snapshots draw the Add as… menu in place (the app uses a popover).
+    var fixtureInlineMenus = false
 
     private var tasks: [String: Task<Void, Never>] = [:]
     private var settingsWatch: AnyCancellable?
