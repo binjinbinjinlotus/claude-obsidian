@@ -188,6 +188,8 @@ do_backup() {
   [[ -f "$STATE_DIR/labels/notes.json" ]] && { mkdir -p "$dest/labels"; cp -p "$STATE_DIR/labels/notes.json" "$dest/labels/"; }
   # Who names are in Slack, per vault (the Send in Slack To row).
   [[ -f "$STATE_DIR/actions/slack-people.json" ]] && { mkdir -p "$dest/actions"; cp -p "$STATE_DIR/actions/slack-people.json" "$dest/actions/"; }
+  # Its set-aside copies (a file a build couldn't read), like the top-level ones.
+  for f in "$STATE_DIR"/actions/*.unreadable-*(N.); do mkdir -p "$dest/actions"; cp -p "$f" "$dest/actions/"; done
   chmod 700 "$BACKUPS" "$dest"
   local old=( "$BACKUPS"/*(N/On[$((KEEP_BACKUPS + 1)),-1]) )
   (( ${#old} )) && rm -rf -- "${old[@]}"
