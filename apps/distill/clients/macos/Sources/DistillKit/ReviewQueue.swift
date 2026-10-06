@@ -158,7 +158,8 @@ public enum ReviewQueueText {
     /// A batch's short name: its first file without folder and extension, "+2" for the rest.
     public static func shortName(_ j: Job) -> String {
         guard let first = j.files.first else { return j.id }
-        let name = ((first as NSString).lastPathComponent as NSString).deletingPathExtension
+        let file = (first as NSString).lastPathComponent
+        let name = ReviewBatches.readableName(file) ?? (file as NSString).deletingPathExtension
         return "“\(name)”" + (j.files.count > 1 ? " +\(j.files.count - 1)" : "")
     }
 
@@ -231,5 +232,140 @@ public struct SinceApproved: Codable, Equatable, Sendable {
         added = c.lossyArray(String.self, .added)
         dropped = c.lossyArray(String.self, .dropped)
         bookkeeping = c.lossyArray(String.self, .bookkeeping)
+    }
+}
+
+// MARK: - The batch list (review-queue.md, section 4)
+
+public enum ReviewRowState: Equatable, Sendable {
+    case ready, updating, queued(Int), applying, added, needsYou, recovering, couldntFix, notAdded, working
+
+    public var label: String {
+        switch self {
+        case .ready: return "Ready"
+        case .updating: return "Updating…"
+        case .queued(let n): return n <= 1 ? "Queued · next" : "Queued · \(ReviewBatches.ordinal(n))"
+        case .applying: return "Applying"
+        case .added: return "Added"
+        case .needsYou: return "Needs you"
+        case .recovering: return "Recovering"
+        case .couldntFix: return "Couldn't fix"
+        case .notAdded: return "Not added"
+        case .working: return "Working"
+        }
+    }
+}
+
+extension ReviewBatches {
+    static let timeZones: Set<String> = ["IST", "PST", "PDT", "EST", "EDT", "CST", "CDT", "MST", "MDT", "UTC", "GMT", "CET", "CEST", "BST", "JST",
+                                         "AEST", "AEDT", "SGT", "HKT"]
+
+    private static func replacing(_ s: String, _ pattern: String, with: String = " ", options: NSRegularExpression.Options = []) -> String {
+        guard let re = try? NSRegularExpression(pattern: pattern, options: options) else { return s }
+        return re.stringByReplacingMatches(in: s, range: NSRange(s.startIndex..., in: s), withTemplate: with)
+    }
+
+    /// "Telus Daily Stand-up" from "2026-10-05 Telus Daily Stand-up - 2026_10_05 19_00 IST - Notes by Gemini.gdoc";
+    /// nil when nothing readable is left (the caller falls back to the plain title).
+    public static func readableName(_ fileName: String) -> String? {
+        var s = fileName
+        // 1. The extension (a short one without spaces), then a slugged name's dashes and underscores become spaces.
+        if let dot = s.lastIndex(of: "."), s.distance(from: dot, to: s.endIndex) <= 6, !s[dot...].contains(" "),
+           s[s.index(after: dot)...].allSatisfy({ $0.isLetter || $0.isNumber }), s[s.index(after: dot)...].contains(where: \.isLetter) {
+            s = String(s[..<dot])
+        }
+        let slugged = !s.contains(" ")
+        if slugged { s = s.replacingOccurrences(of: "-", with: " ").replacingOccurrences(of: "_", with: " ") }
+        // 2. Notes by Gemini, Transcript.
+        s = replacing(s, #"notes[\s_-]+by[\s_-]+gemini"#, options: .caseInsensitive)
+        s = replacing(s, #"\btranscript\b"#, options: .caseInsensitive)
+        // 5 first (GMT+5:30 has a time in it), then 3 dates and 4 times.
+        s = replacing(s, #"\bGMT\s?[+\-−]\s?\d{1,2}(:\d{2})?"#)
+        s = replacing(s, #"\b\d{4}[-_ /.]\d{1,2}[-_ /.]\d{1,2}\b"#)
+        s = replacing(s, #"\b\d{1,2}[_/]\d{1,2}[_/]\d{4}\b"#)
+        s = replacing(s, #"\b\d{1,2}[:_.\- ]\d{2}([:_.]\d{2})?(\s?[AaPp][Mm])?\b"#)
+        let words = s.split(separator: " ", omittingEmptySubsequences: true).filter { !timeZones.contains(String($0)) }
+        s = words.joined(separator: " ")
+        // 6. Leftover separators.
+        s = replacing(s, #"(\s+[-–—]+)+\s+"#)
+        s = replacing(s, #"\s{2,}"#)
+        s = s.trimmingCharacters(in: CharacterSet(charactersIn: " -–—_.,:;"))
+        // 7. A slugged name gets its hyphens back in a few common words.
+        if slugged {
+            for (plain, joined) in [("stand up", "stand-up"), ("check in", "check-in"), ("follow up", "follow-up"), ("kick off", "kick-off"),
+                                    ("sync up", "sync-up"), ("one on one", "one-on-one")] {
+                while let r = s.range(of: "\\b\(plain)\\b", options: [.regularExpression, .caseInsensitive]) {
+                    let upper = s[r].first?.isUppercase == true
+                    s.replaceSubrange(r, with: upper ? joined.prefix(1).uppercased() + joined.dropFirst() : joined)
+                }
+            }
+        }
+        guard !s.isEmpty, s.contains(where: \.isLetter) else { return nil }
+        return s.prefix(1).uppercased() + s.dropFirst()
+    }
+
+    public static func ordinal(_ n: Int) -> String {
+        let suffix: String
+        switch (n % 10, n % 100) {
+        case (1, let t) where t != 11: suffix = "st"
+        case (2, let t) where t != 12: suffix = "nd"
+        case (3, let t) where t != 13: suffix = "rd"
+        default: suffix = "th"
+        }
+        return "\(n)\(suffix)"
+    }
+
+    /// "Oct 5": the date in the first source's name, otherwise when the batch started.
+    public static func batchDate(_ job: Job, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
+        let f = DateFormatter()
+        f.locale = locale
+        f.timeZone = timeZone
+        f.setLocalizedDateFormatFromTemplate("MMMd")
+        if let name = job.files.first.map({ ($0 as NSString).lastPathComponent }),
+           let re = try? NSRegularExpression(pattern: #"(\d{4})[-_ /.](\d{1,2})[-_ /.](\d{1,2})"#),
+           let m = re.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)),
+           let y = Int((name as NSString).substring(with: m.range(at: 1))), let mo = Int((name as NSString).substring(with: m.range(at: 2))),
+           let d = Int((name as NSString).substring(with: m.range(at: 3))) {
+            var c = Calendar(identifier: .gregorian)
+            c.timeZone = timeZone
+            if let date = c.date(from: DateComponents(year: y, month: mo, day: d, hour: 12)) { return f.string(from: date) }
+        }
+        return f.string(from: job.createdAt)
+    }
+
+    /// The row's one state, from the same facts as the apply card.
+    public static func rowState(_ job: Job, in jobs: [Job]) -> ReviewRowState {
+        if job.refresh != nil { return .updating }
+        if job.recovery?.state == .running || job.recovery?.state == .waiting { return .recovering }
+        switch job.state {
+        case .awaitingApproval:
+            if job.recovery?.state == .gaveUp { return .couldntFix }
+            if job.queuedApply?.waitingToApply == true {
+                let queue = jobs.filter { $0.vaultPath == job.vaultPath && $0.state == .awaitingApproval && $0.queuedApply?.waitingToApply == true }
+                    .sorted { $0.queuedApply!.order < $1.queuedApply!.order }
+                let applying = jobs.contains { $0.vaultPath == job.vaultPath && ApplyTimeline.isApplying($0) }
+                return .queued((queue.firstIndex { $0.id == job.id } ?? 0) + (applying ? 2 : 1))
+            }
+            if ReviewQueueText.asksAgain(job) || job.sessionUnavailable != nil { return .needsYou }
+            if let a = job.approval, a.planError != nil || !a.questions.isEmpty || !a.denials.isEmpty || !a.canApplyPlan && a.needsRebuild != true {
+                return .needsYou
+            }
+            return .ready
+        case .running:
+            if job.pendingPart != nil { return .updating }
+            return ApplyTimeline.isApplying(job) ? .applying : .working
+        case .completed:
+            return job.operationID != nil && job.operationID == job.approvedChange?.operationID ? .added : .notAdded
+        case .failed, .cancelled, .rejected:
+            return .notAdded
+        }
+    }
+
+    /// The row to select when `leaving` goes (Done or Reject): the next one, or the previous at the end.
+    public static func nextSelection(after leaving: String, in before: [String], now: [String]) -> String? {
+        guard let i = before.firstIndex(of: leaving) else { return now.first }
+        for id in before[(i + 1)...] where now.contains(id) { return id }
+        for id in before[..<i].reversed() where now.contains(id) { return id }
+        return now.first
     }
 }

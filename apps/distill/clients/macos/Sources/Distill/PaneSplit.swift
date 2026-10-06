@@ -48,6 +48,9 @@ struct PaneSpec: Equatable {
                                      edge: .leading, label: "to-do detail")
     static let collectorsList = PaneSpec(key: "distill.pane.collectors.list", min: 220, max: 460, reserved: 20 + 28 + 24 + 360,
                                          edge: .trailing, gap: 12, label: "collector list")
+    /// Review's batch list (review-queue.md): the detail keeps its padding, 360 and the Conversation's 220.
+    static let reviewList = PaneSpec(key: "distill.pane.review.list", min: 220, max: 380, reserved: 1 + 64 + 24 + 360 + 220,
+                                     edge: .trailing, gap: 0.5, label: "batch list")
     /// Actions → Slack, Jira, Confluence, …: one width per type.
     static func actionsList(_ type: String) -> PaneSpec {
         PaneSpec(key: "distill.pane.actions.\(type).list", min: 240, max: 480, reserved: 20 + 24 + 14 + 360,
@@ -56,7 +59,7 @@ struct PaneSpec: Equatable {
 
     /// Every fixed key (snapshot defaults reset these; per-type Actions keys are reset by prefix).
     static let fixedKeys = [sidebar, settingsNav, reviewConversation, historyConversation, historyList, historyActions,
-                            activityDetail, todoDetail, collectorsList].map(\.key)
+                            activityDetail, todoDetail, collectorsList, reviewList].map(\.key)
 }
 
 /// The width rules, UI-free (PaneLayoutTests).

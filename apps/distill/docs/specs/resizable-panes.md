@@ -33,6 +33,7 @@ was an `HStack` with a fixed or computed frame width.
 | Screen | Columns | Built today as | Column you drag | Automatic width | Min – max | The other column keeps | Narrow-window rule (kept) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Main window (every section) | sidebar \| screen | `Sidebar` `.frame(width: 220)`, a 1 pt edge where the panel meets white | sidebar | 220 | 200 – 320 | screen 580 | none (window min 900) |
+| Review (2+ batches) | batch list \| details | `ReviewBatchList` (review-queue.md) | the list (left) | auto 260 | 220 – 380 | details 360 + Conversation 220 | the Conversation folds sooner (about 1,300 pt window) because the list takes room |
 | Review | details \| Conversation | `JobDetailView`: `talk = min(300, max(220, inner − 360))`, a 24 pt gap | Conversation (right) | auto 220 – 300 | 220 – 520 | details 360 | below 780 pt the Conversation moves behind **Conversation · N** |
 | History → Jobs | list \| details \| Conversation | list `.frame(width: 320)` + `Divider`; `JobDetailView(collapsesConversation: false)` | list (left) and Conversation (right) | 320 · auto | 240 – 480 · 220 – 520 | details 360 | none (Conversation never collapses here) |
 | History → Actions | list \| detail | `ActionsHistoryView` list `.frame(width: 340)` + `Divider` | list (left) | 340 | 260 – 520 | detail 360 | none |

@@ -635,9 +635,19 @@ struct ReviewSection: View {
             EmptyState(title: "Nothing to review", message: "When Claude finishes a batch, it will wait here for your OK.")
         } else {
             let id = pending.contains { $0.id == selectedJob } ? selectedJob! : pending[0].id
-            VStack(spacing: 0) {
-                if pending.count > 1 { JobTabs(jobs: pending, selected: id) { selectedJob = $0 } }
+            // review-queue.md: a list beside the batch when there are two or more (the tabs are gone).
+            HStack(spacing: 0) {
+                if pending.count > 1 {
+                    ReviewBatchList(jobs: pending, selected: id) { selectedJob = $0 }
+                        .paneWidth(.reviewList, automatic: 260)
+                    Divider().overlay(Theme.border)
+                }
                 JobDetailView(jobID: id)
+            }
+            .paneContainer()
+            .onChange(of: pending.map(\.id)) { before, now in
+                // The selected batch left (Done, Reject): the next row, or the previous one at the end.
+                if let sel = selectedJob, !now.contains(sel) { selectedJob = ReviewBatches.nextSelection(after: sel, in: before, now: now) }
             }
         }
     }
@@ -803,33 +813,6 @@ struct AskChatList: View {
     }
 }
 
-struct JobTabs: View {
-    let jobs: [Job]
-    let selected: String
-    let pick: (String) -> Void
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(jobs) { job in // already in Review's order (waiting first, then approved)
-                    let on = job.id == selected
-                    Button { pick(job.id) } label: {
-                        HStack(spacing: 6) {
-                            Text(job.displayTitle).font(Theme.body(12, .semibold)).lineLimit(1)
-                            Text(ReviewBatches.tabSubtitle(job)).font(Theme.body(11)).opacity(0.7).lineLimit(1)
-                        }
-                        .padding(.horizontal, 12).frame(height: 28)
-                        .background(Capsule().fill(on ? Theme.ink : Theme.panel))
-                        .foregroundStyle(on ? Color.white : Theme.ink)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 44).padding(.top, 28)
-        }
-    }
-}
-
 struct JobRow: View {
     let job: Job
     var selected = false
@@ -895,13 +878,16 @@ extension Job {
         let sources = self.sources
         guard let first = sources.first else {
             guard let file = files.first else { return kind.prefix(1).uppercased() + kind.dropFirst() }
-            return Self.pretty((file as NSString).lastPathComponent)
+            let name = (file as NSString).lastPathComponent
+            return ReviewBatches.readableName(name) ?? Self.pretty(name)
         }
         let name: String
         if case .folder = first { name = first.name } else { name = (first.name as NSString).deletingPathExtension }
-        let pretty = Self.pretty(name)
-        return sources.count > 1 ? "\(pretty) +\(sources.count - 1)" : pretty
+        // review-queue.md: "Telus Daily Stand-up", not the meeting tool's date, time and "Notes by Gemini".
+        let readable = ReviewBatches.readableName(name) ?? Self.pretty(name)
+        return sources.count > 1 ? "\(readable) +\(sources.count - 1)" : readable
     }
+
 
     private static func pretty(_ name: String) -> String {
         let base = name.replacingOccurrences(of: "-", with: " ").replacingOccurrences(of: "_", with: " ")

@@ -19,7 +19,7 @@ Canvas: row 16, board **ReviewQueue** (`design/screens/reviewqueue.json`).
 1. Blocked commands answered by Distill, and the plain-words card: **built**.
 2. Apply queue: **built**.
 3. Exit 75 → refresh: **built** (with step 2).
-4. Batch list.
+4. Batch list: **built**.
 5. Recovery agent (Opus) and Settings.
 Related specs: [Approval and review](approval-and-review.md) (the gate, parts,
 exit 75), [Session continuity](session-continuity.md), [Full reads](full-read.md),
@@ -825,3 +825,24 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
   the exit-75 tests rewritten (LOCK waits under the same approval; stale is
   rebuilt and asks once more). `ReviewQueueTests` (5). Snapshot states
   `review-queued`, `review-reapprove`, `review-updating`.
+
+### Step 4: the batch list (2026-10-05)
+
+- DistillKit: `ReviewBatches.readableName`, `batchDate`, `rowState`
+  (`ReviewRowState`), `ordinal`, `nextSelection`. `ReviewQueueText.shortName`
+  uses the readable name too.
+- Mac: `ReviewBatchList.swift` (`ReviewBatchList`, `ReviewBatchRow`) beside
+  the batch with `.paneWidth(.reviewList, automatic: 260)` (220–380, in
+  `fixedKeys`); ↑/↓ through `onMoveCommand`; when the selected batch leaves,
+  the next row is selected. `JobTabs` is removed. `Job.displayTitle` uses
+  `readableName`.
+- **Differences from the design:**
+  - The list keeps the order `ApplyTimeline.reviewList` already had (waiting
+    batches oldest first, then approved ones not yet Done), not one single
+    oldest-first sort: an approved batch that finished stays below the ones
+    still waiting.
+  - A `Working` state exists for a batch whose turn is running for another
+    reason (a reply).
+- Tests: `ReviewBatchListTests` (the spec's name table plus a transcript
+  case, row states, next selection, ordinals, the date). Snapshot state
+  `review-list`; `review-multiple` now shows the list.

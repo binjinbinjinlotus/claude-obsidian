@@ -549,8 +549,24 @@ extension StatesSnapshot {
         e.jobs = [awaiting(e), awaiting(e, id: "job-b", files: ["inbox/q3-architecture-sync.md"], summary: "One meeting note becomes a new page under Project X."),
                   awaiting(e, id: "job-c", kind: nil, files: ["wiki/meetings/q3-architecture-sync.md", "wiki/incidents/auth-retry-bug.md"],
                            summary: "Confirm labels on 2 notes.")]
-        main("review-multiple", f, "Review", "Several jobs waiting", "Tabs across the top when more than one job waits.", e, section: .review, job: e.jobs[0].id) {
+        main("review-multiple", f, "Review", "Several jobs waiting", "A batch list beside the batch when more than one waits.", e, section: .review, job: e.jobs[0].id) {
             ReviewSection(selectedJob: .constant(e.jobs[0].id))
+        }
+
+        // review-queue.md, frame A: the batch list with readable names and one state per row, oldest first.
+        e = engine()
+        var l1 = awaiting(e, id: "job-20261004-090000-l1", files: ["inbox/Product sync - 2026_10_04 09_30 PDT - Notes by Gemini.gdoc"], minutesAgo: 300)
+        l1.queuedApply = QueuedApply(at: Date(), order: 1, planSha256: "a")
+        var l2 = awaiting(e, id: "job-20261005-190000-l2", files: ["inbox/2026-10-05 Telus Daily Stand-up - 2026_10_05 19_00 IST - Notes by Gemini.gdoc", "inbox/a.md", "inbox/b.md"], minutesAgo: 200)
+        var l3 = awaiting(e, id: "job-20261005-200000-l3", files: ["inbox/Weekly sync – 2026-10-03 14.00 GMT+5:30.md"], minutesAgo: 100)
+        l3.refresh = RefreshState(since: Date())
+        l3.state = .running
+        let l4 = awaiting(e, id: "job-20261005-210000-l4", files: ["inbox/tea-club-notes.md"], minutesAgo: 30)
+        l2.recovery = RecoveryState(state: .gaveUp, signature: "denial", summary: "Claude wanted to compare the claim ledger with this batch's copy. Distill couldn't let it run that, and told it to read the files instead (twice).")
+        l2.approval?.denials = [PermissionDenial(toolName: "Bash", input: ["command": .string("diff a b")])]
+        e.jobs = [l1, l2, l3, l4]
+        main("review-list", f, "Review", "Batch list", "Readable names, oldest first; Queued, Needs you, Updating and Ready in one list.", e, section: .review, job: l2.id) {
+            ReviewSection(selectedJob: .constant(l2.id))
         }
 
         // Session continuity (canvas: SessionContinuity): the batch's AI session is gone.

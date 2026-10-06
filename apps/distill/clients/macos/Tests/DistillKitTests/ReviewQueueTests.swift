@@ -77,3 +77,43 @@ final class ReviewQueueTests: XCTestCase {
         XCTAssertEqual(t.heading, "Updating against the latest pages")
     }
 }
+
+final class ReviewBatchListTests: XCTestCase {
+    func testReadableNames() {
+        let cases: [(String, String?)] = [
+            ("2026-10-05 Telus Daily Stand-up - 2026_10_05 19_00 IST - Notes by Gemini.gdoc", "Telus Daily Stand-up"),
+            ("2026-10-05-Telus-Daily-Stand-up-2026-10-05-19-00-IST-Notes-by-Gemini", "Telus Daily Stand-up"),
+            ("Product sync - 2026_10_04 09_30 PDT - Notes by Gemini.gdoc", "Product sync"),
+            ("Weekly sync – 2026-10-03 14.00 GMT+5:30.md", "Weekly sync"),
+            ("2026-10-05.md", nil),
+            ("tea-club-notes.md", "Tea club notes"),
+            ("Design review Transcript 3:15 PM.txt", "Design review"),
+        ]
+        for (file, name) in cases { XCTAssertEqual(ReviewBatches.readableName(file), name, file) }
+    }
+
+    func testRowStatesOrderAndNextSelection() throws {
+        var ready = Job(id: "r", vaultPath: "/v", files: [], state: .awaitingApproval)
+        ready.approval = ApprovalRequest(summary: "", questions: [], bundlePath: "/b",
+                                         plan: TransactionPlan(operationID: "op", operationType: "ingest", valid: true, changedPaths: [], approvalSHA256: "h"),
+                                         planError: nil, denials: [])
+        var queued = ready; queued.id = "q"; queued.queuedApply = QueuedApply(at: Date(), order: 1, planSha256: "h")
+        var later = ready; later.id = "q2"; later.queuedApply = QueuedApply(at: Date(), order: 2, planSha256: "h")
+        var again = ready; again.id = "a"; again.queuedApply = QueuedApply(at: Date(), order: 3)
+        var gave = ready; gave.id = "g"; gave.recovery = RecoveryState(state: .gaveUp, signature: "denial")
+        var upd = ready; upd.id = "u"; upd.state = .running; upd.refresh = RefreshState(since: Date())
+        let all = [ready, queued, later, again, gave, upd]
+        XCTAssertEqual(ReviewBatches.rowState(ready, in: all), .ready)
+        XCTAssertEqual(ReviewBatches.rowState(queued, in: all).label, "Queued · next")
+        XCTAssertEqual(ReviewBatches.rowState(later, in: all).label, "Queued · 2nd")
+        XCTAssertEqual(ReviewBatches.rowState(again, in: all), .needsYou)
+        XCTAssertEqual(ReviewBatches.rowState(gave, in: all), .couldntFix)
+        XCTAssertEqual(ReviewBatches.rowState(upd, in: all), .updating)
+        XCTAssertEqual(ReviewBatches.nextSelection(after: "b", in: ["a", "b", "c"], now: ["a", "c"]), "c")
+        XCTAssertEqual(ReviewBatches.nextSelection(after: "c", in: ["a", "b", "c"], now: ["a", "b"]), "b")
+        XCTAssertEqual(ReviewBatches.ordinal(3), "3rd")
+        XCTAssertEqual(ReviewBatches.ordinal(11), "11th")
+        let named = Job(id: "n", vaultPath: "/v", files: ["inbox/2026-10-04 Product sync.md"], createdAt: Date(timeIntervalSince1970: 0))
+        XCTAssertEqual(ReviewBatches.batchDate(named, locale: Locale(identifier: "en_US"), timeZone: TimeZone(identifier: "UTC")!), "Oct 4")
+    }
+}
