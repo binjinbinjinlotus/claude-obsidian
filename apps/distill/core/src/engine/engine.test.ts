@@ -1446,6 +1446,8 @@ describe('recovery after a spent rule (review-queue.md, 2026-10-06)', () => {
     assert.equal(runner.requests.length, 2, 'the batch, then one recovery call');
     assert.equal(job.recovery?.signature, 'lock');
     assert.equal(job.recovery?.approvedSha256, PLAN.approval_sha256);
+    assert.ok(job.turns.some((x) => /stayed locked for several minutes\. Distill’s recovery is looking at it/.test(x.text)), 'recovery is on it');
+    assert.ok(!job.turns.some((x) => /Approve again when it is closed/.test(x.text)), 'the owner isn’t told to act while recovery works');
     await cycle();
     await cycle();
     job = h.engine.getJob(created.id)!;
@@ -1481,6 +1483,25 @@ describe('recovery after a spent rule (review-queue.md, 2026-10-06)', () => {
     t.mock.timers.tick(30_000);
     await settle();
     assert.equal(h.engine.getJob(b.id)!.state, 'completed', 'b waited 30 s, not the 2 min of a’s second wait');
+  });
+
+  test('a spent lock with Recover automatically off tells the owner to approve again', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.parse('2026-10-06T10:00:00Z') });
+    const runner = sandboxed();
+    h = setup([], { runner, apply: () => lock, now: () => new Date(Date.now()), settings: { recovery: { automatic: false } } });
+    const created = await firstJob();
+    runner.steps.push(needsApproval(h.bundle(created)));
+    await settle();
+    await h.engine.approve(created.id);
+    await settle();
+    t.mock.timers.tick(30_000);
+    await settle();
+    t.mock.timers.tick(120_000);
+    await settle();
+    const job = h.engine.getJob(created.id)!;
+    assert.match(job.turns.at(-1)!.text, /Approve again when it is closed/);
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.equal(runner.requests.length, 1, 'no agent call');
   });
 
   test('session-gone while queued: recovery proposes a new session ($0, no agent); nothing starts by itself', async () => {

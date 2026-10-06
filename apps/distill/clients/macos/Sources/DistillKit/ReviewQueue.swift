@@ -208,7 +208,7 @@ public enum RecoveryText {
         case "plan-error": return "The vault core couldn’t check this plan."
         case "runner-failed": return "The AI run stopped with an error."
         case "denial": return "Distill answered Claude’s blocked command, but Claude stopped with questions instead of a plan."
-        case "lock": return "Another app kept your vault locked, so your approved change couldn’t be applied yet."
+        case "lock": return "Another app kept your vault locked, so your approved change couldn’t be applied yet. Approve again when it is closed."
         case "session-gone": return "This batch’s AI session isn’t available anymore, so your approved change can’t be applied in it."
         default: return "Distill couldn’t get this batch going again by itself."
         }

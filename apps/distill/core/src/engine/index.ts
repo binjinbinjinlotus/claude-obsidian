@@ -1241,7 +1241,7 @@ export function createEngine(opts: EngineOptions): Engine {
       case 'runner-failed':
         return `The AI run stopped with an error${cause ? `: ${cause}` : ''}.`;
       case 'lock':
-        return 'Another app kept your vault locked, so your approved change couldn’t be applied yet.';
+        return 'Another app kept your vault locked, so your approved change couldn’t be applied yet. Approve again when it is closed.';
       case 'session-gone':
         return 'This batch’s AI session isn’t available anymore, so your approved change can’t be applied in it.';
       default:
@@ -1704,9 +1704,15 @@ export function createEngine(opts: EngineOptions): Engine {
       const head = findJob(jobID);
       if (head) {
         // The rule is spent (30 s, then 2 min): the recovery agent may check again or wait, within its bounds,
-        // and only ever under the hash the owner approved.
+        // and only ever under the hash the owner approved. The owner is asked to act only when it won't.
         const approved = head.queuedApply?.planSha256;
-        backToOwner(head.id, 'Not applied: another app kept your vault locked for several minutes. Approve again when it is closed.');
+        const recovering = recoveryPreferences(settings).automatic && !jobKind(head.kind)?.appliesInCore;
+        backToOwner(
+          head.id,
+          recovering
+            ? 'Not applied yet: the vault stayed locked for several minutes. Distill’s recovery is looking at it.'
+            : 'Not applied: another app kept your vault locked for several minutes. Approve again when it is closed.',
+        );
         recoverAfterRule(head.id, 'lock', approved ?? undefined);
       }
       return;

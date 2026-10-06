@@ -1007,7 +1007,11 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
   uses too; an attempt's raw error is never shown.
 - **Lock, last fixes (2026-10-06).** The 30 s / 2 min count belongs to the
   batch that met the lock: another batch starts at 30 s (the last one may
-  have failed another way, been rejected or taken out of the queue).
+  have failed another way, been rejected or taken out of the queue). When the
+  rule is spent and recovery takes over, the conversation says "the vault
+  stayed locked for several minutes. Distill’s recovery is looking at it";
+  "Approve again when it is closed" comes only when recovery is off, or on the
+  Couldn't fix card once it gives up.
 - **Fixed after review (2026-10-06).** Let recovery try again on a lock goes
   back to the agent and keeps the approved hash; on session-gone it is hidden
   and refused (only the new-session confirmation goes on). Rebuild is hidden
