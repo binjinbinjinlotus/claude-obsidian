@@ -17,6 +17,25 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**Highlights reads the wiki; it adds only Others' actions (2026-10-06).**
+The owner: "Yes, but shouldn't the wiki already highlight it." A note's
+Highlights shows what its wiki source page already holds (summary, key points,
+decisions), read from the page and linked to it, and never extracts key points
+on its own. It adds only what the wiki lacks, Others' actions by person, which
+go into the source page as an "Others' actions" section through the normal
+batch with the owner's approval, never written directly. Design only, not
+built: canvas board ActionsRouting (`actions-highlights-note`).
+
+**Pending only suggests that something arrived (2026-10-06).** A later note
+showing a promise was delivered gives "Looks received in <note>. Mark
+received?". Pending never closes an item on its own. Design only:
+ActionsRouting (`actions-pending-list`).
+
+**Anyone not in the People list goes to Highlights (2026-10-06).** Items whose
+owner isn't in Settings → Actions → Whose items Distill handles go to the
+note's Highlights under Others' actions. There is no separate default and no
+setting for it. Design only: ActionsRouting (`routing-card-rule`).
+
 **A Jira project is saved as its key; the picker shows its name (2026-10-06).**
 Supersedes saving "TLS · Telus Platform": anything else reading
 `fields.project` (a button's `{fields.project}` argv, the Project filter,

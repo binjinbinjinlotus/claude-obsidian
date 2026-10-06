@@ -17,11 +17,11 @@
     {"id": "actions-confirm-routed", "base": "todo", "label": "B · To confirm after routing: only your items (and Aditya’s to-dos, which you handle); a quiet line says where the rest went; “for Aditya” on the row; an unclear owner asks"},
     {"id": "actions-pending-list", "base": "todo", "label": "C · Pending: what others said they’d do for you, by person (or by date); Overdue in peach; a later note suggests Mark received", "set": {"detail": {"frag": "pending-list"}, "sidebar.sub": "pending"}},
     {"id": "actions-pending-detail", "base": "todo", "label": "D · A pending promise: the quote and its line, Why; Nudge opens Add as Slack message to Aditya, prefilled; Mark received; Not waiting anymore", "set": {"detail": {"frag": "pending-detail"}, "sidebar.sub": "pending"}},
-    {"id": "actions-highlights-list", "base": "todo", "label": "E · Highlights: one card per note or meeting, newest first, with its people, key points and where its items went", "set": {"detail": {"frag": "highlights-list"}, "sidebar.sub": "highlights"}},
-    {"id": "actions-highlights-note", "base": "todo", "label": "F · A note’s Highlights: Key points and Decisions with their lines, Others’ actions by person (Track as Pending, It’s mine), Your items; Open note, Copy as summary", "set": {"detail": {"frag": "highlights-note"}, "sidebar.sub": "highlights"}},
+    {"id": "actions-highlights-list", "base": "todo", "label": "E · Highlights: one card per note or meeting, newest first, with its people, the wiki page’s key points and where its items went", "set": {"detail": {"frag": "highlights-list"}, "sidebar.sub": "highlights"}},
+    {"id": "actions-highlights-note", "base": "todo", "label": "F · A note’s Highlights: From the wiki page (its summary, key points and decisions, Open page), then Others’ actions by person, added to the wiki page in the next batch (Track as Pending, It’s mine), Your items; Open note, Copy as summary", "set": {"detail": {"frag": "highlights-note"}, "sidebar.sub": "highlights"}},
     {"id": "settings-actions-people", "number": "A", "label": "Settings → Actions → Whose items Distill handles", "caption": "People (You first, with the names the notes use), then each type’s “Handles items for”, and what the last 7 days would have done.", "card": {"height": 760, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "settings-people"}},
     {"id": "routing-card-rule", "label": "Where an item goes", "caption": "Decided per item from its owner, at finding time.", "card": {"height": 400, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-rule"}},
-    {"id": "routing-card-questions", "label": "Open questions for you", "caption": "Answers change the build, not this layout.", "card": {"height": 290, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-questions"}}
+    {"id": "routing-card-decided", "label": "Decided (2026-10-06)", "caption": "The owner’s answers to the three open questions.", "card": {"height": 360, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-decided"}}
   ],
   "boards": [
     {
@@ -38,7 +38,7 @@
         {"row": ["actions-pending-detail"], "style": "display: flex; gap: 40px; align-items: flex-start"},
         {"title": "Highlights"},
         {"row": ["actions-highlights-list", "actions-highlights-note"], "style": "display: flex; gap: 40px; align-items: flex-start"},
-        {"grid": ["routing-card-questions"], "cols": 2}
+        {"grid": ["routing-card-decided"], "cols": 2}
       ]
     }
   ]
