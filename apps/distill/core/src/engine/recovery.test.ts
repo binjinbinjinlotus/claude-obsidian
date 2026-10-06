@@ -44,10 +44,15 @@ test("the owner's sentence is plain words, never the command", () => {
   assert.equal(friendlyPath(`${VAULT}/notes/x.txt`, where), 'x.txt');
 });
 
-test('a recovery for the same signature carries on; another signature starts fresh', () => {
-  const running = { state: 'running' as const, signature: 'denial' as const, attempts: [], denialAnswers: 1 };
+test('a recovery for the same signature carries on; another signature carries the bounds while it works, else starts fresh', () => {
+  const rule = { at: '2026-10-06T10:00:00Z', by: 'rule' as const, fix: 'rebuild_in_session' as const, result: 'running' as const, costUSD: 0 };
+  const running = { state: 'running' as const, signature: 'denial' as const, attempts: [rule], denialAnswers: 1 };
   assert.equal(recoveryFor(running, 'denial'), running);
-  assert.equal(recoveryFor(running, 'lock').denialAnswers, 0);
+  const other = recoveryFor(running, 'plan-error');
+  assert.equal(other.signature, 'plan-error');
+  assert.equal(other.denialAnswers, 1);
+  assert.deepEqual(other.attempts.map((a) => a.result), ['failed']);
+  assert.deepEqual(recoveryFor({ ...running, state: 'gaveUp' }, 'lock').attempts, []);
   assert.equal(recoveryFor({ ...running, state: 'fixed' }, 'denial').denialAnswers, 0);
 });
 

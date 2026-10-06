@@ -467,6 +467,23 @@ describe('batches: approve, reply, allow, Open in Terminal', () => {
     assert.equal(after.recovery, undefined);
   });
 
+  test('recovery that alternates runner-failed and plan-error stays bounded (one rule, then the agent; no fresh start per signature)', async () => {
+    h = engineSetup(new FakeAgent([]), undefined, {});
+    const job = await reviewedBatch(h);
+    const before = h.runner.requests.length;
+    for (let i = 0; i < 20; i++) {
+      h.runner.steps.push({ throws: new RunnerError('Exited 1: 529 overloaded', 'nonZeroExit') });
+      h.runner.steps.push({ structured: { status: 'needs_approval', summary: 'Done.' } });
+    }
+    await h.engine.reply(job.id, 'again');
+    await h.engine.whenIdle();
+    const after = h.engine.getJob(job.id)!;
+    // The owner's reply (throws), the rule's continue (a plan error), then one recovery call (this fake throws).
+    assert.equal(h.runner.requests.length - before, 3);
+    assert.equal(after.recovery?.state, 'gaveUp');
+    assert.deepEqual(after.recovery!.attempts.map((a) => [a.by, a.result]), [['rule', 'failed'], ['agent', 'failed']]);
+  });
+
   test('runner-failed recovery: a resumed turn that errors gets one "continue" in the same session (review-queue.md)', async () => {
     h = engineSetup(new FakeAgent([]), undefined, {});
     const job = await reviewedBatch(h);

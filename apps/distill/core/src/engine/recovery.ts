@@ -127,9 +127,17 @@ export function denialSummary(denials: PermissionDenial[], o: { vaultPath: strin
   return `Claude wanted to ${verb} ${what}${tool}. Distill couldn't let it run that${told}.`;
 }
 
-/** A fresh recovery state for a signature, or the job's own when it is already recovering from it. */
+/**
+ * A fresh recovery state for a signature, or the job's own when it is already recovering from it. A recovery
+ * still working (running or waiting) that hits another signature carries its attempts and answers over, so the
+ * bounds hold across signatures (review-queue.md, No loop: runner-failed ↔ plan-error never starts over).
+ */
 export function recoveryFor(current: RecoveryState | null | undefined, signature: RecoveryState['signature']): RecoveryState {
   if (current && current.signature === signature && current.state !== 'fixed') return current;
+  if (current && (current.state === 'running' || current.state === 'waiting')) {
+    const attempts = current.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed' as const } : a));
+    return { state: 'running', signature, attempts, denialAnswers: current.denialAnswers ?? 0 };
+  }
   return { state: 'running', signature, attempts: [], denialAnswers: 0 };
 }
 
