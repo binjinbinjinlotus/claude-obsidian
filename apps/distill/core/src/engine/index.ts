@@ -1296,7 +1296,9 @@ export function createEngine(opts: EngineOptions): Engine {
   }
 
   /** Recovery agent calls in flight (a recovery reads `running` while one is). */
-  const recoveryAgents = new Set<string>();
+  const recoveryAgents = new Map<string, number>();
+  /** The latest agent call per batch: an older call's answer is never carried out. */
+  const agentCalls = new Map<string, symbol>();
 
   /**
    * review-queue.md, Bounds: a recovery reads `running` only while a turn or an agent call works on it. When a
@@ -1307,7 +1309,7 @@ export function createEngine(opts: EngineOptions): Engine {
   function settleRecovery(id: string): void {
     const job = findJob(id);
     const rec = job?.recovery;
-    if (!job || !rec || rec.state !== 'running' || job.state === 'running' || recoveryAgents.has(id)) return;
+    if (!job || !rec || rec.state !== 'running' || job.state === 'running' || (recoveryAgents.get(id) ?? 0) > 0) return;
     const last = [...rec.attempts].reverse().find((a) => a.result === 'running');
     const attempts = rec.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed' as const, error: a.error ?? 'The turn ended without a plan.' } : a));
     if (job.state === 'completed') {
@@ -1337,11 +1339,13 @@ export function createEngine(opts: EngineOptions): Engine {
    * It never applies anything and never allows a tool rule.
    */
   async function runRecoveryAgent(id: string, signature: RecoverySignature): Promise<void> {
-    recoveryAgents.add(id);
+    recoveryAgents.set(id, (recoveryAgents.get(id) ?? 0) + 1);
     try {
       await recoveryAgentCall(id, signature);
     } finally {
-      recoveryAgents.delete(id);
+      const n = (recoveryAgents.get(id) ?? 1) - 1;
+      if (n > 0) recoveryAgents.set(id, n);
+      else recoveryAgents.delete(id);
       settleRecovery(id);
     }
   }
@@ -1375,6 +1379,8 @@ export function createEngine(opts: EngineOptions): Engine {
     }
     const selection = selectionFor(settings, 'recovery');
     const at = isoDate(now());
+    const call = Symbol(id);
+    agentCalls.set(id, call);
     mutate(id, (j) => {
       if (!j.recovery) return;
       delete j.recovery.waitUntil;
@@ -1412,6 +1418,10 @@ export function createEngine(opts: EngineOptions): Engine {
     }
     const current = findJob(id);
     if (!current?.recovery || (current.state !== 'awaitingApproval' && current.state !== 'failed')) return;
+    // The owner may have acted while it ran (a reply, and the recovery that turn started): an answer for a
+    // recovery that is no longer this call's is dropped, never carried out.
+    const last = current.recovery.attempts.at(-1);
+    if (agentCalls.get(id) !== call || current.recovery.state !== 'running' || last?.by !== 'agent' || last.result !== 'running' || last.at !== at) return;
     const settle = (result: 'running' | 'failed', extra: Partial<RecoveryAttempt> = {}) =>
       mutate(id, (j) => {
         if (!j.recovery) return;

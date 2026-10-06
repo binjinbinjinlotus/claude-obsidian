@@ -913,6 +913,41 @@ describe('blocked commands (review-queue.md)', () => {
     assert.equal(h.runner.requests.length, calls);
   });
 
+  test('an agent call whose recovery was replaced while it ran does nothing (the owner replied meanwhile)', async () => {
+    h = setup([]);
+    const bad = needsApproval('/tmp/elsewhere/bundle.json');
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let first = true;
+    const run = h.runner.run.bind(h.runner);
+    h.runner.run = async (req) => {
+      if (first && req.prompt.startsWith('You are the recovery step')) {
+        first = false;
+        h.runner.requests.push(req);
+        await held;
+        return { sessionID: 's', resultText: '', isError: false, costUSD: 0.01, denials: [], raw: '{}',
+          structured: { diagnosis: 'Old.', fix: 'rebuild_in_session', reason: 'r', guidance: 'Write the bundle inside the job directory.' } };
+      }
+      return run(req);
+    };
+    h.runner.steps.push(bad, bad);
+    const created = await firstJob();
+    for (let i = 0; i < 50 && first; i++) await new Promise((r) => setImmediate(r));
+    assert.equal(first, false, 'the first agent call is in flight');
+    // The owner replies meanwhile; that turn's plan error starts a new recovery, which gives up.
+    h.runner.steps.push(bad, bad, { structured: { diagnosis: 'It needs you.', fix: 'give_up', reason: 'r' } });
+    await h.engine.reply(created.id, 'try again');
+    for (let i = 0; i < 200 && h.engine.getJob(created.id)!.recovery?.state !== 'gaveUp'; i++) await new Promise((r) => setImmediate(r));
+    assert.equal(h.engine.getJob(created.id)!.recovery?.state, 'gaveUp');
+    const calls = h.runner.requests.length;
+    release();
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(h.runner.requests.length, calls, 'no turn from the stale answer');
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.equal(job.recovery?.summary?.includes('Old.'), false);
+  });
+
   test('an apply turn with a blocked call is not answered', async () => {
     h = setup([]);
     const created = await firstJob();
