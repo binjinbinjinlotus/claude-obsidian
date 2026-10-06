@@ -1457,6 +1457,32 @@ describe('recovery after a spent rule (review-queue.md, 2026-10-06)', () => {
     assert.equal((await h.engine.status()).pendingApprovals, 1);
   });
 
+  test('the lock waits count per batch: another batch meeting a lock starts at 30 s', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.parse('2026-10-06T10:00:00Z') });
+    const runner = sandboxed();
+    let calls = 0;
+    const ok: ProcessOutput = { status: 0, stdout: Buffer.from(JSON.stringify({ operation_id: 'op-1', changed_paths: ['wiki/a.md'] })), stderr: Buffer.alloc(0) };
+    h = setup([], { runner, apply: () => (++calls <= 2 ? lock : ok), now: () => new Date(Date.now()) });
+    const a = await firstJob();
+    runner.steps.push(needsApproval(h.bundle(a)));
+    await settle();
+    fs.writeFileSync(path.join(h.queue, 'b.md'), '# B\n');
+    const b = (await h.engine.processQueue({ force: true }))!;
+    runner.steps.push(needsApproval(h.bundle(b)));
+    await settle();
+    await h.engine.approve(a.id); // the lock: a waits 30 s
+    await settle();
+    h.engine.unqueue(a.id); // the owner takes a out while it waits
+    t.mock.timers.tick(30_000);
+    await settle();
+    await h.engine.approve(b.id); // the lock again, for another batch
+    await settle();
+    assert.equal(h.engine.getJob(b.id)!.state, 'awaitingApproval');
+    t.mock.timers.tick(30_000);
+    await settle();
+    assert.equal(h.engine.getJob(b.id)!.state, 'completed', 'b waited 30 s, not the 2 min of a’s second wait');
+  });
+
   test('session-gone while queued: recovery proposes a new session ($0, no agent); nothing starts by itself', async () => {
     h = setup([]);
     const created = await firstJob();

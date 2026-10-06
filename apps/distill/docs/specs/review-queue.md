@@ -1005,6 +1005,9 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
   lists one row per attempt ("Opus · asked Claude to rebuild the plan · didn’t
   help · $0.04"), words from `RecoveryText.fixWords`, which Activity's Fix row
   uses too; an attempt's raw error is never shown.
+- **Lock, last fixes (2026-10-06).** The 30 s / 2 min count belongs to the
+  batch that met the lock: another batch starts at 30 s (the last one may
+  have failed another way, been rejected or taken out of the queue).
 - **Fixed after review (2026-10-06).** Let recovery try again on a lock goes
   back to the agent and keeps the approved hash; on session-gone it is hidden
   and refused (only the new-session confirmation goes on). Rebuild is hidden

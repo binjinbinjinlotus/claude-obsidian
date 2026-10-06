@@ -1686,18 +1686,22 @@ export function createEngine(opts: EngineOptions): Engine {
   }
 
   const pumping = new Set<string>();
-  const lockRetries = new Map<string, number>();
+  /** LOCK_TIMEOUT waits so far, per vault, for the batch that met the lock. */
+  const lockRetries = new Map<string, { jobID: string; n: number }>();
   const lockHeldUntil = new Map<string, number>();
   /** Applies that landed per vault (this run), and the count each batch was last rebuilt against: one rebuild per change. */
   const appliesIn = new Map<string, number>();
   const refreshedAt = new Map<string, number>();
 
   /** LOCK_TIMEOUT: wait 30 s, then 2 min, and pump again (the head re-inspects, so nothing applies blindly). */
-  function scheduleLockRetry(vaultPath: string): void {
-    const n = lockRetries.get(vaultPath) ?? 0;
+  function scheduleLockRetry(vaultPath: string, jobID: string): void {
+    // The count is the batch's: another batch that meets a lock starts at 30 s (the last one may have failed
+    // another way, been rejected or taken out of the queue while it waited).
+    const prior = lockRetries.get(vaultPath);
+    const n = prior?.jobID === jobID ? prior.n : 0;
     if (n >= 2) {
       lockRetries.delete(vaultPath);
-      const head = vaultQueue(vaultPath)[0];
+      const head = findJob(jobID);
       if (head) {
         // The rule is spent (30 s, then 2 min): the recovery agent may check again or wait, within its bounds,
         // and only ever under the hash the owner approved.
@@ -1707,7 +1711,7 @@ export function createEngine(opts: EngineOptions): Engine {
       }
       return;
     }
-    lockRetries.set(vaultPath, n + 1);
+    lockRetries.set(vaultPath, { jobID, n: n + 1 });
     const wait = n === 0 ? 30_000 : 120_000;
     lockHeldUntil.set(vaultPath, Date.now() + wait);
     const t = setTimeout(() => {
@@ -4013,7 +4017,7 @@ export function createEngine(opts: EngineOptions): Engine {
             if (j.queuedApply) j.queuedApply.planSha256 = plan.approval_sha256;
             j.turns.push(newTurn('app', 'Not applied yet: another process held the vault lock. Nothing changed; Distill tries again shortly.', now()));
           });
-          scheduleLockRetry(job.vaultPath);
+          scheduleLockRetry(job.vaultPath, id);
           return;
         }
         const request =
