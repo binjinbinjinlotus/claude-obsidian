@@ -2,7 +2,8 @@
 
 `slack_cli.py` reads and sends Slack messages as **you**, using the same session
 the Slack web app uses. It can only reach conversations your account can already
-see. Distill will use it later to collect Slack messages into the vault.
+see. Distill runs `send` from the **Send in Slack** button (section 5), and will
+use it later to collect Slack messages into the vault.
 
 Two files work together:
 
@@ -119,6 +120,104 @@ changes only when you run `mark` or `unread --mark`.
 `catchup` remembers where it stopped in a local file,
 `~/.slack_cli_state.json` (change it with `SLACK_CLI_STATE`). That file is not
 Slack's read state.
+
+## 5. Send from Distill (the Send in Slack button)
+
+Distill can run `send` for a Slack message under **Actions**. Distill passes
+no Slack secret: the script reads its own Keychain item. Finish steps 1–3
+first (`python3 slack_cli.py creds` prints your name).
+
+### 5.1 Add the automation
+
+**Automations → Add a script → Custom script → Continue**, then:
+
+| Field | Value |
+|---|---|
+| Name | `Slack CLI` |
+| Your script | **Your own file** |
+| File (Choose…) | the full path to `apps/scripts/slack/slack_cli.py` in your checkout (in the file picker, **⌘⇧G** and paste it) |
+| Run with | Python (`python3`) |
+
+Click **Add**, open the new **Slack CLI** automation and give it your **OK**.
+A button can't run it until you do. Under **COMMANDS**, turn **Collect on a
+schedule** off. The card then says "Off: it only runs from buttons."
+
+### 5.2 Add the `send` command
+
+On the Slack CLI automation, **COMMANDS → Add command**. Add four arguments
+in this order. Use **↑** to move a row up.
+
+| # | Kind | Name | Value / flag | Required | Pattern | Hint |
+|---|---|---|---|---|---|---|
+| 1 | Word | `word` (any name) | `send` | — | — | — |
+| 2 | Flag | `thread` | `--thread` | off | *empty* | *empty* |
+| 3 | Value | `target` | — | on | `^(#\S+\|@\S+\|[CGDUW][A-Z0-9]+)$` | `#channel, @handle or an ID` |
+| 4 | Value | `text` | — | on | *empty* | *empty* |
+
+(In the pattern, `\|` is only Markdown table escaping. Type a plain `|`.)
+
+Then:
+
+| Field | Value |
+|---|---|
+| Name | `send` |
+| Put "--" before the values | on |
+| Timeout | 60 s |
+| The last JSON line it prints | off (the CLI doesn't print JSON) |
+| Key pattern | `ts ([0-9]+\.[0-9]+)\)` (the grey text is only a placeholder; type it) |
+| Link pattern | *empty* (the CLI prints no link) |
+
+Before you save, **Shows as** must read:
+
+```text
+send --thread <thread>? -- <target> <text>
+```
+
+If `<target>` is missing, or the pattern is on the `thread` row, fix it first.
+A pattern on `thread` blocks every thread reply, and a missing target means
+Slack gets no recipient.
+
+The key pattern reads the ts from the line `send` prints
+(`sent to #general (channel, ts 1759600000.123456)`) and saves it on the item.
+
+### 5.3 Add the button
+
+**Settings → Actions → Slack message → Buttons → New button**, or **＋ Button**
+on a Slack message item:
+
+| Field | Value |
+|---|---|
+| Label | `Send in Slack` |
+| Runs | `Slack CLI › send` |
+| `thread` | *empty* (left out of the command) |
+| `target` | `{fields.to}` |
+| `text` | `{body}` |
+| When it works | **Mark it sent** |
+| Save the key or link it prints on the item | on |
+| Ask before running | off (on shows the command every time) |
+| Show it as | **The Send button** |
+
+The preview should look like:
+
+```text
+python3 …/apps/scripts/slack/slack_cli.py send -- @mei.tanaka 'Hi Mei, …'
+```
+
+### 5.4 Send
+
+1. Open a Slack message under **Actions**. Set **To** to `@handle`, `#channel`
+   or a `C…`/`U…` ID. A plain name like "Mei Tanaka" fails the check and the run
+   is refused.
+2. Click **Send in Slack**. The first run, and the first run after any change,
+   shows the exact command. Approve it.
+3. When it works, the item becomes **sent** and keeps the message `ts` as its
+   key. If it fails, the run shows Slack's error (for example
+   `channel '#x' not found`) and the item stays as it was.
+
+> [!note] Formatting
+> `{body}` is sent as Markdown, so `**bold**` arrives in Slack with the
+> asterisks. Write Slack's own marks (`*bold*`, `~strike~`) in the message
+> for now.
 
 ## Where credentials come from
 
