@@ -1,0 +1,297 @@
+{
+  "$doc": "Action buttons and script commands (designed 2026-10-05): stored scripts (collectors, proposed label Automations) also offer commands with arguments; every action type can have buttons that run a command with arguments mapped from the item ({fields.to}, {body}, …), as an argv array, never a shell; the exact command line before the first run; live output; the result kept on the item. Send in Slack runs the Slack CLI's send. Spec: docs/specs/action-buttons.md.",
+  "row": 58640,
+  "rowNote": {
+    "id": "flow15",
+    "text": "15 · Action buttons and script commands (an automation runs from a button, with the item's fields as arguments)"
+  },
+  "templates": {},
+  "layouts": {
+    "pane": "<div style=\"flex-grow: 1; min-height: 0; overflow: hidden; position: relative\">{detail}</div>"
+  },
+  "bases": {
+    "auto": {
+      "window": {
+        "width": 1200,
+        "height": 900
+      },
+      "sidebar": {
+        "section": "collectors",
+        "height": 860
+      },
+      "layout": "pane",
+      "regions": {
+        "detail": {
+          "frag": "library"
+        }
+      }
+    },
+    "slack": {
+      "window": {
+        "width": 1200,
+        "height": 760
+      },
+      "sidebar": {
+        "section": "actions",
+        "sub": "slack",
+        "height": 720,
+        "slackCount": "3"
+      },
+      "layout": "pane",
+      "regions": {
+        "detail": {
+          "frag": "slack-item"
+        }
+      }
+    }
+  },
+  "states": [
+    {
+      "id": "sa-library",
+      "base": "auto",
+      "label": "A · Automations (Collectors, renamed): the Slack CLI offers commands; Folder and Pocket still collect"
+    },
+    {
+      "id": "sa-slack-item",
+      "base": "slack",
+      "label": "B · A Slack message: Send in Slack is a real button now, linked to Slack CLI › send; ＋ Button adds another"
+    },
+    {
+      "id": "sa-slack-confirm",
+      "base": "slack",
+      "label": "C · First run: the exact command line and every argument, before anything runs",
+      "set": {
+        "overlay": {
+          "frag": "sheet-confirm"
+        }
+      }
+    },
+    {
+      "id": "sa-slack-running",
+      "base": "slack",
+      "label": "D · Running: output streams into the same sheet (the live log), with Stop",
+      "set": {
+        "overlay": {
+          "frag": "sheet-running"
+        }
+      }
+    },
+    {
+      "id": "sa-slack-sent",
+      "base": "slack",
+      "label": "E · Success: marked sent, the ts saved from the output, Last run on the item",
+      "set": {
+        "detail": {
+          "frag": "slack-sent"
+        }
+      }
+    },
+    {
+      "id": "sa-slack-failed",
+      "base": "slack",
+      "label": "F · Failure: stderr on the item, Try again; the item stays Ready to send",
+      "set": {
+        "detail": {
+          "frag": "slack-failed"
+        }
+      }
+    },
+    {
+      "id": "sa-card-settings",
+      "label": "Settings → Actions → Slack message → Buttons",
+      "caption": "One list per type, in footer order. The same editor opens from ＋ Button in the tab.",
+      "card": {
+        "height": 610,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-settings-buttons"
+      }
+    },
+    {
+      "id": "sa-card-editor",
+      "label": "The button editor: mapping and preview",
+      "caption": "Each argument gets a template; the preview is computed by the core with a real item and lists problems.",
+      "card": {
+        "height": 760,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-button-editor"
+      }
+    },
+    {
+      "id": "sa-card-command",
+      "label": "Declaring a command (the automation’s detail)",
+      "caption": "The owner declares what the script accepts; buttons bind to these names.",
+      "card": {
+        "height": 380,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-command-editor"
+      }
+    },
+    {
+      "id": "sa-card-todo",
+      "label": "Buttons on every type",
+      "caption": "To do, Jira, Confluence and future types get the same ＋ Button.",
+      "card": {
+        "height": 300,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-todo-buttons"
+      }
+    },
+    {
+      "id": "sa-card-add",
+      "label": "Adding an automation",
+      "caption": "A first step says what it does; collectors keep today’s steps.",
+      "card": {
+        "height": 300,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-add-step"
+      }
+    },
+    {
+      "id": "sa-card-name",
+      "label": "The name",
+      "caption": "Recommended: Automations. The owner picks.",
+      "card": {
+        "height": 380,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-name"
+      }
+    },
+    {
+      "id": "sa-card-templates",
+      "label": "Templates",
+      "caption": "Same names as the prompts’ Insert field, plus {fields.<key>} for any type.",
+      "card": {
+        "height": 270,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-templates"
+      }
+    },
+    {
+      "id": "sa-card-safety",
+      "label": "Safety",
+      "caption": "What is tested, and what stays as it is.",
+      "card": {
+        "height": 340,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-safety"
+      }
+    },
+    {
+      "id": "sa-card-data",
+      "label": "What changes in the data",
+      "caption": "Additive. An older core and app keep the new keys.",
+      "card": {
+        "height": 300,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-data"
+      }
+    }
+  ],
+  "boards": [
+    {
+      "file": "ScriptActions.dc.html",
+      "title": "Action buttons · an automation runs from a button",
+      "heading": "Buttons on any action run your scripts, with the item’s fields as arguments",
+      "intro": "“I want to extend collectors so they can act as action performers … in Settings or inside that tab I can add buttons and link them to the action performers … the Send in Slack button runs that Slack script with the corresponding arguments … and after the action it shows the result.” A stored script keeps everything a collector does and can also offer commands: the Slack CLI’s send takes a target, a text and an optional thread. Any action type gets buttons, each running one command, with every argument mapped from the item: {fields.to}, {body}, {title}, a literal. Distill passes them as an argv array, never through a shell, and shows the exact command line before the first run. Output streams into the live log; the exit status, the output and a key or link read from it stay on the item, and a success can mark it sent or done. Proposed name: Automations, with Collect and Commands as roles; the data keeps its collector names.",
+      "width": 2520,
+      "sections": [
+        {
+          "title": "The script library and the Slack message"
+        },
+        {
+          "row": [
+            "sa-library",
+            "sa-slack-item"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
+          "title": "Running a button"
+        },
+        {
+          "row": [
+            "sa-slack-confirm",
+            "sa-slack-running"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
+          "title": "The result on the item"
+        },
+        {
+          "row": [
+            "sa-slack-sent",
+            "sa-slack-failed"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
+          "title": "Settings, the button editor and commands"
+        },
+        {
+          "grid": [
+            "sa-card-settings",
+            "sa-card-editor",
+            "sa-card-command"
+          ],
+          "cols": 3
+        },
+        {
+          "title": "Every type, adding, the name and the rules"
+        },
+        {
+          "grid": [
+            "sa-card-todo",
+            "sa-card-add",
+            "sa-card-name"
+          ],
+          "cols": 3
+        },
+        {
+          "grid": [
+            "sa-card-templates",
+            "sa-card-safety",
+            "sa-card-data"
+          ],
+          "cols": 3
+        }
+      ]
+    }
+  ]
+}
