@@ -356,6 +356,8 @@ export interface HandlerContext {
 /** What handlers may use; implemented in actions/index.ts. */
 export interface HandlerServices {
   atlassian?: import('./atlassian.js').AtlassianClient;
+  /** What the Jira account allows (projects, types, priorities), for the check before Create. */
+  jiraMeta?: import('./jira-meta.js').JiraMeta;
 }
 
 export type HandlerFn = (ctx: HandlerContext) => Promise<HandlerResult>;

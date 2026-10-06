@@ -962,6 +962,147 @@ describe('connections', () => {
   });
 });
 
+/** A fake Jira for the pickers: two pages of projects, TLS's types, and a priority scheme without Medium. */
+function jiraMetaRoutes(counts: Record<string, number> = {}): FakeHTTP['routes'] {
+  const hit = (k: string) => (counts[k] = (counts[k] ?? 0) + 1);
+  return [
+    (m, url) => {
+      if (m !== 'GET' || !url.startsWith(`${SITE}/rest/api/3/project/search?action=create`)) return undefined;
+      hit('projects');
+      const start = Number(new URL(url).searchParams.get('startAt') ?? 0);
+      return start === 0
+        ? { status: 200, json: { startAt: 0, maxResults: 1, total: 2, isLast: false, values: [{ key: 'TLS', name: 'Telus Platform' }] } }
+        : { status: 200, json: { startAt: 1, maxResults: 1, total: 2, isLast: true, values: [{ key: 'PX', name: 'Project X' }] } };
+    },
+    (m, url) => {
+      if (m !== 'GET' || !url.startsWith(`${SITE}/rest/api/3/issue/createmeta/TLS/issuetypes?`)) return undefined;
+      hit('types');
+      return { status: 200, json: { startAt: 0, maxResults: 50, total: 3, issueTypes: [{ id: '10001', name: 'Task' }, { id: '10002', name: 'Bug' }, { id: '10003', name: 'Sub-task', subtask: true }] } };
+    },
+    (m, url) => {
+      if (m !== 'GET' || !url.startsWith(`${SITE}/rest/api/3/issue/createmeta/TLS/issuetypes/10001?`)) return undefined;
+      hit('fields');
+      return {
+        status: 200,
+        json: {
+          startAt: 0, maxResults: 50, total: 3,
+          fields: [
+            { fieldId: 'summary', name: 'Summary', required: true },
+            { fieldId: 'priority', name: 'Priority', required: false, allowedValues: [{ id: '1', name: 'P1 - Critical' }, { id: '3', name: 'P3 - Normal' }] },
+            { fieldId: 'assignee', name: 'Assignee', required: false },
+          ],
+        },
+      };
+    },
+    (m, url) => {
+      if (m !== 'GET' || !url.startsWith(`${SITE}/rest/api/3/issue/createmeta/TLS/issuetypes/10002?`)) return undefined;
+      return { status: 200, json: { startAt: 0, maxResults: 50, total: 1, fields: [{ fieldId: 'summary', name: 'Summary', required: true }] } };
+    },
+  ];
+}
+
+describe('Jira pickers: what the account allows (actions.md, fake HTTP)', () => {
+  test('projects (paged), types and the create screen, cached an hour per account; refresh reloads', async () => {
+    const h = harness();
+    const counts: Record<string, number> = {};
+    await connected(h, jiraMetaRoutes(counts));
+    const projects = await h.service.jiraProjects();
+    assert.deepEqual(projects.projects, [{ key: 'PX', name: 'Project X' }, { key: 'TLS', name: 'Telus Platform' }]);
+    assert.equal(projects.account, 'Jin Liu');
+    assert.equal(projects.site, SITE);
+    assert.equal(counts.projects, 2, 'two pages');
+    const types = await h.service.jiraIssueTypes('tls');
+    assert.deepEqual(types.types, [{ id: '10001', name: 'Task' }, { id: '10002', name: 'Bug' }], 'subtasks left out');
+    const fields = await h.service.jiraFields('TLS', '10001');
+    assert.deepEqual(fields.priorities, ['P1 - Critical', 'P3 - Normal']);
+    assert.deepEqual(fields.fields.map((f) => f.id), ['summary', 'priority', 'assignee']);
+    assert.equal((await h.service.jiraFields('TLS', '10002')).priorities, null, 'no Priority on this screen');
+
+    await h.service.jiraProjects();
+    assert.equal(counts.projects, 2, 'cached');
+    h.clock.t = new Date(h.clock.t.getTime() + 61 * 60_000);
+    await h.service.jiraProjects();
+    assert.equal(counts.projects, 4, 'an hour later it asks again');
+    await h.service.jiraProjects({ refresh: true });
+    assert.equal(counts.projects, 6, 'refresh reloads');
+    assert.ok(h.http.calls.every((c) => c.url.startsWith(SITE)), 'only the connected site');
+  });
+
+  test('not connected or unreachable: invalid_state with details.jira', async () => {
+    const h = harness();
+    await assert.rejects(h.service.jiraProjects(), (e: unknown) => (e as { details?: { jira?: string } }).details?.jira === 'not_connected');
+    await connected(h, [(m, url) => (url.includes('/project/search') ? 'network' : undefined)]);
+    await assert.rejects(h.service.jiraProjects(), (e: unknown) => (e as { details?: { jira?: string } }).details?.jira === 'unreachable');
+  });
+
+  test('Create refuses a value outside the lists in plain words, before any write; case is Jira’s', async () => {
+    const h = harness();
+    await connected(h, [...jiraMetaRoutes(), (m, url) => (m === 'POST' && url === `${SITE}/rest/api/3/issue` ? { status: 201, json: { id: '9', key: 'TLS-9' } } : undefined)]);
+    const posts = () => h.http.calls.filter((c) => c.method === 'POST').length;
+    const t = await h.service.createAction({ type: 'jira', title: 'Cap retries', body: 'b', fields: { project: 'TLS', issueType: 'Task', priority: 'Medium' } });
+    const refused = await h.service.performAction(t.id, 'create');
+    assert.deepEqual(refused.error, { code: 'refused', message: 'Medium isn’t a priority in TLS. Pick one.', field: 'priority' });
+    assert.equal(refused.status, 'ready');
+    assert.equal(posts(), 0, 'nothing sent to Jira');
+
+    await h.service.updateAction(t.id, { fields: { issueType: 'Story', priority: null } });
+    assert.deepEqual((await h.service.performAction(t.id, 'create')).error, { code: 'refused', message: 'Story isn’t an issue type in TLS. Pick one.', field: 'issueType' });
+    await h.service.updateAction(t.id, { fields: { project: 'NOPE', issueType: 'Task' } });
+    assert.deepEqual((await h.service.performAction(t.id, 'create')).error, { code: 'refused', message: 'NOPE isn’t a Jira project you can create tickets in. Pick one.', field: 'project' });
+    assert.equal(posts(), 0);
+
+    await h.service.updateAction(t.id, { fields: { project: 'TLS · Telus Platform', issueType: 'task', priority: 'p3 - normal' } });
+    const created = await h.service.performAction(t.id, 'create');
+    assert.equal(created.status, 'created', JSON.stringify(created.error));
+    const body = h.http.calls.find((c) => c.method === 'POST')!.body as { fields: Record<string, any> };
+    assert.deepEqual([body.fields.project, body.fields.issuetype, body.fields.priority], [{ key: 'TLS' }, { name: 'Task' }, { name: 'P3 - Normal' }]);
+  });
+
+  test('a create screen without Priority leaves it out; Jira unreachable for the lists blocks nothing', async () => {
+    const h = harness();
+    let listsDown = false;
+    await connected(h, [
+      (m, url) => (listsDown && m === 'GET' && url.includes('/rest/api/3/project/search') ? 'network' : undefined),
+      ...jiraMetaRoutes(),
+      (m, url) => (m === 'POST' && url === `${SITE}/rest/api/3/issue` ? { status: 201, json: { id: '9', key: 'TLS-10' } } : undefined),
+    ]);
+    const bug = await h.service.createAction({ type: 'jira', title: 'A bug', body: 'b', fields: { project: 'TLS', issueType: 'Bug', priority: 'High' } });
+    assert.equal((await h.service.performAction(bug.id, 'create')).status, 'created');
+    const post = h.http.calls.filter((c) => c.method === 'POST').at(-1)!.body as { fields: Record<string, unknown> };
+    assert.equal(post.fields.priority, undefined, 'Priority isn’t used in this project');
+
+    listsDown = true;
+    const h2 = harness();
+    await connected(h2, [
+      (m, url) => (m === 'GET' && url.includes('/rest/api/3/project/search') ? 'network' : undefined),
+      (m, url) => (m === 'POST' && url === `${SITE}/rest/api/3/issue` ? { status: 400, json: { errors: { priority: 'The priority selected is invalid.' } } } : undefined),
+    ]);
+    const t = await h2.service.createAction({ type: 'jira', title: 'x', body: 'b', fields: { project: 'TLS', priority: 'Medium' } });
+    const r = await h2.service.performAction(t.id, 'create');
+    assert.ok(h2.http.calls.some((c) => c.method === 'POST'), 'not blocked: Jira checks on create');
+    assert.deepEqual(r.error, { code: 'refused', message: 'Jira didn’t create the ticket: The priority selected is invalid.', field: 'priority' });
+  });
+
+  test('a drafted ticket’s priority takes the project’s spelling, or is left empty and marked', async () => {
+    const h = harness();
+    await connected(h, jiraMetaRoutes());
+    h.runner.draft = () => ({ structured: { title: 'Cap retries', body: 'Retries at 3.', fields: [{ key: 'priority', value: 'p1 - critical' }] } });
+    const a = await h.service.createAction({ type: 'jira', title: 'Cap retries', fields: { project: 'TLS', issueType: 'Task' } });
+    await h.service.whenIdle();
+    const drafted = (await h.service.getAction(a.id))!;
+    assert.equal(drafted.body, 'Retries at 3.', 'the background draft ran');
+    assert.equal(drafted.fields.priority, 'P1 - Critical');
+    assert.equal(drafted.error ?? null, null);
+
+    h.runner.draft = () => ({ structured: { title: 'Cap retries', body: 'Retries at 3.', fields: [{ key: 'priority', value: 'Medium' }] } });
+    const b = await h.service.createAction({ type: 'jira', title: 'Cap retries again', fields: { project: 'TLS', issueType: 'Task' } });
+    await h.service.whenIdle();
+    const left = (await h.service.getAction(b.id))!;
+    assert.equal(left.fields.priority ?? null, null);
+    assert.deepEqual(left.error, { code: 'refused', message: 'Medium isn’t a priority in TLS, so it was left empty. Pick one.', field: 'priority' });
+  });
+});
+
 describe('Jira and Confluence handlers (fake HTTP)', () => {
   test('Jira create: ADF description, You → accountId, status, then refresh to done', async () => {
     const h = harness();

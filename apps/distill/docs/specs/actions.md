@@ -146,6 +146,41 @@ time.
   `actions-confirm-addas-menu`, `actions-confirm-addas-slack`,
   `actions-confirm-addas-blocked`.
 
+## Jira pickers (2026-10-06, owner request)
+
+The owner's ticket (TLS · Task · Priority Medium) failed with "Jira didn't
+create it: Jira didn't create the ticket: The priority selected is invalid."
+Project, Type and Priority were free text or a fixed list, not what their
+Jira allows, and the banner said "didn't create" twice.
+
+- **Core (built):** `actions/jira-meta.ts` asks the connected account:
+  projects it can create issues in (`/rest/api/3/project/search?action=create`,
+  paged; key + name), each project's issue types
+  (`/rest/api/3/issue/createmeta/{project}/issuetypes`, subtasks left out)
+  and a type's create screen (`…/issuetypes/{id}`: its fields and the
+  priority scheme's allowed values; no Priority field → `priorities: null`).
+  Cached per account and site for an hour; `?refresh=1` reloads. Secrets stay
+  in the Keychain (the AtlassianClient). Routes: `GET /v1/jira/projects`,
+  `GET /v1/jira/projects/:key/types`, `GET /v1/jira/projects/:key/types/:id/fields`.
+  Not connected, unreachable or a Jira error: 409 with `error.jira`
+  (`not_connected`, `auth_expired`, `unreachable`, `error`).
+- **Check before Create:** a project the account can't use, a type the
+  project lacks or a priority outside its scheme marks the field and refuses
+  the run in plain words ("Medium isn't a priority in TLS. Pick one."), before
+  any write. A case-only difference takes Jira's spelling; a create screen
+  without Priority leaves it out of the request. If Jira can't be reached for
+  the lists, nothing is blocked: Jira checks on create.
+- **Drafts:** a drafted ticket's priority named like the project's ("medium")
+  takes the project's spelling; one the project lacks is left empty and the
+  field marked ("Medium isn't a priority in TLS, so it was left empty. Pick
+  one."). Best effort: not connected or offline changes nothing.
+- **One "didn't create":** the banner shows the core's sentence once ("Jira
+  didn't create the ticket: The priority selected is invalid.").
+- Tests: `actions.test.ts` ("Jira pickers: …", a fake Jira over the fake
+  fetch: paging, cache and refresh, refusals before any POST, Jira's
+  spelling, no Priority on the screen, unreachable blocks nothing, the
+  drafted priority), `http-actions.test.ts` (routes).
+
 ## Settings
 
 Built in the macOS app (`SettingsActions.swift`, `SettingsConnections.swift`;
@@ -440,6 +475,9 @@ All routes need the bearer token, like every other route.
 | POST | `/v1/conversations/:id/actions/detect` | `{turnIndex?}` | `{actions: ActionItem[]}` |
 | GET | `/v1/jobs/:id/actions` | | `JobActions {summary, proposals}` (v11: what Review shows; 404 unknown job) |
 | POST | `/v1/jobs/:id/actions/find` | | `{job}` (Try again; also in Review for failed sources; 409 when the job has no applied changes and isn't in Review) |
+| GET | `/v1/jira/projects` | `?refresh=1` | `JiraProjects` (Jira pickers; 409 with `error.jira` when Jira can't be asked) |
+| GET | `/v1/jira/projects/:key/types` | `?refresh=1` | `JiraIssueTypes` |
+| GET | `/v1/jira/projects/:key/types/:id/fields` | `?refresh=1` | `JiraFields` (`priorities` null: no Priority on the create screen) |
 | GET | `/v1/connections` | | `{connections: ConnectionInfo[]}` |
 | POST | `/v1/connections/:id/connect` | `{site, email, token}` (scrubbed from errors) | `ConnectionInfo` |
 | GET | `/v1/connections/:id/sign-in-url` | `?site=` | `{url}` |

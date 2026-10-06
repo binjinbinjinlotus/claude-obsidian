@@ -10,6 +10,7 @@ import { CoreError, type ActionError, type ActionItem, type ConnectionInfo } fro
 import type { FetchLike } from '../runners/model-api.js';
 import type { SecretStore } from '../runners/secrets.js';
 import { encodeJSON, isObject, isoDate, preserveUnreadable, readJSON, str, writeFileAtomic, type JSONObject } from '../store/json.js';
+import { checkJiraDraft, projectKey } from './jira-meta.js';
 import { markdownToADF, markdownToStorage } from './markdown.js';
 import { registerHandler, type HandlerContext, type HandlerResult } from './registry.js';
 
@@ -308,13 +309,17 @@ async function jiraCreate(ctx: HandlerContext): Promise<HandlerResult> {
   const f = item.fields;
   const project = f.project?.trim();
   if (!project) fail('refused', 'Choose a Jira project first.', 'project');
+  // actions.md, Jira pickers: a value the account doesn't allow is refused here, before any write; Jira's
+  // spelling replaces a case-only difference. If Jira can't be asked, nothing is blocked: it checks on create.
+  const check = ctx.services.jiraMeta ? await checkJiraDraft(ctx.services.jiraMeta, f) : {};
+  if (check.problem) fail('refused', check.problem.message, check.problem.field);
   const fields: JSONObject = {
-    project: { key: project!.split(/\s/)[0] },
+    project: { key: check.project ?? projectKey(project!) },
     summary: item.title.trim().slice(0, 254),
-    issuetype: { name: f.issueType?.trim() || 'Task' },
+    issuetype: { name: check.issueType ?? (f.issueType?.trim() || 'Task') },
     description: markdownToADF(item.body ?? ''),
   };
-  if (f.priority?.trim()) fields.priority = { name: f.priority.trim() };
+  if (f.priority?.trim() && !check.dropPriority) fields.priority = { name: check.priority ?? f.priority.trim() };
   const labels = jiraLabels(item.labels);
   if (labels.length > 0) fields.labels = labels;
   const assignee = await jiraAssignee(client, f.assignee);

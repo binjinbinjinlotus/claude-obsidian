@@ -17,6 +17,15 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**Jira fields come from the account, and Distill checks them before Create
+(2026-10-06).** A ticket failed because Priority "Medium" isn't in the
+project's scheme. Project, Type and Priority are now picked from what the
+connected account allows (cached an hour per account and site), and a value
+outside those lists is refused in plain words before anything is sent. When
+Jira can't be reached for the lists, Create still goes ahead and Jira checks:
+the lists help, they never become a second way to fail. (actions.md, Jira
+pickers.)
+
 **Add as converts the found item in place, at confirm time (2026-10-06).**
 The owner wanted to choose the destination when confirming instead of adding
 a to-do and then Send to. Confirm takes an optional target type and field

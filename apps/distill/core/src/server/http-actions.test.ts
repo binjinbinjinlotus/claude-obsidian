@@ -63,6 +63,20 @@ describe('HTTP API: actions and connections', () => {
     assert.equal(defaulted.body.type, 'todo');
   });
 
+  it('Jira pickers: projects, types and fields, with ?refresh=1 (actions.md)', async () => {
+    const projects = await request(port, 'GET', '/v1/jira/projects');
+    assert.equal(projects.status, 200);
+    assert.deepEqual(projects.body.projects, [{ key: 'TLS', name: 'Telus Platform' }]);
+    assert.deepEqual(last('jiraProjects')!.args, [undefined]);
+    await request(port, 'GET', '/v1/jira/projects?refresh=1');
+    assert.deepEqual(last('jiraProjects')!.args, ['refresh']);
+    assert.equal((await request(port, 'GET', '/v1/jira/projects/TLS/types')).body.types[0].name, 'Task');
+    assert.deepEqual(last('jiraIssueTypes')!.args, ['TLS', undefined]);
+    const fields = await request(port, 'GET', '/v1/jira/projects/TLS/types/10001/fields?refresh=1');
+    assert.deepEqual(fields.body.priorities, ['P1', 'P2']);
+    assert.deepEqual(last('jiraFields')!.args, ['TLS', '10001', 'refresh']);
+  });
+
   it('get, patch, confirm, dismiss, delete', async () => {
     assert.equal((await request(port, 'GET', '/v1/actions/act-1')).body.id, 'act-1');
     const missing = await request(port, 'GET', '/v1/actions/nope');

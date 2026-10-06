@@ -259,6 +259,9 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
     previewButtonDraft: 'read',
     stopActionButtonRun: 'read', // the run's end is on the item
     listSlackPeople: 'read',
+    jiraProjects: 'read',
+    jiraIssueTypes: 'read',
+    jiraFields: 'read',
     slackTarget: 'read',
     // action-buttons.md, "Where to send": a remembered name is the owner's change; the name and handle, no message.
     rememberSlackPerson: {

@@ -626,6 +626,18 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       record('previewButtonDraft', input.typeId);
       return { argv: ['python3', '/x/slack_cli.py', 'send'], display: 'python3 /x/slack_cli.py send', problems: [], needsApproval: true, needsConsent: false, approvalHash: 'h' };
     },
+    async jiraProjects(opts) {
+      record('jiraProjects', opts?.refresh ? 'refresh' : undefined);
+      return { site: 'https://acme.atlassian.net', account: 'Jin Liu', fetchedAt: '2026-10-06T12:00:00Z', projects: [{ key: 'TLS', name: 'Telus Platform' }] };
+    },
+    async jiraIssueTypes(project, opts) {
+      record('jiraIssueTypes', project, opts?.refresh ? 'refresh' : undefined);
+      return { site: 'https://acme.atlassian.net', account: 'Jin Liu', fetchedAt: '2026-10-06T12:00:00Z', project, types: [{ id: '10001', name: 'Task' }] };
+    },
+    async jiraFields(project, typeId, opts) {
+      record('jiraFields', project, typeId, opts?.refresh ? 'refresh' : undefined);
+      return { site: 'https://acme.atlassian.net', account: 'Jin Liu', fetchedAt: '2026-10-06T12:00:00Z', project, typeId, fields: [], priorities: ['P1', 'P2'] };
+    },
     async listSlackPeople(vaultPath) {
       record('listSlackPeople', vaultPath ?? undefined);
       return [{ vaultPath: '/v', name: 'Aditya Pradhan', target: '@aditya', savedAt: '2026-10-06T12:00:00Z' }];
