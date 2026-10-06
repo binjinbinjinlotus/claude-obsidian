@@ -331,10 +331,15 @@ final class AppModel: ObservableObject {
     }
 
     func approve(_ id: String) { sessionAware(id, action: "approve") { try await $0.approve(id) } }
-    func reply(_ id: String, text: String) {
+    /// `sent` runs only once the core took the reply, so the box keeps the text on any failure.
+    func reply(_ id: String, text: String, sent: (() -> Void)? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        sessionAware(id, action: "reply", text: trimmed) { try await $0.reply(id, text: trimmed) }
+        sessionAware(id, action: "reply", text: trimmed, held: sent) { client in
+            let job = try await client.reply(id, text: trimmed)
+            await MainActor.run { sent?() }
+            return job
+        }
     }
     func allow(_ id: String, rules: [String]) { sessionAware(id, action: "allow", rules: rules) { try await $0.allow(id, rules: rules) } }
     /// A rebuilt part: `batch: false` discards only that part; `batch: true` rejects the whole batch.

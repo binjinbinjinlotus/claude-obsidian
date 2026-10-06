@@ -1395,8 +1395,9 @@ struct JobDetailView: View {
     }
 
     private func send(_ job: Job) {
-        engine.reply(job.id, text: reply)
-        reply = ""
+        let text = reply
+        // Cleared only once the core took it; a refused reply stays in the box (and the error shows).
+        engine.reply(job.id, text: text) { if reply == text { reply = "" } }
     }
 
     private func name(_ author: TurnRecord.Author) -> String {

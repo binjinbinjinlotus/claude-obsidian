@@ -49,8 +49,9 @@ extension AppModel {
     }
 
     /// A batch call that may resume the session: a refusal shows the confirmation instead of an error.
+    /// `held`: the call now waits on the new-session prompt (a reply leaves its box; Cancel returns it).
     func sessionAware(_ id: String, action: String, text: String? = nil, rules: [String]? = nil,
-                      _ call: @escaping (CoreClient) async throws -> Job?) {
+                      held: (() -> Void)? = nil, _ call: @escaping (CoreClient) async throws -> Job?) {
         guard let client else { lastError = "The Distill core is not connected."; return }
         Task {
             do {
@@ -59,6 +60,7 @@ extension AppModel {
                 upsert(job)
             } catch let e as CoreClientError where e.sessionUnavailable != nil {
                 showSessionPrompt(e.sessionUnavailable!, jobID: id, action: action, text: text, rules: rules)
+                held?()
             } catch {
                 report(error)
             }

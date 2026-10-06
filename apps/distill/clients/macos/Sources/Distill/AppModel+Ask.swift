@@ -58,7 +58,10 @@ extension AppModel {
 
     /// Called for every job event: a decision the user waited on has landed.
     func settlePendingActions(for job: Job) {
-        if pendingActions["approve:\(job.id)"] != nil, job.state != .awaitingApproval {
+        if let since = pendingActions["approve:\(job.id)"],
+           job.state != .awaitingApproval || ApplyFlag.cameBack(job, since: since) {
+            // Left Review, or Claude came back to Review without applying (a turn newer than the approval):
+            // either way nothing is applying now, so Send reply and Approve work again.
             pendingActions["approve:\(job.id)"] = nil
         }
         if job.state == .running { pendingActions["process"] = nil }
@@ -198,4 +201,14 @@ extension AppModel {
 
     /// Whether we are still waiting for the core's first answer.
     var isStarting: Bool { connection == .connecting && status == nil }
+}
+
+
+/// When the "applying" mark on a job is stale (reply-and-approve fix, 2026-10-05).
+enum ApplyFlag {
+    /// Claude answered after the approval was pressed and the job is back in Review: the apply ended.
+    static func cameBack(_ job: Job, since: Date) -> Bool {
+        guard job.state == .awaitingApproval else { return false }
+        return job.turns.contains { $0.author == .worker && $0.date > since }
+    }
 }

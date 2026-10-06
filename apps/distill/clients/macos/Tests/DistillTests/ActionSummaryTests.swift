@@ -42,3 +42,16 @@ final class ActionSummaryTests: XCTestCase {
         XCTAssertEqual(ConfirmSelection.next(after: "x", in: ["a", "b"]), "a")
     }
 }
+
+/// A stale "applying" mark (approve came back to Review without applying) must not keep Send reply disabled.
+final class ApplyFlagTests: XCTestCase {
+    func testClaudeComingBackClearsTheMark() throws {
+        let since = Date(timeIntervalSince1970: 1_000)
+        var job = try JSONDecoder().decode(Job.self, from: Data(#"{"id":"j","state":"awaitingApproval","vaultPath":"/v"}"#.utf8))
+        XCTAssertFalse(ApplyFlag.cameBack(job, since: since), "no answer yet: still applying")
+        job.turns = [TurnRecord(id: "t", date: since.addingTimeInterval(-5), author: .worker, text: "plan")]
+        XCTAssertFalse(ApplyFlag.cameBack(job, since: since), "an older turn doesn't count")
+        job.turns.append(TurnRecord(id: "u", date: since.addingTimeInterval(30), author: .worker, text: "Apply did not run"))
+        XCTAssertTrue(ApplyFlag.cameBack(job, since: since))
+    }
+}
