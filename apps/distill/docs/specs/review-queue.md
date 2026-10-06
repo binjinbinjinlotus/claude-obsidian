@@ -54,7 +54,8 @@ new `JobState`, so older clients still decode it.
 interface QueuedApply {
   at: string;              // when the owner approved (ISO)
   order: number;           // queue position key: the first approve's time in ms; a re-approval keeps it
-  planSha256: string;      // approval_sha256 of the plan approved
+  planSha256?: string;     // approval_sha256 of the plan approved. Present = waiting to apply;
+                           // absent = rebuilt, needs the owner's OK again (keeps `order`)
   bundlePath: string;      // the exact bundle approved (approval.unconfirmed.bundlePath for "labels later")
   labels: 'confirm' | 'later';
   carries: 'confirm' | 'later'; // what applyingLabels gets (approval.rebuilt?.labels ?? mode)
@@ -87,7 +88,9 @@ interface QueuedApply {
   - The vault is busy when an apply is in flight there, meaning a job in
     `running` with an active `apply` progress, or a label job applying in the
     core, or when the head is being refreshed (below).
-  - When the vault is free, take the queued job with the lowest `order`.
+  - When the vault is free, take the queued job with the lowest `order`. A head
+    without `planSha256` needs the owner. It is never started, and it blocks the
+    rest (strict order, below).
   - **Freshness, the cheap filter:** `staleFor(job)` reads `queued.bundlePath`,
     takes `expected_hashes` (path → sha256, or `null` for a page that must not
     exist), and hashes the current files. `null` means the file is missing.
@@ -112,9 +115,10 @@ interface QueuedApply {
   - `queuedApply` is stored on the job, so the queue survives a restart, and
     `start()` pumps it.
   - A job found `running` mid-apply at launch keeps today's handling
-    (`awaitingApproval` with a note). If it still has `queuedApply` it is not
-    re-queued: an operation that may have half-started is for the journal check
-    (`adoptOutsideApplies`) and recovery, not a blind retry.
+    (`awaitingApproval` with a note). `startApply` already cleared its
+    `queuedApply`, so it is not re-queued: an operation that may have
+    half-started is for the journal check (`adoptOutsideApplies`) and recovery,
+    not a blind retry.
 - **Strict order.** While the head waits for the owner (re-approval or Needs
   you), later queued batches wait too ("Queued · after Telus Daily Stand-up,
   which needs you"). Letting them pass would make the head's rebuilt plan stale
@@ -125,8 +129,8 @@ interface QueuedApply {
 ### Badges and status
 
 - `status().pendingApprovals` and every badge (sidebar, Dock, flask) count
-  `awaitingApproval` jobs **without** `queuedApply` and without an active
-  `refresh` or `recovery`.
+  `awaitingApproval` jobs, except those with `queuedApply.planSha256` set
+  (waiting to apply) and those with an active `refresh` or `recovery`.
 - A Needs-you job counts: a rebuilt head waiting for its OK once more, or a
   recovery that gave up.
 - `batchBlocker` is unchanged: queued batches never block the next batch.
@@ -168,7 +172,11 @@ The head of the queue is stale:
 2. The rebuilt plan comes back. `checkRebuiltPart` proves the source pages are
    the bytes the owner approved.
 3. The core computes **`approval.sinceApproved`** by comparing the approved
-   bundle with the rebuilt one, path by path with `pageShas`:
+   bundle with the rebuilt one, path by path with `pageShas`. The call is
+   `sinceApproved(queuedApply.bundlePath, request.bundlePath)` in
+   `checkRebuiltPart`. `sendPartInBackground` replaces `job.approval`, so the
+   approved bundle survives only in `queuedApply.bundlePath`. The comparison
+   gives:
    - `sources: 'same'`: always true after `checkRebuiltPart`;
    - `content`: concept, entity and other `wiki/**` pages whose bytes differ, with
      added and dropped pages;
@@ -431,19 +439,21 @@ column** in Review: `ReviewBatchList`.
 Applied to the first source's file name, before the old `pretty()` step that
 turns `-` into spaces:
 
-1. Drop the extension.
-2. Remove "Notes by Gemini" and "Transcript", in any case.
-3. Remove dates: `YYYY[-_ /.]MM[-_ /.]DD`, and `MM/DD/YYYY` written with `_`.
-4. Remove times: `HH[:_.-]MM`, optionally `:SS`, optionally ` AM|PM`.
+1. Drop the extension. A **slugged** name (no spaces) has its dashes and
+   underscores turned into spaces first, so the steps below see words.
+2. Remove "Notes by Gemini" and "Transcript", in any case and with any
+   separator between the words (`Notes[\s_-]+by[\s_-]+Gemini`).
+3. Remove dates: `YYYY[-_ /.]MM[-_ /.]DD` (a space as the separator too, for
+   slugged names), and `MM/DD/YYYY` written with `_`.
+4. Remove times: `HH[:_.\- ]MM`, optionally `:SS`, optionally ` AM|PM`.
 5. Remove time zones: a token of 2–5 capital letters from a list (`IST PST PDT
    EST EDT CST CDT MST MDT UTC GMT CET CEST BST JST AEST AEDT SGT HKT`), or
    `GMT±hh(:mm)`.
-6. Collapse the separators left over (` - `, `_`, runs of spaces and dashes) and
-   trim the punctuation at the ends.
-7. A **slugged** name (no spaces originally) has its dashes turned into spaces,
-   then a short list of words gets its hyphen back: `stand up` → `Stand-up`,
-   `check in`, `follow up`, `kick off`, `sync up`, `one on one`. A name with
-   spaces keeps its in-word hyphens.
+6. Collapse the separators left over (` - `, ` – `, ` — `, `_`, runs of spaces
+   and dashes) and trim the punctuation at the ends.
+7. For a slugged name, a short list of words gets its hyphen back: `stand up` →
+   `Stand-up`, `check in`, `follow up`, `kick off`, `sync up`, `one on one`. A
+   name with spaces keeps its in-word hyphens.
 8. Capitalise the first letter. When nothing is left, fall back to today's
    `displayTitle`.
 9. Add `+N` for the other sources (a folder counts once).
@@ -506,7 +516,9 @@ Cases for the unit tests (`ReviewLogicTests`):
   - `handle`: an apply turn that did not record the operation, and where
     `staleFor` finds paths, goes to refresh; otherwise `not-recorded` goes to
     recovery.
-  - `checkRebuiltPart` sets `sinceApproved` when the job had `queuedApply`.
+  - `checkRebuiltPart` sets `sinceApproved(queuedApply.bundlePath,
+    request.bundlePath)` when the job has `queuedApply`, then deletes
+    `queuedApply.planSha256` (Needs you, `order` kept).
   - `requestDecision` clears `refresh`.
   - New `recover(id, signature)` and `tryRecoveryAgain(id)`.
   - `status().pendingApprovals` excludes queued, refreshing and recovering jobs.
