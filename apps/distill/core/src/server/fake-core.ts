@@ -712,6 +712,46 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       if (!fake.conversations.some((c) => c.id === conversationID)) throw new CoreError('not_found', `no conversation with id "${conversationID}"`);
       return fake.actions.filter((a) => a.source.kind === 'ask' && a.source.conversationID === conversationID);
     },
+    async assignActionOwner(id, owner) {
+      record('assignActionOwner', id, owner);
+      const item = requireAction(id);
+      return Object.assign(item, owner === null ? { route: 'others' as const, status: 'open' as const } : { owner, ownerUnclear: false });
+    },
+    async trackAsPending(id) {
+      record('trackAsPending', id);
+      return Object.assign(requireAction(id), { route: 'waiting' as const });
+    },
+    async claimAction(id) {
+      record('claimAction', id);
+      return Object.assign(requireAction(id), { route: 'list' as const, owner: 'me' });
+    },
+    async markReceived(id) {
+      record('markReceived', id);
+      return Object.assign(requireAction(id), { status: 'done' as const });
+    },
+    async stopWaiting(id) {
+      record('stopWaiting', id);
+      return Object.assign(requireAction(id), { status: 'removed' as const });
+    },
+    async nudgeAction(id, message) {
+      record('nudgeAction', id, message);
+      const item = requireAction(id);
+      const next = sampleAction({ id: `act-${fake.actions.length + 1}`, type: 'slack', title: `Nudge about ${item.title}`, body: message.text, fields: { to: message.to }, fromActionID: id });
+      fake.actions.push(next);
+      return { item, message: next };
+    },
+    async routingPreview(prefs) {
+      record('routingPreview', prefs);
+      return { days: 7, lists: 14, waiting: 6, others: 31 };
+    },
+    async listHighlights() {
+      record('listHighlights');
+      return [];
+    },
+    async getHighlight(notePath) {
+      record('getHighlight', notePath);
+      throw new CoreError('not_found', `No Highlights for ${notePath}.`);
+    },
     async listConnections() {
       record('listConnections');
       return fake.connections;

@@ -10,6 +10,7 @@ import {
   DEFAULT_LABELING_PREFERENCES,
   DEFAULT_SOURCE_TAXONOMY,
   type AITask,
+  type ActionPerson,
   type ActionPreferences,
   type ActionSourcePreferences,
   type ActionTypePreferences,
@@ -206,7 +207,7 @@ function decodeActionSource(v: unknown): Partial<ActionSourcePreferences> | unde
 function decodeActionType(v: unknown): Partial<ActionTypePreferences> | undefined {
   if (!isObject(v)) return undefined;
   const known = [
-    'enabled', 'draftWhen', 'improveAfterEdit', 'draftSelection', 'improveSelection', 'draftPrompt', 'improvePrompt', 'fieldDefaults',
+    'enabled', 'draftWhen', 'improveAfterEdit', 'draftSelection', 'improveSelection', 'draftPrompt', 'improvePrompt', 'fieldDefaults', 'handlesFor',
   ] as const;
   const out = unknownKeys(v, known) as Partial<ActionTypePreferences>;
   const enabled = bool(v.enabled);
@@ -227,6 +228,25 @@ function decodeActionType(v: unknown): Partial<ActionTypePreferences> | undefine
     for (const [k, value] of Object.entries(v.fieldDefaults)) if (typeof value === 'string') fd[k] = value;
     out.fieldDefaults = fd;
   }
+  const handles = strArray(v.handlesFor);
+  if (handles) out.handlesFor = [...new Set(handles)];
+  return out;
+}
+
+/** actions-routing.md: People, the user ("you") first; entries without an id or a name are dropped. */
+function decodePeople(v: unknown): ActionPerson[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: ActionPerson[] = [];
+  for (const e of v) {
+    if (!isObject(e)) continue;
+    const id = str(e.id)?.trim();
+    const name = str(e.name)?.trim() ?? '';
+    if (!id || out.some((x) => x.id === id) || (name === '' && id !== 'you')) continue;
+    const aliases = [...new Set((strArray(e.aliases) ?? []).map((a) => a.trim()).filter(Boolean))];
+    out.push({ ...(unknownKeys(e, ['id', 'name', 'aliases']) as object), id, name, aliases });
+  }
+  const you = out.findIndex((x) => x.id === 'you');
+  if (you > 0) out.unshift(...out.splice(you, 1));
   return out;
 }
 
@@ -237,7 +257,7 @@ function decodeActionType(v: unknown): Partial<ActionTypePreferences> | undefine
  */
 export function decodeActionPreferences(v: unknown): Partial<ActionPreferences> | undefined {
   if (!isObject(v)) return undefined;
-  const known = ['sources', 'types', 'findSelection', 'findPrompt', 'todo', 'historyDays'] as const;
+  const known = ['sources', 'types', 'findSelection', 'findPrompt', 'todo', 'historyDays', 'people'] as const;
   const out = unknownKeys(v, known) as Partial<ActionPreferences>;
   if (isObject(v.sources)) {
     const sources = unknownKeys(v.sources, ['notes', 'ask']) as JSONObject;
@@ -269,6 +289,8 @@ export function decodeActionPreferences(v: unknown): Partial<ActionPreferences> 
   }
   const historyDays = num(v.historyDays);
   if (historyDays !== undefined) out.historyDays = Math.trunc(historyDays);
+  const people = decodePeople(v.people);
+  if (people) out.people = people;
   return out;
 }
 
@@ -287,6 +309,7 @@ export function actionPreferences(s: Settings): ActionPreferences {
   };
   if (p.findSelection !== undefined) out.findSelection = p.findSelection;
   if (p.findPrompt !== undefined) out.findPrompt = p.findPrompt;
+  if (p.people !== undefined) out.people = p.people;
   return out;
 }
 

@@ -17,6 +17,8 @@ import type {
   ScriptSource,
   ActionPatch,
   ActionQuery,
+  ActionPerson,
+  ActionPreferences,
   ConfirmAs,
   ActionSource,
   ActionStatus,
@@ -455,6 +457,11 @@ function parseActionQuery(query: URLSearchParams): ActionQuery {
   if (vault && vault.trim()) q.vaultPath = vault;
   const text = query.get('q');
   if (text && text.trim()) q.text = text;
+  const route = query.get('route');
+  if (route) {
+    if (!['list', 'waiting', 'others', 'all'].includes(route)) throw bad(`unknown route "${route}"`);
+    q.route = route as NonNullable<ActionQuery['route']>;
+  }
   return q;
 }
 
@@ -1336,6 +1343,45 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
     },
     { method: 'POST', pattern: /^\/v1\/actions\/([^/]+)\/remove$/, handler: async ({ params }) => core.removeAction(params[0]!) },
     { method: 'POST', pattern: /^\/v1\/actions\/([^/]+)\/restore$/, handler: async ({ params }) => core.restoreAction(params[0]!) },
+    // ── actions-routing.md: whose items, Pending and Highlights ──
+    {
+      method: 'POST',
+      pattern: /^\/v1\/actions\/([^/]+)\/owner$/,
+      handler: async ({ params, body }) => {
+        const o = asObject(await body(), false);
+        if (o.owner !== null && typeof o.owner !== 'string') throw bad('"owner" must be a string, or null for Not mine');
+        return core.assignActionOwner(params[0]!, o.owner as string | null);
+      },
+    },
+    { method: 'POST', pattern: /^\/v1\/actions\/([^/]+)\/track-pending$/, handler: async ({ params }) => core.trackAsPending(params[0]!) },
+    { method: 'POST', pattern: /^\/v1\/actions\/([^/]+)\/claim$/, handler: async ({ params }) => core.claimAction(params[0]!) },
+    { method: 'POST', pattern: /^\/v1\/actions\/([^/]+)\/received$/, handler: async ({ params }) => core.markReceived(params[0]!) },
+    { method: 'POST', pattern: /^\/v1\/actions\/([^/]+)\/stop-waiting$/, handler: async ({ params }) => core.stopWaiting(params[0]!) },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/actions\/([^/]+)\/nudge$/,
+      handler: async ({ params, body }) => {
+        const o = asObject(await body(), false);
+        return core.nudgeAction(params[0]!, { to: reqString(o, 'to'), text: reqString(o, 'text') });
+      },
+    },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/actions\/routing-preview$/,
+      handler: async ({ body }) => {
+        const o = asObject(await body(), true);
+        const draft: { people?: ActionPerson[]; types?: ActionPreferences['types'] } = {};
+        if (Array.isArray(o.people)) draft.people = o.people as ActionPerson[];
+        if (o.types && typeof o.types === 'object' && !Array.isArray(o.types)) draft.types = o.types as ActionPreferences['types'];
+        return core.routingPreview(Object.keys(draft).length > 0 ? (draft as Pick<ActionPreferences, 'people' | 'types'>) : undefined);
+      },
+    },
+    { method: 'GET', pattern: /^\/v1\/highlights$/, handler: async () => ({ notes: await core.listHighlights() }) },
+    {
+      method: 'GET',
+      pattern: /^\/v1\/highlights\/note$/,
+      handler: async ({ query }) => core.getHighlight(query.get('path') ?? ''),
+    },
     {
       method: 'POST',
       pattern: /^\/v1\/conversations\/([^/]+)\/actions\/detect$/,

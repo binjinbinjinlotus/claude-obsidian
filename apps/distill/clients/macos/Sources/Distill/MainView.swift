@@ -194,6 +194,9 @@ private struct SidebarActionsContent: View {
                     store.tab = t.id
                 }
             }
+            // actions-routing.md: what others owe you, and what happened in your notes.
+            SidebarSubItem(title: "Pending", count: store.waiting.count, selected: store.tab == "pending") { store.tab = "pending" }
+            SidebarSubItem(title: "Highlights", count: 0, selected: store.tab == "highlights") { store.tab = "highlights" }
         }
     }
 }

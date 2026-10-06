@@ -40,6 +40,10 @@ import {
   type Settings,
   type SlackTarget,
   type ConfirmAs,
+  type ActionPreferences,
+  type HighlightItem,
+  type HighlightNote,
+  type RoutingPreview,
 } from '../contracts.js';
 import type { ActionsOwned, ReviewReadyInfo } from '../engine/index.js';
 import { makeReadingCopy } from '../coverage/copy.js';
@@ -75,7 +79,7 @@ import {
 import type { FetchLike } from '../runners/model-api.js';
 import { defaultSecretStore, type SecretStore } from '../runners/secrets.js';
 import { isoDate } from '../store/json.js';
-import { actionPreferences, defaultSelection as settingsDefaultSelection } from '../store/settings.js';
+import { actionPreferences, decodeActionPreferences, defaultSelection as settingsDefaultSelection } from '../store/settings.js';
 import { DRAFT_SCHEMA, FIND_SCHEMA, fieldsFrom, IMPROVE_SCHEMA, modelName, runStructured, SUMMARIZE_SCHEMA, type ActionTask } from './ai.js';
 import { ActionHandlerError, API_TOKEN_URL, ATLASSIAN, AtlassianClient, ConnectionFile } from './atlassian.js';
 import { approvalHash, buildArgv, commandTimeout, displayArgv, maskSecrets, parseResult, placeholdersIn, type TemplateValues } from '../collectors/commands.js';
@@ -83,7 +87,7 @@ import type { CommandRunHandle, CommandRunInput } from '../collectors/index.js';
 import { buttonsFor, ButtonApprovals, normalizeButton, sampleItem, templateValues } from './buttons.js';
 import { normalizeSlackTarget, resolveSlackTarget, SlackPeople } from './slack-target.js';
 import { checkJiraDraft, JiraMeta } from './jira-meta.js';
-import { buildDraftPrompt, buildFindPrompt, buildImprovePrompt, buildSummarizePrompt, DEFAULT_FIND_PROMPT, type DraftContext, type FindDocument } from './prompts.js';
+import { buildDraftPrompt, buildFindPrompt, buildImprovePrompt, buildSummarizePrompt, DEFAULT_FIND_PROMPT, waitingBlock, type DraftContext, type FindDocument } from './prompts.js';
 import {
   actionTypeDef,
   actionTypeDefs,
@@ -95,6 +99,8 @@ import {
   type EffectiveType,
   type PromptContext,
 } from './registry.js';
+import { displayName, handlesFor, matchPerson, ownerInstruction, peopleOf, routeItem, routingOn, YOU_ID } from './routing.js';
+import { MAX_OTHERS_PAGES, othersLine, othersPrompt, othersSectionLines, readPageFacts, sectionMatches, type OthersLine } from './highlights.js';
 import { ActionStore, event, HISTORY_STATUSES, leftAt, LIVE_STATUSES, newActionID } from './store.js';
 
 export interface ActionsServiceOptions {
@@ -139,6 +145,8 @@ export type ActionsService = Pick<DistillCore, ActionsOwned> & {
   jobEnded(job: Job): Promise<void>;
   /** v11: the actions a batch found, as Review shows them. */
   jobActions(jobID: string): Promise<JobActions>;
+  /** actions-routing.md: what the next ingest batch adds to its prompt for this vault's Others' actions sections ('' = nothing due). */
+  othersActionsPrompt(vaultPath: string): string;
   /** Drop History items older than historyDays (also runs on load and at most hourly). */
   sweepHistory(): void;
   /** Resolves when no background draft or find is running (tests). */
@@ -153,10 +161,15 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_DOC_CHARS = 12_000;
 const MAX_TOTAL_CHARS = 60_000;
 const MAX_FOUND = 25;
+/** Open Pending promises shown to the find step (the newest). */
+const MAX_WAITING = 30;
+/** Settings' preview line: "In the last 7 days this would have sent …". */
+const PREVIEW_DAYS = 7;
 /** Pages that never hold actions of their own. */
 const SKIP_PAGES = [/^wiki\/(log|hot|index)\.md$/, /^wiki\/meta\//, /^\.raw\//, /^\.vault-meta\//, /(^|\/)_index\.md$/];
 
 const clone = <T>(v: T): T => structuredClone(v);
+const samePath = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && path.resolve(a) === path.resolve(b);
 
 export function normalizeText(s: string | null | undefined): string {
   return (s ?? '')
@@ -426,6 +439,11 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     return body && body.trim() ? 'ready' : 'open';
   }
 
+  /** In your lists (not Pending or Highlights). Items found before routing have no route: yours. */
+  function inLists(item: ActionItem): boolean {
+    return (item.route ?? 'list') === 'list';
+  }
+
   function withDefaults(typeID: string, fields: Record<string, string | null> | undefined): Record<string, string | null> {
     const eff = effective(typeID);
     const out: Record<string, string | null> = { ...(fields ?? {}) };
@@ -441,7 +459,7 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
   /** Start writing a draft in the background (drafts on finding / confirm / Send to). */
   function draftInBackground(id: string): void {
     const item = find(id);
-    if (!item || !canDraft(item) || item.body?.trim()) return;
+    if (!item || !canDraft(item) || item.body?.trim() || !inLists(item)) return;
     void track(draft(id).catch((err: unknown) => log('warn', `Draft for ${id} failed: ${(err as Error).message}`)));
   }
 
@@ -668,6 +686,11 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     /** v11: the line numbers the model gave (window prompts); only a hint for the core's own search. */
     lines?: [number, number];
     wiki?: { path: string; heading: string }[];
+    /** actions-routing.md: whose it is, as written. */
+    owner?: string;
+    owedTo?: string;
+    what?: string;
+    due?: string;
   }
 
   function parseFound(value: Record<string, unknown>): Found[] {
@@ -690,6 +713,11 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       };
       const lines = parseLines(o.lines);
       if (lines) f.lines = lines;
+      for (const k of ['owner', 'owedTo', 'what', 'due'] as const) {
+        const v = typeof o[k] === 'string' ? (o[k] as string).trim().slice(0, 200) : '';
+        if (v) f[k] = v;
+      }
+      if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) delete f.due;
       if (Array.isArray(o.wiki)) {
         f.wiki = o.wiki
           .filter((w): w is Record<string, unknown> => typeof w === 'object' && w !== null && typeof (w as Record<string, unknown>).path === 'string')
@@ -699,6 +727,14 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       out.push(f);
     }
     return out;
+  }
+
+  function parseReceived(value: Record<string, unknown>): { id: string; quote: string }[] {
+    if (!Array.isArray(value.received)) return [];
+    return value.received
+      .filter((r): r is Record<string, unknown> => typeof r === 'object' && r !== null && typeof (r as Record<string, unknown>).id === 'string')
+      .map((r) => ({ id: String(r.id).trim(), quote: typeof r.quote === 'string' ? r.quote.trim().slice(0, 300) : '' }))
+      .slice(0, 10);
   }
 
   /** Types the find prompt may use from this source. */
@@ -715,12 +751,12 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
   }
 
   /** A found item as it would be added (type fallback, field defaults); undefined when its type isn't wanted. */
-  function buildItem(f: Found, o: { source: ActionSource; vaultPath: string | null; model: string; todos: boolean; allowed: string[]; confirm: boolean }): ActionItem | undefined {
+  function buildItem(f: Found, o: { source: ActionSource; vaultPath: string | null; model: string; todos: boolean; allowed: string[]; confirm: boolean; routing?: boolean }): ActionItem | undefined {
     let type = o.allowed.includes(f.type) ? f.type : TODO_TYPE;
     if (type === TODO_TYPE && !o.todos) return undefined;
     if (!effective(type)) type = TODO_TYPE;
     const t = isoDate(now());
-    return {
+    const item: ActionItem = {
       id: newActionID(),
       type,
       status: o.confirm ? 'pending' : initialStatus(type, type === TODO_TYPE ? f.body : null),
@@ -736,6 +772,24 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       draftModel: null,
       events: [event(now(), 'found', `by ${o.model}`)],
     };
+    if (o.routing && routingOn(prefs())) applyRoute(item, f);
+    return item;
+  }
+
+  /** actions-routing.md: record whose it is and where it goes (only new finds; nothing already listed moves). */
+  function applyRoute(item: ActionItem, f: Pick<Found, 'owner' | 'owedTo' | 'what' | 'due'>): void {
+    const r = routeItem({ type: item.type, owner: f.owner ?? null, owedTo: f.owedTo ?? null }, prefs());
+    item.owner = f.owner ?? null;
+    item.owedTo = f.owedTo ?? null;
+    item.ownerID = r.ownerID;
+    item.owedToID = r.owedToID;
+    item.route = r.route;
+    if (r.unclear) item.ownerUnclear = true;
+    if (f.what) item.what = f.what;
+    if (f.due) {
+      item.due = f.due;
+      if (actionTypeDef(item.type)?.fields.some((x) => x.key === 'due') && !item.fields.due) item.fields.due = f.due;
+    }
   }
 
   /**
@@ -867,15 +921,18 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
 
   function summaryOf(job: Job, f: FoundFile, model?: string | null): JobActionsSummary {
     const sources = Object.values(f.sources);
-    const live = f.proposals.filter((p) => p.state !== 'duplicate' && p.state !== 'notApplied');
+    const counted = f.proposals.filter((p) => p.state !== 'duplicate' && p.state !== 'notApplied');
+    // actions-routing.md: items for other people aren't "found actions" of yours; they are counted apart.
+    const live = counted.filter((p) => inLists(p.item));
+    const routedAway = { waiting: counted.filter((p) => p.item.route === 'waiting').length, others: counted.filter((p) => p.item.route === 'others').length };
     const byType: Record<string, number> = {};
     for (const p of live) byType[p.item.type] = (byType[p.item.type] ?? 0) + 1;
-    const addedItems = f.proposals.filter((p) => p.state === 'added').map((p) => find(p.item.id)).filter((i): i is ActionItem => !!i);
+    const addedItems = f.proposals.filter((p) => p.state === 'added').map((p) => find(p.item.id)).filter((i): i is ActionItem => !!i && inLists(i));
     // A pass that isn't running any more (Distill quit meanwhile) didn't finish: it shows as failed, with Try again.
     const active = passes.has(job.id);
     const failed = sources.filter((s) => s.status === 'failed' || (s.status === 'finding' && !active));
     const finding = active && sources.some((s) => s.status === 'finding');
-    const waiting = f.proposals.filter((p) => p.state === 'waiting').length;
+    const waiting = live.filter((p) => p.state === 'waiting').length;
     const committed = f.proposals.some((p) => p.state === 'added' || p.state === 'duplicate') || (job.state === 'completed' && !!job.operationID);
     const failedText = failed
       .map((s) => {
@@ -897,6 +954,8 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       linesOf: sources.reduce((n, s) => n + s.lines, 0),
       sources: sources.length,
       duplicates: f.proposals.filter((p) => p.state === 'duplicate').length,
+      ...(routedAway.waiting > 0 ? { waiting: routedAway.waiting } : {}),
+      ...(routedAway.others > 0 ? { others: routedAway.others } : {}),
     };
   }
 
@@ -962,6 +1021,13 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     const model = modelName(opts.runners, selection);
     const today = isoDate(now()).slice(0, 10);
     const writtenList = [...written.entries()].filter(([w]) => !SKIP_PAGES.some((re) => re.test(w))).map(([w, text]) => ({ path: w, title: titleOfPage(text, w) }));
+    // actions-routing.md: whose each item is, and the open Pending promises a later note may deliver.
+    const routing = routingOn(p) ? ownerInstruction(p) : undefined;
+    const waitingItems = routing
+      ? items.filter((i) => i.route === 'waiting' && LIVE_STATUSES.includes(i.status) && !i.received && samePath(i.vaultPath, job.vaultPath)).slice(-MAX_WAITING)
+      : [];
+    const waitingKeys = new Map(waitingItems.map((w, k) => [`w${k + 1}`, w]));
+    const waiting = waitingBlock([...waitingKeys].map(([k, w]) => ({ id: k, text: `${w.title}${w.source.kind === 'note' && w.source.pageTitle ? ` (promised in ${w.source.pageTitle})` : ''}` })));
 
     interface Prepared {
       src: PassSource;
@@ -1046,6 +1112,8 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         // The source's page, at most 12,000 characters (it repeats in every window).
         page: pr.src.pageOnly || !pr.src.page ? null : { ...pr.src.page, text: clip(pr.src.page.text, MAX_DOC_CHARS) },
         written: writtenList,
+        ...(routing ? { routing } : {}),
+        ...(waiting ? { waiting } : {}),
       });
       let lastError = '';
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -1056,7 +1124,7 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
           // Review's strip counts the lines as they are looked through.
           f.sources[pr.src.file]?.looked.push([w.from, w.to]);
           setSummary(job.id, summaryOf(job, f, model));
-          return { pr, w, found: parseFound(out.value), model: out.model };
+          return { pr, w, found: parseFound(out.value), received: parseReceived(out.value), model: out.model };
         } catch (err) {
           lastError = (err as Error).message;
         }
@@ -1076,6 +1144,13 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       const foundModel = mine.find((r) => 'model' in r && r.model) as { model: string } | undefined;
       if (foundModel) s.model = foundModel.model;
       const found = mine.flatMap((r) => ('found' in r && r.found ? r.found.map((x) => ({ x, w: r.w })) : []));
+      // A promise these lines look like delivering: suggested once this source's page applies (never closed).
+      for (const r of mine.flatMap((m) => ('received' in m && m.received ? m.received : []))) {
+        const w = waitingKeys.get(r.id);
+        const page = pr.src.page?.path ?? pr.src.file;
+        if (!w || (w.source.kind === 'note' && w.source.notePath === page)) continue;
+        f.received = [...(f.received ?? []).filter((x) => x.id !== w.id), { id: w.id, quote: r.quote, file: pr.src.file, title: pr.title, ...(pr.src.page ? { page: pr.src.page.path } : {}) }];
+      }
       const oldLines = pr.sha256 && !pr.src.pageOnly ? oldLinesIn(pr.sha256, pr.lines, pr.sourceLines) : undefined;
       for (const { x, w } of found) {
         const hint = x.lines ? ([Math.max(w.from, x.lines[0]), Math.min(w.to, x.lines[1])] as [number, number]) : null;
@@ -1115,7 +1190,7 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
             ...(wiki.length > 0 ? { wiki } : {}),
           };
         }
-        const item = buildItem(x, { source, vaultPath: job.vaultPath, model: s.model ?? model, todos: types.todos, allowed: types.allowed, confirm: true });
+        const item = buildItem(x, { source, vaultPath: job.vaultPath, model: s.model ?? model, todos: types.todos, allowed: types.allowed, confirm: true, routing: true });
         if (!item) continue;
         item.status = 'pending';
         // Within one pass only the title rule applies (one sentence can hold two actions).
@@ -1212,7 +1287,12 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         }
       }
       const t = isoDate(now());
-      candidate.status = types.confirm ? 'pending' : initialStatus(candidate.type, candidate.type === TODO_TYPE ? candidate.body : null);
+      // actions-routing.md: Pending and Highlights items are never To confirm; an unclear owner always asks.
+      candidate.status = !inLists(candidate)
+        ? 'open'
+        : types.confirm || candidate.ownerUnclear
+          ? 'pending'
+          : initialStatus(candidate.type, candidate.type === TODO_TYPE ? candidate.body : null);
       candidate.updatedAt = t;
       items.push(candidate);
       added.push(candidate);
@@ -1225,10 +1305,35 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       persist();
       for (const i of added) emit({ type: 'action', action: clone(i) });
       if (!types.confirm) {
-        for (const i of added) if (i.type !== TODO_TYPE && effective(i.type)?.draftWhen === 'onFind') draftInBackground(i.id);
+        for (const i of added) if (i.status !== 'pending' && i.type !== TODO_TYPE && effective(i.type)?.draftWhen === 'onFind') draftInBackground(i.id);
       }
-      const what = describeByType(Object.fromEntries(Object.entries(added.reduce<Record<string, number>>((m, i) => ((m[i.type] = (m[i.type] ?? 0) + 1), m), {}))));
-      log('info', `${types.confirm ? `Found ${plural(added.length, 'action')} to confirm` : `Added ${plural(added.length, 'action')}`} from ${job.id}${what ? ` (${what})` : ''}.`);
+      const yours = added.filter(inLists);
+      const what = describeByType(Object.fromEntries(Object.entries(yours.reduce<Record<string, number>>((m, i) => ((m[i.type] = (m[i.type] ?? 0) + 1), m), {}))));
+      if (yours.length > 0) log('info', `${types.confirm ? `Found ${plural(yours.length, 'action')} to confirm` : `Added ${plural(yours.length, 'action')}`} from ${job.id}${what ? ` (${what})` : ''}.`);
+      const routed = added.filter((i) => i.route !== undefined);
+      if (routed.length > 0) {
+        emit({
+          type: 'actions.routed',
+          jobID: job.id,
+          lists: routed.filter((i) => i.route === 'list' && !i.ownerUnclear).length,
+          waiting: routed.filter((i) => i.route === 'waiting').length,
+          others: routed.filter((i) => i.route === 'others').length,
+          unclear: routed.filter((i) => i.ownerUnclear).length,
+        });
+      }
+    }
+    // A later note that looks like a promise was delivered: a suggestion on the Pending item, once its page applied.
+    for (const r of [...(f.received ?? [])]) {
+      if (!ok({ item: {} as ActionItem, file: r.file, state: 'waiting', ...(r.page ? { page: r.page } : {}) })) continue;
+      const w = find(r.id);
+      if (w && w.route === 'waiting' && LIVE_STATUSES.includes(w.status) && !w.received) {
+        mutate(w.id, (i) => {
+          i.received = { notePath: r.page ?? r.file, pageTitle: r.title, quote: r.quote || null, at: isoDate(now()) };
+          i.events.push(event(now(), 'looks-received', r.page ?? r.file));
+        });
+      }
+      f.received = (f.received ?? []).filter((x) => x !== r);
+      changed = true;
     }
     if (changed) saveFound(job, f);
     const summary = summaryOf(job, f);
@@ -1847,6 +1952,143 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     return out;
   }
 
+  // ───────────── whose items: Pending and Highlights (actions-routing.md) ─────────────
+
+  function requireRoute(id: string, route: 'waiting' | 'others', what: string): ActionItem {
+    const item = require(id);
+    if (item.route !== route || !LIVE_STATUSES.includes(item.status)) throw new CoreError('invalid_state', `${what}`);
+    return item;
+  }
+
+  function peopleNow() {
+    return peopleOf(prefs());
+  }
+
+  function ownerName(item: ActionItem): string {
+    return displayName(item.ownerID, item.owner, peopleNow());
+  }
+
+  function notePathOf(item: ActionItem): string | null {
+    return item.source.kind === 'note' ? (item.source.notePath ?? null) : null;
+  }
+
+  /** Others' actions of each page, as the page's section should list them. */
+  function othersByPage(vaultPath: string | null): Map<string, { vault: string; lines: OthersLine[]; ids: string[] }> {
+    const out = new Map<string, { vault: string; lines: OthersLine[]; ids: string[] }>();
+    for (const i of items) {
+      const page = notePathOf(i);
+      if (!page || !i.vaultPath || !page.startsWith('wiki/') || !page.endsWith('.md')) continue;
+      if (vaultPath && !samePath(i.vaultPath, vaultPath)) continue;
+      // Every routed item of the page counts (an empty list removes a section that is there).
+      if (i.route === undefined) continue;
+      const key = `${path.resolve(i.vaultPath)}\n${page}`;
+      const entry = out.get(key) ?? { vault: i.vaultPath, lines: [], ids: [] };
+      if (i.route === 'others' && LIVE_STATUSES.includes(i.status)) {
+        entry.lines.push({ person: ownerName(i), title: i.title, due: i.due ?? null });
+        entry.ids.push(i.id);
+      }
+      out.set(key, entry);
+    }
+    return out;
+  }
+
+  /**
+   * The pages whose Others' actions section differs from what the page holds now (compared, never
+   * tracked: a batch that skipped one, or a rejected batch, leaves it due for the next).
+   */
+  function othersDue(vaultPath: string): { path: string; lines: string[] }[] {
+    const due: { path: string; lines: string[] }[] = [];
+    for (const [key, e] of othersByPage(vaultPath)) {
+      const page = key.split('\n')[1]!;
+      const facts = readPageFacts(e.vault, page, page);
+      if (!facts) continue; // the page is gone
+      const lines = othersSectionLines(e.lines);
+      if (lines.length === 0 && facts.others === undefined) continue;
+      if (sectionMatches(facts.others, lines)) continue;
+      due.push({ path: page, lines });
+    }
+    return due.slice(0, MAX_OTHERS_PAGES);
+  }
+
+  function highlightOf(vaultPath: string, page: string, all: ActionItem[]): HighlightNote {
+    const people = peopleNow();
+    const fromNote = all.filter((i) => samePath(i.vaultPath, vaultPath) && notePathOf(i) === page && i.status !== 'dismissed');
+    const first = fromNote.find((i) => i.source.kind === 'note' && i.source.pageTitle);
+    const fallback = (first?.source.kind === 'note' ? first.source.pageTitle : null) ?? path.basename(page, '.md');
+    // Only a wiki page is read (an item whose page wasn't matched points at its original: no wiki block).
+    const facts = page.startsWith('wiki/') ? readPageFacts(vaultPath, page, fallback) : undefined;
+    const live = fromNote.filter((i) => LIVE_STATUSES.includes(i.status));
+    const others = live.filter((i) => i.route === 'others');
+    const waiting = live.filter((i) => i.route === 'waiting');
+    const lists = live.filter((i) => inLists(i));
+    const onPage = new Set((facts?.others ?? []).map((l) => l.trim()));
+    const byPerson = new Map<string, { person: string; personID: string | null; items: HighlightItem[] }>();
+    for (const i of others) {
+      const person = ownerName(i);
+      const key = i.ownerID ?? `name:${person.toLowerCase()}`;
+      const g = byPerson.get(key) ?? { person, personID: i.ownerID ?? null, items: [] };
+      const line = i.source.kind === 'note' ? (i.source.raw?.lines?.[0] ?? null) : null;
+      g.items.push({ id: i.id, title: i.title, due: i.due ?? null, line, onPage: onPage.has(othersLine({ person, title: i.title, due: i.due ?? null })) });
+      byPerson.set(key, g);
+    }
+    const order = (id: string | null) => {
+      const k = id ? people.findIndex((x) => x.id === id) : -1;
+      return k < 0 ? people.length : k;
+    };
+    // People-list entries first, in list order; then others in the order they first appear in the note.
+    const firstSeen = (g: { items: HighlightItem[] }): [string, number] => g.items
+      .map((i): [string, number] => [find(i.id)?.createdAt ?? '9999', i.line ?? Number.MAX_SAFE_INTEGER])
+      .reduce((m, x) => (x[0] < m[0] || (x[0] === m[0] && x[1] < m[1]) ? x : m), ['9999', Number.MAX_SAFE_INTEGER]);
+    const seen = (a: { items: HighlightItem[] }, b: { items: HighlightItem[] }) => {
+      const [x, y] = [firstSeen(a), firstSeen(b)];
+      return x[0] !== y[0] ? (x[0] < y[0] ? -1 : 1) : x[1] - y[1];
+    };
+    const groups = [...byPerson.values()].sort((a, b) => order(a.personID) - order(b.personID) || seen(a, b) || a.person.localeCompare(b.person));
+    const names: string[] = [];
+    const you = people[0]!;
+    if (fromNote.some((i) => i.ownerID === YOU_ID || i.owedToID === YOU_ID || inLists(i))) names.push(you.name.trim() || 'You');
+    for (const i of fromNote) {
+      // Whose it is, who it's for, and who a message goes to.
+      const to = i.fields.to ?? i.fields.person ?? null;
+      const named: [string | null | undefined, string | null | undefined][] = [[i.ownerID, i.owner], [i.owedToID, i.owedTo], [to ? matchPerson(to, people) : null, to]];
+      for (const [id, written] of named) {
+        if (id === YOU_ID || !(written ?? '').trim()) continue;
+        const n = displayName(id, written, people);
+        if (!names.includes(n)) names.push(n);
+      }
+    }
+    const typeCounts: Record<string, number> = {};
+    for (const i of lists) typeCounts[i.type] = (typeCounts[i.type] ?? 0) + 1;
+    const foundAt = fromNote.reduce((m, i) => (i.createdAt > m ? i.createdAt : m), '');
+    const date = facts?.date ?? /^\d{4}-\d{2}-\d{2}/.exec(facts?.title ?? fallback)?.[0] ?? foundAt.slice(0, 10);
+    return {
+      notePath: page,
+      title: facts?.title ?? fallback,
+      date,
+      kind: facts?.meeting ? 'meeting' : 'note',
+      ...(facts?.duration ? { duration: facts.duration } : {}),
+      people: names,
+      wiki: facts ? { path: page, title: facts.title, ...(facts.summary ? { summary: facts.summary } : {}), keyPoints: facts.keyPoints, decisions: facts.decisions } : null,
+      others: groups,
+      yours: { lists: typeCounts, waiting: waiting.map((i) => ({ id: i.id, person: ownerName(i), what: i.what ?? i.title })) },
+      counts: { others: others.length, decisions: facts?.decisions.length ?? 0, lists: lists.length, waiting: waiting.length },
+      foundAt,
+    };
+  }
+
+  /** Notes with routed items (vault, page), newest first. */
+  function highlightNotes(): { vault: string; page: string }[] {
+    const seen = new Map<string, { vault: string; page: string; at: string }>();
+    for (const i of items) {
+      const page = notePathOf(i);
+      if (!page || !i.vaultPath || i.route === undefined || i.status === 'dismissed') continue;
+      const key = `${path.resolve(i.vaultPath)}\n${page}`;
+      const at = seen.get(key)?.at ?? '';
+      seen.set(key, { vault: i.vaultPath, page, at: i.createdAt > at ? i.createdAt : at });
+    }
+    return [...seen.values()].sort((a, b) => b.at.localeCompare(a.at));
+  }
+
   const service: ActionsService = {
     async listActionTypes(): Promise<ActionTypeInfo[]> {
       const p = prefs();
@@ -1937,6 +2179,9 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
             return false;
           }
           if (query.type && i.type !== query.type) return false;
+          // actions-routing.md: live items list by route (default your lists); History holds every route.
+          const route = query.route ?? 'list';
+          if (route !== 'all' && LIVE_STATUSES.includes(i.status) && (i.route ?? 'list') !== route) return false;
           if (query.vaultPath && i.vaultPath && path.resolve(i.vaultPath) !== path.resolve(query.vaultPath)) return false;
           if (text) {
             const hay = [i.title, i.body, i.why, sourceQuote(i.source), sourceNotePath(i.source), ...Object.values(i.fields)]
@@ -2210,6 +2455,132 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       return created;
     },
 
+    async assignActionOwner(id: string, owner: string | null): Promise<ActionItem> {
+      const item = require(id);
+      if (item.status !== 'pending' || !inLists(item)) throw new CoreError('invalid_state', 'Only an item waiting for you to confirm can be assigned.');
+      const people = peopleNow();
+      const written = typeof owner === 'string' ? owner.trim() : '';
+      if (owner !== null && !written) throw new CoreError('invalid_request', 'Whose is it? Give a person, or null for Not mine.');
+      const byID = people.find((p) => p.id === written);
+      const name = byID ? byID.name || (byID.id === YOU_ID ? 'me' : '') : written;
+      return mutate(id, (i) => {
+        if (owner === null) {
+          // Not mine: someone else's, to the note's Highlights.
+          i.route = 'others';
+          i.ownerID = null;
+          i.status = 'open';
+          i.events.push(event(now(), 'routed', 'not mine → Highlights'));
+        } else {
+          const r = routeItem({ type: i.type, owner: byID?.id === YOU_ID ? 'me' : name, owedTo: i.owedTo ?? null }, prefs());
+          i.owner = byID?.id === YOU_ID ? 'me' : name;
+          i.ownerID = byID?.id ?? r.ownerID;
+          i.route = byID && handlesFor(prefs(), i.type).includes(byID.id) ? 'list' : r.unclear ? 'list' : r.route;
+          if (i.route !== 'list') i.status = 'open';
+          i.events.push(event(now(), 'routed', `${displayName(i.ownerID, i.owner, people)} → ${i.route === 'list' ? 'your list' : i.route === 'waiting' ? 'Pending' : 'Highlights'}`));
+        }
+        delete i.ownerUnclear;
+      });
+    },
+
+    async trackAsPending(id: string): Promise<ActionItem> {
+      requireRoute(id, 'others', 'Only another person’s action can be tracked as Pending.');
+      return mutate(id, (i) => {
+        i.route = 'waiting';
+        i.owedTo = 'me';
+        i.owedToID = YOU_ID;
+        i.what = i.what ?? null;
+        i.events.push(event(now(), 'routed', 'tracked as Pending'));
+      });
+    },
+
+    async claimAction(id: string): Promise<ActionItem> {
+      requireRoute(id, 'others', 'Only another person’s action can be claimed.');
+      const claimed = mutate(id, (i) => {
+        i.route = 'list';
+        i.owner = 'me';
+        i.ownerID = YOU_ID;
+        i.status = initialStatus(i.type, i.type === TODO_TYPE ? i.body : null);
+        i.events.push(event(now(), 'claimed', 'it’s mine'));
+      });
+      if (claimed.type !== TODO_TYPE && effective(claimed.type)?.draftWhen === 'onFind') draftInBackground(id);
+      return claimed;
+    },
+
+    async markReceived(id: string): Promise<ActionItem> {
+      const item = requireRoute(id, 'waiting', 'Only something you are waiting for can be marked received.');
+      return mutate(id, (i) => {
+        i.status = 'done';
+        i.events.push(event(now(), 'received', i.received ? `in ${i.received.pageTitle ?? i.received.notePath}` : null));
+        i.events.push(event(now(), 'done', item.status));
+      });
+    },
+
+    async stopWaiting(id: string): Promise<ActionItem> {
+      const item = requireRoute(id, 'waiting', 'Only something you are waiting for can be stopped.');
+      return mutate(id, (i) => {
+        i.status = 'removed';
+        i.events.push(event(now(), 'not-waiting'));
+        i.events.push(event(now(), 'removed', item.status));
+      });
+    },
+
+    async nudgeAction(id: string, message: { to: string; text: string }): Promise<{ item: ActionItem; message: ActionItem }> {
+      const item = requireRoute(id, 'waiting', 'Only something you are waiting for can be nudged.');
+      const to = (message?.to ?? '').trim();
+      const text = (message?.text ?? '').trim();
+      if (!to) throw new CoreError('invalid_request', 'Fill in who it goes to first.', { missing: ['To'] });
+      if (!text) throw new CoreError('invalid_request', 'Write the message first.');
+      const def = actionTypeDef('slack');
+      if (!def || !effectiveType(def, prefs()).enabled) throw new CoreError('invalid_request', 'Slack messages are turned off.');
+      const t = isoDate(now());
+      const next: ActionItem = {
+        id: newActionID(),
+        type: 'slack',
+        status: 'ready',
+        title: `Nudge ${ownerName(item).split(/\s+/)[0]} about ${item.what ?? item.title}`,
+        body: text,
+        fields: withDefaults('slack', { to }),
+        why: `You are waiting on ${ownerName(item)}: ${item.title}.`,
+        source: clone(item.source),
+        vaultPath: item.vaultPath ?? null,
+        fromActionID: item.id,
+        createdAt: t,
+        updatedAt: t,
+        events: [event(now(), 'added', 'nudge from Pending')],
+      };
+      const created = insert(next);
+      const waiting = mutate(id, (i) => i.events.push(event(now(), 'nudged', next.id)));
+      return { item: waiting, message: created };
+    },
+
+    async routingPreview(draft?: Pick<ActionPreferences, 'people' | 'types'>): Promise<RoutingPreview> {
+      const saved = prefs();
+      // The draft is read like Settings reads it (it comes over HTTP as plain JSON).
+      const d = draft ? decodeActionPreferences({ ...(draft.people ? { people: draft.people } : {}), ...(draft.types ? { types: draft.types } : {}) }) : undefined;
+      const p = { people: d?.people ?? saved.people ?? [], types: { ...saved.types, ...(d?.types ?? {}) } } as Pick<ActionPreferences, 'people' | 'types'>;
+      const since = now().getTime() - PREVIEW_DAYS * DAY_MS;
+      const out: RoutingPreview = { days: PREVIEW_DAYS, lists: 0, waiting: 0, others: 0 };
+      for (const i of items) {
+        // Only items the find step read an owner for (found while routing was on).
+        if (i.route === undefined || i.source.kind !== 'note' || new Date(i.createdAt).getTime() < since) continue;
+        const r = routeItem({ type: i.type, owner: i.owner ?? null, owedTo: i.owedTo ?? null }, p);
+        if (r.route === 'waiting') out.waiting += 1;
+        else if (r.route === 'others') out.others += 1;
+        else out.lists += 1;
+      }
+      return out;
+    },
+
+    async listHighlights(): Promise<HighlightNote[]> {
+      return highlightNotes().map((n) => highlightOf(n.vault, n.page, items));
+    },
+
+    async getHighlight(notePath: string): Promise<HighlightNote> {
+      const hit = highlightNotes().find((n) => n.page === notePath);
+      if (!hit) throw new CoreError('not_found', `No Highlights for ${notePath}.`);
+      return highlightOf(hit.vault, hit.page, items);
+    },
+
     async removeAction(id: string): Promise<ActionItem> {
       const item = require(id);
       if (item.status === 'creating') throw new CoreError('busy', 'Wait until creating finishes.');
@@ -2347,6 +2718,8 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     jobEnded: (job) => track(jobEnded(job).catch((err: unknown) => log('warn', `Actions of ${job.id}: ${(err as Error).message}`))),
 
     jobActions,
+
+    othersActionsPrompt: (vaultPath) => othersPrompt(othersDue(vaultPath)),
 
     sweepHistory,
 

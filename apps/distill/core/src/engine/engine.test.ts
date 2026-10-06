@@ -92,6 +92,7 @@ function setup(
     apply?: () => ProcessOutput | Promise<ProcessOutput>;
     /** What `transaction inspect` returns (default PLAN). */
     inspect?: (bundle: string) => ProcessOutput;
+    othersActionsPrompt?: (vaultPath: string) => string;
   } = {},
 ): Harness {
   const root = tmp;
@@ -135,6 +136,7 @@ function setup(
     tickMs: o.tickMs ?? 60_000,
     ...(o.now ? { now: o.now } : {}),
     ...(o.onJobApplied ? { onJobApplied: o.onJobApplied } : {}),
+    ...(o.othersActionsPrompt ? { othersActionsPrompt: o.othersActionsPrompt } : {}),
   });
   const events: CoreEvent[] = [];
   engine.subscribe((e) => events.push(e));
@@ -227,6 +229,22 @@ describe('engine state machine', () => {
     const persisted = JSON.parse(fs.readFileSync(path.join(h.root, 'state/jobs.json'), 'utf8'));
     assert.equal(persisted[0].state, 'completed');
     assert.ok(h.events.some((e) => e.type === 'job' && e.job.state === 'awaitingApproval'));
+  });
+
+  test('actions-routing.md: the next batch carries the Others’ actions sections the user’s Actions want', async () => {
+    const asked: string[] = [];
+    h = setup([{ structured: { status: 'nothing_to_do', summary: 'Nothing.' } }], {
+      othersActionsPrompt: (v) => {
+        asked.push(v);
+        return '\n\nAlso update these EXISTING wiki pages … <page path="wiki/sources/sync.md">';
+      },
+    });
+    await firstJob();
+    await h.engine.whenIdle();
+    assert.deepEqual(asked, [h.vault]);
+    assert.match(h.runner.requests[0]!.prompt, /Also update these EXISTING wiki pages … <page path="wiki\/sources\/sync.md">/);
+    // Never on its own: only inside a batch the user approves (nothing is written here).
+    assert.equal(fs.existsSync(path.join(h.vault, 'wiki', 'sources', 'sync.md')), false);
   });
 
   test('reply resumes the same session with the reply prompt', async () => {

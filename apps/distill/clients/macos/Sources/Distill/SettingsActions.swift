@@ -82,6 +82,8 @@ struct ActionsSettings: View {
                                  confirmNote: "“Found in this answer” with Add and Dismiss", types: detectable)
             }
             .settingsAnchor("Where actions come from")
+            // actions-routing.md: whose items go to your lists.
+            PeopleSettingsRow(ui: ui)
             SettingsRow(title: "Model for finding actions", note: "Also listed in Models for tasks", bold: true) {
                 ModelPickers(task: .actionFind, name: "finding actions", notes: notes, selection: SettingsEdits.findSelection(engine.settings),
                              widths: (128, 100, 96), height: 30) { sel in

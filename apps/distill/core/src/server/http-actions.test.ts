@@ -77,6 +77,33 @@ describe('HTTP API: actions and connections', () => {
     assert.deepEqual(last('jiraFields')!.args, ['TLS', '10001', 'refresh']);
   });
 
+  it('whose items: owner, Pending, Highlights, preview and ?route= (actions-routing.md)', async () => {
+    await request(port, 'GET', '/v1/actions?route=waiting');
+    assert.deepEqual(last('listActions')!.args, [{ route: 'waiting' }]);
+    assert.equal((await request(port, 'GET', '/v1/actions?route=mine')).status, 400);
+    assert.equal((await request(port, 'POST', '/v1/actions/act-1/owner', { owner: 'you' })).status, 200);
+    assert.deepEqual(last('assignActionOwner')!.args, ['act-1', 'you']);
+    await request(port, 'POST', '/v1/actions/act-1/owner', { owner: null });
+    assert.deepEqual(last('assignActionOwner')!.args, ['act-1', null]);
+    assert.equal((await request(port, 'POST', '/v1/actions/act-1/owner', { owner: 3 })).status, 400);
+    for (const [route, method] of [['track-pending', 'trackAsPending'], ['claim', 'claimAction'], ['received', 'markReceived'], ['stop-waiting', 'stopWaiting']] as const) {
+      assert.equal((await request(port, 'POST', `/v1/actions/act-1/${route}`)).status, 200, route);
+      assert.deepEqual(last(method)!.args, ['act-1']);
+    }
+    const nudge = await request(port, 'POST', '/v1/actions/act-1/nudge', { to: '@aditya', text: 'Hi Aditya, any update?' });
+    assert.equal(nudge.body.message.type, 'slack');
+    assert.deepEqual(last('nudgeAction')!.args, ['act-1', { to: '@aditya', text: 'Hi Aditya, any update?' }]);
+    assert.equal((await request(port, 'POST', '/v1/actions/act-1/nudge', { to: '@aditya' })).status, 400);
+    const preview = await request(port, 'POST', '/v1/actions/routing-preview', { people: [{ id: 'you', name: 'Jin', aliases: [] }] });
+    assert.deepEqual(preview.body, { days: 7, lists: 14, waiting: 6, others: 31 });
+    assert.deepEqual(last('routingPreview')!.args, [{ people: [{ id: 'you', name: 'Jin', aliases: [] }] }]);
+    await request(port, 'POST', '/v1/actions/routing-preview');
+    assert.deepEqual(last('routingPreview')!.args, [undefined]);
+    assert.deepEqual((await request(port, 'GET', '/v1/highlights')).body, { notes: [] });
+    assert.equal((await request(port, 'GET', '/v1/highlights/note?path=wiki%2Fsources%2Fx.md')).status, 404);
+    assert.deepEqual(last('getHighlight')!.args, ['wiki/sources/x.md']);
+  });
+
   it('get, patch, confirm, dismiss, delete', async () => {
     assert.equal((await request(port, 'GET', '/v1/actions/act-1')).body.id, 'act-1');
     const missing = await request(port, 'GET', '/v1/actions/nope');

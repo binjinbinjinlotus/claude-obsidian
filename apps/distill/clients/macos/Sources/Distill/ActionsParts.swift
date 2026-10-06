@@ -348,16 +348,20 @@ struct ActionContextBlock: View {
     @EnvironmentObject var engine: AppModel
     let item: ActionItem
     var showFoundLine = true
+    /// actions-routing.md (Pending detail): the full "FROM THE ORIGINAL" header with its caption, no FROM row.
+    var full = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 8) {
-                Text("FROM").font(Theme.body(10, .heavy)).kerning(0.5).foregroundStyle(Theme.faint)
-                source
+            if !full || item.context.isEmpty {
+                HStack(spacing: 8) {
+                    Text("FROM").font(Theme.body(10, .heavy)).kerning(0.5).foregroundStyle(Theme.faint)
+                    source
+                }
             }
             if !item.context.isEmpty {
                 // v11 (action-context.md): the original's lines and the wiki section, each with Open.
-                ActionContextSections(item: item, compact: true)
+                ActionContextSections(item: item, compact: !full)
             } else if let quote = item.source.quote, !quote.isEmpty {
                 Text("“\(quote)”").font(Theme.body(12).italic()).foregroundStyle(Theme.softInk)
                     .lineSpacing(3).fixedSize(horizontal: false, vertical: true)

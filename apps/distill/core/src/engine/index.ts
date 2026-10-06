@@ -199,6 +199,7 @@ export type ActionsOwned =
   | 'listActionTypes' | 'listActions' | 'getAction' | 'createAction' | 'updateAction' | 'confirmActions'
   | 'dismissActions' | 'draftAction' | 'summarizeAction' | 'previewActionButton' | 'previewButtonDraft' | 'jiraProjects' | 'jiraIssueTypes' | 'jiraFields' | 'listSlackPeople' | 'rememberSlackPerson' | 'forgetSlackPerson' | 'slackTarget' | 'runActionButton' | 'stopActionButtonRun' | 'improveAction' | 'undoImprove' | 'performAction' | 'sendActionTo'
   | 'removeAction' | 'restoreAction' | 'deleteActionForever' | 'detectAskActions'
+  | 'assignActionOwner' | 'trackAsPending' | 'claimAction' | 'markReceived' | 'stopWaiting' | 'nudgeAction' | 'routingPreview' | 'listHighlights' | 'getHighlight'
   | 'listConnections' | 'connect' | 'signInURL' | 'disconnect';
 export type AskOwned = 'ask' | 'listConversations' | 'getConversation' | 'deleteConversation' | 'setConversationPinned' | 'cancelAsk';
 /** Implemented in index.ts from the merged event stream. */
@@ -294,6 +295,11 @@ export interface EngineOptions {
   onReviewReady?: (job: Job, info: ReviewReadyInfo) => void | Promise<void>;
   /** v11: a batch ended without applying (rejected, cancelled or failed). */
   onJobEnded?: (job: Job) => void | Promise<void>;
+  /**
+   * actions-routing.md: what an ingest batch adds to its first prompt for the vault's Others' actions
+   * sections ('' = nothing due). They reach the wiki only through the batch the user approves.
+   */
+  othersActionsPrompt?: (vaultPath: string) => string;
   /** v7: the live log (steps/). Gets each agent step of a turn and each file of the label pre-step. */
   steps?: EngineStepSink;
 }
@@ -453,7 +459,7 @@ export function createEngine(opts: EngineOptions): Engine {
       const labelPlan = savedLabelPlan(jobStateDirectory(job)).filter((l) => files.includes(l.file));
       const existing = job.reread ? existingSourcePages(vault.path, files) : undefined;
       const sources = facts.sources.map((s) => ({ ...s, pages: existing?.get(s.file)?.pages ?? s.pages }));
-      const ctx = new JobContext({ ...clone(job), files }, vault, settings, labelPlan, { ...facts, sources });
+      const ctx = new JobContext({ ...clone(job), files }, vault, settings, labelPlan, { ...facts, sources, ...othersFacts(vault.path) });
       return queueConsumer().initialPrompt(ctx);
     },
     rereadSources: (req) => rereadSources(req),
@@ -614,6 +620,17 @@ export function createEngine(opts: EngineOptions): Engine {
     const holder = jobs.find((j) => j.vaultPath === vault.path && j.state === 'running');
     if (holder) return `Waiting for ${holder.id} to finish.`;
     return undefined;
+  }
+
+  /** actions-routing.md: the Others' actions sections this batch is asked to write (best effort; never blocks a batch). */
+  function othersFacts(vaultPath: string): { othersActions?: string } {
+    try {
+      const text = opts.othersActionsPrompt?.(vaultPath) ?? '';
+      return text ? { othersActions: text } : {};
+    } catch (err) {
+      log('warn', `Others' actions for the next batch: ${(err as Error).message}`);
+      return {};
+    }
   }
 
   function vaultProfileFor(job: Job): VaultProfile {
@@ -2539,7 +2556,7 @@ export function createEngine(opts: EngineOptions): Engine {
     // v10: the reading copies and this session's coverage record, with the pages each source has.
     const pagesOf = new Map(sizes.sources.map((s) => [s.file, { pages: s.pages }]));
     const prepared = fullRead.prepare(findJob(job.id)!, vault, job.files, { existing: pagesOf });
-    const facts: RereadFacts = { sources: prepared.sources, unreadable: prepared.unreadable };
+    const facts: RereadFacts = { sources: prepared.sources, unreadable: prepared.unreadable, ...othersFacts(vault.path) };
     const current = findJob(job.id)!;
     runTurn(job.id, kind.initialPrompt(new JobContext(clone(current), vault, settings, labels, facts)), { first: true });
     return clone(findJob(job.id) ?? job);
@@ -2751,7 +2768,7 @@ export function createEngine(opts: EngineOptions): Engine {
       if (!current) return;
       startTurnProgress(current, 'Read sources', reading);
       // v10: the reading copies and this session's coverage record, before the first turn.
-      const facts = fullRead.prepare(current, vault, current.files);
+      const facts = { ...fullRead.prepare(current, vault, current.files), ...othersFacts(vault.path) };
       runTurn(job.id, kind.initialPrompt(new JobContext(clone(findJob(job.id) ?? current), vault, settings, plan, facts)), { first: true });
     };
     if (draft.pending.length === 0) {

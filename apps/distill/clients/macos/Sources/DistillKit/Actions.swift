@@ -212,6 +212,25 @@ public struct ActionItem: Codable, Hashable, Identifiable, Sendable {
     public var runs: [ActionButtonRun] = []
     /// The button run in progress, if any.
     public var activeRun: ActiveButtonRun?
+    /// actions-routing.md: whose it is, as the note wrote it ("A", "me"), and who a promise is for.
+    public var owner: String?
+    public var owedTo: String?
+    /// The People entries those names matched ("you" for the user).
+    public var ownerID: String?
+    public var owedToID: String?
+    /// Where it went; nil = your lists (items found before routing too).
+    public var route: ActionRoute?
+    /// To confirm asks "Whose is this?".
+    public var ownerUnclear: Bool = false
+    /// A promise's thing in a few words ("the ticket links"), for Nudge.
+    public var what: String?
+    /// When it was promised by, YYYY-MM-DD.
+    public var due: String?
+    /// Pending: a later note looks like it was delivered (a suggestion only).
+    public var received: ActionReceived?
+
+    /// In your lists (To confirm, To do, a type's list), not Pending or Highlights.
+    public var inLists: Bool { (route ?? .list) == .list }
 
     public init(id: String, type: String = "todo", status: ActionStatus = .open, title: String, body: String? = nil,
                 fields: [String: String] = [:], why: String? = nil, source: ActionSource = .manual, vaultPath: String? = nil,
@@ -229,6 +248,7 @@ public struct ActionItem: Codable, Hashable, Identifiable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, type, status, title, body, fields, why, summary, source, vaultPath, labels, createdAt, updatedAt, draftModel
         case previousBody, external, error, fromActionID, events, runs, activeRun
+        case owner, owedTo, ownerID, owedToID, route, ownerUnclear, what, due, received
     }
 
     public init(from decoder: Decoder) throws {
@@ -255,6 +275,15 @@ public struct ActionItem: Codable, Hashable, Identifiable, Sendable {
         events = c.lossyArray(ActionEvent.self, .events)
         runs = c.lossyArray(ActionButtonRun.self, .runs)
         activeRun = c.lossy(ActiveButtonRun.self, .activeRun)
+        owner = c.lossy(String.self, .owner)
+        owedTo = c.lossy(String.self, .owedTo)
+        ownerID = c.lossy(String.self, .ownerID)
+        owedToID = c.lossy(String.self, .owedToID)
+        route = c.lossy(ActionRoute.self, .route)
+        ownerUnclear = c.lossy(Bool.self, .ownerUnclear) ?? false
+        what = c.lossy(String.self, .what)
+        due = c.lossy(String.self, .due)
+        received = c.lossy(ActionReceived.self, .received)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -283,6 +312,15 @@ public struct ActionItem: Codable, Hashable, Identifiable, Sendable {
         try c.encode(events, forKey: .events)
         if !runs.isEmpty { try c.encode(runs, forKey: .runs) }
         try c.encodeIfPresent(activeRun, forKey: .activeRun)
+        try c.encodeIfPresent(owner, forKey: .owner)
+        try c.encodeIfPresent(owedTo, forKey: .owedTo)
+        try c.encodeIfPresent(ownerID, forKey: .ownerID)
+        try c.encodeIfPresent(owedToID, forKey: .owedToID)
+        try c.encodeIfPresent(route, forKey: .route)
+        if ownerUnclear { try c.encode(true, forKey: .ownerUnclear) }
+        try c.encodeIfPresent(what, forKey: .what)
+        try c.encodeIfPresent(due, forKey: .due)
+        try c.encodeIfPresent(received, forKey: .received)
     }
 
     /// Strings stay; numbers and bools become text; nulls and nested values are dropped.
@@ -538,15 +576,33 @@ public struct ActionPatch: Encodable, Hashable, Sendable {
 }
 
 /// `ActionQuery` (GET /v1/actions?type=&status=&history=1&vault=&q=).
+/// actions-routing.md: list = your lists, waiting = Pending, others = a note's Highlights.
+public enum ActionRoute: String, Codable, Hashable, Sendable { case list, waiting, others }
+
+/// Pending: "Looks received in <note>".
+public struct ActionReceived: Codable, Hashable, Sendable {
+    public var notePath: String
+    public var pageTitle: String?
+    public var quote: String?
+    public init(notePath: String, pageTitle: String? = nil, quote: String? = nil) {
+        self.notePath = notePath; self.pageTitle = pageTitle; self.quote = quote
+    }
+    /// "2026-10-06 Standup".
+    public var noteName: String { pageTitle ?? ((notePath as NSString).lastPathComponent as NSString).deletingPathExtension }
+}
+
 public struct ActionQuery: Hashable, Sendable {
     public var type: String?
+    /// nil = your lists (the core's default); "waiting", "others" or "all".
+    public var route: String?
     public var status: [ActionStatus]
     public var history: Bool
     public var vaultPath: String?
     public var text: String?
 
-    public init(type: String? = nil, status: [ActionStatus] = [], history: Bool = false, vaultPath: String? = nil, text: String? = nil) {
-        self.type = type; self.status = status; self.history = history; self.vaultPath = vaultPath; self.text = text
+    public init(type: String? = nil, status: [ActionStatus] = [], history: Bool = false, vaultPath: String? = nil, text: String? = nil,
+                route: String? = nil) {
+        self.type = type; self.status = status; self.history = history; self.vaultPath = vaultPath; self.text = text; self.route = route
     }
 
     public var queryItems: [URLQueryItem] {
@@ -556,6 +612,7 @@ public struct ActionQuery: Hashable, Sendable {
         if history { items.append(URLQueryItem(name: "history", value: "1")) }
         if let vaultPath { items.append(URLQueryItem(name: "vault", value: vaultPath)) }
         if let text, !text.isEmpty { items.append(URLQueryItem(name: "q", value: text)) }
+        if let route { items.append(URLQueryItem(name: "route", value: route)) }
         return items
     }
 }

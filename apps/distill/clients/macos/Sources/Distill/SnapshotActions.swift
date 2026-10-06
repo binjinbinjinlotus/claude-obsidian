@@ -217,6 +217,7 @@ extension StatesSnapshot {
         actionsExternalStates()
         actionsHistoryStates()
         actionsAskStates()
+        routingStates()
     }
 
     private static func actionsEngine(items: [ActionItem]? = nil, tab: String = "todo", select: String? = nil,
