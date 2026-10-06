@@ -73,7 +73,7 @@ struct MessageCard: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             content
-            if draft == nil { ActionContextBlock(item: item) }
+            if draft == nil { ActionContextBlock(item: item); ButtonLastRun(store: store, item: item) }
             footer
         }
         .padding(.horizontal, 18).padding(.vertical, 16)
@@ -280,6 +280,7 @@ struct MessageCard: View {
         let busy = run != nil || item.status == .drafting
         let flash = store.copiedFlash.contains(item.id)
         let send = type.handler("send")
+        let sendButton = AutomationText.slots(type.buttons, for: item).send
         return HStack(spacing: 8) {
             if !busy && !notWritten { IconButton(systemImage: "pencil", size: 30, help: "Edit") { store.beginEdit(item) } }
             IconButton(systemImage: "trash", size: 30, help: "Remove") { store.remove(item) }
@@ -288,12 +289,20 @@ struct MessageCard: View {
             }
             Spacer(minLength: 8)
             if later, !notWritten, let send, !send.available { LaterSlot(title: send.label == "send" ? "Send in Slack" : send.label) }
+            if !notWritten { ItemAutomationButtons(store: store, type: type, item: item, showAdd: later) }
             SoftButton(title: "Complete", size: .small, systemImage: "checkmark") { store.complete(item) }
                 .fixedSize()
                 .disabled(busy).opacity(busy ? 0.45 : 1)
                 .help("Complete (you’ve handled it)")
             if notWritten {
                 PrimaryButton(title: "Create message", size: .small) { store.draft(item) }.fixedSize()
+            } else if let sendButton {
+                // A button in the Send slot replaces Send in Slack (the core leaves the reserved handler out).
+                if type.handler("copy") != nil {
+                    SoftButton(title: flash ? "Copied" : "Copy", size: .small, systemImage: flash ? "checkmark" : "doc.on.doc") { store.copy(item) }
+                        .disabled(busy).opacity(busy ? 0.45 : 1)
+                }
+                AutomationItemButton(store: store, item: item, info: sendButton, primary: true)
             } else if let send, send.available {
                 if type.handler("copy") != nil {
                     SoftButton(title: flash ? "Copied" : "Copy", size: .small, systemImage: flash ? "checkmark" : "doc.on.doc") { store.copy(item) }
@@ -486,6 +495,7 @@ struct ExternalCard: View {
             if let error = item.error, draft == nil, !creating { errorCallout(error) }
             content
             if draft == nil && !(item.error?.needsSignIn ?? false) { ActionContextBlock(item: item) }
+            if draft == nil { ButtonLastRun(store: store, item: item) }
             footer
         }
         .padding(.horizontal, 18).padding(.vertical, 16)
@@ -745,6 +755,7 @@ struct ExternalCard: View {
                 Spinner(size: 14)
                 Text("Creating in \(service)…").font(Theme.body(13, .semibold)).lineLimit(1).fixedSize()
             } else {
+                if !notWritten { ItemAutomationButtons(store: store, type: type, item: item, showAdd: hint) }
                 SoftButton(title: "Complete", size: .small, systemImage: "checkmark") { store.complete(item) }
                     .fixedSize()
                     .disabled(busy).opacity(busy ? 0.45 : 1)

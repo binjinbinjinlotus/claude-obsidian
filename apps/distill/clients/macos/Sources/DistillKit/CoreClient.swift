@@ -582,6 +582,17 @@ public final class CoreClient: Sendable {
         return w.value
     }
 
+    /// The status and body as they came, for routes whose error body carries details (action buttons).
+    func sendRaw<B: Encodable>(_ method: String, _ path: String, body: B?) async throws -> (status: Int, data: Data) {
+        let request = makeRequest(method, path, body: try body.map(Self.encode), timeout: Self.defaultTimeout)
+        do {
+            let (data, response) = try await session.data(for: request)
+            return ((response as? HTTPURLResponse)?.statusCode ?? 0, data)
+        } catch {
+            throw CoreClientError.unreachable(error.localizedDescription)
+        }
+    }
+
     private static func encode<B: Encodable>(_ body: B) throws -> Data {
         do { return try JSONEncoder.core.encode(body) } catch { throw CoreClientError.badResponse("could not encode request: \(error)") }
     }

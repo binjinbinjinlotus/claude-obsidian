@@ -214,7 +214,7 @@ private struct SidebarCollectors: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(active ? Theme.primary : Theme.muted)
                     .frame(width: 18)
-                Text("Collectors").font(Theme.body(14, active ? .semibold : .regular))
+                Text("Automations").font(Theme.body(14, active ? .semibold : .regular))
                 Spacer()
                 if !count.isEmpty { Pill(text: count, fill: Theme.peachTint, ink: Theme.peachInk) }
             }

@@ -75,12 +75,12 @@ private struct CollectorsScreenContent: View {
     private func header(add: Bool) -> some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Collectors").font(Theme.display(30)).lineLimit(1)
+                Text("Automations").font(Theme.display(30)).lineLimit(1)
                 Text(subtitle).font(Theme.body(13)).foregroundStyle(Theme.muted).lineLimit(1)
             }
             Spacer(minLength: 0)
             if add {
-                PrimaryButton(title: "Add collector", systemImage: "plus", size: .small) { store.startAdding() }
+                PrimaryButton(title: "Add automation", systemImage: "plus", size: .small) { store.startAdding() }
                     .fixedSize()
                     .keyboardShortcut("n", modifiers: .command)
             }
@@ -89,8 +89,8 @@ private struct CollectorsScreenContent: View {
     }
 
     private var subtitle: String {
-        if let v = engine.activeVault { return "Fill \(v.name)’s queue on a schedule." }
-        return "Fill a vault’s queue on a schedule."
+        if let v = engine.activeVault { return "Fill \(v.name)’s queue on a schedule, and run commands from action buttons." }
+        return "Fill a vault’s queue on a schedule, and run commands from action buttons."
     }
 }
 
@@ -101,18 +101,24 @@ private struct CollectorList: View {
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 2) {
-                ForEach(store.collectors) { c in
+            VStack(alignment: .leading, spacing: 2) {
+                let groups = CollectorGroups.split(store.collectors)
+                ForEach(groups, id: \.title) { group in
+                if groups.count > 1 {
+                    SectionLabel(group.title).padding(.horizontal, 10).padding(.top, group.title == groups.first?.title ? 0 : 12).padding(.bottom, 4)
+                }
+                ForEach(group.items) { c in
                     let kind = store.text.statusKind(c)
                     CollectorRow(kind: c.kind.rawValue, title: c.name,
                                  summary: store.text.rowSummary(c, now: store.now, run: store.activeRun(c), latest: store.latestRun(c)),
                                  status: store.text.pill(c) ?? "", statusKind: kind.rawValue,
                                  selected: c.id == store.current?.id,
-                                 runEnabled: !c.needsConsent && !c.isRunning && !c.isInstalling && !store.text.installFailed(c),
+                                 runEnabled: c.script?.collects != false && !c.needsConsent && !c.isRunning && !c.isInstalling && !store.text.installFailed(c),
                                  onSelect: { store.select(c.id) },
                                  onRun: { store.runNow(c) }) {
                         CollectorMenuItems(store: store, collector: c)
                     }
+                }
                 }
             }
             .padding(.bottom, 20)
@@ -232,6 +238,7 @@ struct CollectorDetail: View {
             } else {
                 if text.scriptChanged(c) { whatChanged }
                 settingsBlock
+                if c.isScript && v6 { ScriptCommandsBlock(store: store, collector: c) }
                 if c.isScript { advanced }
                 recentRuns
             }
@@ -763,5 +770,15 @@ struct CodeLines: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panel))
         .clipped()
+    }
+}
+
+/// Automations list groups (action-buttons.md, "The name"): what collects first, then commands-only scripts.
+enum CollectorGroups {
+    struct Group { var title: String; var items: [Collector] }
+    static func split(_ list: [Collector]) -> [Group] {
+        let commandsOnly = list.filter { $0.isScript && $0.script?.collects == false }
+        let collect = list.filter { !($0.isScript && $0.script?.collects == false) }
+        return [Group(title: "COLLECT ON A SCHEDULE", items: collect), Group(title: "COMMANDS FOR BUTTONS", items: commandsOnly)].filter { !$0.items.isEmpty }
     }
 }

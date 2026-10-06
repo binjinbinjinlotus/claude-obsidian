@@ -70,6 +70,11 @@ final class ActionsStore: ObservableObject {
     @Published var expandedAdded: Set<String> = []
     /// Ask: the summary line after Add all, per conversation and turn ("c1#0").
     @Published var addedAll: [String: [String]] = [:]
+    /// Automations (action-buttons.md): the run sheet in front of the Actions screen, and the button editor.
+    @Published var buttonSheet: ButtonRunSheetState?
+    @Published var buttonEditor: ButtonEditorTarget?
+    /// Buttons whose run request is on its way (a spinner in the button).
+    @Published var buttonStarting: Set<String> = []
 
     /// Snapshot fixtures only: open the answer menu / new to-do form / a Found row's type menu or edit on appear.
     var fixtureAnswerMenu = false
@@ -127,7 +132,7 @@ final class ActionsStore: ObservableObject {
 
     // MARK: Loading
 
-    private var client: CoreClient? { engine?.client }
+    var client: CoreClient? { engine?.client }
 
     func load() {
         guard let client, phase != .loading else { return }

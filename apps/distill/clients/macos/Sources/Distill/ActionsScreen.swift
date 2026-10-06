@@ -36,6 +36,8 @@ private struct ActionsScreenContent: View {
             }
         }
         .onAppear { if store.phase == .idle { store.load() } }
+        .sheet(item: $store.buttonSheet) { s in ButtonRunSheet(store: store, state: s).environmentObject(engine) }
+        .sheet(item: $store.buttonEditor) { t in ButtonEditorSheet(target: t) { store.buttonEditor = nil }.environmentObject(engine) }
     }
 
     @ViewBuilder private var page: some View {
@@ -752,6 +754,7 @@ struct TodoDetail: View {
             }
             if editing { editor } else { reading }
             ActionContextBlock(item: item)
+            ButtonLastRun(store: store, item: item)
             siblings
             Spacer(minLength: 0)
             if editing {
@@ -768,6 +771,7 @@ struct TodoDetail: View {
                     if item.status == .done {
                         SoftButton(title: "Bring back", size: .small, systemImage: "arrow.uturn.backward") { store.restore(item.id) }
                     } else {
+                        if let type = store.type("todo") { ItemAutomationButtons(store: store, type: type, item: item) }
                         SoftButton(title: "Complete", size: .small, systemImage: "checkmark") { store.complete(item) }
                         PrimaryButton(title: "Send to", systemImage: "paperplane", size: .small) { menu = menu == "sendto" ? nil : "sendto" }
                     }

@@ -217,14 +217,20 @@ public struct ScriptCollectorSettings: Codable, Hashable, Sendable {
     public var allowedAt: Date?
     /// v6: the hash of each file the consent covered.
     public var allowedFiles: AllowedFiles?
+    /// Automations: false for a commands-only script that never collects on a schedule.
+    public var collects: Bool
+    /// Automations: commands action buttons can run (action-buttons.md).
+    public var commands: [ScriptCommand]
 
     public init(source: ScriptSource, managed: Bool = false, interpreter: CollectorInterpreter, timeoutSeconds: Int = 300,
-                allowedSha256: String? = nil, allowedAt: Date? = nil, allowedFiles: AllowedFiles? = nil) {
+                allowedSha256: String? = nil, allowedAt: Date? = nil, allowedFiles: AllowedFiles? = nil,
+                collects: Bool = true, commands: [ScriptCommand] = []) {
         self.source = source; self.managed = managed; self.interpreter = interpreter; self.timeoutSeconds = timeoutSeconds
         self.allowedSha256 = allowedSha256; self.allowedAt = allowedAt; self.allowedFiles = allowedFiles
+        self.collects = collects; self.commands = commands
     }
 
-    enum Keys: String, CodingKey { case source, interpreter, timeoutSeconds, allowedSha256, allowedAt, allowedFiles }
+    enum Keys: String, CodingKey { case source, interpreter, timeoutSeconds, allowedSha256, allowedAt, allowedFiles, collects, commands }
     private enum SourceKeys: String, CodingKey { case managed }
     private struct ManagedSource: Encodable { let file: String; let managed: Bool }
 
@@ -237,6 +243,8 @@ public struct ScriptCollectorSettings: Codable, Hashable, Sendable {
         allowedSha256 = c.lossy(String.self, .allowedSha256)
         allowedAt = c.lossyDate(.allowedAt)
         allowedFiles = c.lossy(AllowedFiles.self, .allowedFiles)
+        collects = c.lossy(Bool.self, .collects) ?? true
+        commands = c.lossyArray(ScriptCommand.self, .commands)
     }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: Keys.self)
@@ -250,6 +258,8 @@ public struct ScriptCollectorSettings: Codable, Hashable, Sendable {
         try c.encodeIfPresent(allowedSha256, forKey: .allowedSha256)
         try c.encodeIfPresent(allowedAt.map(CoreDate.format), forKey: .allowedAt)
         try c.encodeIfPresent(allowedFiles, forKey: .allowedFiles)
+        if !collects { try c.encode(collects, forKey: .collects) }
+        if !commands.isEmpty { try c.encode(commands, forKey: .commands) }
     }
 }
 

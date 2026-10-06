@@ -310,6 +310,7 @@ struct ActionTypeSettingsPage: View {
                 }
             }
             .opacity(enabled ? 1 : 0.55)
+            ActionTypeButtonsSection(typeID: type.id, label: type.label.lowercased())
             VStack(alignment: .leading, spacing: 22) {
                 ActionPromptEditor(ui: ui, type: type, improve: false, title: "Create prompt",
                                    note: "Used to write a new \(thing) from a note", confirming: confirmingReset == "draft")

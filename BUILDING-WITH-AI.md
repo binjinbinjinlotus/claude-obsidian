@@ -89,6 +89,18 @@ isn't.
 ## Friction log (newest first)
 
 ### 2026-10-05
+- **A "don't index" marker didn't hide the build copy.** The owner saw two
+  Distill apps in Spotlight after the fix that touched
+  `build/.metadata_never_index`. Spotlight honours that file only at a volume
+  root. `mdfind` showed both copies.
+  - *Change:* install now unregisters the build copy and renames it
+    `build/Distill.noindex`, then checks with `mdfind` and `lsregister -dump`.
+  - *Lesson:* verify a fix against the system that showed the bug (here
+    Spotlight's own query), not against the mechanism you believe works.
+- **A name clash between layers.** The spec's `ActionButton` model collided
+  with an existing SwiftUI view of the same name; the app quietly used the
+  view. *Change:* the Swift model is `AutomationButton`. *Lesson:* grep the
+  target module for a new type name before adding it in a shared package.
 
 - **"Build directly" didn't pass through to the teammates.** The owner told
   the lead "please design and build directly". Both teammates' permission

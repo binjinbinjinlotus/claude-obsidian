@@ -208,6 +208,10 @@ public struct ActionItem: Codable, Hashable, Identifiable, Sendable {
     public var error: ActionError?
     public var fromActionID: String?
     public var events: [ActionEvent]
+    /// Automations: this item's button runs, newest last (action-buttons.md).
+    public var runs: [ActionButtonRun] = []
+    /// The button run in progress, if any.
+    public var activeRun: ActiveButtonRun?
 
     public init(id: String, type: String = "todo", status: ActionStatus = .open, title: String, body: String? = nil,
                 fields: [String: String] = [:], why: String? = nil, source: ActionSource = .manual, vaultPath: String? = nil,
@@ -224,7 +228,7 @@ public struct ActionItem: Codable, Hashable, Identifiable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id, type, status, title, body, fields, why, summary, source, vaultPath, labels, createdAt, updatedAt, draftModel
-        case previousBody, external, error, fromActionID, events
+        case previousBody, external, error, fromActionID, events, runs, activeRun
     }
 
     public init(from decoder: Decoder) throws {
@@ -249,6 +253,8 @@ public struct ActionItem: Codable, Hashable, Identifiable, Sendable {
         error = c.lossy(ActionError.self, .error)
         fromActionID = c.lossy(String.self, .fromActionID)
         events = c.lossyArray(ActionEvent.self, .events)
+        runs = c.lossyArray(ActionButtonRun.self, .runs)
+        activeRun = c.lossy(ActiveButtonRun.self, .activeRun)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -275,6 +281,8 @@ public struct ActionItem: Codable, Hashable, Identifiable, Sendable {
         try c.encodeIfPresent(error, forKey: .error)
         try c.encodeIfPresent(fromActionID, forKey: .fromActionID)
         try c.encode(events, forKey: .events)
+        if !runs.isEmpty { try c.encode(runs, forKey: .runs) }
+        try c.encodeIfPresent(activeRun, forKey: .activeRun)
     }
 
     /// Strings stay; numbers and bools become text; nulls and nested values are dropped.
@@ -361,6 +369,8 @@ public struct ActionTypeInfo: Codable, Hashable, Identifiable, Sendable {
     public var defaultDraftPrompt: String?
     public var defaultImprovePrompt: String?
     public var placeholders: [String]
+    /// Automations: the type's action buttons, as the core reports them.
+    public var buttons: [ActionButtonInfo] = []
 
     public init(id: String, label: String, pluralLabel: String? = nil, enabled: Bool = true, reserved: Bool = false,
                 fields: [ActionFieldSpec] = [], handlers: [ActionHandlerInfo] = [], connectionID: String? = nil,
@@ -374,7 +384,7 @@ public struct ActionTypeInfo: Codable, Hashable, Identifiable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id, label, pluralLabel, enabled, reserved, fields, handlers, connectionID, draftWhen, improveAfterEdit
-        case defaultDraftPrompt, defaultImprovePrompt, placeholders
+        case defaultDraftPrompt, defaultImprovePrompt, placeholders, buttons
     }
 
     public init(from decoder: Decoder) throws {
@@ -392,6 +402,7 @@ public struct ActionTypeInfo: Codable, Hashable, Identifiable, Sendable {
         defaultDraftPrompt = c.lossy(String.self, .defaultDraftPrompt)
         defaultImprovePrompt = c.lossy(String.self, .defaultImprovePrompt)
         placeholders = c.lossyArray(String.self, .placeholders)
+        buttons = c.lossyArray(ActionButtonInfo.self, .buttons)
     }
 
     public func handler(_ id: String) -> ActionHandlerInfo? { handlers.first { $0.id == id } }

@@ -17,6 +17,14 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+**Automations: the defaults are confirmed and built (2026-10-05).** The owner
+said "go for 1 and 2" to the two open choices in
+[Action buttons](action-buttons.md): (1) the sidebar name is **Automations**,
+with Collect and Commands as roles and the data names unchanged; (2) commands
+are declared in Distill by the owner, not discovered from the script. Built
+in the core (96cc0c1) and the Mac app. The Swift model is `AutomationButton`
+because the app already has a SwiftUI `ActionButton`.
+
 **A blocked tool command never reaches the owner as raw shell (2026-10-05,
 designed).** The owner got "Claude asked to run" with `Bash: diff <(python3
 -c …) <(python3 -c …)` and "Combined command: reply with guidance instead."

@@ -112,6 +112,26 @@ public struct ActionPreferences: Codable, Equatable, Sendable {
         set(["types", typeID, "fieldDefaults", field], (trimmed?.isEmpty ?? true) ? nil : .string(trimmed!))
     }
 
+    // MARK: Automations
+
+    /// The type's action buttons as saved (action-buttons.md); a button this build can't read is skipped.
+    public func buttons(_ typeID: String) -> [AutomationButton] {
+        guard case .array(let list)? = typeValue(typeID, "buttons") else { return [] }
+        return list.compactMap { v in
+            guard let data = try? JSONEncoder().encode(v), let b = try? JSONDecoder().decode(AutomationButton.self, from: data),
+                  !b.id.isEmpty else { return nil }
+            return b
+        }
+    }
+
+    public mutating func setButtons(_ typeID: String, _ buttons: [AutomationButton]) {
+        let values: [JSONValue] = buttons.compactMap { b in
+            guard let data = try? JSONEncoder().encode(b) else { return nil }
+            return try? JSONDecoder().decode(JSONValue.self, from: data)
+        }
+        setTypeValue(typeID, "buttons", values.isEmpty ? nil : .array(values))
+    }
+
     // MARK: To-do defaults and History
 
     /// due | created | priority | note (default due).

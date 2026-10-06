@@ -1,7 +1,7 @@
 ---
 type: spec
 title: Action buttons and script commands
-status: designed
+status: built
 created: 2026-10-05
 updated: 2026-10-05
 tags:
@@ -12,7 +12,7 @@ tags:
 
 # Action buttons and script commands
 
-Status: **designed** (2026-10-05). Nothing here is built. Canvas: row 15,
+Status: **built** (2026-10-05): core, API and CLI (96cc0c1), then the Mac app (see "Built" below). Canvas: row 15,
 board `ScriptActions.dc.html` (`apps/distill/design/screens/scriptactions.json`).
 Builds on [Collectors](collectors.md) (stored scripts, consent, packages, runs,
 the live log) and [Actions](actions.md) (types, handlers, the reserved "Send
@@ -701,6 +701,38 @@ Order: core → API → CLI → Mac. Each step is one commit, with `npm test
     `SnapshotCollectorScripts.swift` for each canvas frame.
 16. Flip this spec to `built`, and update [Collectors](collectors.md),
     [Actions](actions.md), the index and `apps/distill/AGENTS.md`.
+
+## Built (2026-10-05)
+
+- **Name.** The sidebar and the screen say **Automations**; the data keeps
+  `Collector`, `col-…` and `/v1/collectors`. The list groups into COLLECT ON A
+  SCHEDULE and COMMANDS FOR BUTTONS (shown only when both groups exist). A
+  commands-only script has Run now off (the core refuses it).
+- **Script detail.** A COMMANDS block (`ScriptCommandsViews.swift`): the
+  Collect on a schedule switch, each command's argv shape
+  (`send [--thread <thread>]? -- <target> <text>`), "Used by Slack › Send in
+  Slack", Edit and Add command. The command editor sets kind, name, flag or
+  word, required, pattern and hint, the `--` rule, the timeout and how to read
+  the result; the id is a slug of the name.
+- **Buttons editor** (`ButtonEditor.swift`): Settings → Actions → a type →
+  Buttons, and ＋ Button on an item. Runs (automation › command), the
+  arguments with Insert field ▾, When it works, save the key, Ask before
+  running, Show it as (the Send button for Slack, a button, the ⋯ menu), and a
+  live preview through `POST /v1/action-buttons/preview` on the selected item
+  or a sample. A new button guesses bindings by name (`text` → `{body}`,
+  `target` → `{fields.to}`).
+- **On items** (`AutomationButtons.swift`): the Send slot replaces Send in
+  Slack; other buttons sit before Complete, ⋯ holds the rest. The run sheet
+  shows the exact command and each argument, Run approves it, then the same
+  sheet streams `collector.run.output` for the run with Stop; a success closes
+  after 1.5 s, a failure keeps the stderr with Try again. A refusal for consent
+  opens the automation. The Last run block sits under the body on Slack, Jira,
+  Confluence and To do.
+- **Swift model name.** The app already has a SwiftUI `ActionButton`, so the
+  DistillKit model is `AutomationButton` (JSON is unchanged).
+- Tests: `AutomationsTests` (decode, slots, settings round trip, routes and
+  409 refusals, the commands patch). Not yet: snapshot states for the board's
+  frames and Activity words for `action.button_run`.
 
 ## Open questions
 
