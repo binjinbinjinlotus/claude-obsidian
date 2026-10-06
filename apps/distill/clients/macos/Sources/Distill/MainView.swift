@@ -1111,7 +1111,8 @@ struct JobDetailView: View {
                 Callout(icon: "questionmark.bubble", title: "Claude has questions",
                         text: approval.questions.map { "• \($0)" }.joined(separator: "\n"))
             }
-            if !approval.denials.isEmpty { blocked(job, approval) }
+            // review-queue.md: a turn that ended with a plan shows the plan; its blocked calls are history.
+            if !approval.denials.isEmpty && (!approval.canApplyPlan || job.recovery != nil) { blocked(job, approval) }
             // review-queue.md: approved and waiting for the vault, or rebuilt after another batch changed the same pages.
             if job.queuedApply?.waitingToApply == true {
                 ReviewNotice(tone: .blue, title: ReviewQueueText.queuedLine(job, in: engine.jobs),

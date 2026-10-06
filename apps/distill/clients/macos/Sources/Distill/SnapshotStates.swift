@@ -159,10 +159,10 @@ enum StatesSnapshot {
                          paths: [String] = changePaths, minutesAgo: Double = 20,
                          worker: String = "All set and checked. Approve and I will apply it.") -> Job {
         let valid = planError == nil
-        let approval = ApprovalRequest(summary: summary, questions: questions, bundlePath: valid ? "/x/bundle.json" : nil,
-                                       plan: TransactionPlan(operationID: "op-7f3a", operationType: "ingest", valid: valid,
-                                                             changedPaths: paths, approvalSHA256: "a"),
-                                       planError: planError, denials: denials)
+        // A turn that ended on blocked calls has no plan yet (review-queue.md).
+        let plan = denials.isEmpty ? TransactionPlan(operationID: "op-7f3a", operationType: "ingest", valid: valid, changedPaths: paths, approvalSHA256: "a") : nil
+        let approval = ApprovalRequest(summary: summary, questions: questions, bundlePath: valid && denials.isEmpty ? "/x/bundle.json" : nil,
+                                       plan: plan, planError: planError, denials: denials)
         return Job(id: id, vaultPath: vault(e), files: files, state: .awaitingApproval,
                    createdAt: Date().addingTimeInterval(-minutesAgo * 60), updatedAt: Date().addingTimeInterval(-120),
                    approval: approval, turns: turns(minutesAgo, worker: worker))
