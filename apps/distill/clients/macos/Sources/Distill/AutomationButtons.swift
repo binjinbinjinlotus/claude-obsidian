@@ -38,7 +38,9 @@ extension ActionsStore {
     /// when the core says this exact command hasn't been approved.
     func press(_ item: ActionItem, _ info: ActionButtonInfo) {
         guard info.available else {
-            if let script = engine?.collectors.collector(info.button.scriptId) { engine?.activity.navigate = .collector(id: script.id, runs: false) }
+            // The automation's OK (or its fix) is on its page; the list may not be loaded yet.
+            if engine?.collectors.phase == .idle { engine?.collectors.load() }
+            engine?.activity.navigate = .collector(id: info.button.scriptId, runs: false)
             return
         }
         let runs = [info.scriptName, info.commandLabel].compactMap { $0 }.joined(separator: " › ")

@@ -53,11 +53,17 @@ struct ButtonEditorSheet: View {
         .padding(22)
         .frame(width: 600)
         .onAppear {
+            // Settings or ＋ Button can come first: the automations list may never have loaded.
+            if engine.collectors.phase == .idle { engine.collectors.load() }
             if draft.scriptId.isEmpty, let first = scripts.first { draft.scriptId = first.id }
             if command == nil, let c = script?.script?.commands.first { pick(c) }
             schedulePreview()
         }
         .onChange(of: draft) { _, _ in schedulePreview() }
+        .onChange(of: engine.collectors.collectors.count) { _, _ in
+            if draft.scriptId.isEmpty, let first = scripts.first { draft.scriptId = first.id }
+            if command == nil, let c = script?.script?.commands.first { pick(c) }
+        }
     }
 
     private var noCommands: some View {
