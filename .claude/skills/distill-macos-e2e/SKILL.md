@@ -34,7 +34,7 @@ facts (what exists here), not the only way to test.
 
 ### 1. Scope from the design
 - The design canvas is the spec:
-  https://claude.ai/artifact/VSqHFPZjcqY2bMqFEnPqpG.
+  https://claude.ai/artifact/7PAQ8AKofpY9yPvakwvUMB.
 - Read the boards and states your change touches, and the specs under
   `apps/distill/docs/specs/`. In particular, `design-process.md` maps each
   canvas component to its Swift view.

@@ -17,6 +17,18 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**The design canvas moves to a fresh artifact; no explicit canvas pages
+(2026-10-06).** The old canvas (`VSqHFPZjcqY2bMqFEnPqpG`) went blank: the
+toolbar loads but no board draws, even with a canvas.json that draws
+elsewhere. A bisect on a fresh copy found that explicit `pages`, a
+`launch.page` and per-board or per-note `page` keys blank the viewer; without
+them all 141 boards and 17 notes draw (allow about 30 s). The old artifact
+stayed blank after its canvas.json matched the working copy, so it holds state
+a publish can't replace. The canvas is now
+https://claude.ai/artifact/7PAQ8AKofpY9yPvakwvUMB, and the old one gets no
+further publishes. `render.py` never writes pages, and its merge drops any it
+finds (`drop_pages`, checked by `test_design.py`).
+
 **Highlights reads the wiki; it adds only Others' actions (2026-10-06).**
 The owner: "Yes, but shouldn't the wiki already highlight it." A note's
 Highlights shows what its wiki source page already holds (summary, key points,

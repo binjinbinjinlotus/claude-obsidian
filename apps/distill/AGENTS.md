@@ -14,7 +14,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 1. Read [docs/specs/index.md](docs/specs/index.md) and the specs for the area
    you will touch.
 2. Visual design lives on the canvas:
-   https://claude.ai/artifact/VSqHFPZjcqY2bMqFEnPqpG. Show design changes there
+   https://claude.ai/artifact/7PAQ8AKofpY9yPvakwvUMB. Show design changes there
    before building UI.
 
 ## Spec index

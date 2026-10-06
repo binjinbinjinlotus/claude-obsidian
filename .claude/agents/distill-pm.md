@@ -35,7 +35,7 @@ review depends on it, ask, or state your assumption.
 
 Where to look. Read what helps; skip what doesn't:
 
-- **The design:** the canvas at https://claude.ai/artifact/VSqHFPZjcqY2bMqFEnPqpG
+- **The design:** the canvas at https://claude.ai/artifact/7PAQ8AKofpY9yPvakwvUMB
   (read it with the Artifact tool if you have it). Its source of truth is
   `apps/distill/design/` (schema, components, screens).
 - **What was decided and why:** `apps/distill/docs/specs/*.md`, especially

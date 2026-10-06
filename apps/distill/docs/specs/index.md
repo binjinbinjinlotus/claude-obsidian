@@ -19,7 +19,7 @@ its `status` in frontmatter:
 
 Update the spec in the same change that alters a feature's behavior, and
 flip `designed` to `built` when it ships. Visual design lives on the canvas:
-https://claude.ai/artifact/VSqHFPZjcqY2bMqFEnPqpG
+https://claude.ai/artifact/7PAQ8AKofpY9yPvakwvUMB
 
 ## Architecture
 

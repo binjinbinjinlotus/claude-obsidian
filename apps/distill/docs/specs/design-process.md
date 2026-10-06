@@ -14,7 +14,7 @@ tags:
 ## Canvas first
 
 The design canvas is the source of truth for what the app looks like and how
-it behaves: https://claude.ai/artifact/VSqHFPZjcqY2bMqFEnPqpG
+it behaves: https://claude.ai/artifact/7PAQ8AKofpY9yPvakwvUMB
 
 - Any change the user can see or feel (layout, sizes, window behavior, new
   states, new screens) is drawn on the canvas first and published. App code

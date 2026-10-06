@@ -7,7 +7,7 @@ updated: 2026-10-05
 # App shell and visual design
 
 Code: `clients/macos/Sources/Distill/AppDelegate.swift`, `AppModel.swift`, `MainView.swift`,
-`SettingsView.swift`, `Theme.swift`. Design canvas: https://claude.ai/artifact/VSqHFPZjcqY2bMqFEnPqpG
+`SettingsView.swift`, `Theme.swift`. Design canvas: https://claude.ai/artifact/7PAQ8AKofpY9yPvakwvUMB
 
 ## Client architecture
 
