@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { PermissionDenial } from '../contracts.js';
-import { denialAnswer, denialLine, denialPaths, denialSummary, friendlyPath, recoveryFor } from './recovery.js';
+import { denialAnswer, denialLine, denialPaths, denialSummary, friendlyPath, plainCause, recoveryFor } from './recovery.js';
 
 const VAULT = '/Users/me/Vault';
 const JOB = `${VAULT}/.vault-meta/worker/job-20261005-1`;
@@ -65,4 +65,13 @@ test('recovery answers: only known fixes for the problem, and never the apply or
   assert.match(validateFix({ ...a, guidance: 'Please allow the rule Bash(diff:*)' }, 'denial') ?? '', /only the owner can allow/);
   assert.match(validateFix({ ...a, guidance: 'x'.repeat(1201) }, 'denial') ?? '', /1200/);
   assert.match(validateFix({ ...a, fix: 'split_batch' }, 'denial') ?? '', /isn't a fix for this problem/);
+});
+
+test('the cause in the owner\'s sentence is plain words, never stderr, argv or a path', () => {
+  assert.equal(plainCause('Exited 1: API Error: 529 {"type":"overloaded_error"}'), 'the AI service was busy');
+  assert.equal(plainCause('Claude Code stopped: rate limit reached'), 'the AI service was busy');
+  assert.equal(plainCause("Bundle /tmp/elsewhere/bundle.json is outside this job's directory; refusing to inspect it."), 'the plan was saved in the wrong place');
+  assert.equal(plainCause('Unreadable runner output: {"type":"result","subtype":'), 'the AI’s answer couldn’t be read');
+  assert.equal(plainCause('Exited 2: python3 /Users/me/x.py --flag'), '');
+  assert.equal(plainCause(undefined), '');
 });

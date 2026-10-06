@@ -141,6 +141,18 @@ export function recoveryFor(current: RecoveryState | null | undefined, signature
   return { state: 'running', signature, attempts: [], denialAnswers: 0 };
 }
 
+/**
+ * The cause of a failed run or an unchecked plan in plain words for the owner, or '' when there is none to give.
+ * Never the raw error: that can be runner stderr, argv or absolute paths (it stays in `job.error`, Show details).
+ */
+export function plainCause(error: string | null | undefined): string {
+  const e = error ?? '';
+  if (/overload|rate.?limit|too many requests|usage limit|\b(429|529)\b/i.test(e)) return 'the AI service was busy';
+  if (/outside (this|the) job.?s director/i.test(e)) return 'the plan was saved in the wrong place';
+  if (/unreadable (runner )?output|couldn.?t (read|parse) the (answer|output)/i.test(e)) return 'the AI’s answer couldn’t be read';
+  return '';
+}
+
 // ───────────── the recovery agent (review-queue.md, "The recovery agent") ─────────────
 
 export const RECOVERY_FIXES = [

@@ -687,7 +687,7 @@ extension StatesSnapshot {
                                          attempts: [RecoveryAttempt(at: Date().addingTimeInterval(-600), fix: "rebuild_in_session", result: "failed"),
                                                     RecoveryAttempt(at: Date().addingTimeInterval(-480), by: "agent", model: "opus", fix: "rebuild_in_session", result: "failed", costUSD: 0.04),
                                                     RecoveryAttempt(at: Date().addingTimeInterval(-360), by: "agent", model: "opus", fix: "rebuild_in_session", result: "failed", costUSD: 0.05)],
-                                         summary: "The AI run stopped with an error (Claude Code stopped: 529 overloaded.). The service was busy each time Distill asked it to continue.")
+                                         summary: "The AI run stopped with an error: the AI service was busy. It was still busy each time Distill asked Claude to continue.")
         e.jobs = [stopped]
         main("review-gaveup-runner", f, "Review", "Couldn't fix · the run stopped", "A failed batch stays in Review with its recovery: what's wrong, what was tried, Let recovery try again.", e, section: .review, job: e.jobs[0].id) {
             JobDetailView(jobID: e.jobs[0].id)
@@ -696,7 +696,7 @@ extension StatesSnapshot {
         e = engine()
         var suggests = stopped
         suggests.recovery?.proposal = "new_session"
-        suggests.recovery?.summary = "The AI run stopped with an error (Claude Code stopped: 529 overloaded.). Its AI session isn’t available anymore."
+        suggests.recovery?.summary = "The AI run stopped with an error: the AI service was busy. Its AI session isn’t available anymore."
         e.jobs = [suggests]
         main("review-gaveup-new-session", f, "Review", "Couldn't fix · recovery suggests a new session", "Continue in a new session opens the usual confirmation; nothing starts without the owner's Continue.", e, section: .review, job: e.jobs[0].id) {
             JobDetailView(jobID: e.jobs[0].id, confirmingNewSession: true)

@@ -49,9 +49,9 @@ final class ReviewQueueTests: XCTestCase {
         r.state = .running
         XCTAssertEqual(RecoveryText.heading(r), "Recovering · Opus · asking Claude to rebuild the plan")
         r.state = .gaveUp
-        r.summary = "The AI run stopped with an error (529 overloaded)."
+        r.summary = "The AI run stopped with an error: the AI service was busy."
         XCTAssertEqual(RecoveryText.heading(r), "Distill couldn’t fix this")
-        XCTAssertEqual(RecoveryText.summary(r), "The AI run stopped with an error (529 overloaded).")
+        XCTAssertEqual(RecoveryText.summary(r), "The AI run stopped with an error: the AI service was busy.")
 
         var job = Job(id: "j", vaultPath: "/v", files: [], state: .failed)
         job.recovery = r

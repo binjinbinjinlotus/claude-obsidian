@@ -456,6 +456,8 @@ describe('engine state machine', () => {
     assert.equal(job.state, 'awaitingApproval');
     assert.match(job.approval?.planError ?? '', /outside this job's directory/);
     assert.equal(h.inspectCalls.length, 0);
+    // The owner's sentence: plain words, never the path (the raw error stays in planError).
+    assert.equal(job.recovery?.summary, 'The vault core couldn’t check this plan: the plan was saved in the wrong place.');
     await assert.rejects(h.engine.approve(job.id));
   });
 

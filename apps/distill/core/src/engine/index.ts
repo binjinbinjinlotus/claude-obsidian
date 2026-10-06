@@ -114,6 +114,7 @@ import {
   denialSummary,
   MAX_DENIAL_ANSWERS,
   parseRecoveryAnswer,
+  plainCause,
   RECOVERY_SCHEMA,
   recoveryFacts,
   recoveryFor,
@@ -1211,14 +1212,15 @@ export function createEngine(opts: EngineOptions): Engine {
 
   /** The owner's sentence for a problem other than a blocked command (never a command or a stack trace). */
   function problemSummary(signature: RecoverySignature, job: Job): string {
-    const err = (job.approval?.planError ?? job.error ?? '').replace(/\s+/g, ' ').slice(0, 160);
+    // Plain words only: the raw error stays in job.error (Show details), never in the owner's sentence.
+    const cause = plainCause(signature === 'plan-error' ? job.approval?.planError : job.error);
     switch (signature) {
       case 'stale-again':
         return 'Your vault keeps changing under this plan: it was rebuilt for the latest pages and is out of date again.';
       case 'plan-error':
-        return `The vault core couldn’t check this plan${err ? ` (${err})` : ''}.`;
+        return `The vault core couldn’t check this plan${cause ? `: ${cause}` : ''}.`;
       case 'runner-failed':
-        return `The AI run stopped with an error${err ? ` (${err})` : ''}.`;
+        return `The AI run stopped with an error${cause ? `: ${cause}` : ''}.`;
       default:
         return 'Distill couldn’t get this batch going again by itself.';
     }
