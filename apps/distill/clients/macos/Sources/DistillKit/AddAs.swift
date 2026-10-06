@@ -73,11 +73,25 @@ public enum AddAs {
         type.fields.filter { $0.required && (draft.fields[$0.key] ?? "").trimmingCharacters(in: .whitespaces).isEmpty }.map(\.label)
     }
 
-    /// Why Add is off: "Fill in To first." (the core says the same).
+    /// Why Add is off, between Cancel and Add: "Fill in who it goes to", "Fill in Project and Type".
     public static func blockReason(_ draft: Draft, type: ActionTypeInfo) -> String? {
-        if draft.title.trimmingCharacters(in: .whitespaces).isEmpty { return "Give it a title first." }
-        let names = missing(draft, type: type)
-        return names.isEmpty ? nil : "Fill in \(names.joined(separator: " and ")) first."
+        if draft.title.trimmingCharacters(in: .whitespaces).isEmpty { return "Give it a title" }
+        let keys = type.fields.filter { $0.required && (draft.fields[$0.key] ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
+        guard !keys.isEmpty else { return nil }
+        let names = keys.map { $0.key == "to" ? "who it goes to" : $0.label }
+        return "Fill in " + names.joined(separator: " and ")
+    }
+
+    /// The menu row's line for the found type: "Found as a to-do".
+    public static func foundLine(_ id: String, types: [ActionTypeInfo]) -> String {
+        let words = typeWords(id, types: types)
+        let article = words.first.map { "aeiouAEIOU".contains($0) } == true ? "an" : "a"
+        return "Found as \(article) \(words)"
+    }
+
+    /// The menu's last line: "Return adds as to-do · ⌥Return opens Add as…".
+    public static func keysHint(_ item: ActionItem, types: [ActionTypeInfo]) -> String {
+        "Return adds as \(typeWords(item.type, types: types)) · ⌥Return opens Add as…"
     }
 
     /// The body's label in the panel.

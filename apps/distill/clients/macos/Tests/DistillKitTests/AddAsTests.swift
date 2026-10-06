@@ -34,6 +34,10 @@ final class AddAsTests: XCTestCase {
         var foundSlack = Self.found
         foundSlack.type = "slack"
         XCTAssertEqual(AddAs.mainTitle(foundSlack, types: types), "Add as Slack message")
+        // The found type's row says so; the menu ends with the keys.
+        XCTAssertEqual(AddAs.foundLine("todo", types: types), "Found as a to-do")
+        XCTAssertEqual(AddAs.foundLine("slack", types: types), "Found as a Slack message")
+        XCTAssertEqual(AddAs.keysHint(Self.found, types: types), "Return adds as to-do · ⌥Return opens Add as…")
         var copyOnly = Self.slack
         copyOnly.buttons = []
         XCTAssertEqual(AddAs.detail(copyOnly), "Written for you to copy and paste")
@@ -54,17 +58,17 @@ final class AddAsTests: XCTestCase {
 
     func testRequiredFieldsBlockAddWithTheFieldNamed() {
         var d = AddAs.prefill(Self.found, as: Self.jira)
-        XCTAssertEqual(AddAs.blockReason(d, type: Self.jira), "Fill in Project and Type first.")
+        XCTAssertEqual(AddAs.blockReason(d, type: Self.jira), "Fill in Project and Type")
         d.fields["project"] = "PX"
-        XCTAssertEqual(AddAs.blockReason(d, type: Self.jira), "Fill in Type first.")
+        XCTAssertEqual(AddAs.blockReason(d, type: Self.jira), "Fill in Type")
         d.fields["issueType"] = "Bug"
         XCTAssertNil(AddAs.blockReason(d, type: Self.jira))
         d.title = "  "
-        XCTAssertEqual(AddAs.blockReason(d, type: Self.jira), "Give it a title first.")
+        XCTAssertEqual(AddAs.blockReason(d, type: Self.jira), "Give it a title")
         var s = AddAs.prefill(Self.found, as: Self.slack)
         XCTAssertNil(AddAs.blockReason(s, type: Self.slack))
         s.fields["to"] = " "
-        XCTAssertEqual(AddAs.blockReason(s, type: Self.slack), "Fill in To first.")
+        XCTAssertEqual(AddAs.blockReason(s, type: Self.slack), "Fill in who it goes to")
         XCTAssertEqual(AddAs.bodyLabel(Self.slack), "Text")
     }
 

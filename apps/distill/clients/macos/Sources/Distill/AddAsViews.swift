@@ -77,10 +77,14 @@ struct AddAsMenu: View {
         ActionMenuPanel(title: "ADD AS…", width: 320) {
             ForEach(AddAs.options(store.types)) { o in
                 let style = ActionsTheme.typeStyle(o.id)
-                ActionMenuRow(title: o.label, detail: o.detail, icon: style.0, iconStyle: (style.1, style.2), checked: o.id == item.type) {
+                ActionMenuRow(title: o.label, detail: o.id == item.type ? AddAs.foundLine(o.id, types: store.types) : o.detail,
+                              icon: style.0, iconStyle: (style.1, style.2), checked: o.id == item.type) {
                     store.addAs(item, o.id)
                 }
             }
+            Divider().padding(.vertical, 2)
+            Text(AddAs.keysHint(item, types: store.types)).font(Theme.body(11)).foregroundStyle(Theme.faint)
+                .padding(.horizontal, 10).padding(.bottom, 4)
         }
         .alignmentGuide(.bottom) { $0[.bottom] }
         .frame(alignment: .bottom)
@@ -108,7 +112,7 @@ struct AddAsPanel: View {
                     .frame(width: 22, height: 22).background(RoundedRectangle(cornerRadius: 7).fill(style.1))
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Add as \(AddAs.typeWords(type.id, types: store.types))").font(Theme.body(14, .bold))
-                    Text("Found as \(AddAs.typeWords(item.type, types: store.types))").font(Theme.body(11.5)).foregroundStyle(Theme.faint)
+                    Text("filled from the \(AddAs.typeWords(item.type, types: store.types))").font(Theme.body(11.5)).foregroundStyle(Theme.faint)
                 }
                 Spacer(minLength: 0)
             }
@@ -183,25 +187,39 @@ struct AddAsPanelFooter: View {
     let type: ActionTypeInfo
     var onDone: (() -> Void)? = nil
 
+    private var reason: String? { store.addingAs[item.id].flatMap { AddAs.blockReason($0, type: type) } }
+
     var body: some View {
-        let reason = store.addingAs[item.id].flatMap { AddAs.blockReason($0, type: type) }
-        VStack(alignment: .trailing, spacing: 8) {
-        // The reason has its own line, so a narrow pane never squeezes it away.
-        if let reason {
-            Label(reason, systemImage: "exclamationmark.circle").font(Theme.body(12)).foregroundStyle(Theme.peachInk)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        HStack(spacing: 10) {
-            Spacer()
-            ActionButton(title: "Cancel", kind: .plain, height: 32) { store.addingAs[item.id] = nil }
-                .keyboardShortcut(.cancelAction)
-            ActionButton(title: "Add as \(AddAs.typeWords(type.id, types: store.types))", icon: "plus", kind: .primary, height: 32) {
-                store.finishAddAs(item, onDone: onDone)
+        // Cancel · why Add is off · Add as Slack message (disabled); a narrow pane puts the reason on its own line.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                Spacer(minLength: 0)
+                cancel
+                if let reason { reasonText(reason).fixedSize() }
+                add
             }
-            .disabled(reason != nil).opacity(reason == nil ? 1 : 0.45)
-            .help(reason ?? "")
-            .keyboardShortcut(.return, modifiers: .command)
+            VStack(alignment: .trailing, spacing: 6) {
+                if let reason { reasonText(reason).frame(maxWidth: .infinity, alignment: .trailing) }
+                HStack(spacing: 10) { Spacer(minLength: 0); cancel; add }
+            }
         }
+    }
+
+    private func reasonText(_ text: String) -> some View {
+        Text(text).font(Theme.body(12)).foregroundStyle(Theme.peachInk)
+    }
+
+    private var cancel: some View {
+        ActionButton(title: "Cancel", kind: .plain, height: 32) { store.addingAs[item.id] = nil }
+            .keyboardShortcut(.cancelAction)
+    }
+
+    private var add: some View {
+        ActionButton(title: "Add as \(AddAs.typeWords(type.id, types: store.types))", icon: "plus", kind: .primary, height: 32) {
+            store.finishAddAs(item, onDone: onDone)
         }
+        .disabled(reason != nil).opacity(reason == nil ? 1 : 0.45)
+        .help(reason ?? "")
+        .keyboardShortcut(.return, modifiers: .command)
     }
 }

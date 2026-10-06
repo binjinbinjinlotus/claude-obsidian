@@ -131,7 +131,13 @@ time.
   its footer), `DistillKit/AddAs.swift` (options, prefill, what blocks Add,
   the keys, `ConfirmAs` and `CoreClient.confirmAction(_:as:)`). The panel
   sits above What it's about in the To-confirm detail; in a row without the
-  right pane it opens under the row. Tests: `AddAsTests`. Snapshot states
+  right pane it opens under the row. As on the canvas (Version 91): the menu's
+  found-type row reads "Found as a to-do" and its last line is "Return adds
+  as to-do · ⌥Return opens Add as…"; the panel header notes "filled from the
+  to-do"; a blocked footer reads Cancel · "Fill in who it goes to" (a
+  Slack To; other fields by label, "Fill in Project") · a disabled "Add as
+  Slack message", the reason on its own line when the pane is too narrow.
+  Tests: `AddAsTests`. Snapshot states
   `actions-confirm-addas-menu`, `actions-confirm-addas-slack`,
   `actions-confirm-addas-blocked`.
 
