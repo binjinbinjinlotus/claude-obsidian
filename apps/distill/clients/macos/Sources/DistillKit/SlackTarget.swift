@@ -34,7 +34,8 @@ public struct SlackTarget: Codable, Hashable, Sendable {
     public static func parseThread(_ text: String) -> (channel: String?, ts: String)? {
         let s = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !s.isEmpty else { return nil }
-        if let m = match(#"^https?://[^\s/]*slack\.com/archives/([CGD][A-Z0-9]{2,})/p(\d{10})(\d{6})(?:[?#](\S*))?$"#, s) {
+        // The host is slack.com or <workspace>.slack.com exactly: "evilslack.com" and "slack.com@x" are not Slack.
+        if let m = match(#"^https?://(?:[A-Za-z0-9-]+\.)*slack\.com/archives/([CGD][A-Z0-9]{2,})/p(\d{10})(\d{6})(?:[?#](\S*))?$"#, s) {
             if let q = m[4], let parent = match(#"(?:^|&)thread_ts=(\d{10}\.\d{6})(?:&|$)"#, q), let ts = parent[1] {
                 return (m[1], ts)
             }
@@ -53,7 +54,10 @@ public struct SlackTarget: Codable, Hashable, Sendable {
         var base = toTarget(written, lookup: lookup)
         if !threadText.isEmpty && parsed == nil {
             base.kind = .thread; base.target = nil
-            base.problem = "“\(threadText)” isn’t a Slack message link, so Distill can’t tell which thread to reply in."
+            let host = match(#"(?i)^https?://([^/?#\s]*)"#, threadText)?[1] ?? nil
+            base.problem = host.map { match(#"^(?:[A-Za-z0-9-]+\.)*slack\.com$"#, $0) == nil } == true
+                ? "“\(threadText)” isn’t a link on slack.com, so Distill won’t reply to it."
+                : "“\(threadText)” isn’t a Slack message link, so Distill can’t tell which thread to reply in."
             return base
         }
         guard let parsed else { return base }

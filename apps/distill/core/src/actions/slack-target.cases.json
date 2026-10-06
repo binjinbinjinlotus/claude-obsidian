@@ -21,6 +21,12 @@
     { "to": "Aditya Pradhan", "thread": "1759600000.123456", "expect": { "kind": "thread", "written": "Aditya Pradhan", "target": "@aditya", "name": "Aditya Pradhan", "threadTs": "1759600000.123456" } },
     { "to": "Mei Tanaka", "thread": "1759600000.123456", "expect": { "kind": "thread", "written": "Mei Tanaka", "target": null, "threadTs": "1759600000.123456", "ask": "Who is Mei Tanaka in Slack?", "problem": "Distill doesn’t know who Mei Tanaka is in Slack yet. Add their @handle or ID in the To row." } },
     { "to": "", "thread": "#eng 1759600000.123456", "expect": { "kind": "thread", "written": "", "target": "#eng", "threadTs": "1759600000.123456" } },
+    { "to": "#eng", "thread": "https://evilslack.com/archives/C0123ABCD/p1759600000123456", "expect": { "kind": "thread", "written": "#eng", "target": null, "problem": "“https://evilslack.com/archives/C0123ABCD/p1759600000123456” isn’t a link on slack.com, so Distill won’t reply to it." } },
+    { "to": "#eng", "thread": "https://slack.com.evil.io/archives/C0123ABCD/p1759600000123456", "expect": { "kind": "thread", "written": "#eng", "target": null, "problem": "“https://slack.com.evil.io/archives/C0123ABCD/p1759600000123456” isn’t a link on slack.com, so Distill won’t reply to it." } },
+    { "to": "#eng", "thread": "https://slack.com@evil.io/archives/C0123ABCD/p1759600000123456", "expect": { "kind": "thread", "written": "#eng", "target": null, "problem": "“https://slack.com@evil.io/archives/C0123ABCD/p1759600000123456” isn’t a link on slack.com, so Distill won’t reply to it." } },
+    { "to": "#eng", "thread": "https://slack.com/archives/C0123ABCD/p1759600000123456", "expect": { "kind": "thread", "written": "#eng", "target": "C0123ABCD", "threadTs": "1759600000.123456" } },
+    { "to": "#eng", "thread": "https://acme.enterprise.slack.com/archives/C0123ABCD/p1759600000123456", "expect": { "kind": "thread", "written": "#eng", "target": "C0123ABCD", "threadTs": "1759600000.123456" } },
+    { "to": "#eng", "thread": "https://acme.slack.com/messages/C0123ABCD", "expect": { "kind": "thread", "written": "#eng", "target": null, "problem": "“https://acme.slack.com/messages/C0123ABCD” isn’t a Slack message link, so Distill can’t tell which thread to reply in." } },
     { "to": "#eng", "thread": "the standup thread", "expect": { "kind": "thread", "written": "#eng", "target": null, "problem": "“the standup thread” isn’t a Slack message link, so Distill can’t tell which thread to reply in." } }
   ],
   "typed": [

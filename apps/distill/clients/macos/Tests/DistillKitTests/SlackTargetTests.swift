@@ -22,6 +22,7 @@ final class SlackTargetTests: XCTestCase {
     func testEverySharedCaseResolvesLikeTheCore() throws {
         let s = try Self.shared()
         XCTAssertGreaterThan(s.cases.count, 10)
+        XCTAssertNil(SlackTarget.parseThread("https://evilslack.com/archives/C0123ABCD/p1759600000123456"), "the host is slack.com exactly")
         for c in s.cases {
             XCTAssertEqual(SlackTarget.resolve(to: c.to, thread: c.thread, lookup: { s.people[$0] }), c.expect, "\(c.to) / \(c.thread ?? "")")
         }

@@ -791,6 +791,9 @@ The owner's Send in Slack failed with `target: "Aditya Pradhan" isn't
 - **The To row has a kind.** Channel (`#name` or a `C…`/`G…` ID), Person (a
   DM: `@handle` or a `U…`/`W…`/`D…` ID) or Thread (the `thread` field holds a
   Slack message link, `channel ts`, or a bare ts; a link's `thread_ts` wins).
+  A link's host must be `slack.com` or `<workspace>.slack.com` exactly;
+  anything else ("evilslack.com", "slack.com@…") reads "… isn't a link on
+  slack.com, so Distill won't reply to it" and is refused.
   It reads "To [Person] Aditya Pradhan (@aditya) · direct message",
   "To [Channel] #general · channel" or "To [Thread] #eng · reply in its
   thread".

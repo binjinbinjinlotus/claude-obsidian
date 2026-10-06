@@ -17,6 +17,8 @@ export const SLACK_TARGET_RULE = /^(#\S+|@\S+|[CGDUW][A-Z0-9]{2,})$/;
 const CHANNEL_ID = /^[CG][A-Z0-9]{2,}$/;
 const PERSON_ID = /^[DUW][A-Z0-9]{2,}$/;
 const TS = /^\d{10}\.\d{6}$/;
+/** slack.com or <workspace>.slack.com, nothing else. */
+const SLACK_HOST = /^(?:[A-Za-z0-9-]+\.)*slack\.com$/;
 
 /** "  Aditya   Pradhan " → "aditya pradhan". Only an exact match resolves ("Mei" is not "Mei Tanaka"). */
 export function normalName(name: string): string {
@@ -30,7 +32,8 @@ export function normalName(name: string): string {
 export function parseThread(text: string): { channel?: string; ts: string } | undefined {
   const s = text.trim();
   if (!s) return undefined;
-  const link = /^https?:\/\/[^\s/]*slack\.com\/archives\/([CGD][A-Z0-9]{2,})\/p(\d{10})(\d{6})(?:[?#](\S*))?$/.exec(s);
+  // The host is slack.com or <workspace>.slack.com exactly: "evilslack.com" and "slack.com@x" are not Slack.
+  const link = /^https?:\/\/(?:[A-Za-z0-9-]+\.)*slack\.com\/archives\/([CGD][A-Z0-9]{2,})\/p(\d{10})(\d{6})(?:[?#](\S*))?$/.exec(s);
   if (link) {
     const parent = /(?:^|&)thread_ts=(\d{10}\.\d{6})(?:&|$)/.exec(link[4] ?? '');
     return { channel: link[1]!, ts: parent ? parent[1]! : `${link[2]}.${link[3]}` };
@@ -51,7 +54,11 @@ export function resolveSlackTarget(to: string | null | undefined, thread: string
   const parsed = threadText ? parseThread(threadText) : undefined;
   const base = toTarget(written, lookup);
   if (threadText && !parsed) {
-    return { ...base, kind: 'thread', target: null, problem: `“${threadText}” isn’t a Slack message link, so Distill can’t tell which thread to reply in.` };
+    const host = /^https?:\/\/([^/?#\s]*)/i.exec(threadText)?.[1];
+    const problem = host !== undefined && !SLACK_HOST.test(host)
+      ? `“${threadText}” isn’t a link on slack.com, so Distill won’t reply to it.`
+      : `“${threadText}” isn’t a Slack message link, so Distill can’t tell which thread to reply in.`;
+    return { ...base, kind: 'thread', target: null, problem };
   }
   if (parsed) {
     // The link names the channel; the To row is then only who it's about.

@@ -37,6 +37,8 @@ describe('where a Slack message goes', () => {
     assert.deepEqual(parseThread('https://acme.slack.com/archives/C0123ABCD/p1759600000123456'), { channel: 'C0123ABCD', ts: '1759600000.123456' });
     assert.deepEqual(parseThread('https://app.slack.com/archives/G0ABC/p1759600111000222?thread_ts=1759600000.123456&cid=G0ABC'), { channel: 'G0ABC', ts: '1759600000.123456' });
     assert.equal(parseThread('https://example.com/archives/C0123ABCD/p1759600000123456'), undefined, 'not Slack');
+    assert.equal(parseThread('https://evilslack.com/archives/C0123ABCD/p1759600000123456'), undefined, 'the host is slack.com exactly');
+    assert.equal(parseThread('https://slack.com@evil.io/archives/C0123ABCD/p1759600000123456'), undefined);
     assert.equal(parseThread('yesterday’s thread'), undefined);
   });
 
