@@ -88,6 +88,27 @@ isn't.
 
 ## Friction log (newest first)
 
+### 2026-10-06
+- **The owner asked for subagents to build, and a separate one to verify.**
+  The remaining Review-queue items went to a builder subagent. The builder
+  handed the board's eleven `sa-` snapshot states to a forked subagent, which
+  was told to leave its files uncommitted and not to touch the builder's open
+  edits. Verification is a separate agent's job, never the builder's own
+  last word.
+  - *Lesson:* when several agents share a worktree, give each one a file
+    boundary and let one of them commit.
+- **A new card overflowed its row.** "Continue in a new session" made the
+  Couldn't fix card's button row wider than the details column. The
+  conversation column was pushed off the window. Only the rendered snapshot
+  showed it; the tests passed.
+  - *Change:* the card's buttons wrap (`FlowLayout`).
+  - *Lesson:* look at every new snapshot PNG, not only the test count. The
+    fork found the same kind of overflow in the to-do footer.
+- **"Waiting" read as "Ready for your OK".** The first render of the backoff
+  state showed the peach pill, because the pill only knew `running`.
+  - *Lesson:* a new state value needs a grep for every place that switches on
+    the old ones.
+
 ### 2026-10-05
 - **A new AI task quietly blocked batching.** Adding the `recovery` task to
   the task list made the setup check require its runner too. A test with only

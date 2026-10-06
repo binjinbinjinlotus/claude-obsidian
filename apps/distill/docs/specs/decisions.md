@@ -3,7 +3,7 @@ type: spec
 title: Decisions
 status: built
 created: 2026-10-02
-updated: 2026-10-05
+updated: 2026-10-06
 tags:
   - distill
   - decisions
@@ -14,6 +14,48 @@ tags:
 Newest first. Each entry: what was decided, why, and where it lives. Add an
 entry in the same change that makes a decision; never rewrite an old one —
 supersede it with a new entry.
+
+## 2026-10-06
+
+**Recovery covers stale-again, plan errors and failed runs (2026-10-06).**
+Step 6 of [Review queue](review-queue.md); extends the 2026-10-05 entry
+"Recovery agent: built for blocked commands first". Each of these signatures
+gets one $0 rule reply in the batch's session first (for stale-again, the
+refresh), then the recovery agent with `rebuild_in_session`. Agent attempts wait
+a minute apart (`waiting` + `waitUntil`, resumed at start). Why: the owner's
+rule is automatic checks over human, and the minute lets the vault or the
+session settle instead of spending a second call at once.
+
+**A failed batch under recovery stays in Review and can be rejected
+(2026-10-06).** A reply turn that fails used to drop the batch into History
+only. While recovery works on it, or after it gave up, it stays in Review's
+list (Couldn't fix) and Reject batch ends it. Why: the owner would otherwise
+lose sight of a batch Distill is still trying to fix. Badges still count only
+waiting batches.
+
+**Continue in a new session from recovery is a button, never automatic
+(2026-10-06).** When recovery suggests a new session (`proposal:
+'new_session'`, also set when the session is gone during recovery), the card
+offers Continue in a new session. It opens the usual SessionReplaceConfirm
+("Recovery suggests a new session"), and only its Continue starts the session.
+This keeps the 2026-10-05 session-continuity rule: a new session always asks
+first.
+
+**Approve checks the plan's hashes before an apply turn (2026-10-06).** With
+nothing ahead in the vault, Approve runs the cheap `staleFor` check on the
+bundle. A stale plan goes straight to the refresh and asks once more, instead
+of an apply turn that would only return exit 75. Why: an apply turn costs
+tokens and time, and the answer is already known on disk. Inspect stays the
+authority; this check only skips a turn that can't succeed.
+
+**`distill status` shows the apply queue and recovery (2026-10-06).** The
+status response gains `applyQueue` and `recovering` (additive). The CLI still
+never approves.
+
+**Button approvals are their own Activity entry (2026-10-06).** A run that
+approves its command logs `action.button_approved` before
+`action.button_run`. Why: the approval is the owner's consent to an exact
+command and should be findable on its own; repeated runs are only runs.
 
 ## 2026-10-05
 

@@ -3,7 +3,7 @@ type: spec
 title: Review queue, automatic refresh, self-recovery and the batch list
 status: built
 created: 2026-10-05
-updated: 2026-10-05
+updated: 2026-10-06
 tags:
   - distill
   - review
@@ -14,13 +14,15 @@ tags:
 
 Canvas: row 16, board **ReviewQueue** (`design/screens/reviewqueue.json`).
 
-**Build status (2026-10-05): built**, in five steps; see "Built so far" at the end for what differs from the design.
+**Build status (2026-10-06): built**, in six steps; see "Built so far" at the end for what differs from the design.
 
 1. Blocked commands answered by Distill, and the plain-words card: **built**.
 2. Apply queue: **built**.
 3. Exit 75 → refresh: **built** (with step 2).
 4. Batch list: **built**.
 5. Recovery agent (Opus) and Settings: **built** (for blocked commands; see below).
+6. Recovery for other problems, its card, Continue in a new session, `distill status`, the
+   stale check in Approve: **built** (2026-10-06; see below).
 Related specs: [Approval and review](approval-and-review.md) (the gate, parts,
 exit 75), [Session continuity](session-continuity.md), [Full reads](full-read.md),
 [Live log](live-log.md), [Activity log](activity-log.md),
@@ -866,24 +868,80 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
   automatically, Attempts per problem, Cost limit per batch);
   `RecoveryPreferences`; `CoreClient.recover`; the card's **Let recovery try
   again** and "Tried twice · last by Opus · $0.04".
-- **Not built yet (open):**
-  - The agent runs for **blocked commands** only. The other signatures keep
-    their rules from steps 2–3 (the lock wait, one rebuild per change, back to
-    the owner with plain words); `ruleFor` and agent calls for `stale-again`,
-    `plan-error`, `runner-failed` are not wired.
-  - No 1-minute backoff between agent attempts (each attempt waits for the
-    session's next turn anyway).
-  - `distill status` does not list queued or recovering batches yet.
-  - Activity logs `batch.recovery` only for Try again, not for automatic
-    attempts; there is no `batch.queued` entry (only `batch.unqueued`); the
-    live log has no `recover-<n>` steps. The conversation shows Distill's
-    answers and the job's `recovery` field holds every attempt.
-  - The canvas board (row 16) is the design: frames E–F show the agent fixing
-    stale plans, which is not built; the built card's options are listed
-    above.
-  - `new_session` is a proposal (`recovery.proposal`) shown in the sentence;
-    there is no one-click Continue in a new session from the card yet.
+- **Not built yet after step 5:** the items listed then are built in step 6
+  below; what is still open is listed there.
 - Tests: `engine.test.ts` "blocked commands" (6: the agent's guidance is sent
   and the plan comes back; guidance naming the apply is refused; the cost
   limit and Recover automatically; Try again), `recovery.test.ts` (4),
   `backends.test.ts` task lists, `RecoverySettingsTests` (2).
+
+### Step 6: recovery for other problems, and what was left (2026-10-06)
+
+- **Core, recovery for `stale-again`, `plan-error`, `runner-failed`**
+  (`recover(id, signature)` in `engine/index.ts`):
+  - A rule first, at most once and $0: `plan-error` and `runner-failed` get one
+    fixed reply in the batch's session (rebuild the plan; continue after the
+    error). For `stale-again` the rule is the refresh itself.
+  - Then the recovery agent, with the new fix `rebuild_in_session` (optional
+    guidance, checked like `answer_denial`'s). For `stale-again` it forces one
+    more refresh.
+  - **A minute between agent attempts** (`RECOVERY_BACKOFF_MS`): the recovery
+    reads `waiting` with `waitUntil`; `start()` resumes a waiting attempt, and
+    an agent call a restart cut off is tried again.
+  - Triggers: a resumed turn (not an apply) that throws → `runner-failed`; a
+    recovery turn that errors escalates; a plan error with no plan and no
+    denials → `plan-error`; the pump's second stale plan → `stale-again`.
+  - A gone session during recovery gives up with `proposal: 'new_session'`.
+  - A **failed** batch under recovery can be rejected (`reject`), so it can
+    leave Review.
+- **Activity and live log:** `batch.queued`, `batch.refresh` and
+  `batch.recovery` for automatic attempts too; live-log steps `queued-<n>`,
+  `updating-…` and `recover-<i>`.
+- **Mac, the recovery card** (`RecoveryCard` in `BlockedCommandCard.swift`,
+  words in `RecoveryText`, `ReviewQueue.swift`):
+  - Recovering: a blue notice, "Recovering · Opus · asking Claude to rebuild
+    the plan", what's wrong, "Tried twice · last by Opus · $0.03". Nothing
+    needs the owner.
+  - Waiting: "Recovering · next try at 10:42 AM" (`RecoveryState.waitUntil`).
+    The pill reads Recovering while running or waiting.
+  - Gave up: the peach "Distill couldn’t fix this" card with the core's
+    sentence, the attempts line, **Let recovery try again**, **Open in
+    Terminal**, **Reject batch**.
+  - While recovery works on a plan error, the raw "Can't apply this plan yet"
+    callout waits.
+  - A failed batch with a recovery stays in Review's list
+    (`ApplyTimeline.reviewList`), its row reads Couldn't fix once recovery gave up.
+- **Continue in a new session** (`recovery.proposal == 'new_session'`, on both
+  cards): the button opens the usual `SessionReplaceConfirm` in the card,
+  headed "Recovery suggests a new session"; only its **Continue** sends
+  `reply(newSession: true)` with a fixed text (`RecoveryText.newSessionReply`).
+  It is hidden when the job already has a gone-session marker, since that
+  confirmation already shows under the batch. The owner's new session clears
+  the recovery.
+- **`distill status`** lists approvals waiting to apply, in order ("Applies:
+  1. Product sync (approved, waiting its turn in Research)"), and batches
+  recovery works on ("Recovery: Tea · the vault core couldn’t check its plan ·
+  next try at …"). `StatusResponse.applyQueue` and `recovering`
+  (`queueStatus` in `engine/apply-queue.ts`).
+- **Approve with nothing ahead** runs `staleFor` on the bundle first. A plan
+  the vault already overtook goes straight to the refresh ("Your vault changed
+  since this plan was built, so it is rebuilt first"), never an apply turn. If
+  the refresh can't start, Approve goes on as before.
+- **Still open:**
+  - `lock`, `not-recorded`, `full-read-stop` and `session-gone` keep their
+    rules; the agent doesn't run for them.
+  - The fixes `reinspect_same_bundle`, `wait_then_retry`, `split_batch` and
+    `discard_stale_part` are not carried out (an answer with one is a failed
+    attempt).
+  - The Couldn't fix card has no **Rebuild** option yet, and the attempts are
+    one line, not one row each.
+  - Badges don't count a failed batch recovery gave up on (`needsOwner` is
+    for waiting batches).
+- Tests: `session-continuity.test.ts` (runner-failed recovery; a stopped batch
+  can be rejected; a gone session proposes a new one and only the owner's
+  Continue starts it), `engine.test.ts` (plan-error rule then agent with the
+  minute's wait; a plan the vault overtook is rebuilt at Approve without an
+  apply), `cli.test.ts` (status lists the apply queue and recovering batches),
+  `ReviewQueueTests.testRecoveryWordsForOtherProblems`. Snapshot states
+  `review-recovering-plan-error`, `review-waiting-backoff`,
+  `review-gaveup-runner`, `review-gaveup-new-session`.

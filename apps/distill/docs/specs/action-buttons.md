@@ -3,7 +3,7 @@ type: spec
 title: Action buttons and script commands
 status: built
 created: 2026-10-05
-updated: 2026-10-05
+updated: 2026-10-06
 tags:
   - distill
   - actions
@@ -731,8 +731,20 @@ Order: core → API → CLI → Mac. Each step is one commit, with `npm test
 - **Swift model name.** The app already has a SwiftUI `ActionButton`, so the
   DistillKit model is `AutomationButton` (JSON is unchanged).
 - Tests: `AutomationsTests` (decode, slots, settings round trip, routes and
-  409 refusals, the commands patch). Not yet: snapshot states for the board's
-  frames and Activity words for `action.button_run`.
+  409 refusals, the commands patch).
+- **Added 2026-10-06.** Activity: a run that approves its command (a first run,
+  or after the command or script changed) logs `action.button_approved` before
+  `action.button_run` (`runActionButton` returns `approved: true`); History →
+  Activity shows Button, Action type and, for an approval, what was approved.
+  Snapshot states for the board's frames in `SnapshotScriptActions.swift`:
+  `sa-library`, `sa-slack-item`, `sa-slack-confirm`, `sa-slack-running`,
+  `sa-slack-sent` (the sheet's finished state: a sent message leaves the list),
+  `sa-slack-failed`, `sa-card-settings`, `sa-card-editor`, `sa-card-command`,
+  `sa-card-todo`, `sa-card-add`; the prose cards have none. The to-do footer
+  puts its buttons on their own row when the pane is too narrow for one.
+- **Not yet:** Add automation's first step "What it does (Collect / Commands /
+  Both)" (`sa-card-add` shows today's kind step); a Slack message whose Send
+  slot is a button still reads "Ready to paste".
 
 ## Open questions
 
