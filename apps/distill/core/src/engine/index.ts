@@ -1017,9 +1017,22 @@ export function createEngine(opts: EngineOptions): Engine {
         // approved apply turn and it names the approved operation; the paths come from the
         // inspected plan, never from the model.
         const applying = findJob(id)?.approval ? clone(findJob(id)!.approval!) : undefined;
+        // review-queue.md, not-recorded: an apply turn that didn't report the approved operation is checked
+        // against the vault's own journal; `complete` with the approved hash records it as applied (the rule).
+        const journal = applyPlan && status.operation_id !== applyPlan.operation_id ? readJournal(vault.path, applyPlan.operation_id) : undefined;
+        const inJournal = !!journal && journal.state === 'complete' && journal.approval_sha256 === applyPlan!.approval_sha256;
+        const recorded = !!applyPlan && (inJournal || (status.status === 'done' && status.operation_id === applyPlan.operation_id));
         mutate(id, (j) => {
           j.state = 'completed';
           delete j.approval;
+          if (inJournal && applyPlan) {
+            const paths = journal!.changed_paths.length > 0 ? journal!.changed_paths : applyPlan.changed_paths;
+            addPart(j, applyPlan.operation_id, applying);
+            j.operationID = applyPlan.operation_id;
+            j.changedPaths = mergedPaths(j, paths);
+            j.turns.push(newTurn('app', `Applied ${applyPlan.operation_id} (the turn didn’t report it; found in the vault’s journal):\n` + paths.map((p) => `- ${p}`).join('\n'), now()));
+            return;
+          }
           if (status.status !== 'done') return;
           if (applyPlan && status.operation_id === applyPlan.operation_id) {
             addPart(j, applyPlan.operation_id, applying);
@@ -1040,7 +1053,7 @@ export function createEngine(opts: EngineOptions): Engine {
             j.turns.push(newTurn('app', 'Nothing was applied: this turn had no approved plan to apply.', now()));
           }
         });
-        if (applyPlan && status.status === 'done' && status.operation_id === applyPlan.operation_id) {
+        if (applyPlan && recorded) {
           const applied = findJob(id);
           if (applied) {
             try {
@@ -1227,6 +1240,10 @@ export function createEngine(opts: EngineOptions): Engine {
         return `The vault core couldn’t check this plan${cause ? `: ${cause}` : ''}.`;
       case 'runner-failed':
         return `The AI run stopped with an error${cause ? `: ${cause}` : ''}.`;
+      case 'lock':
+        return 'Another app kept your vault locked, so your approved change couldn’t be applied yet.';
+      case 'session-gone':
+        return 'This batch’s AI session isn’t available anymore, so your approved change can’t be applied in it.';
       default:
         return 'Distill couldn’t get this batch going again by itself.';
     }
@@ -1252,6 +1269,36 @@ export function createEngine(opts: EngineOptions): Engine {
    * review-queue.md, Self-recovery: a batch that can't make progress gets a rule first ($0, at most once), then the
    * recovery agent within its bounds. Blocked commands have their own rule (recoverDenial). True when it took over.
    */
+  /**
+   * review-queue.md, "When it runs": lock, not-recorded, full-read-stop and session-gone keep their rules; this is
+   * what happens when a rule is spent. Only `lock` has a fix the agent can choose (reinspect_same_bundle,
+   * wait_then_retry, give_up), so only it calls the agent, within its bounds. The others allow nothing an agent
+   * could do for the owner (give_up, or the new_session only the owner may start), so they settle at $0 with a
+   * plain sentence and, for session-gone, the new-session proposal.
+   */
+  function recoverAfterRule(id: string, signature: 'lock' | 'session-gone', approvedSha256?: string): void {
+    const job = findJob(id);
+    if (!job || job.state !== 'awaitingApproval') return;
+    const rec = recoveryFor(job.recovery, signature);
+    const attempts = rec.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed' as const } : a));
+    const approved = approvedSha256 ?? rec.approvedSha256;
+    const giveUp = (proposal?: 'new_session') =>
+      mutate(id, (j) => {
+        j.recovery = {
+          ...rec, attempts, state: 'gaveUp', summary: problemSummary(signature, j),
+          ...(approved ? { approvedSha256: approved } : {}), ...(proposal ? { proposal } : {}),
+        };
+      });
+    if (signature === 'session-gone' || !recoveryPreferences(settings).automatic) {
+      giveUp(signature === 'session-gone' ? 'new_session' : undefined);
+      return;
+    }
+    mutate(id, (j) => {
+      j.recovery = { ...rec, attempts, state: 'running', ...(approved ? { approvedSha256: approved } : {}) };
+    });
+    track(asScheduler(() => runRecoveryAgent(id, signature))().catch((err: unknown) => log('warn', `Recovery: ${(err as Error).message}`)));
+  }
+
   function recover(id: string, signature: RecoverySignature): boolean {
     if (signature === 'denial') return recoverDenial(id);
     const job = findJob(id);
@@ -1637,7 +1684,13 @@ export function createEngine(opts: EngineOptions): Engine {
     if (n >= 2) {
       lockRetries.delete(vaultPath);
       const head = vaultQueue(vaultPath)[0];
-      if (head) backToOwner(head.id, 'Not applied: another app kept your vault locked for several minutes. Approve again when it is closed.');
+      if (head) {
+        // The rule is spent (30 s, then 2 min): the recovery agent may check again or wait, within its bounds,
+        // and only ever under the hash the owner approved.
+        const approved = head.queuedApply?.planSha256;
+        backToOwner(head.id, 'Not applied: another app kept your vault locked for several minutes. Approve again when it is closed.');
+        recoverAfterRule(head.id, 'lock', approved ?? undefined);
+      }
       return;
     }
     lockRetries.set(vaultPath, n + 1);
@@ -1689,9 +1742,12 @@ export function createEngine(opts: EngineOptions): Engine {
               if (j.queuedApply) delete j.queuedApply.planSha256;
               j.turns.push(newTurn('app', 'Not applied yet: this batch’s AI session isn’t available anymore. Continue in a new session to apply it.', now()));
             });
+            // session-gone: only the owner may start a new session (session continuity), so recovery proposes it.
+            recoverAfterRule(head.id, 'session-gone', q.planSha256 ?? undefined);
             return;
           }
-          lockRetries.delete(vaultPath);
+          // The lock's count resets only when an apply lands (applyInCore), not before each try: else the
+          // 30 s / 2 min rule never ends and a held lock is retried forever.
           try {
             await approve(head.id, again, true);
           } catch (err) {
@@ -2861,7 +2917,9 @@ export function createEngine(opts: EngineOptions): Engine {
     }
     const startingApply = (j: Job) => {
       j.queuedApply = queued; // no planSha256: it never re-applies by itself if it comes back
-      delete j.recovery;
+      // A recovery's retry under the approved hash keeps its attempts while it applies: a lock that comes back
+      // continues the same bounds instead of starting over (review-queue.md, Bounds).
+      if (!(fromQueue && j.recovery?.approvedSha256 === plan.approval_sha256)) delete j.recovery;
       delete j.refresh;
     };
     const applying = (agent: boolean) =>
@@ -3908,7 +3966,9 @@ export function createEngine(opts: EngineOptions): Engine {
           addPart(j, operationID, applying);
           j.state = 'completed';
           delete j.approval;
+          if (j.recovery) j.recovery = { ...j.recovery, state: 'fixed' }; // a recovery's retry that applied
           j.operationID = operationID;
+          lockRetries.delete(j.vaultPath); // the vault is free again
           j.changedPaths = mergedPaths(j, changed);
           j.turns.push(newTurn('app', `Applied ${operationID}:\n` + changed.map((p) => `- ${p}`).join('\n'), now()));
         });

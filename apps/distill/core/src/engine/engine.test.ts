@@ -34,8 +34,13 @@ class FakeRunner implements AgentRunner {
       'agentTools', 'toolPermissions', 'sessionResume', 'structuredOutput',
     ]),
   ) {}
+  /** What the session store says (session continuity); 'unknown' resumes as before. */
+  status: 'unknown' | 'missing' = 'unknown';
   problems() {
     return [];
+  }
+  sessionStatus() {
+    return this.status;
   }
   async run(request: RunRequest): Promise<RunResult> {
     this.requests.push(request);
@@ -1248,7 +1253,7 @@ describe('recovery fixes (review-queue.md, 2026-10-06)', () => {
     assert.equal(t.applies(), 1, 'applied once, after inspect');
     assert.equal(job.state, 'completed');
     assert.ok(h.inspectCalls.some((c) => c.includes('inspect')), 'inspected again first');
-    assert.equal(job.recovery, undefined, 'the apply ended the recovery');
+    assert.equal(job.recovery?.state, 'fixed', 'the apply ended the recovery');
   });
 
   test('reinspect_same_bundle never retries a plan the owner did not approve', async () => {
@@ -1311,5 +1316,110 @@ describe('recovery fixes (review-queue.md, 2026-10-06)', () => {
     job = h.engine.getJob(t.id)!;
     assert.equal(job.recovery?.proposal, undefined, 'no rebuilt part to discard');
     assert.equal(job.state, 'awaitingApproval', 'the batch is untouched');
+  });
+});
+
+describe('recovery after a spent rule (review-queue.md, 2026-10-06)', () => {
+  const sandboxed = (steps: Step[] = []) => new FakeRunner(steps, new Set<RunnerCapability>(['agentTools', 'sandboxedWrites', 'sessionResume', 'structuredOutput']));
+  const lock: ProcessOutput = { status: 75, stdout: Buffer.alloc(0), stderr: Buffer.from('ERR LOCK_TIMEOUT: held\n') };
+
+  async function settle(): Promise<void> {
+    for (let i = 0; i < 6; i++) {
+      await h.engine.whenIdle();
+      await new Promise((r) => setImmediate(r));
+    }
+  }
+
+  test('lock: after 30 s and 2 min the agent may retry under the approved hash; the bounds hold across retries', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.parse('2026-10-06T10:00:00Z') });
+    const runner = sandboxed();
+    let applies = 0;
+    h = setup([], { runner, apply: () => (applies++, lock), now: () => new Date(Date.now()) });
+    const created = await firstJob();
+    runner.steps.push(needsApproval(h.bundle(created)));
+    await settle();
+    const reinspect = { structured: { diagnosis: 'The lock may be gone.', fix: 'reinspect_same_bundle', reason: 'r' } };
+    runner.steps.push(reinspect, reinspect);
+    await h.engine.approve(created.id);
+    await settle();
+    const cycle = async () => {
+      t.mock.timers.tick(30_000);
+      await settle();
+      t.mock.timers.tick(120_000);
+      await settle();
+      t.mock.timers.tick(0); // the retry's wake
+      await settle();
+    };
+    await cycle();
+    let job = h.engine.getJob(created.id)!;
+    assert.equal(runner.requests.length, 2, 'the batch, then one recovery call');
+    assert.equal(job.recovery?.signature, 'lock');
+    assert.equal(job.recovery?.approvedSha256, PLAN.approval_sha256);
+    await cycle();
+    await cycle();
+    job = h.engine.getJob(created.id)!;
+    assert.equal(runner.requests.length, 3, 'two agent attempts in all, never more');
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.match(job.recovery?.summary ?? '', /kept your vault locked/);
+    assert.equal(job.queuedApply?.planSha256, undefined, 'back to the owner');
+    assert.ok(applies >= 3);
+    assert.equal((await h.engine.status()).pendingApprovals, 1);
+  });
+
+  test('session-gone while queued: recovery proposes a new session ($0, no agent); nothing starts by itself', async () => {
+    h = setup([]);
+    const created = await firstJob();
+    h.runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    await h.engine.stop();
+    const jobsFile = path.join(tmp, 'state', 'jobs.json');
+    const saved = JSON.parse(fs.readFileSync(jobsFile, 'utf8')) as Array<Record<string, unknown>>;
+    const j = saved.find((x) => x.id === created.id)!;
+    j.queuedApply = { at: '2026-10-06T08:59:00Z', order: 1, planSha256: PLAN.approval_sha256, bundlePath: h.bundle(created), labels: 'confirm', carries: 'confirm' };
+    const runner = new FakeRunner([]);
+    runner.status = 'missing';
+    h = setup([], { runner, jobs: saved });
+    await h.engine.start();
+    await h.engine.whenIdle();
+    await new Promise((r) => setTimeout(r, 20));
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(job.state, 'awaitingApproval');
+    assert.equal(job.recovery?.signature, 'session-gone');
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.equal(job.recovery?.proposal, 'new_session');
+    assert.match(job.recovery?.summary ?? '', /session isn’t available anymore/);
+    assert.equal(runner.requests.length, 0, 'no agent call, no new session');
+    assert.equal((await h.engine.status()).pendingApprovals, 1);
+  });
+
+  test('not-recorded: an apply turn that didn’t report the operation is recorded when the vault’s journal has it', async () => {
+    h = setup([]);
+    const created = await firstJob();
+    h.runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    const dir = path.join(h.vault, '.vault-meta', 'transactions', PLAN.operation_id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'journal.json'), JSON.stringify({ state: 'complete', approval_sha256: PLAN.approval_sha256 }));
+    h.runner.steps.push({ structured: { status: 'done', summary: 'Applied.', operation_id: 'op-other' } });
+    await h.engine.approve(created.id);
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(job.state, 'completed');
+    assert.equal(job.operationID, PLAN.operation_id, 'recorded from the journal');
+    assert.match(job.turns.at(-1)!.text, /found in the vault’s journal/);
+  });
+
+  test('not-recorded without a journal entry stays not recorded (nothing is guessed)', async () => {
+    h = setup([]);
+    const created = await firstJob();
+    h.runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    h.runner.steps.push({ structured: { status: 'done', summary: 'Applied.', operation_id: 'op-other' } });
+    await h.engine.approve(created.id);
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(job.operationID, undefined);
+    assert.match(job.turns.at(-1)!.text, /Nothing recorded as applied/);
   });
 });

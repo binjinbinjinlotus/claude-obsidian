@@ -951,6 +951,28 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
   `RecoveryText.isActive` (a turn runs, an agent attempt runs, or a next try
   is scheduled); otherwise the batch reads Needs you. Snapshot state
   `review-gaveup-questions`.
+- **After a spent rule (2026-10-06).** `recoverAfterRule`:
+  - **`lock`:** after the 30 s and 2 min waits, the batch goes back to the
+    owner as before and the recovery agent runs within its bounds, keeping the
+    hash the owner approved (`approvedSha256`). Its fixes are
+    `reinspect_same_bundle`, `wait_then_retry` or `give_up`. A retry that hits
+    the lock again continues the same attempts (the recovery stays on the
+    batch while it applies), so two agent attempts per recovery is the limit.
+    Fixed with it: the pump reset the lock count before every try, so the
+    30 s / 2 min rule never ended; the count now resets when an apply lands.
+  - **`session-gone`** (the queue found the batch's session gone): $0, no
+    agent. Its only fixes are a new session, which only the owner may start,
+    or giving up, so it gives up at once with `proposal: 'new_session'` and a
+    plain sentence; the existing new-session confirmation is the way on.
+  - **`not-recorded`:** the rule from the table, the vault journal: an apply
+    turn that didn't report the approved operation is recorded as applied when
+    `.vault-meta/transactions/<op>/journal.json` is `complete` with the
+    approved hash ("found in the vault’s journal"). Without it nothing is
+    guessed; the turn still says to check the vault log. No agent: its only
+    fix is `give_up`, and the batch is already finished (Not added).
+  - **`full-read-stop`:** unchanged. Its only fix is `give_up`, and Review
+    already shows the v10 option for the stopped sources; a Couldn't fix card
+    on top would only repeat it.
 - **The other four fixes (2026-10-06).** The agent's schema has `waitFor`
   and `groups`, its facts list the pages the batch changes, other batches
   touching them, the source pages, a waiting rebuilt part and whether an
@@ -977,8 +999,6 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
     worked on (not settled, not Needs you).
   - Snapshot state `review-gaveup-split`.
 - **Still open:**
-  - `lock`, `not-recorded`, `full-read-stop` and `session-gone` keep their
-    rules; the agent doesn't run for them.
   - The Couldn't fix card has no **Rebuild** option yet, and the attempts are
     one line, not one row each.
 - Tests: `session-continuity.test.ts` (runner-failed recovery; a stopped batch

@@ -17,6 +17,15 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**Recovery after a spent rule: an agent call only where it can choose
+(2026-10-06).** Lock hands over to the recovery agent after its waits (it can
+check again, wait for another batch, or give up). Session-gone and
+full-read-stop have nothing an agent may do for the owner (a new session is
+the owner's; full-read-stop's v10 option is already in Review), and
+not-recorded has the journal rule, so none of them spends an agent call. Also:
+the lock count reset before every try, which made the 30 s / 2 min rule
+endless; it resets when an apply lands.
+
 **Recovery's split and discard are proposals; its retries reuse only the
 approved hash (2026-10-06).** The design table had `split_batch` start a part
 and `discard_stale_part` reject the rebuilt part by themselves. Built as
