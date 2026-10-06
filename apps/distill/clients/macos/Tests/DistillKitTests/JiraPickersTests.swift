@@ -21,18 +21,40 @@ final class JiraPickersTests: XCTestCase {
     }
 
     func testTheCoresWordsForAValueOutsideTheLists() {
-        XCTAssertEqual(JiraPick.priorityProblem("Medium", project: "TLS", priorities: ["P1 - Critical", "P3 - Normal"]), "Medium isn’t a priority in TLS. Pick one.")
+        XCTAssertEqual(JiraPick.priorityProblem("Medium", project: "TLS", priorities: ["P1 - Critical", "P3 - Normal"]), "Medium isn’t a priority in TLS. Pick one:")
         XCTAssertNil(JiraPick.priorityProblem("p3 - normal", project: "TLS", priorities: ["P1 - Critical", "P3 - Normal"]), "case is Jira’s to fix")
         XCTAssertNil(JiraPick.priorityProblem("Medium", project: "TLS", priorities: nil), "no Priority on the screen: hidden, not wrong")
         XCTAssertNil(JiraPick.priorityProblem("", project: "TLS", priorities: ["P1"]))
-        XCTAssertEqual(JiraPick.typeProblem("Story", project: "TLS", types: types), "Story isn’t an issue type in TLS. Pick one.")
+        XCTAssertEqual(JiraPick.typeProblem("Story", project: "TLS", types: types), "Story isn’t an issue type in TLS. Pick one:")
         XCTAssertNil(JiraPick.typeProblem("task", project: "TLS", types: types))
-        XCTAssertEqual(JiraPick.projectProblem("NOPE", projects: projects), "NOPE isn’t a Jira project you can create tickets in. Pick one.")
+        XCTAssertEqual(JiraPick.projectProblem("NOPE", projects: projects), "NOPE isn’t a Jira project you can create tickets in. Pick one:")
         XCTAssertNil(JiraPick.projectProblem("TLS · Telus Platform", projects: projects))
         XCTAssertEqual(JiraPick.hiddenNote("Priority"), "Priority isn’t used in this project")
     }
 
+    func testCheckGivesTheFieldAndTheFooter() {
+        let screens = ["TLS|10001": JiraCreateScreen(project: "TLS", typeId: "10001", priorities: ["P1 · Blocker", "P3 · Major"])]
+        let t = ["TLS": types]
+        let bad = JiraPick.check(["project": "TLS · Telus Platform", "issueType": "Task", "priority": "Medium"], projects: projects, types: t, screens: screens)
+        XCTAssertEqual(bad?.field, "priority")
+        XCTAssertEqual(bad?.message, "Medium isn’t a priority in TLS. Pick one:")
+        XCTAssertEqual(bad?.footer, "Pick a priority TLS uses")
+        XCTAssertEqual(JiraPick.check(["project": "TLS", "issueType": "Story"], projects: projects, types: t, screens: screens)?.footer, "Pick a type TLS has")
+        XCTAssertEqual(JiraPick.check(["project": "NOPE"], projects: projects, types: t, screens: screens)?.footer, "Pick a project you can create in")
+        XCTAssertNil(JiraPick.check(["project": "TLS", "issueType": "Task", "priority": "p3 · major"], projects: projects, types: t, screens: screens))
+        XCTAssertNil(JiraPick.check(["project": "TLS", "priority": "Medium"], projects: nil, types: t, screens: screens), "offline: Create stays on")
+        XCTAssertNil(JiraPick.check(["project": "PX", "priority": "Medium"], projects: projects, types: t, screens: screens), "lists not loaded yet: nothing marked")
+    }
+
+    func testRecentPutsTheCurrentProjectFirst() {
+        let all = projects + [JiraProject(key: "PAY", name: "Payments"), JiraProject(key: "OPS", name: "Operations")]
+        XCTAssertEqual(JiraPick.recent(current: "TLS · Telus Platform", used: ["PAY", "TLS", "GONE", "PX", "OPS"], in: all).map(\.key), ["TLS", "PAY", "PX"])
+        XCTAssertEqual(JiraPick.recent(current: nil, used: [], in: all), [])
+    }
+
     func testCaption() {
+        XCTAssertEqual(JiraPick.caption(account: "jin@lotusflare.com", fetchedAt: Date(timeIntervalSince1970: 0), now: Date(timeIntervalSince1970: 120)),
+                       "From your Jira (jin@lotusflare… · updated 2 min ago)")
         let now = Date(timeIntervalSince1970: 1_000_000)
         XCTAssertEqual(JiraPick.caption(account: "Jin Liu", fetchedAt: now.addingTimeInterval(-180), now: now), "From your Jira (Jin Liu · updated 3 min ago)")
         XCTAssertEqual(JiraPick.caption(account: nil, fetchedAt: now, now: now), "From your Jira (updated just now)")

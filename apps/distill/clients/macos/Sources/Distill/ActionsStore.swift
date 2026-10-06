@@ -89,8 +89,8 @@ final class ActionsStore: ObservableObject {
     @Published var jiraScreens: [String: JiraCreateScreen] = [:]
     /// Snapshots fix "updated N min ago".
     var fixtureNow: Date?
-    /// Snapshots: the Jira project menu drawn open.
-    var fixtureJiraMenu = false
+    /// Snapshots: a Jira picker's menu drawn open ("project", "issueType", "priority").
+    var fixtureJiraMenu: String?
     func jiraNow() -> Date { fixtureNow ?? Date() }
 
     /// Snapshot fixtures only: open the answer menu / new to-do form / a Found row's type menu or edit on appear.

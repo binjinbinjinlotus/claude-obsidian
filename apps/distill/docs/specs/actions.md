@@ -185,7 +185,18 @@ Jira allows, and the banner said "didn't create" twice.
   this project". Without the lists the values stay as text with "Couldn't
   reach Jira to check these · Retry". The same pickers are in the Add as…
   panel for a Jira ticket and in Settings → Jira ticket (Defaults: project,
-  type, priority). Tests: `JiraPickersTests`. Snapshot states
+  type, priority). As on the canvas (Version 93, board ActionsJiraFields):
+  the three are pop-up pickers; the project menu has Search projects, RECENT
+  (the current project first, with ✓, then others used on Jira tickets) and
+  ALL PROJECTS YOU CAN CREATE IN; Type and Priority open on TYPES IN TLS /
+  PRIORITIES IN TLS. A value outside the lists reads "Medium isn't a
+  priority in TLS. Pick one:" and the footer says "Pick a priority TLS uses"
+  beside a disabled Create in Jira (no banner). The caption sits under the
+  ticket's fields ("jin@lotusflare… · updated 2 min ago"). Offline, the
+  pickers are muted with the saved values and Create stays on. A refused
+  create shows "Nothing was created and your draft is unchanged." (Create in
+  the footer retries). Picking a project saves "TLS · Telus Platform"; the
+  core reads the key from it. Tests: `JiraPickersTests`. Snapshot states
   `jira-fields-pickers`, `jira-fields-project-menu`, `jira-fields-invalid`,
   `jira-fields-offline`, `jira-fields-error`, `jira-fields-settings`.
 - Tests: `actions.test.ts` ("Jira pickers: …", a fake Jira over the fake

@@ -103,27 +103,53 @@ public enum JiraPick {
         return list.filter { $0.key.lowercased().contains(t) || $0.name.lowercased().contains(t) }
     }
 
-    /// "Medium isn't a priority in TLS. Pick one." (the core's words).
+    /// "Medium isn’t a priority in TLS. Pick one:" (the core's words; the colon leads into the list).
     public static func priorityProblem(_ value: String?, project: String, priorities: [String]?) -> String? {
         guard let value = value?.trimmingCharacters(in: .whitespaces), !value.isEmpty, let priorities else { return nil }
-        return priorities.contains(where: { same($0, value) }) ? nil : "\(value) isn’t a priority in \(project). Pick one."
+        return priorities.contains(where: { same($0, value) }) ? nil : "\(value) isn’t a priority in \(project). Pick one:"
     }
 
     public static func typeProblem(_ value: String?, project: String, types: [JiraIssueType]) -> String? {
         let v = (value?.trimmingCharacters(in: .whitespaces)).flatMap { $0.isEmpty ? nil : $0 } ?? "Task"
-        return type(v, in: types) == nil ? "\(v) isn’t an issue type in \(project). Pick one." : nil
+        return type(v, in: types) == nil ? "\(v) isn’t an issue type in \(project). Pick one:" : nil
     }
 
     public static func projectProblem(_ value: String?, projects: [JiraProject]) -> String? {
         guard let value = value?.trimmingCharacters(in: .whitespaces), !value.isEmpty else { return nil }
-        return project(value, in: projects) == nil ? "\(value) isn’t a Jira project you can create tickets in. Pick one." : nil
+        return project(value, in: projects) == nil ? "\(value) isn’t a Jira project you can create tickets in. Pick one:" : nil
+    }
+
+    /// The first value outside the lists (project, then type, then priority), and the footer's words
+    /// beside a disabled Create in Jira ("Pick a priority TLS uses"). Nil when all are allowed or unknown.
+    public static func check(_ values: [String: String], projects: [JiraProject]?, types: [String: [JiraIssueType]],
+                             screens: [String: JiraCreateScreen]) -> (field: String, message: String, footer: String)? {
+        guard let projects else { return nil }
+        if let m = projectProblem(values["project"], projects: projects) { return ("project", m, "Pick a project you can create in") }
+        guard let p = project(values["project"], in: projects), let list = types[p.key] else { return nil }
+        if let m = typeProblem(values["issueType"], project: p.key, types: list) { return ("issueType", m, "Pick a type \(p.key) has") }
+        guard let t = type(values["issueType"], in: list), let screen = screens[p.key + "|" + t.id] else { return nil }
+        if let m = priorityProblem(values["priority"], project: p.key, priorities: screen.priorities) { return ("priority", m, "Pick a priority \(p.key) uses") }
+        return nil
+    }
+
+    /// RECENT in the project menu: the current project first, then others used on Jira tickets, newest first (at most 3).
+    public static func recent(current: String?, used: [String], in list: [JiraProject]) -> [JiraProject] {
+        var keys: [String] = []
+        for v in [current].compactMap({ $0 }) + used {
+            guard let p = project(v, in: list), !keys.contains(p.key) else { continue }
+            keys.append(p.key)
+            if keys.count == 3 { break }
+        }
+        return keys.compactMap { k in list.first { $0.key == k } }
     }
 
     /// "From your Jira (Jin Liu · updated 3 min ago)".
     public static func caption(account: String?, fetchedAt: Date, now: Date = Date()) -> String {
         let mins = max(0, Int(now.timeIntervalSince(fetchedAt) / 60))
         let ago = mins < 1 ? "just now" : mins < 60 ? "\(mins) min ago" : "\(mins / 60) h ago"
-        return "From your Jira (\([account, "updated \(ago)"].compactMap { $0 }.joined(separator: " · ")))"
+        // A long account (an email) is cut: "jin@lotusflare…".
+        let who = account.map { $0.count > 14 ? String($0.prefix(14)) + "…" : $0 }
+        return "From your Jira (\([who, "updated \(ago)"].compactMap { $0 }.joined(separator: " · ")))"
     }
 
     public static let offline = "Couldn’t reach Jira to check these"
