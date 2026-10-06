@@ -10,6 +10,11 @@ import type {
   JobActionsSummary,
   JobState,
   PermissionDenial,
+  QueuedApply,
+  RecoveryAttempt,
+  RecoverySignature,
+  RecoveryState,
+  RefreshState,
   ReviewLabels,
   ReviewSource,
   SessionUnavailable,
@@ -278,7 +283,61 @@ export function decodeJob(v: unknown, now = new Date()): Job | undefined {
   // v9: re-read marker (lenient: a wrong shape is dropped).
   const reread = decodeReread(v.reread);
   if (reread) job.reread = reread;
+  // review-queue.md (lenient: a wrong shape is dropped).
+  const queued = decodeQueuedApply(v.queuedApply);
+  if (queued) job.queuedApply = queued;
+  const refresh = decodeRefresh(v.refresh);
+  if (refresh) job.refresh = refresh;
+  const recovery = decodeRecovery(v.recovery);
+  if (recovery) job.recovery = recovery;
   return job;
+}
+
+function decodeQueuedApply(v: unknown): QueuedApply | undefined {
+  if (!isObject(v) || typeof v.at !== 'string' || typeof v.order !== 'number' || typeof v.bundlePath !== 'string') return undefined;
+  const mode = (x: unknown): 'confirm' | 'later' => (x === 'later' ? 'later' : 'confirm');
+  const out: QueuedApply = { at: v.at, order: v.order, bundlePath: v.bundlePath, labels: mode(v.labels), carries: mode(v.carries) };
+  if (typeof v.planSha256 === 'string' && v.planSha256) out.planSha256 = v.planSha256;
+  return out;
+}
+
+function decodeRefresh(v: unknown): RefreshState | undefined {
+  if (!isObject(v) || typeof v.since !== 'string') return undefined;
+  return { since: v.since, reason: 'stale', stalePaths: strArray(v.stalePaths) ?? [], approved: v.approved === true, attempt: num(v.attempt) ?? 1 };
+}
+
+const RECOVERY_STATES: RecoveryState['state'][] = ['running', 'waiting', 'gaveUp', 'fixed'];
+const SIGNATURES: RecoverySignature[] = ['stale-again', 'lock', 'plan-error', 'not-recorded', 'full-read-stop', 'session-gone', 'runner-failed', 'denial'];
+
+function decodeRecovery(v: unknown): RecoveryState | undefined {
+  if (!isObject(v)) return undefined;
+  const state = str(v.state) as RecoveryState['state'] | undefined;
+  const signature = str(v.signature) as RecoverySignature | undefined;
+  if (!state || !RECOVERY_STATES.includes(state) || !signature || !SIGNATURES.includes(signature)) return undefined;
+  const attempts: RecoveryAttempt[] = [];
+  if (Array.isArray(v.attempts)) {
+    for (const a of v.attempts) {
+      if (!isObject(a) || typeof a.at !== 'string' || typeof a.fix !== 'string') continue;
+      const att: RecoveryAttempt = {
+        at: a.at,
+        by: a.by === 'agent' ? 'agent' : 'rule',
+        fix: a.fix as RecoveryAttempt['fix'],
+        result: a.result === 'fixed' || a.result === 'running' ? a.result : 'failed',
+        costUSD: typeof a.costUSD === 'number' && Number.isFinite(a.costUSD) ? a.costUSD : 0,
+      };
+      for (const k of ['runnerID', 'model', 'diagnosis', 'error'] as const) if (typeof a[k] === 'string') att[k] = a[k] as string;
+      attempts.push(att);
+    }
+  }
+  const out: RecoveryState = { state, signature, attempts };
+  const answers = num(v.denialAnswers);
+  if (answers !== undefined) out.denialAnswers = answers;
+  const summary = str(v.summary);
+  if (summary !== undefined) out.summary = summary;
+  const wait = str(v.waitUntil);
+  if (wait !== undefined) out.waitUntil = wait;
+  if (v.proposal === 'new_session') out.proposal = 'new_session';
+  return out;
 }
 
 function decodeReread(v: unknown): JobReread | undefined {
@@ -423,7 +482,7 @@ function encodeApproval(a: ApprovalRequest): JSONObject {
 const JOB_KEYS = [
   'id', 'kind', 'vaultPath', 'files', 'sessionID', 'runnerID', 'model', 'effort', 'state',
   'createdAt', 'updatedAt', 'approval', 'turns', 'grantedTools', 'operationID', 'changedPaths', 'error', 'actionsFound', 'folders', 'sessionUnavailable',
-  'parts', 'pendingPart', 'approvedChange', 'reviewDoneAt', 'reread',
+  'parts', 'pendingPart', 'approvedChange', 'reviewDoneAt', 'reread', 'queuedApply', 'refresh', 'recovery',
 ];
 
 /** Every non-optional key is always written; nil optionals are omitted (never `null`). */
@@ -478,6 +537,9 @@ export function encodeJob(job: Job, raw: JSONObject = {}): JSONObject {
     if (r.fromJob != null) m.fromJob = r.fromJob;
     if (r.instruction != null) m.instruction = r.instruction;
     out.reread = m;
+  }
+  for (const k of ['queuedApply', 'refresh', 'recovery'] as const) {
+    if (job[k] != null) out[k] = JSON.parse(JSON.stringify(job[k])) as JSONObject;
   }
   return out;
 }

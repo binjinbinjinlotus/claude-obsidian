@@ -260,21 +260,21 @@ describe('engine state machine', () => {
 
   test('denials route to approval (deduped); allow grants rules for later turns', async () => {
     const denial = { toolName: 'Bash', input: { command: 'ls /tmp' } };
-    h = setup([
-      { structured: { status: 'failed', summary: 'Needed ls.' }, denials: [denial, { ...denial, input: { command: 'ls /tmp' } }] },
-      { structured: { status: 'nothing_to_do', summary: 'ok' } },
-    ]);
+    const denied: Step = { structured: { status: 'failed', summary: 'Needed ls.' }, denials: [denial, { ...denial, input: { command: 'ls /tmp' } }] };
+    // Distill answers the first two itself (review-queue.md); the third reaches the owner.
+    h = setup([denied, denied, denied, { structured: { status: 'nothing_to_do', summary: 'ok' } }]);
     const created = await firstJob();
     await h.engine.whenIdle();
     let job = h.engine.getJob(created.id)!;
     assert.equal(job.state, 'awaitingApproval');
     assert.deepEqual(job.approval?.denials, [denial]);
+    assert.equal(job.recovery?.state, 'gaveUp');
     await h.engine.allow(job.id, ['Bash(ls /tmp)']);
     await h.engine.whenIdle();
     job = h.engine.getJob(created.id)!;
     assert.equal(job.state, 'completed');
     assert.deepEqual(job.grantedTools, ['Bash(ls /tmp)']);
-    const second = h.runner.requests[1]!;
+    const second = h.runner.requests[3]!;
     assert.ok(second.allowedTools.includes('Bash(ls /tmp)'));
     assert.ok(second.prompt.includes('- Bash(ls /tmp)'));
   });
@@ -335,7 +335,8 @@ describe('engine state machine', () => {
   });
 
   test('allow refuses rules that get round the approval gate, before changing anything', async () => {
-    h = setup([{ structured: { status: 'failed', summary: 'Needed tools.' }, denials: [{ toolName: 'Bash', input: { command: 'ls /tmp' } }] }]);
+    const denied: Step = { structured: { status: 'failed', summary: 'Needed tools.' }, denials: [{ toolName: 'Bash', input: { command: 'ls /tmp' } }] };
+    h = setup([denied, denied, denied]);
     const created = await firstJob();
     await h.engine.whenIdle();
     const dir = path.dirname(h.bundle(created));
@@ -719,5 +720,86 @@ describe('exit 75 from a core apply is worded by its error code', () => {
     const job = await approveWith('EXPECTED_HASH_MISMATCH');
     assert.match(job.approval?.planError ?? '', /^The vault changed after this plan was reviewed \(transaction apply exited 75, EXPECTED_HASH_MISMATCH\)/);
     assert.equal(job.turns.at(-1)!.text, 'Not applied: the vault changed after review.');
+  });
+});
+
+describe('blocked commands (review-queue.md)', () => {
+  const blocked = (vault: string): Step => ({
+    structured: { status: 'needs_input', summary: 'I need to compare the ledgers.' },
+    denials: [{ toolName: 'Bash', input: { command: `diff <(python3 -c "print(open('${vault}/wiki/meta/ledgers/claim-ledger.json').read())") x` } }],
+  });
+
+  test('Distill answers a blocked command itself and resumes the same session; the plan comes back', async () => {
+    h = setup([]);
+    h.runner.steps.push(blocked(path.join(tmp, 'vault')));
+    const created = await firstJob();
+    h.runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(h.runner.requests.length, 2, 'one answer, one resumed turn');
+    const answer = h.runner.requests[1]!;
+    assert.ok('resume' in answer.session, 'the same session');
+    assert.match(answer.prompt, /Read, Grep or Glob/);
+    assert.match(answer.prompt, /claim-ledger\.json/);
+    assert.equal(job.state, 'awaitingApproval');
+    assert.ok(job.approval?.plan?.valid, 'the plan shows');
+    assert.equal(job.recovery?.state, 'fixed');
+    assert.equal(job.recovery?.attempts[0]?.fix, 'answer_denial');
+    assert.ok(job.turns.some((t) => t.author === 'app' && /Read, Grep or Glob/.test(t.text)), 'the answer is in the conversation');
+    assert.equal((await h.engine.status()).pendingApprovals, 1);
+  });
+
+  test('after two answers the owner gets a plain sentence; their reply starts over', async () => {
+    h = setup([]);
+    const vault = path.join(tmp, 'vault');
+    h.runner.steps.push(blocked(vault), blocked(vault), blocked(vault));
+    const created = await firstJob();
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(h.runner.requests.length, 3, 'two answers, never a third');
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.equal(job.recovery?.denialAnswers, 2);
+    assert.equal(job.recovery?.summary, "Claude wanted to compare the claim ledger. Distill couldn't let it run that, and told it to read the files instead (twice).");
+    assert.ok(job.recovery!.attempts.every((a) => a.result === 'failed'));
+    h.runner.steps.push({ structured: { status: 'nothing_to_do', summary: 'ok' } });
+    await h.engine.reply(created.id, 'Read the files with Read.');
+    await h.engine.whenIdle();
+    assert.equal(h.engine.getJob(created.id)!.recovery, undefined, 'the owner acted: attempts reset');
+  });
+
+  test('an apply turn with a blocked call is not answered', async () => {
+    h = setup([]);
+    const created = await firstJob();
+    h.runner.steps.unshift(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    h.runner.steps.push(blocked(path.join(tmp, 'vault')));
+    await h.engine.approve(created.id);
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(job.recovery, undefined);
+    assert.equal(h.runner.requests.length, 2);
+  });
+
+  test('a batch already waiting on blocked calls gets the answer once at start', async () => {
+    h = setup([]);
+    const vault = path.join(tmp, 'vault');
+    h.runner.steps.push(blocked(vault));
+    const created = await firstJob();
+    // Simulate a build before this rule: the job waits with denials and no recovery.
+    await h.engine.whenIdle();
+    await h.engine.stop();
+    const jobsFile = path.join(tmp, 'state', 'jobs.json');
+    const saved = JSON.parse(fs.readFileSync(jobsFile, 'utf8')) as Array<Record<string, unknown>>;
+    const old = saved.find((j) => j.id === created.id)!;
+    old.state = 'awaitingApproval';
+    old.approval = { summary: 'blocked', questions: [], denials: blocked(vault).denials, skipped: [] };
+    delete old.recovery;
+    fs.writeFileSync(jobsFile, JSON.stringify(saved));
+    const steps: Step[] = [{ structured: { status: 'nothing_to_do', summary: 'done' } }];
+    h = setup([], { runner: new FakeRunner(steps), jobs: saved });
+    await h.engine.start();
+    await h.engine.whenIdle();
+    assert.equal(h.runner.requests.length, 1);
+    assert.match(h.runner.requests[0]!.prompt, /Read, Grep or Glob/);
   });
 });

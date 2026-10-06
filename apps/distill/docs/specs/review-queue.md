@@ -1,7 +1,7 @@
 ---
 type: spec
 title: Review queue, automatic refresh, self-recovery and the batch list
-status: designed
+status: building
 created: 2026-10-05
 updated: 2026-10-05
 tags:
@@ -13,6 +13,14 @@ tags:
 # Review queue, automatic refresh, self-recovery and the batch list
 
 Canvas: row 16, board **ReviewQueue** (`design/screens/reviewqueue.json`).
+
+**Build status (2026-10-05).** Built in steps; see "Built so far" at the end.
+
+1. Blocked commands answered by Distill, and the plain-words card: **built**.
+2. Apply queue: next.
+3. Exit 75 → refresh.
+4. Batch list.
+5. Recovery agent (Opus) and Settings.
 Related specs: [Approval and review](approval-and-review.md) (the gate, parts,
 exit 75), [Session continuity](session-continuity.md), [Full reads](full-read.md),
 [Live log](live-log.md), [Activity log](activity-log.md),
@@ -745,3 +753,33 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
   `denial.display` text appears until Show command is opened.
 - `SettingsEditsTests`: the Recovery fallback is Opus.
 - The snapshot states render; the design drift test passes.
+
+## Built so far
+
+### Step 1: blocked commands (2026-10-05)
+
+- Core: `engine/recovery.ts` (`denialAnswer`, `denialSummary`, `friendlyPath`,
+  `recoveryFor`, `MAX_DENIAL_ANSWERS = 2`); `recoverDenial(id)` in
+  `engine/index.ts`, called from `requestDecision` when a turn ends with
+  denials and no valid plan. The answer is an `app` turn in the conversation
+  and the session is resumed with `replyPrompt`. A plan that comes back marks
+  the recovery `fixed`.
+- **Differences from the design:**
+  - An **apply turn** with a blocked call is never answered: the approved
+    command is what ran or was refused there (`requestDecision(…, applyTurn)`).
+  - **Existing stuck batches:** `start()` runs the rule once for any batch
+    waiting with denials, no plan and no `recovery` (a batch an older build
+    left waiting), so the owner's current one is answered after the update.
+  - Reply, Allow and Reject clear `recovery` (the owner acted).
+  - The card's first option is **Tell Claude to read the files** (the owner's
+    reply, a fixed text) until the recovery agent lands in step 5, which adds
+    **Let recovery try again**. A batch from an older core with denials and
+    no `recovery` shows the same card with a plain fallback sentence.
+  - "Recover automatically" (Settings) arrives with step 5; until then the
+    rule always runs.
+- Mac: `ReviewQueue.swift` (DistillKit types, `BlockedText`),
+  `BlockedCommandCard.swift`; `MainView.blocked` uses it. Show command opens
+  by itself only when a rule is ticked (the existing Allow flow).
+- Tests: `engine/recovery.test.ts` (3), `engine.test.ts` "blocked commands"
+  (4), `ReviewQueueTests` (2). Snapshot states `review-recovering-denial` and
+  `review-gaveup-denial`.

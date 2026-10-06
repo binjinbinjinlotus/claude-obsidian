@@ -1193,38 +1193,15 @@ struct JobDetailView: View {
         }
     }
 
+    /// review-queue.md, "Blocked tool commands": plain words first (the core's sentence), the options, and the
+    /// raw command only behind a closed Show command, with the existing Allow checkbox there.
     private func blocked(_ job: Job, _ approval: ApprovalRequest) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Claude asked to run", systemImage: "lock").font(Theme.body(13, .bold))
-            ForEach(approval.denials, id: \.self) { denial in
-                if let rule = denial.suggestedRule {
-                    Toggle(isOn: Binding(get: { allowed.contains(rule) },
-                                         set: { on in if on { allowed.insert(rule) } else { allowed.remove(rule) } })) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(denial.display).font(.system(size: 12, design: .monospaced)).lineLimit(3)
-                            if denial.bypassesApproval(jobDirectory: (job.vaultPath as NSString).appendingPathComponent(".vault-meta/worker/\(job.id)")) {
-                                Text("Allowing this lets Claude change files without your review.")
-                                    .font(Theme.body(12)).foregroundStyle(Theme.peachInk)
-                            }
-                        }
-                    }
-                    .toggleStyle(.checkbox)
-                } else {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(denial.display).font(.system(size: 12, design: .monospaced)).lineLimit(3)
-                        Text("Combined command: reply with guidance instead.").font(Theme.body(12)).foregroundStyle(Theme.muted)
-                    }
-                }
-            }
-            if !allowed.isEmpty {
-                SoftButton(title: "Allow & continue", tint: Theme.peachInk, fill: .white) {
-                    engine.allow(job.id, rules: Array(allowed)); allowed = []
-                }
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0xFFF4EE)))
+        BlockedCommandCard(job: job, approval: approval, allowed: $allowed,
+                           onTryAgain: { engine.reply(job.id, text: BlockedCommandCard.readInstead) },
+                           onTerminal: { engine.openInTerminal(job) },
+                           onReject: { engine.reject(job.id, batch: true) },
+                           onAllow: { rules in engine.allow(job.id, rules: rules); allowed = [] },
+                           showCommand: !allowed.isEmpty)
     }
 
     private func conversation(_ job: Job) -> some View {

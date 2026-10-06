@@ -289,6 +289,82 @@ export interface Job {
   stopped?: StoppedSource[];
   /** v10: this batch is one of several the queue was split into by size ("Batch 1 of 3"). */
   batchOf?: { index: number; total: number; tokens: number } | null;
+  /** review-queue.md: approved and waiting for the vault's apply queue (or rebuilt and waiting for the owner). */
+  queuedApply?: QueuedApply | null;
+  /** review-queue.md: the plan is being rebuilt against the vault as it is now. */
+  refresh?: RefreshState | null;
+  /** review-queue.md: bounded self-recovery for a batch that can't make progress on its own. */
+  recovery?: RecoveryState | null;
+}
+
+/** review-queue.md: an approval waiting for its turn to apply in the vault. */
+export interface QueuedApply {
+  /** When the owner approved (ISO). */
+  at: string;
+  /** Queue position: the first approve's time in ms; a re-approval keeps it. */
+  order: number;
+  /** approval_sha256 of the plan approved. Present = waiting to apply; absent = rebuilt, needs the owner's OK again. */
+  planSha256?: string | null;
+  /** The exact bundle approved. */
+  bundlePath: string;
+  labels: 'confirm' | 'later';
+  carries: 'confirm' | 'later';
+}
+
+/** review-queue.md: a plan being rebuilt because the vault changed under it. */
+export interface RefreshState {
+  since: string;
+  reason: 'stale';
+  stalePaths: string[];
+  /** The owner had approved it (it keeps its queue place and asks once more). */
+  approved: boolean;
+  attempt: number;
+}
+
+export type RecoverySignature =
+  | 'stale-again'
+  | 'lock'
+  | 'plan-error'
+  | 'not-recorded'
+  | 'full-read-stop'
+  | 'session-gone'
+  | 'runner-failed'
+  | 'denial';
+
+export type RecoveryFix =
+  | 'rebuild_in_session'
+  | 'reinspect_same_bundle'
+  | 'wait_then_retry'
+  | 'split_batch'
+  | 'discard_stale_part'
+  | 'answer_denial'
+  | 'new_session'
+  | 'give_up';
+
+export interface RecoveryAttempt {
+  at: string;
+  by: 'rule' | 'agent';
+  runnerID?: string;
+  model?: string;
+  fix: RecoveryFix | 'lock_wait' | 'refresh' | 'journal';
+  diagnosis?: string;
+  result: 'fixed' | 'failed' | 'running';
+  error?: string;
+  costUSD: number;
+}
+
+export interface RecoveryState {
+  state: 'running' | 'waiting' | 'gaveUp' | 'fixed';
+  signature: RecoverySignature;
+  attempts: RecoveryAttempt[];
+  /** Blocked commands Distill answered itself (at most 2 per batch). */
+  denialAnswers?: number;
+  /** The owner's sentence when recovery gave up ("Claude wanted to compare …"). */
+  summary?: string;
+  /** A waiting attempt runs again at this time (ISO). */
+  waitUntil?: string;
+  /** Recovery suggested something only the owner may do. */
+  proposal?: 'new_session' | null;
 }
 
 /** v10: one source's coverage as clients show it ("647 lines · read in full"). */

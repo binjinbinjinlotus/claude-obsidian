@@ -371,7 +371,7 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, kind, vaultPath, files, sessionID, runnerID, model, effort, state, createdAt, updatedAt
         case approval, turns, grantedTools, operationID, changedPaths, error, actionsFound, folders, parts, pendingPart, sessionUnavailable
-        case approvedChange, reviewDoneAt, coverage, stopped, batchOf
+        case approvedChange, reviewDoneAt, coverage, stopped, batchOf, queuedApply, refresh, recovery
     }
 
     public var id: String
@@ -412,6 +412,12 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
     public var stopped: [StoppedSource] = []
     /// v10: one of several batches the queue was split into by size ("Batch 1 of 3").
     public var batchOf: BatchOf?
+    /// review-queue.md: approved and waiting for the vault's apply queue, or rebuilt and waiting for the owner.
+    public var queuedApply: QueuedApply?
+    /// review-queue.md: the plan is being rebuilt against the vault as it is now.
+    public var refresh: RefreshState?
+    /// review-queue.md: bounded self-recovery.
+    public var recovery: RecoveryState?
 
     public var totalCostUSD: Double { turns.reduce(0) { $0 + $1.costUSD } }
     public var selection: ModelSelection { ModelSelection(runnerID: runnerID ?? "claude-code", model: model, effort: effort) }
@@ -469,6 +475,9 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
         coverage = c.lossy(CoverageSummary.self, .coverage)
         stopped = c.lossyArray(StoppedSource.self, .stopped)
         batchOf = c.lossy(BatchOf.self, .batchOf)
+        queuedApply = c.lossy(QueuedApply.self, .queuedApply)
+        refresh = c.lossy(RefreshState.self, .refresh)
+        recovery = c.lossy(RecoveryState.self, .recovery)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -500,6 +509,9 @@ public struct Job: Codable, Identifiable, Equatable, Sendable {
         try c.encodeIfPresent(coverage, forKey: .coverage)
         if !stopped.isEmpty { try c.encode(stopped, forKey: .stopped) }
         try c.encodeIfPresent(batchOf, forKey: .batchOf)
+        try c.encodeIfPresent(queuedApply, forKey: .queuedApply)
+        try c.encodeIfPresent(refresh, forKey: .refresh)
+        try c.encodeIfPresent(recovery, forKey: .recovery)
     }
 }
 

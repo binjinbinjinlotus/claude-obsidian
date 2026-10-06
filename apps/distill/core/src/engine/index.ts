@@ -105,6 +105,7 @@ import {
   type RereadPlan,
 } from './reread.js';
 import { CoreError } from './errors.js';
+import { denialAnswer, denialSummary, MAX_DENIAL_ANSWERS, recoveryFor } from './recovery.js';
 import { createFullRead, type FullReadStep } from './full-read.js';
 import { archivedCopy, ledgerRecords } from '../coverage/archive.js';
 import { estimateTokens } from '../coverage/copy.js';
@@ -967,7 +968,7 @@ export function createEngine(opts: EngineOptions): Engine {
       case 'done':
       case 'nothing_to_do':
         if (result.denials.length > 0 && status.status !== 'done') {
-          await requestDecision(id, status, result, vault);
+          await requestDecision(id, status, result, vault, applyPlan !== undefined);
           return;
         }
         // The model's report is not evidence: an operation is recorded only when this was the
@@ -1011,16 +1012,16 @@ export function createEngine(opts: EngineOptions): Engine {
         return;
       case 'needs_approval':
       case 'needs_input':
-        await requestDecision(id, status, result, vault);
+        await requestDecision(id, status, result, vault, applyPlan !== undefined);
         return;
       case 'failed':
         if (result.denials.length === 0) fail(id, status.summary);
-        else await requestDecision(id, status, result, vault);
+        else await requestDecision(id, status, result, vault, applyPlan !== undefined);
         return;
     }
   }
 
-  async function requestDecision(id: string, status: ParsedStatus, result: RunResult, vault: VaultProfile): Promise<void> {
+  async function requestDecision(id: string, status: ParsedStatus, result: RunResult, vault: VaultProfile, applyTurn = false): Promise<void> {
     const request: ApprovalRequest = {
       summary: status.summary,
       questions: status.questions,
@@ -1059,7 +1060,14 @@ export function createEngine(opts: EngineOptions): Engine {
     mutate(id, (j) => {
       j.state = 'awaitingApproval';
       j.approval = request;
+      // review-queue.md: a plan that came back ends a blocked-command recovery.
+      if (request.plan?.valid && j.recovery?.signature === 'denial') {
+        j.recovery = { ...j.recovery, state: 'fixed', attempts: j.recovery.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'fixed' } : a)) };
+      }
     });
+    // review-queue.md: blocked tool calls and no plan: Distill answers the session itself first.
+    // Not on an apply turn: there the approved command itself is what ran (or was refused).
+    if (!applyTurn && request.denials.length > 0 && !request.plan?.valid && recoverDenial(id)) return;
     if (confirm) track(reviseReviewLabels(id, undefined, true).catch((err: unknown) => log('warn', `Review labels: ${(err as Error).message}`)));
     // v11 (action-context.md): actions are looked for in the batch's sources while it waits in Review.
     const reviewed = findJob(id);
@@ -1075,6 +1083,55 @@ export function createEngine(opts: EngineOptions): Engine {
         track(Promise.resolve().then(() => hook(snapshot, info)).catch((err: unknown) => log('warn', `Finding actions: ${(err as Error).message}`)));
       }
     }
+  }
+
+  /**
+   * review-queue.md, "Blocked tool commands never reach the owner as raw shell": a turn that ended with
+   * blocked calls and no plan is answered by Distill ("use Read, Grep or Glob"), at most
+   * MAX_DENIAL_ANSWERS times per batch; after that the owner gets a plain sentence (recovery.summary),
+   * never the command. True when the session was resumed.
+   */
+  function recoverDenial(id: string): boolean {
+    const job = findJob(id);
+    if (!job || job.state !== 'awaitingApproval' || job.approval?.plan?.valid) return false;
+    const denials = job.approval?.denials ?? [];
+    if (denials.length === 0 || jobKind(job.kind)?.appliesInCore) return false;
+    const rec = recoveryFor(job.recovery, 'denial');
+    const answers = rec.denialAnswers ?? 0;
+    const where = { vaultPath: job.vaultPath, jobDir: jobStateDirectory(job) };
+    const settled = rec.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed' as const } : a));
+    const giveUp = (extra = '') =>
+      mutate(id, (j) => {
+        j.recovery = { ...rec, attempts: settled, state: 'gaveUp', summary: denialSummary(denials, { ...where, answers }) + extra };
+      });
+    if (answers >= MAX_DENIAL_ANSWERS) {
+      giveUp();
+      return false;
+    }
+    const text = denialAnswer(denials, where);
+    if (precheck(job, 'reply', { text })) {
+      giveUp(' Its AI session isn’t available anymore.');
+      return false;
+    }
+    const at = isoDate(now());
+    mutate(id, (j) => {
+      j.recovery = {
+        ...rec,
+        state: 'running',
+        denialAnswers: answers + 1,
+        attempts: [...settled, { at, by: 'rule', fix: 'answer_denial', result: 'running', costUSD: 0 }],
+      };
+      delete j.recovery.summary;
+      j.turns.push(newTurn('app', text, now()));
+    });
+    const current = findJob(id)!;
+    startTurnProgress(current, 'Drafting page changes', 'Recovering · told Claude to read the files instead');
+    const out = resumeBatchSession({ job: current, prompt: WorkerProtocol.replyPrompt(text), action: 'reply', text });
+    if (out.kind === 'session_unavailable') {
+      giveUp(' Its AI session isn’t available anymore.');
+      return false;
+    }
+    return true;
   }
 
   // ───────────── labels in Review (review-labels.ts) ─────────────
@@ -2209,7 +2266,11 @@ export function createEngine(opts: EngineOptions): Engine {
     const gone = precheck(job, 'reply', { text: trimmed });
     if (gone) throw sessionUnavailableError(gone);
     const snapshot = clone(job);
-    mutate(id, (j) => j.turns.push(newTurn('user', trimmed, now())));
+    // The owner acted: recovery's attempts start over (review-queue.md, Bounds).
+    mutate(id, (j) => {
+      delete j.recovery;
+      j.turns.push(newTurn('user', trimmed, now()));
+    });
     const current = findJob(id);
     if (current) startTurnProgress(current, 'Drafting page changes', 'Working on your reply');
     const out = resumeBatchSession({ job: current ?? job, prompt: WorkerProtocol.replyPrompt(trimmed), action: 'reply', snapshot, text: trimmed });
@@ -2248,6 +2309,7 @@ export function createEngine(opts: EngineOptions): Engine {
     const snapshot = clone(job);
     mutate(id, (j) => {
       j.grantedTools = [...new Set([...j.grantedTools, ...clean])].sort();
+      delete j.recovery;
       j.turns.push(newTurn('user', allowedTurn, now()));
     });
     const current = findJob(id);
@@ -2268,6 +2330,9 @@ export function createEngine(opts: EngineOptions): Engine {
     if (opts.scope === 'part') throw new CoreError('invalid_state', 'This batch has no rebuilt part to discard; reject the batch instead.');
     mutate(id, (j) => {
       j.state = 'rejected';
+      delete j.recovery;
+      delete j.queuedApply;
+      delete j.refresh;
       j.turns.push(newTurn('user', 'Rejected. Inbox files are kept; nothing was applied.', now()));
     });
   }
@@ -3234,6 +3299,12 @@ export function createEngine(opts: EngineOptions): Engine {
         const st = j.approval?.labels?.state;
         if (j.state === 'awaitingApproval' && (st === undefined || st === 'confirming' || st === 'suggesting')) {
           track(prepareReviewLabels(j.id).catch((err: unknown) => log('warn', `Review labels for ${j.id}: ${(err as Error).message}`)));
+        }
+      }
+      // review-queue.md: a batch left waiting on blocked calls (before this build) gets Distill's answer once.
+      for (const j of jobs) {
+        if (j.state === 'awaitingApproval' && !j.recovery && (j.approval?.denials.length ?? 0) > 0 && !j.approval?.plan?.valid) {
+          asScheduler(() => recoverDenial(j.id))();
         }
       }
       scheduleNextBatch(now());

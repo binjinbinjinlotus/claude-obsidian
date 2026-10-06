@@ -17,6 +17,13 @@ supersede it with a new entry.
 
 ## 2026-10-05
 
+**Blocked commands: two build choices (2026-10-05, built).** Step 1 of
+[Review queue](review-queue.md). (1) An apply turn with a blocked call is not
+answered by Distill: the approved command is what ran there. (2) A batch an
+older build left waiting on blocked calls gets Distill's answer once when the
+core starts, so the owner's stuck batch is resumed after the update in its own
+session. This uses its runner, which costs tokens.
+
 **Automations: the defaults are confirmed and built (2026-10-05).** The owner
 said "go for 1 and 2" to the two open choices in
 [Action buttons](action-buttons.md): (1) the sidebar name is **Automations**,

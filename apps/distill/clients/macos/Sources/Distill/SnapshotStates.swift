@@ -600,6 +600,30 @@ extension StatesSnapshot {
             JobDetailView(jobID: e.jobs[0].id, allowed: ["WebFetch(domain:www.example-tea.com)"])
         }
 
+        // review-queue.md, Blocked tool commands: Distill answering (frame G), and the owner card in plain words (frame H).
+        let ledger = "/Users/you/Research/wiki/meta/ledgers/claim-ledger.json"
+        let diff = [PermissionDenial(toolName: "Bash", input: ["command": .string("diff <(python3 -c \"import json;print(open('\(ledger)').read())\") <(python3 -c \"…/.vault-meta/worker/job-20261005-1/claim-ledger.json\")")])]
+        e = engine()
+        var recovering = awaiting(e, denials: diff, worker: "I need to compare the claim ledgers before I write the bundle.")
+        recovering.approval?.plan = nil
+        recovering.recovery = RecoveryState(state: .running, signature: "denial",
+                                            attempts: [RecoveryAttempt(at: Date().addingTimeInterval(-40), fix: "answer_denial")], denialAnswers: 1)
+        e.jobs = [recovering]
+        main("review-recovering-denial", f, "Review", "Blocked command · Distill answers", "Distill told Claude to read the files instead; Recovering, nothing for the owner.", e, section: .review, job: e.jobs[0].id) {
+            JobDetailView(jobID: e.jobs[0].id)
+        }
+        e = engine()
+        var gaveUp = recovering
+        gaveUp.recovery = RecoveryState(state: .gaveUp, signature: "denial",
+                                        attempts: [RecoveryAttempt(at: Date().addingTimeInterval(-300), fix: "answer_denial", result: "failed"),
+                                                   RecoveryAttempt(at: Date().addingTimeInterval(-120), fix: "answer_denial", result: "failed")],
+                                        denialAnswers: 2,
+                                        summary: "Claude wanted to compare the claim ledger with this batch's copy. Distill couldn't let it run that, and told it to read the files instead (twice).")
+        e.jobs = [gaveUp]
+        main("review-gaveup-denial", f, "Review", "Blocked command · plain words", "The owner card: the sentence, the options, and the command only behind Show command.", e, section: .review, job: e.jobs[0].id) {
+            JobDetailView(jobID: e.jobs[0].id)
+        }
+
         e = engine()
         e.jobs = [awaiting(e, planError: "The bundle changed wiki/index.md, but the page changed on disk since Claude read it. Reply to have Claude redo the plan.",
                            worker: "The plan could not be verified.")]
