@@ -99,9 +99,14 @@ final class SettingsWindowTests: XCTestCase {
         controller = nil
     }
 
+    /// Pumps the run loop for `seconds`, then until the page has landed (SettingsView.land retries every 50 ms
+    /// until the page is built): on a busy machine a page can land after a fixed wait, and the test would read
+    /// the offset before it (testTypePageAndBackToActions read 0 for 120 during an install).
     private func settle(_ seconds: TimeInterval = 0.4) {
         let end = Date().addingTimeInterval(seconds)
         while Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+        let cap = Date().addingTimeInterval(3)
+        while controller?.engine.settingsUI.landing != nil && Date() < cap { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
     }
 
     /// The page's scroll view (the nav doesn't scroll).
