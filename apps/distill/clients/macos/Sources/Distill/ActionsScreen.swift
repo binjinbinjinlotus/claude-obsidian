@@ -44,6 +44,10 @@ private struct ActionsScreenContent: View {
         let tab = store.tab
         if tab == "todo" {
             TodoScreen(store: store)
+        } else if tab == "pending" {
+            PendingScreen(store: store)
+        } else if tab == "highlights" {
+            HighlightsScreen(store: store)
         } else if let type = store.type(tab), type.isUsable {
             TypeListScreen(store: store, type: type).id(type.id)
         } else if let type = store.type(tab) {
@@ -199,6 +203,8 @@ struct TodoScreen: View {
                 } else if visible.isEmpty && toConfirm.isEmpty && ui.adding == nil {
                     emptyState.padding(.top, 60)
                 } else {
+                    // actions-routing.md: where the same notes' items for other people went.
+                    if !toConfirm.isEmpty { RoutedAwayLine(store: store, pending: toConfirm) }
                     if !toConfirm.isEmpty { ToConfirmGroup(store: store, items: toConfirm, expanded: ui.previewing, selection: confirmSelection) }
                     if case .context(let line)? = searchContext, !ui.filter.text.isEmpty {
                         Text("\(visible.count) of \(todos.filter { ui.filter.statusMatches($0) }.count) to-dos match")

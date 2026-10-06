@@ -291,6 +291,9 @@ struct ActionConfirmRow: View {
                     meta
                 }
                 Spacer(minLength: 6)
+                if buttons && item.ownerUnclear && leftOut == nil {
+                    WhoseIsThis(store: store, item: item)
+                }
                 if buttons && !selects {
                     ActionButton(title: item.type == "todo" ? "Add" : "Create draft", icon: "plus", kind: .soft, height: 26) { store.confirm([item.id]) }
                     IconButton(systemImage: "xmark", size: 26, help: "Dismiss") { store.dismiss([item.id]) }
@@ -335,14 +338,20 @@ struct ActionConfirmRow: View {
 
     private var meta: some View {
         let label = store.type(item.type)?.label ?? item.type
-        var parts = [ActionContextText.target(item, typeLabel: label)]
+        var parts: [String] = []
         if let leftOut {
             parts.append(leftOut)
         } else {
             if let name = ActionContextText.sourceName(item) { parts.append(name) } else if item.source.conversationID != nil { parts.append("Ask chat") }
             if let lines = item.context.raw?.linesText { parts.append(lines) } else if item.context.isWikiOnly { parts.append("wiki only") }
         }
-        return Text(parts.joined(separator: " · "))
+        // actions-routing.md: "for Aditya" (someone you handle) or "owner unclear" after the type.
+        var text = Text(ActionContextText.target(item, typeLabel: label))
+        if let whose = RoutingWords.whose(item, people: store.people) {
+            text = text + Text(" · ") + Text(whose.0).fontWeight(.bold).foregroundColor(whose.1)
+        }
+        for p in parts { text = text + Text(" · \(p)") }
+        return text
             .font(Theme.body(11)).foregroundStyle(leftOut == nil ? Theme.muted : Theme.peachInk).lineLimit(2)
     }
 }
@@ -382,6 +391,7 @@ struct ConfirmDetail: View {
                         AddAsPanel(store: store, item: item, type: type)
                     }
                     summaryBlock
+                    ForWhomLine(store: store, item: item)
                     ActionPreview(store: store, item: item, inPane: true)
                 }
                 .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 24)
@@ -418,7 +428,9 @@ struct ConfirmDetail: View {
         return HStack(spacing: 8) {
             Text("To confirm").font(Theme.body(11.5, .bold)).foregroundStyle(Theme.primary)
                 .padding(.horizontal, 10).padding(.vertical, 4).background(Capsule().fill(Theme.primaryTint))
-            Text(ActionContextText.target(item, typeLabel: label)).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
+            Text(ActionContextText.target(item, typeLabel: label)
+                 + (item.inLists && item.ownerID != nil && item.ownerID != ActionPerson.youID ? " · for \(Routing.owner(item, people: store.people))" : ""))
+                .font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
             Spacer(minLength: 4)
             if let position { Text("\(position.0) of \(position.1)").font(Theme.body(11.5)).foregroundStyle(Theme.faint) }
         }

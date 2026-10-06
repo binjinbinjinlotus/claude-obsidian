@@ -28,6 +28,8 @@ final class SettingsStore: ObservableObject {
 
     /// Snapshot fixtures only: a reset confirmation open on this prompt ("draft" / "improve").
     var fixtureConfirmReset: String?
+    /// Snapshots: the People page's 7-day preview (the app asks the core).
+    var fixtureRoutingPreview: RoutingPreview?
     /// Snapshot fixtures only: what the Atlassian sign-in form shows (the token is fake).
     var fixtureForm: (email: String, token: String)?
 

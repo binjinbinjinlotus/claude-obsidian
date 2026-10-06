@@ -163,7 +163,9 @@ struct SettingsPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsStatusBanner()
-            if let typeID = target.actionType {
+            if target.actionType == PeopleSettingsPage.id {
+                PeopleSettingsPage(ui: ui, store: engine.actions, fixturePreview: ui.fixtureRoutingPreview)
+            } else if let typeID = target.actionType {
                 ActionTypeSettingsPage(ui: ui, typeID: typeID, confirmingReset: ui.fixtureConfirmReset)
             } else {
                 SettingsPageHeader(section: target.section)

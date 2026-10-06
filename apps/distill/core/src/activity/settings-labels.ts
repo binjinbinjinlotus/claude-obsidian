@@ -165,6 +165,8 @@ export const SETTING_LABELS: Record<string, SettingLabel> = {
   'actionPreferences.types.*': { section: S.actions, label: 'Action type settings', hidden: true },
   'actionPreferences.findSelection': { section: S.actions, label: 'Model for finding actions', word: selection },
   'actionPreferences.findPrompt': { section: S.actions, label: 'Prompt for finding actions', hidden: true },
+  // actions-routing.md: names and aliases are people's details: the line says only that they changed.
+  'actionPreferences.people': { section: S.actions, label: 'Whose items Distill handles', hidden: true },
   // Actions and connections → To-do defaults
   'actionPreferences.todo.defaultGroup': { section: S.todo, label: 'Group by', word: choice({ due: 'Due date', note: 'Note', none: 'None' }) },
   'actionPreferences.todo.defaultSort': {

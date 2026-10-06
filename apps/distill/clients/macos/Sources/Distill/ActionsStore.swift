@@ -89,6 +89,20 @@ final class ActionsStore: ObservableObject {
     @Published var jiraTypes: [String: [JiraIssueType]] = [:]
     /// By "KEY|typeId".
     @Published var jiraScreens: [String: JiraCreateScreen] = [:]
+    /// actions-routing.md: Pending (`waiting`) and Others' actions, live; your lists never show them.
+    @Published var routed: [String: ActionItem] = [:]
+    @Published var highlights: [HighlightNote] = []
+    @Published var highlightsLoaded = false
+    /// "In the last 7 days this would have sent …" for the People being edited.
+    @Published var routingPreview: RoutingPreview?
+    /// Pending's Group by: Person (false) | Date.
+    @Published var pendingByDate = false
+    /// Highlights: Meetings only.
+    @Published var highlightsMeetings = false
+    /// Nudge: the open panel's draft per pending item.
+    @Published var nudging: [String: NudgeDraft] = [:]
+    /// To confirm: the row whose "Someone…" person menu is open.
+    @Published var whoseMenu: String?
     /// Snapshots fix "updated N min ago".
     var fixtureNow: Date?
     /// Snapshots: a Jira picker's menu drawn open ("project", "issueType", "priority").
@@ -142,6 +156,23 @@ final class ActionsStore: ObservableObject {
     var total: Int { counts.values.reduce(0, +) }
 
     func items(type: String) -> [ActionItem] { items.values.filter { $0.type == type } }
+
+    /// People (Settings → Actions → Whose items Distill handles), the user first.
+    var people: [ActionPerson] { (engine?.settings.actionPreferences ?? ActionPreferences()).people }
+    var waiting: [ActionItem] { routed.values.filter { $0.route == .waiting }.sorted { $0.createdAt > $1.createdAt } }
+    var others: [ActionItem] { routed.values.filter { $0.route == .others } }
+
+    /// One place an item lands: Pending and Highlights items live in `routed`, never in your lists.
+    func put(_ item: ActionItem) {
+        if !item.inLists && !item.status.isHistory && item.status != .dismissed {
+            items[item.id] = nil
+            routed[item.id] = item
+        } else {
+            routed[item.id] = nil
+            items[item.id] = item
+        }
+        if !item.inLists || item.route != nil { scheduleHighlights() }
+    }
     var pending: [ActionItem] { items.values.filter { $0.status == .pending }.sorted { $0.createdAt > $1.createdAt } }
 
     /// "last found today at 3:44 PM in Tea club planning".
@@ -169,11 +200,56 @@ final class ActionsStore: ObservableObject {
                 self.items = map
                 phase = .loaded
                 loadSlackPeople()
+                loadRouted()
             } catch let e as CoreClientError where e.isNotAvailable {
                 phase = .unavailable
             } catch {
                 if phase != .loaded { phase = .failed("\(error)") }
             }
+        }
+    }
+
+    /// Pending and Others' actions (an older core without routes has neither).
+    func loadRouted() {
+        guard let client else { return }
+        Task {
+            var map: [String: ActionItem] = [:]
+            for route in ["waiting", "others"] {
+                guard let list = try? await client.actions(ActionQuery(route: route)) else { continue }
+                for item in list where !item.inLists { map[item.id] = item }
+            }
+            routed = map
+        }
+    }
+
+    private var highlightsTask: Task<Void, Never>?
+
+    func loadHighlights() {
+        guard let client else { return }
+        highlightsTask?.cancel()
+        highlightsTask = Task {
+            do {
+                let list = try await client.highlights()
+                guard !Task.isCancelled else { return }
+                highlights = list
+                highlightsLoaded = true
+            } catch is CancellationError {
+            } catch let e as CoreClientError where e.isNotAvailable {
+                highlightsLoaded = true
+            } catch {
+                if !Task.isCancelled { engine?.report(error) }
+            }
+        }
+    }
+
+    /// Routed items changed: Highlights reads again (shortly, once per burst) while it is open.
+    private func scheduleHighlights() {
+        guard tab == "highlights", phase == .loaded, client != nil else { return }
+        highlightsTask?.cancel()
+        highlightsTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.loadHighlights()
         }
     }
 
@@ -195,9 +271,10 @@ final class ActionsStore: ObservableObject {
 
     /// `action` event (wired in AppModel.apply).
     func apply(_ item: ActionItem, deleted: Bool) {
-        if deleted { items[item.id] = nil; return }
-        let isNew = items[item.id] == nil
-        items[item.id] = item
+        if deleted { items[item.id] = nil; routed[item.id] = nil; return }
+        let isNew = items[item.id] == nil && routed[item.id] == nil
+        put(item)
+        if !item.inLists && !item.status.isHistory { return }
         if item.status != .drafting, case .drafting? = running[item.id] { running[item.id] = nil }
         if item.status != .drafting, case .improving? = running[item.id] { running[item.id] = nil }
         if item.status != .creating, case .creating? = running[item.id] { running[item.id] = nil }
@@ -272,11 +349,11 @@ final class ActionsStore: ObservableObject {
 
     // MARK: Commands
 
-    private func call(_ id: String? = nil, _ work: @escaping (CoreClient) async throws -> ActionItem?) {
+    func call(_ id: String? = nil, _ work: @escaping (CoreClient) async throws -> ActionItem?) {
         guard let client else { engine?.lastError = "The Distill core is not connected."; return }
         Task {
             do {
-                if let item = try await work(client) { self.items[item.id] = item }
+                if let item = try await work(client) { self.put(item) }
             } catch is CancellationError {
             } catch let e as CoreClientError where e.isNotAvailable {
                 self.phase = .unavailable
