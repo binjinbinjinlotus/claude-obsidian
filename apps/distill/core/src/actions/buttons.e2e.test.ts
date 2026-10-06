@@ -233,6 +233,19 @@ test('a thread reply goes to the link’s channel with --thread, and never as a 
   assert.deepEqual((await request('POST', `/v1/actions/${plain.id}/buttons/btn-send/preview`)).body.argv.slice(2), ['send', '--', '#eng', 'hi']);
 });
 
+test('a thread the button fills in but Distill can’t read refuses the run, even when the target is fixed', async () => {
+  const settings = (await request('GET', '/v1/settings')).body;
+  const slack = settings.actionPreferences.types.slack;
+  const buttons = slack.buttons.map((b: any) => (b.id === 'btn-send' ? { ...b, bindings: { ...b.bindings, target: '#eng', thread: '{fields.thread}' } } : b));
+  const prefs = { ...settings.actionPreferences, types: { ...settings.actionPreferences.types, slack: { ...slack, buttons } } };
+  assert.equal((await request('PUT', '/v1/settings', { actionPreferences: prefs })).status, 200);
+  const item = (await request('POST', '/v1/actions', { type: 'slack', title: 'Reply', body: 'on it', fields: { to: '#eng', thread: 'the standup thread' } })).body;
+  const preview = (await request('POST', `/v1/actions/${item.id}/buttons/btn-send/preview`)).body;
+  assert.deepEqual(preview.problems, ['“the standup thread” isn’t a Slack message link, so Distill can’t tell which thread to reply in.'], 'never a top-level post instead');
+  assert.equal((await request('POST', `/v1/actions/${item.id}/buttons/btn-send/run`, { approve: true })).status, 400);
+  assert.equal((await request('PUT', '/v1/settings', { actionPreferences: settings.actionPreferences })).status, 200);
+});
+
 test('a commands-only automation never collects', async () => {
   assert.equal((await request('POST', `/v1/collectors/${collectorId}/run`)).status, 400);
 });

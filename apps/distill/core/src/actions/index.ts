@@ -1598,6 +1598,8 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     const t = slackTargetOf(item);
     const uses = (key: string) => Object.values(button.bindings).some((b) => placeholdersIn(b).includes(key));
     values['fields.thread'] = t.threadTs ?? '';
+    // A thread the item names but Distill can't read is never left out: that would post at the top level.
+    if (uses('fields.thread') && t.kind === 'thread' && !t.threadTs) return t.problem;
     if (!uses('fields.to') && !uses('recipient')) return undefined;
     if (t.problem) return t.problem;
     values['fields.to'] = values.recipient = t.target ?? '';
