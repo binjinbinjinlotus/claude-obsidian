@@ -69,12 +69,26 @@ final class AddAsTests: XCTestCase {
         XCTAssertNil(AddAs.blockReason(s, type: Self.slack))
         s.fields["to"] = " "
         XCTAssertEqual(AddAs.blockReason(s, type: Self.slack), "Fill in who it goes to")
+        // A name nobody has said who it is in Slack, while a button sends to To, isn't filled in yet.
+        s.fields["to"] = "Vladan Dimitrijevic"
+        XCTAssertNil(AddAs.blockReason(s, type: Self.slack))
+        XCTAssertEqual(AddAs.blockReason(s, type: Self.slack, unknownName: true), "Fill in who it goes to")
         XCTAssertEqual(AddAs.bodyLabel(Self.slack), "Text")
     }
 
     func testReturnAddsAndOptionReturnOpensTheMenu() {
         XCTAssertEqual(AddAs.key(returnWithOption: false), .add)
         XCTAssertEqual(AddAs.key(returnWithOption: true), .openMenu)
+        // The detail: plain Return adds too, but never while typing or with the panel open.
+        XCTAssertEqual(AddAs.detailKey(returnWithOption: false, typing: false, panelOpen: false), .add)
+        XCTAssertEqual(AddAs.detailKey(returnWithOption: true, typing: false, panelOpen: false), .openMenu)
+        XCTAssertNil(AddAs.detailKey(returnWithOption: false, typing: true, panelOpen: false))
+        XCTAssertNil(AddAs.detailKey(returnWithOption: false, typing: false, panelOpen: true))
+        // The same keys in the list and in the detail: Return, with ⌘Return as an alias; ⌥Return opens the menu.
+        XCTAssertEqual(AddAs.key(option: false, command: false), .add)
+        XCTAssertEqual(AddAs.key(option: false, command: true), .add)
+        XCTAssertEqual(AddAs.key(option: true, command: false), .openMenu)
+        XCTAssertNil(AddAs.key(option: false, command: false, other: true), "⇧ or ⌃Return isn't Add")
     }
 
     func testRequestSendsTheEditsAndClearsEmptyFields() async throws {

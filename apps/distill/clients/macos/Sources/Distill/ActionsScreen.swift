@@ -466,9 +466,10 @@ private struct ConfirmKeys: ViewModifier {
                 .onKeyPress(.upArrow) { move(selection, by: -1) }
                 // Return adds as the found type; ⌥Return opens Add as… (actions.md).
                 .onKeyPress(keys: [.return]) { press in
-                    switch AddAs.key(returnWithOption: press.modifiers.contains(.option)) {
-                    case .add: return act(selection) { store.confirm([$0]) }
-                    case .openMenu:
+                    switch AddAs.addAsKey(press) {
+                    case nil: return .ignored
+                    case .add?: return act(selection) { store.confirm([$0]) }
+                    case .openMenu?:
                         guard let id = selection.wrappedValue else { return .ignored }
                         store.addAsMenu = id
                         return .handled

@@ -74,9 +74,13 @@ public enum AddAs {
     }
 
     /// Why Add is off, between Cancel and Add: "Fill in who it goes to", "Fill in Project and Type".
-    public static func blockReason(_ draft: Draft, type: ActionTypeInfo) -> String? {
+    /// `unknownName`: a Slack To that is a name Distill doesn't know while a button sends to it ("Who is
+    /// X in Slack?" is open), so who it goes to isn't filled in yet.
+    public static func blockReason(_ draft: Draft, type: ActionTypeInfo, unknownName: Bool = false) -> String? {
         if draft.title.trimmingCharacters(in: .whitespaces).isEmpty { return "Give it a title" }
-        let keys = type.fields.filter { $0.required && (draft.fields[$0.key] ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
+        let keys = type.fields.filter {
+            ($0.required && (draft.fields[$0.key] ?? "").trimmingCharacters(in: .whitespaces).isEmpty) || ($0.key == "to" && unknownName)
+        }
         guard !keys.isEmpty else { return nil }
         let names = keys.map { $0.key == "to" ? "who it goes to" : $0.label }
         return "Fill in " + names.joined(separator: " and ")
@@ -104,9 +108,19 @@ public enum AddAs {
         }
     }
 
-    /// Keys while the To-confirm list has focus: Return adds as the found type; ⌥Return opens Add as….
+    /// Keys in the To-confirm list and its detail: Return adds as the found type (⌘Return too); ⌥Return
+    /// opens Add as…. Never while typing in a text field, and not while the panel is open (its own
+    /// ⌘Return adds it).
     public enum Key: Equatable { case add, openMenu }
     public static func key(returnWithOption option: Bool) -> Key { option ? .openMenu : .add }
+    /// Return (⌘Return as an alias) adds as the found type; ⌥Return opens Add as…; any other modifier is not ours.
+    public static func key(option: Bool, command: Bool, other: Bool = false) -> Key? {
+        if other || (option && command) { return nil }
+        return option ? .openMenu : .add
+    }
+    public static func detailKey(returnWithOption option: Bool, typing: Bool, panelOpen: Bool) -> Key? {
+        typing || panelOpen ? nil : key(returnWithOption: option)
+    }
 }
 
 /// `as` in `POST /v1/actions/confirm`.

@@ -13,8 +13,18 @@ extension ActionsStore {
         addingAs[item.id] = AddAs.prefill(item, as: type)
     }
 
+    /// Why the panel's Add is off; a Slack To that is a name nobody has said who it is counts as empty.
+    func addAsBlock(_ item: ActionItem, _ draft: AddAs.Draft, _ type: ActionTypeInfo) -> String? {
+        var unknown = false
+        if type.id == "slack", slackSendsToField(type) {
+            unknown = SlackTarget.resolve(to: draft.fields["to"], thread: draft.fields["thread"],
+                                          lookup: SlackToText.lookup(slackPeople, vault: slackVault(item))).ask != nil
+        }
+        return AddAs.blockReason(draft, type: type, unknownName: unknown)
+    }
+
     func finishAddAs(_ item: ActionItem, onDone: (() -> Void)? = nil) {
-        guard let draft = addingAs[item.id], let type = type(draft.type), AddAs.blockReason(draft, type: type) == nil, let client else { return }
+        guard let draft = addingAs[item.id], let type = type(draft.type), addAsBlock(item, draft, type) == nil, let client else { return }
         Task {
             do {
                 if let added = try await client.confirmAction(item.id, as: ConfirmAs(draft)) { items[added.id] = added }
@@ -187,7 +197,7 @@ struct AddAsPanelFooter: View {
     let type: ActionTypeInfo
     var onDone: (() -> Void)? = nil
 
-    private var reason: String? { store.addingAs[item.id].flatMap { AddAs.blockReason($0, type: type) } }
+    private var reason: String? { store.addingAs[item.id].flatMap { store.addAsBlock(item, $0, type) } }
 
     var body: some View {
         // Cancel · why Add is off · Add as Slack message (disabled); a narrow pane puts the reason on its own line.
@@ -221,5 +231,38 @@ struct AddAsPanelFooter: View {
         .disabled(reason != nil).opacity(reason == nil ? 1 : 0.45)
         .help(reason ?? "")
         .keyboardShortcut(.return, modifiers: .command)
+    }
+}
+
+extension AddAs {
+    /// A Return key press as Add as reads it (the list and the To-confirm detail share it).
+    static func addAsKey(_ press: KeyPress) -> Key? {
+        let m = press.modifiers
+        return key(option: m.contains(.option), command: m.contains(.command), other: m.contains(.shift) || m.contains(.control))
+    }
+}
+
+/// The To-confirm detail: plain Return adds as the found type, ⌥Return opens Add as… (actions.md), as in the
+/// list. A focused text field keeps its own Return; with the Add as panel open, its own footer decides.
+struct AddAsDetailKeys: ViewModifier {
+    @ObservedObject var store: ActionsStore
+    let item: ActionItem
+    var onDone: (() -> Void)?
+
+    func body(content: Content) -> some View {
+        content
+            .focusable()
+            .focusEffectDisabled()
+            .onKeyPress(keys: [.return]) { press in
+                guard store.addingAs[item.id] == nil else { return .ignored }
+                switch AddAs.addAsKey(press) {
+                case nil: return .ignored
+                case .add?:
+                    store.confirm([item.id])
+                    onDone?()
+                case .openMenu?: store.addAsMenu = item.id
+                }
+                return .handled
+            }
     }
 }

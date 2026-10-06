@@ -402,6 +402,19 @@ struct ConfirmDetail: View {
             .padding(.horizontal, 22).padding(.vertical, 12)
             .zIndex(1)
         }
+        .modifier(AddAsDetailKeys(store: store, item: item, onDone: onDone))
+        // Plain Return adds as the found type here too (⌘Return is the button's alias); ⌥Return opens
+        // Add as…. Never while typing in a text field, nor while the panel is open.
+        .focusable()
+        .focusEffectDisabled()
+        .onKeyPress(keys: [.return]) { press in
+            let typing = NSApp.keyWindow?.firstResponder is NSTextView
+            switch AddAs.detailKey(returnWithOption: press.modifiers.contains(.option), typing: typing, panelOpen: addingType != nil) {
+            case .add?: store.confirm([item.id]); onDone?(); return .handled
+            case .openMenu?: store.addAsMenu = item.id; return .handled
+            case nil: return .ignored
+            }
+        }
         .task(id: item.id) {
             guard item.summary == nil else { return }
             try? await Task.sleep(nanoseconds: 600_000_000)
