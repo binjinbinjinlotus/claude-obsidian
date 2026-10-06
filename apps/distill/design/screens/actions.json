@@ -1455,6 +1455,94 @@
    }
   },
   {
+   "id": "jira-required-picker",
+   "base": "jira",
+   "label": "K · A field TLS requires: its name from Jira (Team), a picker of Jira’s values, open; Create waits: “Fill in Team first”",
+   "set": {
+    "list": {
+     "selected": 0,
+     "list": "jira-tls"
+    },
+    "detail": {
+     "frag": "jira-required-picker"
+    }
+   }
+  },
+  {
+   "id": "jira-required-filled",
+   "base": "jira",
+   "label": "L · Team filled: Platform; “Use for future TLS Tasks” ticked saves it as the TLS · Task default; Create in Jira is on",
+   "set": {
+    "list": {
+     "selected": 0,
+     "list": "jira-tls"
+    },
+    "detail": {
+     "frag": "jira-required-filled"
+    }
+   }
+  },
+  {
+   "id": "jira-required-types",
+   "base": "jira",
+   "label": "M · The control follows Jira’s field type: chips for several choices (API from the note), a date, a person search, a cascading pair",
+   "set": {
+    "list": {
+     "selected": 0,
+     "list": "jira-tls"
+    },
+    "detail": {
+     "frag": "jira-required-types"
+    },
+    "window.height": 920,
+    "sidebar.height": 880
+   }
+  },
+  {
+   "id": "jira-required-unsupported",
+   "base": "jira",
+   "label": "N · A field type Distill can’t fill: “Distill can’t fill Rollout plan here”, Open in Jira (the rest passed along) and Copy the ticket text; Create stays off",
+   "set": {
+    "list": {
+     "selected": 0,
+     "list": "jira-tls"
+    },
+    "detail": {
+     "frag": "jira-required-unsupported"
+    },
+    "window.height": 920,
+    "sidebar.height": 880
+   }
+  },
+  {
+   "id": "settings-jira-defaults-required",
+   "label": "Settings → Actions → Jira ticket → Defaults",
+   "caption": "Each project and type’s required fields, with the defaults saved from tickets (TLS · Task → Team: Platform).",
+   "card": {
+    "height": 680,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "stretch"
+   },
+   "body": {
+    "frag": "settings-jira-defaults-required"
+   }
+  },
+  {
+   "id": "jira-card-required",
+   "label": "Required fields",
+   "caption": "Where the fields come from, and which ones show.",
+   "card": {
+    "height": 440,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "stretch"
+   },
+   "body": {
+    "frag": "jira-card-required"
+   }
+  },
+  {
    "id": "actions-confluence",
    "base": "confluence",
    "label": "A · Confluence pages: drafts you check, and pages already created"
@@ -2064,6 +2152,31 @@
       "jira-card-fields"
      ],
      "cols": 4
+    },
+    {
+     "title": "Fields the project requires (proposal, not built)",
+     "sub": "Today a required custom field shows as “Customfield _11063 · Choose a customfield_11063” with no way to fill it, so the ticket can’t be created. Proposed: Jira’s name for it, a control that matches its type, and a default you can save."
+    },
+    {
+     "row": [
+      "jira-required-picker",
+      "jira-required-filled"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "row": [
+      "jira-required-types",
+      "jira-required-unsupported"
+     ],
+     "style": "display: flex; gap: 40px"
+    },
+    {
+     "grid": [
+      "settings-jira-defaults-required",
+      "jira-card-required"
+     ],
+     "cols": 2
     }
    ]
   },
