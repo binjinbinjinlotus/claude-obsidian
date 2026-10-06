@@ -36,7 +36,9 @@
             "jobs",
             "chats",
             "actions",
-            "activity"
+            "activity",
+            "pending",
+            "highlights"
           ],
           "swift": false,
           "why": "selection inside the open section: SidebarActions and the historyPart binding"
@@ -105,6 +107,13 @@
           "section": "Actions sub-items",
           "swift": false,
           "why": "computed by Sidebar from AppModel (queue, approvals, labels, actions)"
+        },
+        {
+          "name": "routing",
+          "type": "bool",
+          "default": false,
+          "swift": false,
+          "why": "design proposal (2026-10-06, not built): Actions gains Pending and Highlights, shown only on the routing board"
         },
         {
           "name": "recentRunning",
