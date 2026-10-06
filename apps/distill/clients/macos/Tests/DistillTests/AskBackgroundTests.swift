@@ -29,13 +29,19 @@ final class SlowAskProtocol: URLProtocol, @unchecked Sendable {
         }
     }
     override func stopLoading() {}
+
+    /// The requests seen so far, read under the lock (responses arrive on a global queue).
+    static func seen(_ match: (String) -> Bool) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return paths.contains(where: match)
+    }
 }
 
 /// The bug: New chat while a question was answering stopped it and the question was lost.
 @MainActor
 final class AskBackgroundTests: XCTestCase {
     private func model() -> AppModel {
-        SlowAskProtocol.paths = []
+        SlowAskProtocol.lock.lock(); SlowAskProtocol.paths = []; SlowAskProtocol.lock.unlock()
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SlowAskProtocol.self]
         let app = AppModel(fixtureSettings: Settings(), jobs: [], queue: [], status: nil)
@@ -59,12 +65,14 @@ final class AskBackgroundTests: XCTestCase {
 
         XCTAssertTrue(ask.main.isEmpty, "the new chat starts empty")
         XCTAssertEqual(ask.backgroundNew.map(\.pending.question), ["Best water temp for sencha?"], "History shows it answering")
-        XCTAssertFalse(SlowAskProtocol.paths.contains { $0.hasSuffix("/cancel") }, "the run is not stopped")
+        XCTAssertFalse(SlowAskProtocol.seen { $0.hasSuffix("/cancel") }, "the run is not stopped")
 
         await waitUntil { ask.background.isEmpty }
         XCTAssertTrue(ask.background.isEmpty, "the answer landed")
         XCTAssertTrue(ask.main.isEmpty, "the answer does not leak into the new chat")
-        XCTAssertTrue(SlowAskProtocol.paths.contains("GET /v1/conversations"), "History reloads to show the saved chat")
+        // The reload is a fire-and-forget Task started as the answer lands: wait for its request, don't race it.
+        await waitUntil { SlowAskProtocol.seen { $0 == "GET /v1/conversations" } }
+        XCTAssertTrue(SlowAskProtocol.seen { $0 == "GET /v1/conversations" }, "History reloads to show the saved chat")
     }
 
     func testReopeningARunningChatShowsTheAnswerArriving() async {
@@ -91,8 +99,8 @@ final class AskBackgroundTests: XCTestCase {
         ask.main.draft = "Best water temp for sencha?"
         ask.send(ask.main)
         ask.stop(ask.main)
-        await waitUntil { SlowAskProtocol.paths.contains { $0.hasSuffix("/cancel") } }
-        XCTAssertTrue(SlowAskProtocol.paths.contains { $0.hasSuffix("/cancel") })
+        await waitUntil { SlowAskProtocol.seen { $0.hasSuffix("/cancel") } }
+        XCTAssertTrue(SlowAskProtocol.seen { $0.hasSuffix("/cancel") })
         try? await Task.sleep(nanoseconds: 600_000_000)
         XCTAssertTrue(ask.main.entries.isEmpty, "a stopped question adds no answer")
     }
