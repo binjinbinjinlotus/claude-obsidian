@@ -224,7 +224,7 @@ struct TypeListScreen: View {
         if item.status == .open && (item.body ?? "").isEmpty { return ("Not written", .muted) }
         if !creates {
             if item.status == .ready && (store.copiedAt[item.id] != nil || item.lastEvent("copied") != nil) { return ("Copied", .ready) }
-            if item.status == .ready { return (type.handler("send")?.available == true ? "Ready to send" : "Ready to paste", .ready) }
+            if item.status == .ready { return (type.readyWords, .ready) }
         }
         return ("Draft", .draft)
     }

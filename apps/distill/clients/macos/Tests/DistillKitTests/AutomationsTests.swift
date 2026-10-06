@@ -86,6 +86,17 @@ final class AutomationsTests: XCTestCase {
         XCTAssertNil(AutomationText.slots(type.buttons, for: item).send, "default when: open and ready")
     }
 
+    func testReadyWordsFollowTheSendSlot() {
+        var type = ActionTypeInfo(id: "slack", label: "Slack message")
+        XCTAssertEqual(type.readyWords, "Ready to paste", "nothing sends it")
+        type.buttons = [ActionButtonInfo(button: AutomationButton(id: "send", label: "Send in Slack", slot: .send))]
+        XCTAssertEqual(type.readyWords, "Ready to send", "a button holds the Send slot")
+        type.buttons = [ActionButtonInfo(button: AutomationButton(id: "send", label: "Send in Slack", enabled: false, slot: .send))]
+        XCTAssertEqual(type.readyWords, "Ready to paste", "turned off")
+        type.buttons = [ActionButtonInfo(button: AutomationButton(id: "x", label: "Post", slot: .primary))]
+        XCTAssertEqual(type.readyWords, "Ready to paste", "another slot doesn't send it")
+    }
+
     func testDisplayText() {
         let run = ActionButtonRun(runId: "r", buttonId: "b", label: "Send in Slack", durationMs: 1200, result: "failed", exitCode: 3)
         XCTAssertEqual(AutomationText.runLine(run, time: "10:42 AM"), "Send in Slack · exit 3 · 1.2 s · 10:42 AM")

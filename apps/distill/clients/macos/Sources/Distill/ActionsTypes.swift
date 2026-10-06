@@ -181,7 +181,7 @@ struct MessageCard: View {
         } else if let copied = store.copiedAt[item.id] {
             StatusBadge(text: "Copied at \(ActionsClock.time(copied))", fill: ActionsTheme.doneFill, ink: Theme.limeInk)
         } else if item.status == .ready {
-            StatusBadge(text: type.handler("send")?.available == true ? "Ready to send" : "Ready to paste", fill: ActionsTheme.doneFill, ink: Theme.limeInk)
+            StatusBadge(text: type.readyWords, fill: ActionsTheme.doneFill, ink: Theme.limeInk)
         } else {
             StatusBadge(text: "Not written", fill: Theme.panel, ink: Theme.muted)
         }

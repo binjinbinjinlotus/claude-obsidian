@@ -406,6 +406,12 @@ public struct ActionTypeInfo: Codable, Hashable, Identifiable, Sendable {
     }
 
     public func handler(_ id: String) -> ActionHandlerInfo? { handlers.first { $0.id == id } }
+    /// A ready item's status words (action-buttons.md): "Ready to send" when something sends it (the built-in
+    /// Send, or a button in the Send slot), else "Ready to paste".
+    public var readyWords: String {
+        if handler("send")?.available == true { return "Ready to send" }
+        return buttons.contains { $0.button.slot == .send && $0.button.enabled } ? "Ready to send" : "Ready to paste"
+    }
     /// Usable now: on, and not a reserved slot (Email).
     public var isUsable: Bool { enabled && !reserved }
 }

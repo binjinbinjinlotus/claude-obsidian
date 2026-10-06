@@ -743,8 +743,11 @@ Order: core → API → CLI → Mac. Each step is one commit, with `npm test
   `sa-card-todo`, `sa-card-add`; the prose cards have none. The to-do footer
   puts its buttons on their own row when the pane is too narrow for one.
 - **Not yet:** Add automation's first step "What it does (Collect / Commands /
-  Both)" (`sa-card-add` shows today's kind step); a Slack message whose Send
-  slot is a button still reads "Ready to paste".
+  Both)" (`sa-card-add` shows today's kind step).
+- **Ready to send (2026-10-06).** A ready Slack message reads "Ready to send"
+  when a button holds the Send slot (and is on), not "Ready to paste"
+  (`ActionTypeInfo.readyWords`, the row and the detail). The status filter's
+  options are unchanged.
 
 ## Open questions
 
