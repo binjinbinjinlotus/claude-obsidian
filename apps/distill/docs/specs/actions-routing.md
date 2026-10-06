@@ -103,7 +103,8 @@ Actions → Pending, a sidebar sub-item with its count.
   - Text: prefilled "Hi Aditya, any update on the ticket links?".
   - The panel adds a ready Slack message with `fromActionID` set to the pending item.
   - The pending item gets a `nudged` event and stays open.
-- A later batch gets the open Pending promises in its find prompt (up to 30). When its lines
+- A later batch gets the open Pending promises in its find prompt (up to 30), fenced as data in
+  a `<pending>` block, one line each, with `<` and `>` escaped. When its lines
   look like delivery, the item gets `received: {notePath, pageTitle, quote}` once that page
   applies. The row then reads "Looks received in 2026-10-06 Standup. Mark received?".
   - It is only a suggestion. Nothing closes on its own.

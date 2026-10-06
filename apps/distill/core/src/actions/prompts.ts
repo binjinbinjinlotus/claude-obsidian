@@ -48,9 +48,10 @@ export interface FindType {
 export function waitingBlock(waiting: { id: string; text: string }[]): string {
   if (waiting.length === 0) return '';
   return `
-Things other people said they would do for the user, still open:
-${waiting.map((w) => `- ${w.id}: ${w.text}`).join('\n')}
-If these lines clearly show one of them was delivered (sent, shared, done), list it under received with its id and the quote that shows it. Leave received empty otherwise.
+If the source lines clearly show one of these open promises (things other people said they would do for the user) was delivered (sent, shared, done), list it under received with its id and the quote that shows it. Leave received empty otherwise.
+<pending>
+${waiting.map((w) => `- ${w.id}: ${w.text.replace(/\s+/g, ' ').trim().replace(/</g, '&lt;').replace(/>/g, '&gt;')}`).join('\n')}
+</pending>
 `;
 }
 
