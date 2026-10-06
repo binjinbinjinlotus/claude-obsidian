@@ -70,7 +70,9 @@ extension ActionsStore {
         Task {
             do {
                 try await client.forgetSlackPerson(name: name, vault: vault)
-                slackPeople.removeAll { $0.vaultPath == vault && SlackTarget.normalName($0.name) == SlackTarget.normalName(name) }
+                slackPeople.removeAll { p in
+                    vault.map { SlackToText.samePath(p.vaultPath, $0) } == true && SlackTarget.normalName(p.name) == SlackTarget.normalName(name)
+                }
             } catch {
                 engine?.report(error)
             }

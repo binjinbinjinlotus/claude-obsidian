@@ -164,10 +164,15 @@ public enum SlackToText {
         }
     }
 
+    /// The core stores the resolved vault path; settings may hold it with a trailing slash.
+    public static func samePath(_ a: String, _ b: String) -> Bool {
+        URL(fileURLWithPath: a).standardizedFileURL.path == URL(fileURLWithPath: b).standardizedFileURL.path
+    }
+
     /// Names remembered for a vault, as a lookup.
     public static func lookup(_ people: [SlackPerson], vault: String?) -> (String) -> String? {
         guard let vault else { return { _ in nil } }
-        let mine = people.filter { $0.vaultPath == vault }
+        let mine = people.filter { samePath($0.vaultPath, vault) }
         return { key in mine.first { SlackTarget.normalName($0.name) == key }?.target }
     }
 }

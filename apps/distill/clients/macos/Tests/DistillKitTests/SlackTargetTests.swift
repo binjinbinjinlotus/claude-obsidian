@@ -37,6 +37,8 @@ final class SlackTargetTests: XCTestCase {
     func testToRowWords() {
         let people = [SlackPerson(vaultPath: "/v", name: "Aditya Pradhan", target: "@aditya")]
         let lookup = SlackToText.lookup(people, vault: "/v")
+        XCTAssertEqual(SlackTarget.resolve(to: "Aditya Pradhan", thread: nil, lookup: SlackToText.lookup(people, vault: "/v/")).target, "@aditya",
+                       "the core stores the resolved path; settings may keep a trailing slash")
         let unknown = SlackTarget.resolve(to: "Aditya Pradhan", thread: nil, lookup: SlackToText.lookup(people, vault: "/other"))
         XCTAssertEqual(unknown.ask, "Who is Aditya Pradhan in Slack?")
         XCTAssertEqual(SlackToText.kind(unknown), "Person")
