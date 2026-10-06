@@ -1,6 +1,6 @@
 {
   "$doc": "Action buttons and script commands (designed 2026-10-05): stored scripts (collectors, proposed label Automations) also offer commands with arguments; every action type can have buttons that run a command with arguments mapped from the item ({fields.to}, {body}, …), as an argv array, never a shell; the exact command line before the first run; live output; the result kept on the item. Send in Slack runs the Slack CLI's send. Spec: docs/specs/action-buttons.md.",
-  "row": 58640,
+  "row": 61120,
   "rowNote": {
     "id": "flow15",
     "text": "15 · Action buttons and script commands (an automation runs from a button, with the item's fields as arguments)"
