@@ -874,6 +874,13 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
   - No 1-minute backoff between agent attempts (each attempt waits for the
     session's next turn anyway).
   - `distill status` does not list queued or recovering batches yet.
+  - Activity logs `batch.recovery` only for Try again, not for automatic
+    attempts; there is no `batch.queued` entry (only `batch.unqueued`); the
+    live log has no `recover-<n>` steps. The conversation shows Distill's
+    answers and the job's `recovery` field holds every attempt.
+  - The canvas board (row 16) is the design: frames E–F show the agent fixing
+    stale plans, which is not built; the built card's options are listed
+    above.
   - `new_session` is a proposal (`recovery.proposal`) shown in the sentence;
     there is no one-click Continue in a new session from the card yet.
 - Tests: `engine.test.ts` "blocked commands" (6: the agent's guidance is sent
