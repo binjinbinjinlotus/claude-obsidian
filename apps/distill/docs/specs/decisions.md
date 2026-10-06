@@ -17,6 +17,15 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**Add as converts the found item in place, at confirm time (2026-10-06).**
+The owner wanted to choose the destination when confirming instead of adding
+a to-do and then Send to. Confirm takes an optional target type and field
+overrides; the pending item keeps its id, source, line, wiki refs, Why and
+labels, and only its type, title, body and fields change. Send to (which
+makes a new item and marks the old one sent) stays for items already added.
+Fields are validated against the target type's schema, so a required field
+can't be skipped. (actions.md, Add as at confirm time.)
+
 **A Slack message Distill can't address reads Needs a recipient (2026-10-06,
 owner decision).** "Ready to send" on a message whose To is a name Distill
 doesn't know promised a send the button would refuse. When an enabled button

@@ -74,6 +74,12 @@ describe('HTTP API: actions and connections', () => {
     const confirmed = await request(port, 'POST', '/v1/actions/confirm', { ids: ['act-1'] });
     assert.equal(confirmed.body.actions[0].status, 'open');
     assert.equal((await request(port, 'POST', '/v1/actions/confirm', { ids: [] })).status, 400);
+    // Add as (actions.md): the target type and the owner's edits reach the core as one object.
+    const as = { type: 'slack', title: 'Tell Mei', body: 'Hi Mei', fields: { to: 'Mei Tanaka', thread: null } };
+    assert.equal((await request(port, 'POST', '/v1/actions/confirm', { ids: ['act-1'], as })).status, 200);
+    assert.deepEqual(last('confirmActions')!.args, [['act-1'], as]);
+    assert.equal((await request(port, 'POST', '/v1/actions/confirm', { ids: ['act-1'], as: { title: 'no type' } })).status, 400);
+    assert.equal((await request(port, 'POST', '/v1/actions/confirm', { ids: ['act-1'], as: { type: 'slack', fields: { to: 3 } } })).status, 400);
     assert.deepEqual((await request(port, 'POST', '/v1/actions/dismiss', { ids: ['act-ask'] })).body, { ids: ['act-ask'], dismissed: true });
     assert.equal((await request(port, 'POST', '/v1/actions/dismiss', { ids: ['nope'] })).status, 404);
     const notHistory = await request(port, 'DELETE', '/v1/actions/act-1');

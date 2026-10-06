@@ -505,6 +505,26 @@ describe('instrumentCore', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  test('Add as logs "added as Slack message (found as to-do)" (actions.md)', async () => {
+    const dir = tmp('distill-activity-add-as-');
+    const log = new ActivityLog({ dir });
+    const trash = new Trash({ dir: path.join(dir, 'trash') });
+    const fake = createFakeCore();
+    (fake as unknown as Record<string, unknown>).getAction = async (id: string) => ({ id, type: 'todo', title: 'Tell Mei' });
+    (fake as unknown as Record<string, unknown>).confirmActions = async (ids: string[], o?: { as?: { type: string } }) =>
+      ids.map((id) => ({ id, type: o?.as?.type ?? 'todo', title: 'Tell Mei', status: 'ready' }));
+    const core = instrumentCore(fake, { log, trash, askDir: path.join(dir, 'ask') });
+    await runWithSource('app', () => core.confirmActions(['act-1'], { as: { type: 'slack' } }));
+    await runWithSource('app', () => core.confirmActions(['act-2']));
+    const entries = log.list().entries.reverse();
+    assert.deepEqual(entries.map((e) => [e.type, e.summary]), [
+      ['action.confirmed', 'Added “Tell Mei” as Slack message (found as to-do)'],
+      ['action.confirmed', 'Confirmed “Tell Mei”'],
+    ]);
+    assert.equal(entries[0]!.details?.foundAs, 'todo');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   test('a spec that throws never drops the entry, and never replaces the core\'s error (2026-10-04)', async (t) => {
     const dir = tmp('distill-activity-spec-error-');
     const log = new ActivityLog({ dir });

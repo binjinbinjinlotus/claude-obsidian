@@ -39,6 +39,7 @@ import {
   type RunnerRegistry,
   type Settings,
   type SlackTarget,
+  type ConfirmAs,
 } from '../contracts.js';
 import type { ActionsOwned, ReviewReadyInfo } from '../engine/index.js';
 import { makeReadingCopy } from '../coverage/copy.js';
@@ -1765,6 +1766,56 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     return { run: started, item: updated, ...(approvedNow ? { approved: true } : {}) };
   }
 
+  /**
+   * Add as (actions.md): a pending item comes in as `as.type`, in place (same id, its source, line,
+   * wiki refs, why and labels kept), with an event `type` "todo → slack" and `confirmed` "as slack".
+   */
+  function confirmAs(id: string, as: ConfirmAs): ActionItem {
+    const item = require(id);
+    if (item.status !== 'pending') throw new CoreError('invalid_state', 'Only an item waiting for you to confirm can be added as another type.');
+    const def = actionTypeDef(as.type);
+    if (!def || !effectiveType(def, prefs()).enabled) throw new CoreError('invalid_request', `Can’t add it as ${as.type}: that type isn’t on.`);
+    const fields = mappedFields(item, def.fields.map((f) => f.key));
+    for (const [k, v] of Object.entries(as.fields ?? {})) {
+      const spec = def.fields.find((f) => f.key === k);
+      if (!spec) throw new CoreError('invalid_request', `${def.pluralLabel} have no field ${k}.`);
+      const value = typeof v === 'string' && v.trim() ? v.trim() : null;
+      if (value && spec.kind === 'choice' && spec.choices && !spec.choices.includes(value)) {
+        throw new CoreError('invalid_request', `${spec.label} is one of ${spec.choices.join(', ')}.`);
+      }
+      fields[k] = value;
+    }
+    Object.assign(fields, withDefaults(def.id, fields));
+    const missing = def.fields.filter((f) => f.required && !fields[f.key]?.trim()).map((f) => f.label);
+    if (missing.length > 0) throw new CoreError('invalid_request', `Fill in ${missing.join(' and ')} first.`, { missing });
+    const title = as.title?.trim() || item.title;
+    const body = as.body !== undefined ? (as.body?.trim() ? as.body : null) : (item.body?.trim() || item.summary?.trim() || null);
+    const from = item.type;
+    const confirmed = mutate(id, (i) => {
+      if (def.id !== i.type) i.events.push(event(now(), 'type', `${i.type} → ${def.id}`));
+      i.type = def.id;
+      i.title = title;
+      i.body = body;
+      i.fields = withDefaults(def.id, fields);
+      i.status = initialStatus(i.type, i.body);
+      i.events.push(event(now(), 'confirmed', from === def.id ? undefined : `as ${def.id} (found as ${from})`));
+    });
+    if (confirmed.type !== TODO_TYPE && !confirmed.body && effective(confirmed.type)?.draftWhen === 'onFind') draftInBackground(id);
+    return confirmed;
+  }
+
+  /** The found item's fields for another type: same keys kept; people become a message's To, and back. */
+  function mappedFields(item: ActionItem, keys: string[]): Record<string, string | null> {
+    const has = new Set(keys);
+    const out: Record<string, string | null> = {};
+    for (const [k, v] of Object.entries(item.fields)) if (has.has(k)) out[k] = v;
+    const person = item.fields.person ?? item.fields.assignee ?? null;
+    if (has.has('to') && !out.to && person) out.to = person;
+    if (has.has('assignee') && !out.assignee && (item.fields.person ?? item.fields.to)) out.assignee = item.fields.person ?? item.fields.to ?? null;
+    if (has.has('person') && !out.person && (item.fields.to ?? item.fields.assignee)) out.person = item.fields.to ?? item.fields.assignee ?? null;
+    return out;
+  }
+
   const service: ActionsService = {
     async listActionTypes(): Promise<ActionTypeInfo[]> {
       const p = prefs();
@@ -1935,9 +1986,13 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       });
     },
 
-    async confirmActions(ids: string[]): Promise<ActionItem[]> {
+    async confirmActions(ids: string[], o: { as?: ConfirmAs } = {}): Promise<ActionItem[]> {
       const out: ActionItem[] = [];
       for (const id of ids) require(id);
+      if (o.as) {
+        if (ids.length !== 1) throw new CoreError('invalid_request', 'Add as takes one item at a time.');
+        return [confirmAs(ids[0]!, o.as)];
+      }
       for (const id of ids) {
         const item = require(id);
         if (item.status !== 'pending') {

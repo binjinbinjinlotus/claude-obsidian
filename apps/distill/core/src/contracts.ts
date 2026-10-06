@@ -1650,6 +1650,20 @@ export interface SlackTarget {
   problem?: string;
 }
 
+/**
+ * "Add as" at confirm time (actions.md): one pending item comes in as another enabled type. Its
+ * fields are mapped from the found item (title, summary or body, people → to), then `fields`,
+ * `title` and `body` override; each key must be a field of that type, a choice one of its choices,
+ * and every required field filled. Provenance (source, line, wiki, why, labels) is kept.
+ */
+export interface ConfirmAs {
+  type: ActionTypeID;
+  title?: string;
+  /** Markdown body (a message's text, a ticket's description, a to-do's note); "" = none (a draft is written). */
+  body?: string | null;
+  fields?: Record<string, string | null>;
+}
+
 /** A remembered name → Slack target, per vault (`<state>/actions/slack-people.json`). */
 export interface SlackPerson {
   vaultPath: string;
@@ -2291,7 +2305,7 @@ export interface DistillCore {
   /** Edit. A body edit on a type with improveAfterEdit does NOT improve by itself: the client calls improveAction when you click Done. */
   updateAction(id: string, patch: ActionPatch): Promise<ActionItem>;
   /** Confirm found items (pending → open/ready, writing drafts if draftWhen is onFind). */
-  confirmActions(ids: string[]): Promise<ActionItem[]>;
+  confirmActions(ids: string[], opts?: { as?: ConfirmAs }): Promise<ActionItem[]>;
   /**
    * Dismiss found items (pending → dismissed). Also Undo for items added without confirmation:
    * an item still untouched since it was found (only found/drafted/confirmed events, plus confirm's

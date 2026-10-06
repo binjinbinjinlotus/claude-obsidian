@@ -606,8 +606,8 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       if (patch.type) item.type = patch.type;
       return item;
     },
-    async confirmActions(ids) {
-      record('confirmActions', ids);
+    async confirmActions(ids, opts) {
+      record('confirmActions', ids, ...(opts?.as ? [opts.as] : []));
       return ids.map((id) => Object.assign(requireAction(id), { status: 'open' as const }));
     },
     async dismissActions(ids) {

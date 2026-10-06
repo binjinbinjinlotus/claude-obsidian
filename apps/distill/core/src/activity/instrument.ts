@@ -18,6 +18,7 @@ import type {
 } from '../contracts.js';
 import type { EngineExtras } from '../engine/index.js';
 import { titleFrom } from '../ask/conversations.js';
+import { actionTypeDef } from '../actions/registry.js';
 import { currentMethod, currentSource, runInMethod } from './context.js';
 import type { ActivityLog } from './log.js';
 import { isSecretKey } from './redact.js';
@@ -107,6 +108,12 @@ function jobObject(id: string, job: Job | undefined): ActivityObject {
 
 function collectorObject(id: string, c: Collector | undefined): ActivityObject {
   return { kind: 'collector', id, ...(c?.name ? { name: c.name } : {}) };
+}
+
+/** "to-do", "Slack message", "Jira ticket" (a type in a sentence). */
+function typeWords(id: string): string {
+  if (id === 'todo') return 'to-do';
+  return actionTypeDef(id)?.label ?? id;
 }
 
 function actionObject(id: string, a: ActionItem | undefined): ActivityObject {
@@ -636,7 +643,21 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
       fail: ([id]) => ({ type: 'action.updated', object: { kind: 'action', id }, summary: `Couldn't save the action` }),
     },
     confirmActions: {
-      ok: (_args, items) => items.map((item) => ({ type: 'action.confirmed', object: actionObject(item.id, item), summary: `Confirmed ${q(item.title)}`, details: { actionType: item.type, status: item.status } })),
+      before: (ids, o) => (o?.as ? Promise.all(ids.map((id) => getAction(id))) : undefined),
+      ok: ([, o], items, before: (ActionItem | undefined)[] | undefined) =>
+        items.map((item, n) => {
+          const found = before?.[n]?.type;
+          // actions.md, Add as: "Added … as Slack message (found as to-do)".
+          if (o?.as && found && found !== item.type) {
+            return {
+              type: 'action.confirmed',
+              object: actionObject(item.id, item),
+              summary: `Added ${q(item.title)} as ${typeWords(item.type)} (found as ${typeWords(found)})`,
+              details: { actionType: item.type, foundAs: found, status: item.status },
+            };
+          }
+          return { type: 'action.confirmed', object: actionObject(item.id, item), summary: `Confirmed ${q(item.title)}`, details: { actionType: item.type, status: item.status } };
+        }),
       fail: ([ids]) => ({ type: 'action.confirmed', object: { kind: 'action', name: plural(ids.length, 'action') }, summary: `Couldn't confirm ${plural(ids.length, 'action')}` }),
     },
     dismissActions: {

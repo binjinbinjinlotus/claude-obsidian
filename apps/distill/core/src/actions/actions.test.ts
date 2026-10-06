@@ -1110,6 +1110,63 @@ describe('action summary (action-summary.md)', () => {
     assert.equal(sent.summary, item!.summary);
   });
 
+  test('Add as: a found to-do comes in as a Slack message, fields mapped, provenance kept (actions.md)', async () => {
+    const h = harness();
+    writeTea(h);
+    h.runner.find = () => ({
+      structured: {
+        items: [
+          { ...TEA_FOUND.items[0], title: 'Tell Mei the room is booked', fields: [{ key: 'person', value: 'Mei Tanaka' }], summary: 'Mei brings the tea. Tell her the time.' },
+          { ...TEA_FOUND.items[1], fields: [{ key: 'to', value: 'Mei Tanaka' }], quote: 'tell Mei so she can bring the new tin' },
+        ],
+      },
+    });
+    await h.service.findInJob(job(h, 'job-as', ['inbox/tea.md'], ['wiki/sources/tea.md']));
+    const pending = await h.service.listActions({ status: ['pending'] });
+    const todo = pending.find((i) => i.type === 'todo')!;
+    const foundSlack = pending.find((i) => i.type === 'slack')!;
+    const [added] = await h.service.confirmActions([todo.id], { as: { type: 'slack' } });
+    assert.equal(added!.id, todo.id, 'in place: the same item');
+    assert.equal(added!.type, 'slack');
+    assert.equal(added!.fields.to, 'Mei Tanaka', 'people → to');
+    assert.equal(added!.body, 'Mei brings the tea. Tell her the time.', 'summary → text');
+    assert.equal(added!.status, 'ready');
+    assert.deepEqual(added!.source, todo.source, 'source note and line kept');
+    assert.equal(added!.why, todo.why);
+    assert.deepEqual(added!.events.slice(-2).map((e) => [e.event, e.detail]), [['type', 'todo → slack'], ['confirmed', 'as slack (found as todo)']]);
+    // A converted Slack item resolves its To exactly like a found one.
+    assert.deepEqual(await h.service.slackTarget(added!.id), await h.service.slackTarget(foundSlack.id));
+    await h.service.rememberSlackPerson({ name: 'Mei Tanaka', target: '@mei' });
+    const converted = await h.service.slackTarget(added!.id);
+    assert.equal(converted.target, '@mei');
+    assert.deepEqual(converted, await h.service.slackTarget(foundSlack.id));
+  });
+
+  test('Add as: overrides, unknown types, missing required fields and bad choices', async () => {
+    const h = harness();
+    writeTea(h);
+    h.runner.find = () => ({ structured: { items: [{ ...TEA_FOUND.items[0], title: 'Cap the retries', fields: [{ key: 'person', value: 'Tomasz' }], quote: 'tell Mei so she can bring the new tin' }, TEA_FOUND.items[0]] } });
+    await h.service.findInJob(job(h, 'job-as2', ['inbox/tea.md'], ['wiki/sources/tea.md']));
+    const [a, b] = await h.service.listActions({ status: ['pending'] });
+    const code = (c: string, m?: RegExp) => (e: unknown) => (e as { code?: string }).code === c && (!m || m.test((e as Error).message));
+    await assert.rejects(h.service.confirmActions([a!.id], { as: { type: 'nope' } }), code('invalid_request', /isn’t on/));
+    await assert.rejects(h.service.confirmActions([a!.id], { as: { type: 'email' } }), code('invalid_request'), 'a reserved type');
+    await assert.rejects(h.service.confirmActions([a!.id, b!.id], { as: { type: 'slack' } }), code('invalid_request', /one item/));
+    await assert.rejects(h.service.confirmActions([a!.id], { as: { type: 'jira' } }), code('invalid_request', /Fill in Project and Type first/));
+    await assert.rejects(h.service.confirmActions([a!.id], { as: { type: 'jira', fields: { project: 'PX', color: 'red' } } }), code('invalid_request', /no field color/));
+    await assert.rejects(h.service.confirmActions([a!.id], { as: { type: 'jira', fields: { project: 'PX', issueType: 'Epic' } } }), code('invalid_request', /Type is one of Task, Bug, Story/));
+    await assert.rejects(h.service.confirmActions([a!.id], { as: { type: 'slack', fields: { to: '  ' } } }), code('invalid_request', /Fill in To first/), 'emptied by the owner');
+    assert.equal((await h.service.getAction(a!.id))!.status, 'pending', 'a refusal changes nothing');
+
+    const [jira] = await h.service.confirmActions([a!.id], { as: { type: 'jira', title: 'Cap payment client retries at 3', body: 'Retries at 3.', fields: { project: 'PX', issueType: 'Bug' } } });
+    assert.deepEqual([jira!.type, jira!.title, jira!.body, jira!.fields.project, jira!.fields.issueType, jira!.fields.assignee], ['jira', 'Cap payment client retries at 3', 'Retries at 3.', 'PX', 'Bug', 'Tomasz']);
+    await assert.rejects(h.service.confirmActions([a!.id], { as: { type: 'slack' } }), code('invalid_state'), 'already confirmed');
+
+    // The found type itself is a plain confirm with edits; an empty body is written by the model.
+    const [same] = await h.service.confirmActions([b!.id], { as: { type: 'todo', body: '' } });
+    assert.deepEqual([same!.type, same!.body, same!.events.at(-1)!.detail], ['todo', null, undefined]);
+  });
+
   test('an item found without a summary has none, and a confirmed to-do without a note takes it', async () => {
     const h = harness();
     writeTea(h);

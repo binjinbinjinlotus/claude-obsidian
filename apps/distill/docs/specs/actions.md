@@ -3,7 +3,7 @@ type: spec
 title: Actions
 status: built
 created: 2026-10-02
-updated: 2026-10-05
+updated: 2026-10-06
 tags:
   - distill
   - actions
@@ -87,6 +87,46 @@ SettingsNav). Contract: `core/src/contracts.ts` → "Actions (actions.json)",
   confirm). Kept `historyDays` (default 90). A restored item of a type now
   off comes back as a to-do. A type turned off loses its sub-item and its
   items fall back to to-dos.
+
+## Add as at confirm time (2026-10-06, owner request)
+
+In **Actions › To do › TO CONFIRM**, an item found as a to-do could only be
+added as a to-do (footer: Dismiss | + Add); to send it through a handler the
+owner had to add it, then Send to. Now the destination is chosen at confirm
+time.
+
+- **Footer:** Dismiss | a split button. The main part reads "Add as <found
+  type>" ("Add as to-do"; "Add as Slack message" when found as one). The ▾
+  part opens **Add as…**, listing every enabled action type: To-do first,
+  then the types that have a handler or button (Slack message, Jira ticket,
+  …), each with its icon and a line on what happens ("Ready to send with
+  Send in Slack").
+- **Panel:** picking another type opens an inline "Add as Slack message"
+  panel in the detail, with that type's fields prefilled from the item:
+  title → title; summary or body → body or text; people → to; source and
+  line kept. The owner edits and clicks "Add as Slack message", or Cancel.
+  Required fields left empty block Add, with the field named. For Slack, the
+  To row's "Who is X in Slack?" behaviour ([Action buttons](action-buttons.md),
+  Where to send) applies right there.
+- **Provenance:** converting keeps the source note, line, From the wiki, Why
+  and labels (the same item, in place), and Activity records "Added … as
+  Slack message (found as to-do)" (`action.confirmed`, `details.foundAs`).
+- **Row:** the list row has the same choice in its context menu
+  (right-click › Add as ▸ …). Keyboard: Return = Add as the found type;
+  ⌥Return opens Add as….
+- Add all and Dismiss all are unchanged (each item as its found type). Send
+  to (after the fact) stays.
+- **Core:** `confirmActions(ids, {as})` with `as = {type, title?, body?,
+  fields?}` (`ConfirmAs`), one id at a time. The type must be on (not
+  reserved); fields are mapped (same keys kept; a to-do's person → a
+  message's To or a ticket's assignee, and back), then the overrides apply;
+  an unknown field, a choice outside its list, or an empty required field is
+  refused in plain words ("Fill in To first."); defaults fill the rest. The
+  item keeps its id and gets events `type` "todo → slack" and `confirmed`
+  "as slack (found as todo)". An empty body on a drafting type writes the
+  draft. A converted Slack message resolves its To exactly like a found one.
+  Tests: `actions.test.ts` ("Add as: …"), `http-actions.test.ts`,
+  `activity.test.ts`.
 
 ## Settings
 
@@ -370,7 +410,7 @@ All routes need the bearer token, like every other route.
 | GET | `/v1/actions/:id` | | `ActionItem` (404 `action_not_found`) |
 | PATCH | `/v1/actions/:id` | `ActionPatch` | `ActionItem` |
 | DELETE | `/v1/actions/:id` | | `{id, deleted: true}` (History only, else 409) |
-| POST | `/v1/actions/confirm` | `{ids}` | `{actions: ActionItem[]}` |
+| POST | `/v1/actions/confirm` | `{ids, as?: {type, title?, body?, fields?}}` (`as`: one id; Add as) | `{actions: ActionItem[]}` |
 | POST | `/v1/actions/dismiss` | `{ids}` | `{ids, dismissed: true}` |
 | POST | `/v1/actions/:id/draft` | | `ActionItem` (closing the request cancels) |
 | POST | `/v1/actions/:id/improve` | | `ActionItem` (closing the request cancels) |

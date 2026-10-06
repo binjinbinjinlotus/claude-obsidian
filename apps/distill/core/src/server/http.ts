@@ -17,6 +17,7 @@ import type {
   ScriptSource,
   ActionPatch,
   ActionQuery,
+  ConfirmAs,
   ActionSource,
   ActionStatus,
   AddNoteRequest,
@@ -408,6 +409,25 @@ function parsePatch(body: unknown): ActionPatch {
   const labels = optStringArray(o, 'labels');
   if (labels) patch.labels = labels;
   return patch;
+}
+
+/** Add as (actions.md): {type, title?, body?, fields?}; the core checks the fields against the type. */
+function parseConfirmAs(v: unknown): ConfirmAs {
+  const o = asObject(v, false);
+  const out: ConfirmAs = { type: reqString(o, 'type') };
+  const title = optString(o, 'title');
+  if (title !== undefined) out.title = title;
+  if (o.body === null) out.body = null;
+  else if (o.body !== undefined) out.body = reqString(o, 'body', true);
+  if (o.fields !== undefined && o.fields !== null) {
+    const f = asObject(o.fields, false);
+    out.fields = {};
+    for (const [k, x] of Object.entries(f)) {
+      if (x !== null && typeof x !== 'string') throw bad(`"as.fields.${k}" must be a string or null`);
+      out.fields[k] = x;
+    }
+  }
+  return out;
 }
 
 function parseIDs(o: Record<string, unknown>): string[] {
@@ -1177,7 +1197,10 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
     {
       method: 'POST',
       pattern: /^\/v1\/actions\/confirm$/,
-      handler: async ({ body }) => ({ actions: await core.confirmActions(parseIDs(asObject(await body(), false))) }),
+      handler: async ({ body }) => {
+        const o = asObject(await body(), false);
+        return { actions: await core.confirmActions(parseIDs(o), o.as === undefined || o.as === null ? {} : { as: parseConfirmAs(o.as) }) };
+      },
     },
     {
       method: 'POST',
