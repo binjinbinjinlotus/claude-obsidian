@@ -910,7 +910,9 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
   - While recovery works on a plan error, the raw "Can't apply this plan yet"
     callout waits.
   - A failed batch with a recovery stays in Review's list
-    (`ApplyTimeline.reviewList`), its row reads Couldn't fix once recovery gave up.
+    (`ApplyTimeline.reviewList`); once recovery gave up its row reads Couldn't
+    fix, its pill Needs you, and it counts in the badges (`needsOwner`, core
+    and Swift).
 - **Continue in a new session** (`recovery.proposal == 'new_session'`, on both
   cards): the button opens the usual `SessionReplaceConfirm` in the card,
   headed "Recovery suggests a new session"; only its **Continue** sends
@@ -935,8 +937,6 @@ and `FakeRunner`, as `review-labels.test.ts` does, with a temp
     attempt).
   - The Couldn't fix card has no **Rebuild** option yet, and the attempts are
     one line, not one row each.
-  - Badges don't count a failed batch recovery gave up on (`needsOwner` is
-    for waiting batches).
 - Tests: `session-continuity.test.ts` (runner-failed recovery; a stopped batch
   can be rejected; a gone session proposes a new one and only the owner's
   Continue starts it), `engine.test.ts` (plan-error rule then agent with the

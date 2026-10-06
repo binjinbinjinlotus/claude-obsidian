@@ -17,6 +17,12 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**A failed batch recovery gave up on counts as Needs you (2026-10-06).**
+Supersedes "Badges still count only waiting batches" in the entry below: now
+that such a batch can be rejected, it counts in the badges and its pill reads
+Needs you, as the spec's Couldn't fix state says. Why: never rely on the owner
+noticing a batch Distill gave up on.
+
 **Recovery covers stale-again, plan errors and failed runs (2026-10-06).**
 Step 6 of [Review queue](review-queue.md); extends the 2026-10-05 entry
 "Recovery agent: built for blocked commands first". Each of these signatures

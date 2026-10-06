@@ -54,6 +54,7 @@ final class ReviewQueueTests: XCTestCase {
         var job = Job(id: "j", vaultPath: "/v", files: [], state: .failed)
         job.recovery = r
         XCTAssertTrue(RecoveryText.shows(job), "a batch whose run stopped shows its recovery")
+        XCTAssertTrue(ReviewQueueText.needsOwner(job), "Couldn't fix needs the owner")
         XCTAssertEqual(ReviewBatches.rowState(job, in: [job]), .couldntFix)
         XCTAssertEqual(ApplyTimeline.reviewList([job]).map(\.id), ["j"])
         XCTAssertFalse(RecoveryText.offersNewSession(job))

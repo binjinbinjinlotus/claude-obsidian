@@ -1422,6 +1422,8 @@ export function createEngine(opts: EngineOptions): Engine {
 
   /** A batch in Review that needs the owner: not waiting to apply, not being rebuilt, not recovering. */
   function needsOwner(j: Job): boolean {
+    // review-queue.md: a stopped batch recovery gave up on is Couldn't fix, which needs the owner too.
+    if (j.state === 'failed') return j.recovery?.state === 'gaveUp';
     if (j.state !== 'awaitingApproval') return false;
     if (j.queuedApply?.planSha256) return false;
     if (j.refresh) return false;

@@ -233,6 +233,8 @@ public enum BlockedText {
 public enum ReviewQueueText {
     /// The batch needs the owner: the same rule as the core's pendingApprovals (badges).
     public static func needsOwner(_ j: Job) -> Bool {
+        // A stopped batch recovery gave up on is Couldn't fix, which needs the owner too.
+        if j.state == .failed { return j.recovery?.state == .gaveUp }
         guard j.state == .awaitingApproval else { return false }
         if j.queuedApply?.waitingToApply == true || j.refresh != nil { return false }
         if let r = j.recovery, r.state == .running || r.state == .waiting { return false }

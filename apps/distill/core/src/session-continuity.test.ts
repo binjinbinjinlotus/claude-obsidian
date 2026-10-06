@@ -439,7 +439,9 @@ describe('batches: approve, reply, allow, Open in Terminal', () => {
     await h.engine.reply(job.id, 'again');
     await h.engine.whenIdle();
     assert.equal(h.engine.getJob(job.id)!.recovery?.state, 'gaveUp');
+    assert.equal((await h.engine.status()).pendingApprovals, 1, "Couldn't fix needs the owner");
     await h.engine.reject(job.id);
+    assert.equal((await h.engine.status()).pendingApprovals, 0);
     const after = h.engine.getJob(job.id)!;
     assert.equal(after.state, 'rejected');
     assert.equal(after.recovery, undefined);
