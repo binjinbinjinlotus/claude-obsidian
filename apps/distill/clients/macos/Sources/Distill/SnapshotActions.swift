@@ -354,9 +354,13 @@ extension StatesSnapshot {
         todo("actions-confirm-addas-menu", "Add as…", "Dismiss | Add as to-do ▾: the menu lists To-do first, then the types with a handler or button, each with what happens.", e)
 
         e = addAs { e in
+            // Canvas E: the owner already said who Mei Tanaka is in Slack, so To resolves and Add is on.
+            let vault = "/Users/jin/Documents/Tea Vault"
+            e.actions.items["p1"]?.vaultPath = vault
+            e.actions.slackPeople = [SlackPerson(vaultPath: vault, name: "Mei Tanaka", target: "@mei.tanaka", savedAt: "2026-10-06T09:00:00Z")]
             if let item = e.actions.items["p1"], let slack = e.actions.type("slack") { e.actions.addingAs["p1"] = AddAs.prefill(item, as: slack) }
         }
-        todo("actions-confirm-addas-slack", "Add as Slack message", "The panel, prefilled: title, To from the person, the summary as the text; Who is Mei Tanaka in Slack? right there.", e)
+        todo("actions-confirm-addas-slack", "Add as Slack message", "The panel, prefilled: title, To from the person (Mei Tanaka, @mei.tanaka, remembered), the summary as the text; Cancel · Add as Slack message.", e)
 
         e = addAs { e in
             if let item = e.actions.items["p1"], let slack = e.actions.type("slack") {
