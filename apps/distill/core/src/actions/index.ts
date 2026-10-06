@@ -79,7 +79,7 @@ import {
 import type { FetchLike } from '../runners/model-api.js';
 import { defaultSecretStore, type SecretStore } from '../runners/secrets.js';
 import { isoDate } from '../store/json.js';
-import { actionPreferences, defaultSelection as settingsDefaultSelection } from '../store/settings.js';
+import { actionPreferences, decodeActionPreferences, defaultSelection as settingsDefaultSelection } from '../store/settings.js';
 import { DRAFT_SCHEMA, FIND_SCHEMA, fieldsFrom, IMPROVE_SCHEMA, modelName, runStructured, SUMMARIZE_SCHEMA, type ActionTask } from './ai.js';
 import { ActionHandlerError, API_TOKEN_URL, ATLASSIAN, AtlassianClient, ConnectionFile } from './atlassian.js';
 import { approvalHash, buildArgv, commandTimeout, displayArgv, maskSecrets, parseResult, placeholdersIn, type TemplateValues } from '../collectors/commands.js';
@@ -2555,7 +2555,9 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
 
     async routingPreview(draft?: Pick<ActionPreferences, 'people' | 'types'>): Promise<RoutingPreview> {
       const saved = prefs();
-      const p = { people: draft?.people ?? saved.people ?? [], types: { ...saved.types, ...(draft?.types ?? {}) } };
+      // The draft is read like Settings reads it (it comes over HTTP as plain JSON).
+      const d = draft ? decodeActionPreferences({ ...(draft.people ? { people: draft.people } : {}), ...(draft.types ? { types: draft.types } : {}) }) : undefined;
+      const p = { people: d?.people ?? saved.people ?? [], types: { ...saved.types, ...(d?.types ?? {}) } } as Pick<ActionPreferences, 'people' | 'types'>;
       const since = now().getTime() - PREVIEW_DAYS * DAY_MS;
       const out: RoutingPreview = { days: PREVIEW_DAYS, lists: 0, waiting: 0, others: 0 };
       for (const i of items) {

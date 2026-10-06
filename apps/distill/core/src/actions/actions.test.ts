@@ -1639,6 +1639,9 @@ describe('whose items: routing found items (actions-routing.md)', () => {
     // Handling Vladan's to-dos too would send his benchmark to your lists.
     const people = [...PEOPLE, { id: 'p-vladan', name: 'Vladan Dimitrijevic', aliases: ['Vladan'] }];
     assert.deepEqual(await h.service.routingPreview({ people, types: { todo: { handlesFor: ['you', 'p-aditya', 'p-vladan'] } } }), { days: 7, lists: 4, waiting: 1, others: 0 });
+    // The People being edited come over HTTP as plain JSON: read like Settings reads them (no aliases = none), never a crash.
+    const loose = JSON.parse('[{"id":"you","name":"Jin Bin Liu"},{"id":"p-aditya","name":"Aditya Pradhan","aliases":["Aditya","A"]},{"id":"p-x","name":7}]');
+    assert.deepEqual(await h.service.routingPreview({ people: loose }), { days: 7, lists: 3, waiting: 1, others: 1 });
     h.clock.t = new Date('2026-10-12T15:00:00Z');
     assert.deepEqual(await h.service.routingPreview(), { days: 7, lists: 0, waiting: 0, others: 0 });
   });
