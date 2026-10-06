@@ -141,9 +141,9 @@
     {
       "id": "sa-card-todo",
       "label": "Buttons on every type",
-      "caption": "To do, Jira, Confluence and future types get the same ＋ Button.",
+      "caption": "To do, Jira, Confluence and future types get the same ＋ Button. As built: a narrow pane puts the footer’s buttons on their own row.",
       "card": {
-        "height": 300,
+        "height": 470,
         "bg": "#E4E1DB",
         "pad": "22px",
         "align": "stretch"

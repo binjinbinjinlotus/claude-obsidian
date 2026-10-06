@@ -70,7 +70,7 @@
     {
       "id": "review-recovering",
       "base": "review",
-      "label": "E · Recovering · Opus: the rebuild went stale again; attempt 2 of 2, cost shown",
+      "label": "E · Stale again: rebuilt in its session first, then Recovering · Opus; one notice, one attempts line",
       "set": {
         "detail": {
           "frag": "recovering"
@@ -81,7 +81,7 @@
     {
       "id": "review-gaveup",
       "base": "review",
-      "label": "F · I couldn’t fix this: what’s wrong, what was tried, the options",
+      "label": "F · Distill couldn’t fix this: the core’s sentence, Let recovery try again, Continue in a new session (proposed), Open in Terminal, Reject batch",
       "set": {
         "detail": {
           "frag": "gaveup"
@@ -111,6 +111,66 @@
         },
         "sidebar.reviewCount": "2",
         "sidebar.status": "Needs you"
+      }
+    },
+    {
+      "id": "review-recovering-plan-error",
+      "base": "review",
+      "label": "I · Plan error: the fixed reply came first; Recovering · Opus · asking Claude to rebuild the plan",
+      "set": {
+        "detail": {
+          "frag": "recovering-plan-error"
+        },
+        "sidebar.status": "Opus · recovering"
+      }
+    },
+    {
+      "id": "review-waiting-backoff",
+      "base": "review",
+      "label": "J · Waiting: Recovering · next try at 4:41 PM; a minute between agent attempts",
+      "set": {
+        "detail": {
+          "frag": "waiting-backoff"
+        },
+        "sidebar.status": "Recovering · next try at 4:41 PM"
+      }
+    },
+    {
+      "id": "review-gaveup-runner",
+      "base": "review",
+      "label": "K · A failed batch (runner-failed) gave up: it stays in Review; Let recovery try again, Open in Terminal, Reject batch",
+      "set": {
+        "detail": {
+          "frag": "gaveup-runner"
+        },
+        "sidebar.reviewCount": "2",
+        "sidebar.status": "Needs you"
+      }
+    },
+    {
+      "id": "review-gaveup-new-session",
+      "base": "review",
+      "label": "L · Recovery suggests a new session: the owner confirms in the card (Continue), never automatic",
+      "set": {
+        "detail": {
+          "frag": "gaveup-new-session"
+        },
+        "sidebar.reviewCount": "2",
+        "sidebar.status": "Needs you"
+      }
+    },
+    {
+      "id": "rq-card-asbuilt",
+      "label": "As built (2026-10-06)",
+      "caption": "Where the build differs from the frames above, and what is still open.",
+      "card": {
+        "height": 520,
+        "bg": "#E4E1DB",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-asbuilt"
       }
     },
     {
@@ -245,7 +305,7 @@
       "file": "ReviewQueue.dc.html",
       "title": "Review queue · approve several, they go in one at a time",
       "heading": "Approve as many batches as you like: Distill adds them one at a time and keeps every plan current",
-      "intro": "“it is very bad, it list out each batch much better” and “when the issue happen it is nearly very difficult for the user to recover or fix the issue by itself, it will keep rerun and nothing will fix”. Approving a batch while another is being added queues it; applies run one at a time per vault, oldest approval first. After each apply the core re-checks every waiting batch against the vault. A stale batch you haven’t approved is rebuilt by its own session before you look (Updating…). A stale batch you approved is rebuilt and asks once more, with what changed since you approved: the approval gate binds every byte, so it never carries over (decision A). Exit 75 is never shown as a failure. A batch that still can’t move gets a bounded recovery: rules first, then a recovery model (Opus by default, set in Settings) that picks one fix the core can run and check, at most 2 times and $1.00, then “I couldn’t fix this” with your options. Review’s tabs become a list.",
+      "intro": "“it is very bad, it list out each batch much better” and “when the issue happen it is nearly very difficult for the user to recover or fix the issue by itself, it will keep rerun and nothing will fix”. Approving a batch while another is being added queues it; applies run one at a time per vault, oldest approval first. After each apply the core re-checks every waiting batch against the vault. A stale batch is always rebuilt in its own session first; one you haven’t approved is rebuilt by its own session before you look (Updating…). A stale batch you approved is rebuilt and asks once more, with what changed since you approved: the approval gate binds every byte, so it never carries over (decision A). Exit 75 is never shown as a failure. A batch that still can’t move gets a bounded recovery: rules first, then a recovery model (Opus by default, set in Settings) that picks one fix the core can run and check, at most 2 times and $1.00, then “Distill couldn’t fix this” with your options. Review’s tabs become a list.",
       "width": 2520,
       "sections": [
         {
@@ -289,6 +349,24 @@
           "style": "display: flex; gap: 40px; align-items: flex-start"
         },
         {
+          "title": "Recovery for other problems (as built, step 6)",
+          "sub": "Plan errors and failed runs get one fixed reply first, then the recovery agent, with a minute between agent attempts. Words are the app’s RecoveryText."
+        },
+        {
+          "row": [
+            "review-recovering-plan-error",
+            "review-waiting-backoff"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
+          "row": [
+            "review-gaveup-runner",
+            "review-gaveup-new-session"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
           "title": "The rules"
         },
         {
@@ -312,6 +390,12 @@
             "rq-card-denial",
             "rq-card-names",
             "rq-card-tests"
+          ],
+          "cols": 3
+        },
+        {
+          "grid": [
+            "rq-card-asbuilt"
           ],
           "cols": 3
         }
