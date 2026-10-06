@@ -17,6 +17,15 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**A Slack message Distill can't address reads Needs a recipient (2026-10-06,
+owner decision).** "Ready to send" on a message whose To is a name Distill
+doesn't know promised a send the button would refuse. When an enabled button
+sends to `{fields.to}` and the name has no remembered @handle, the row and the
+status filter say **Needs a recipient** instead (action-buttons.md, Where to
+send). Also from the round-4 check: a To row like "@Mei Tanaka" or "#eng team"
+is refused like a plain name, and a button that fills in a thread refuses a
+thread link Distill can't read rather than posting at the top level.
+
 **A Slack name is resolved by the owner once per vault, never sent raw
 (2026-10-06).** The extractor keeps a person's name as written, so a button
 bound to `{fields.to}` sent "Aditya Pradhan" and the script's pattern refused

@@ -51,7 +51,8 @@ struct TypeListScreen: View {
     }
     private var visible: [ActionItem] {
         live.filter { store.completing.contains($0.id)
-            || ActionFacets.matches(kind, ui.filter, $0, types: store.types, copied: store.copiedAt[$0.id] != nil) }
+            || ActionFacets.matches(kind, ui.filter, $0, types: store.types, copied: store.copiedAt[$0.id] != nil,
+                                    slackTarget: $0.type == "slack" ? store.slackTarget($0) : nil) }
     }
     private var pending: [ActionItem] { store.pending.filter { $0.type == type.id } }
 
@@ -224,7 +225,10 @@ struct TypeListScreen: View {
         if item.status == .open && (item.body ?? "").isEmpty { return ("Not written", .muted) }
         if !creates {
             if item.status == .ready && (store.copiedAt[item.id] != nil || item.lastEvent("copied") != nil) { return ("Copied", .ready) }
-            if item.status == .ready { return (type.readyWords, .ready) }
+            if item.status == .ready {
+                let words = type.readyWords(for: item.type == "slack" ? store.slackTarget(item) : nil)
+                return (words, words == ActionTypeInfo.needsRecipient ? .error : .ready) // peach, like Needs you
+            }
         }
         return ("Draft", .draft)
     }

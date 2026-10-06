@@ -763,6 +763,15 @@ Order: core → API → CLI → Mac. Each step is one commit, with `npm test
 - **Ready to send (2026-10-06).** A ready Slack message reads "Ready to send"
   when a button holds the Send slot (and is on), not "Ready to paste"
   (`ActionTypeInfo.readyWords`): the row, the detail and the status filter.
+- **Needs a recipient (2026-10-06, owner decision).** A ready Slack message whose
+  To is a name Distill doesn't know yet, while an enabled button sends to
+  `{fields.to}` (or `{recipient}`), reads **Needs a recipient** (peach) instead
+  of "Ready to send": the row pill, the detail badge and the status filter,
+  which lists it after the ready words when a button sends
+  (`ActionTypeInfo.readyWords(for:)`, `ActionFacets.values(…, slackTarget:)`).
+  A remembered name, a button that doesn't use the To field, or Copy keep
+  "Ready to send"; other To problems (a group, a handle with spaces) keep their
+  own words on the To row.
 
 ## Where to send (2026-10-06)
 

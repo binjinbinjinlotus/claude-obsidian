@@ -412,6 +412,14 @@ public struct ActionTypeInfo: Codable, Hashable, Identifiable, Sendable {
         if handler("send")?.available == true { return "Ready to send" }
         return buttons.contains { $0.button.slot == .send && $0.button.enabled } ? "Ready to send" : "Ready to paste"
     }
+    /// One ready item's words (action-buttons.md, "Where to send"): a Slack message whose To is a name Distill
+    /// doesn't know yet, while a button sends to {fields.to}, reads "Needs a recipient" instead of "Ready to send".
+    public func readyWords(for target: SlackTarget?) -> String {
+        if id == "slack", let target, target.ask != nil,
+           buttons.contains(where: { $0.button.enabled && target.blocks($0.button) != nil }) { return Self.needsRecipient }
+        return readyWords
+    }
+    public static let needsRecipient = "Needs a recipient"
     /// Usable now: on, and not a reserved slot (Email).
     public var isUsable: Bool { enabled && !reserved }
 }

@@ -47,6 +47,33 @@ final class ActionsFiltersTests: XCTestCase {
 
     // MARK: Facets
 
+    func testANameDistillDoesNotKnowNeedsARecipientWhenAButtonSendsToIt() {
+        let ready = item("b", "slack", .ready, body: "Hi", fields: ["to": "Mei Tanaka"])
+        var slack = ActionTypeInfo(id: "slack", label: "Slack message")
+        let send = AutomationButton(id: "send", label: "Send in Slack", bindings: ["target": "{fields.to}", "text": "{body}"], slot: .send)
+        slack.buttons = [ActionButtonInfo(button: send)]
+        let unknown = SlackTarget.resolve(to: "Mei Tanaka", thread: nil, lookup: { _ in nil })
+        let known = SlackTarget.resolve(to: "Mei Tanaka", thread: nil, lookup: { _ in "@mei" })
+        // The row pill and the status filter say the same words.
+        XCTAssertEqual(slack.readyWords(for: unknown), "Needs a recipient")
+        XCTAssertEqual(ActionFacets.values("slack", "status", ready, types: [slack], slackTarget: unknown), ["Needs a recipient"])
+        var f = FacetFilter()
+        f.toggle("status", "Needs a recipient")
+        XCTAssertTrue(ActionFacets.matches("slack", f, ready, types: [slack], slackTarget: unknown))
+        XCTAssertFalse(ActionFacets.matches("slack", f, ready, types: [slack], slackTarget: known))
+        XCTAssertEqual(slack.readyWords(for: known), "Ready to send", "a remembered name resolves it")
+        XCTAssertEqual(slack.readyWords(for: nil), "Ready to send")
+        // Copy and paste work with any name: a button that doesn't send to the To field keeps Ready to send.
+        var toMe = slack
+        toMe.buttons = [ActionButtonInfo(button: AutomationButton(id: "me", label: "Send to me", bindings: ["target": "@me", "text": "{body}"], slot: .send))]
+        XCTAssertEqual(toMe.readyWords(for: unknown), "Ready to send")
+        // An off button doesn't count; nor does a group (another problem, not a missing name).
+        var off = slack
+        off.buttons[0].button.enabled = false
+        XCTAssertEqual(off.readyWords(for: unknown), "Ready to paste")
+        XCTAssertEqual(slack.readyWords(for: SlackTarget.resolve(to: "Mei, Aditya", thread: nil, lookup: { _ in nil })), "Ready to send")
+    }
+
     func testSlackStatusesAndMatching() {
         let notWritten = item("a", "slack", .open)
         let ready = item("b", "slack", .ready, body: "Hi", fields: ["to": "Mei Tanaka"], labels: ["tea-club"])
@@ -57,7 +84,7 @@ final class ActionsFiltersTests: XCTestCase {
         var slack = ActionTypeInfo(id: "slack", label: "Slack message")
         slack.buttons = [ActionButtonInfo(button: AutomationButton(id: "send", label: "Send in Slack", slot: .send))]
         XCTAssertEqual(ActionFacets.values("slack", "status", ready, types: [slack]), ["Ready to send"])
-        XCTAssertEqual(ActionFacets.fixed("slack", "status", types: [slack]), ["Not written", "Draft", "Ready to send", "Copied"])
+        XCTAssertEqual(ActionFacets.fixed("slack", "status", types: [slack]), ["Not written", "Draft", "Ready to send", "Needs a recipient", "Copied"])
         XCTAssertEqual(ActionFacets.values("slack", "status", copied), ["Copied"])
         var f = FacetFilter()
         f.toggle("status", "Ready to paste")

@@ -100,7 +100,10 @@ public enum ActionFacets {
     /// Fixed option lists (no counts); other sections list the values the items have, by count.
     public static func fixed(_ kind: String, _ key: String, types: [ActionTypeInfo] = []) -> [String]? {
         switch (kind, key) {
-        case ("slack", "status"): return ["Not written", "Draft", types.first { $0.id == "slack" }?.readyWords ?? "Ready to paste", "Copied"]
+        case ("slack", "status"):
+            let ready = types.first { $0.id == "slack" }?.readyWords ?? "Ready to paste"
+            // A button that sends: a message whose To is a name Distill doesn't know needs a recipient first.
+            return ["Not written", "Draft", ready] + (ready == "Ready to send" ? [ActionTypeInfo.needsRecipient] : []) + ["Copied"]
         case ("jira", "status"), ("confluence", "status"): return ["Not written", "Draft", "Created"]
         case ("history", "type"):
             let builtin = ["To do", "Slack message", "Jira ticket", "Confluence page"]
@@ -115,13 +118,14 @@ public enum ActionFacets {
 
     /// The values an item has for one section (empty = it never matches a filter on that section).
     public static func values(_ kind: String, _ key: String, _ item: ActionItem, now: Date = Date(),
-                              types: [ActionTypeInfo] = [], copied: Bool = false) -> [String] {
+                              types: [ActionTypeInfo] = [], copied: Bool = false, slackTarget: SlackTarget? = nil) -> [String] {
         switch key {
         case "status":
             if kind == "slack" {
                 if item.status == .open && (item.body ?? "").isEmpty { return ["Not written"] }
                 if item.status == .ready {
-                    return [copied || item.lastEvent("copied") != nil ? "Copied" : types.first { $0.id == kind }?.readyWords ?? "Ready to paste"]
+                    if copied || item.lastEvent("copied") != nil { return ["Copied"] }
+                    return [types.first { $0.id == kind }?.readyWords(for: slackTarget) ?? "Ready to paste"]
                 }
                 return ["Draft"]
             }
@@ -166,9 +170,9 @@ public enum ActionFacets {
     // MARK: Matching, sections, chips
 
     public static func matches(_ kind: String, _ filter: FacetFilter, _ item: ActionItem, now: Date = Date(),
-                               types: [ActionTypeInfo] = [], copied: Bool = false) -> Bool {
+                               types: [ActionTypeInfo] = [], copied: Bool = false, slackTarget: SlackTarget? = nil) -> Bool {
         for (key, wanted) in filter.selected where !wanted.isEmpty {
-            if Set(values(kind, key, item, now: now, types: types, copied: copied)).isDisjoint(with: wanted) { return false }
+            if Set(values(kind, key, item, now: now, types: types, copied: copied, slackTarget: slackTarget)).isDisjoint(with: wanted) { return false }
         }
         return ActionSearch.match(item, filter.text) != nil
     }
