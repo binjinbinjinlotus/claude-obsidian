@@ -1378,16 +1378,16 @@ struct JobDetailView: View {
         if let labels = approval?.labels, labels.state == .confirming {
             HStack(spacing: 6) {
                 Spinner(color: Theme.muted, size: 11)
-                Text("Saving your labels into the change and checking it again…").font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
+                Text("Saving your labels into the change and checking it again…").font(Theme.body(12)).foregroundStyle(Theme.muted).footerWrap()
             }
         } else if let blocker, !blocker.isEmpty {
-            Text(blocker).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
+            Text(blocker).font(Theme.body(12)).foregroundStyle(Theme.muted).footerWrap()
         } else if stopped > 0 {
             // v10: a source that couldn't be read is never in the change, and nothing here approves it.
-            Text(FullReadWords.stoppedFooter(stopped)).font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
+            Text(FullReadWords.stoppedFooter(stopped)).font(Theme.body(12)).foregroundStyle(Theme.muted).footerWrap()
         } else if let sources = approval?.sources, sources.contains(where: { !$0.labels.isEmpty && !$0.removed }),
                   approval?.labels?.state != .unconfirmed {
-            Text("Approving also confirms the labels shown").font(Theme.body(12)).foregroundStyle(Theme.muted).lineLimit(1)
+            Text("Approving also confirms the labels shown").font(Theme.body(12)).foregroundStyle(Theme.muted).footerWrap()
         }
     }
 
@@ -1554,3 +1554,10 @@ enum VaultPicker {
 }
 
 // ReplyEditor (Markdown reply box) lives in MarkdownEditor.swift.
+
+private extension Text {
+    /// A footer's status line wraps (two lines at most) instead of cutting off ("Approving also confirms the l…").
+    func footerWrap() -> some View {
+        lineLimit(2).fixedSize(horizontal: false, vertical: true)
+    }
+}
