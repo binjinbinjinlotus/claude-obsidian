@@ -58,6 +58,7 @@ import {
   sectionText,
   sha256File,
   sourceLineOf,
+  plainTitle,
   titleOfPage,
   wikiRef,
   windowAround,
@@ -67,9 +68,9 @@ import type { FetchLike } from '../runners/model-api.js';
 import { defaultSecretStore, type SecretStore } from '../runners/secrets.js';
 import { isoDate } from '../store/json.js';
 import { actionPreferences, defaultSelection as settingsDefaultSelection } from '../store/settings.js';
-import { DRAFT_SCHEMA, FIND_SCHEMA, fieldsFrom, IMPROVE_SCHEMA, modelName, runStructured, type ActionTask } from './ai.js';
+import { DRAFT_SCHEMA, FIND_SCHEMA, fieldsFrom, IMPROVE_SCHEMA, modelName, runStructured, SUMMARIZE_SCHEMA, type ActionTask } from './ai.js';
 import { ActionHandlerError, API_TOKEN_URL, ATLASSIAN, AtlassianClient, ConnectionFile } from './atlassian.js';
-import { buildDraftPrompt, buildFindPrompt, buildImprovePrompt, DEFAULT_FIND_PROMPT, type DraftContext, type FindDocument } from './prompts.js';
+import { buildDraftPrompt, buildFindPrompt, buildImprovePrompt, buildSummarizePrompt, DEFAULT_FIND_PROMPT, type DraftContext, type FindDocument } from './prompts.js';
 import {
   actionTypeDef,
   actionTypeDefs,
@@ -212,10 +213,17 @@ function readText(file: string, max: number): string | undefined {
 }
 
 function titleOf(text: string, file: string): string {
-  const fm = /^---\n(?:[\s\S]*?\n)?title:\s*["']?(.+?)["']?\s*\n[\s\S]*?---/.exec(text);
-  if (fm?.[1]) return fm[1];
-  const h = /^#\s+(.+)$/m.exec(text);
-  return h?.[1]?.trim() ?? path.basename(file, path.extname(file));
+  return titleOfPage(text, file);
+}
+
+/** A model's summary as plain text: Markdown emphasis and bullets dropped, one paragraph, ≤ 800 characters. */
+export function plainSummary(s: string): string {
+  const text = s
+    .split('\n')
+    .map((l) => plainTitle(l.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, '')))
+    .filter(Boolean)
+    .join(' ');
+  return clip(text, 800);
 }
 
 export function createActionsService(opts: ActionsServiceOptions): ActionsService {
@@ -577,6 +585,51 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     return aiPass(id, 'draft', signal);
   }
 
+  /** action-summary.md: an older item's summary, written on first open. One run per item at a time;
+   *  the status never changes. A failure leaves the summary empty with `error`, so Try again works. */
+  const summarizing = new Map<string, Promise<ActionItem>>();
+  function summarize(id: string, signal?: AbortSignal): Promise<ActionItem> {
+    const item = require(id);
+    if (item.summary?.trim()) return Promise.resolve(clone(item));
+    const running = summarizing.get(id);
+    if (running) return running;
+    const p = (async () => {
+      const selection = selectionFor('actionFind', prefs().findSelection);
+      const snapshot = clone(item);
+      try {
+        const prompt = buildSummarizePrompt(snapshot, promptContext(snapshot), draftContextFor(snapshot));
+        const out = await runStructured({
+          runners: opts.runners,
+          settings: opts.getSettings(),
+          task: 'actionFind',
+          selection,
+          prompt,
+          schema: SUMMARIZE_SCHEMA,
+          scratchRoot,
+          signal,
+        });
+        const summary = typeof out.value.summary === 'string' ? plainSummary(out.value.summary) : '';
+        if (!summary) throw new Error('The AI returned an empty summary.');
+        if (!find(id)) return snapshot;
+        return mutate(id, (i) => {
+          i.summary = summary;
+          if (i.error?.code === 'ai_failed' && i.error.message.startsWith('Couldn’t summarize')) i.error = null;
+          i.events.push(event(now(), 'summarized', `by ${out.model}`));
+        });
+      } catch (err) {
+        if (signal?.aborted || !find(id)) return find(id) ? clone(require(id)) : snapshot;
+        return mutate(id, (i) => {
+          i.error = { code: 'ai_failed', message: `Couldn’t summarize: ${(err as Error).message}` };
+        });
+      } finally {
+        summarizing.delete(id);
+      }
+    })();
+    summarizing.set(id, p);
+    track(p);
+    return p;
+  }
+
   // ───────────── finding ─────────────
 
   interface Found {
@@ -585,6 +638,8 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     body: string | null;
     fields: Record<string, string>;
     why: string;
+    /** action-summary.md: what the action is about (plain text, ≤ 800 characters). */
+    summary: string | null;
     quote: string;
     notePath: string | null;
     /** v11: the line numbers the model gave (window prompts); only a hint for the core's own search. */
@@ -606,6 +661,7 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         body: typeof o.body === 'string' && o.body.trim() ? o.body.trim() : null,
         fields: fieldsFrom(o.fields),
         why: typeof o.why === 'string' ? o.why.trim() : '',
+        summary: typeof o.summary === 'string' && o.summary.trim() ? plainSummary(o.summary) : null,
         quote: typeof o.quote === 'string' ? o.quote.trim().slice(0, 600) : '',
         notePath: typeof o.notePath === 'string' && o.notePath.trim() ? o.notePath.trim() : null,
       };
@@ -649,6 +705,7 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       body: type === TODO_TYPE ? f.body : null,
       fields: withDefaults(type, f.fields),
       why: f.why || null,
+      summary: f.summary,
       source: o.source,
       vaultPath: o.vaultPath,
       createdAt: t,
@@ -1623,6 +1680,8 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
             i.events.push(event(now(), 'type', `${i.type} → ${type}`));
             i.type = type;
           }
+          // action-summary.md: a to-do confirmed without a note takes its summary as the note.
+          if (i.type === TODO_TYPE && !i.body?.trim() && i.summary?.trim()) i.body = i.summary;
           i.status = initialStatus(i.type, i.body);
           i.events.push(event(now(), 'confirmed'));
         });
@@ -1661,6 +1720,10 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
 
     draftAction(id, o) {
       return draft(id, o?.signal);
+    },
+
+    summarizeAction(id, o) {
+      return summarize(id, o?.signal);
     },
 
     improveAction(id, o) {
@@ -1759,6 +1822,7 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         body: def.id === TODO_TYPE ? (item.body ?? null) : null,
         fields: withDefaults(def.id, fields),
         why: item.why ?? null,
+        summary: item.summary ?? null,
         source: clone(item.source),
         vaultPath: item.vaultPath ?? null,
         createdAt: t,

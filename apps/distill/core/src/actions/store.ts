@@ -150,7 +150,7 @@ export function decodeAction(v: unknown, now = new Date()): ActionItem | undefin
     updatedAt: normalizeDate(v.updatedAt, new Date(createdAt)),
     events: Array.isArray(v.events) ? v.events.map((e) => decodeEvent(e, now)).filter((e): e is ActionEvent => !!e) : [],
   };
-  for (const k of ['body', 'why', 'vaultPath', 'draftModel', 'previousBody', 'fromActionID'] as const) {
+  for (const k of ['body', 'why', 'summary', 'vaultPath', 'draftModel', 'previousBody', 'fromActionID'] as const) {
     const x = nullableStr(v[k]);
     if (x !== undefined) item[k] = x;
   }
@@ -173,7 +173,7 @@ export function decodeAction(v: unknown, now = new Date()): ActionItem | undefin
 const SOURCE_KEYS = ['kind', 'jobID', 'notePath', 'pageTitle', 'quote', 'conversationID', 'question', 'citedPaths', 'turnIndex', 'gap', 'by', 'raw', 'wiki', 'contextNote'];
 
 const ITEM_KEYS = [
-  'id', 'type', 'status', 'title', 'body', 'fields', 'why', 'source', 'vaultPath', 'labels', 'createdAt', 'updatedAt',
+  'id', 'type', 'status', 'title', 'body', 'fields', 'why', 'summary', 'source', 'vaultPath', 'labels', 'createdAt', 'updatedAt',
   'draftModel', 'previousBody', 'external', 'error', 'fromActionID', 'events',
 ];
 

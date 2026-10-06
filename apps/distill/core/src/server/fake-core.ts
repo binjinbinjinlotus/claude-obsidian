@@ -608,6 +608,10 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       record('draftAction', id, opts?.signal ? 'signal' : undefined);
       return Object.assign(requireAction(id), { status: 'ready' as const, body: 'Drafted.' });
     },
+    async summarizeAction(id, opts) {
+      record('summarizeAction', id, opts?.signal ? 'signal' : undefined);
+      return Object.assign(requireAction(id), { summary: 'Summarized.' });
+    },
     async improveAction(id, opts) {
       record('improveAction', id, opts?.signal ? 'signal' : undefined);
       const item = requireAction(id);

@@ -605,3 +605,15 @@ describe('Ask: raw context from the cited pages', () => {
     assert.match(src.contextNote ?? '', /no archived original/);
   });
 });
+
+describe('plain titles (action-summary.md)', () => {
+  test('Markdown leaves source names; emoji stay', async () => {
+    const { plainTitle } = await import('./context.js');
+    assert.equal(plainTitle('**✍ Quick notes**'), '✍ Quick notes');
+    assert.equal(plainTitle('# _Team_ `sync`'), 'Team sync');
+    assert.equal(plainTitle('[[Polaris|Polaris stack]] notes'), 'Polaris stack notes');
+    assert.equal(plainTitle('[Doc](https://x.y) review'), 'Doc review');
+    assert.equal(plainTitle('snake_case_name'), 'snake_case_name');
+    assert.equal(plainTitle('**'), '**');
+  });
+});

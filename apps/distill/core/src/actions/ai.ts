@@ -34,6 +34,8 @@ export const FIND_SCHEMA = JSON.stringify({
         properties: {
           type: { type: 'string' },
           title: { type: 'string' },
+          // action-summary.md: what the action is about, 2–4 plain sentences.
+          summary: { type: 'string' },
           body: { type: 'string' },
           fields: FIELDS_SCHEMA,
           why: { type: 'string' },
@@ -51,7 +53,7 @@ export const FIND_SCHEMA = JSON.stringify({
             },
           },
         },
-        required: ['type', 'title', 'fields', 'why', 'quote'],
+        required: ['type', 'title', 'summary', 'fields', 'why', 'quote'],
       },
     },
   },
@@ -63,6 +65,13 @@ export const DRAFT_SCHEMA = JSON.stringify({
   additionalProperties: false,
   properties: { title: { type: 'string' }, body: { type: 'string' }, fields: FIELDS_SCHEMA },
   required: ['title', 'body', 'fields'],
+});
+
+export const SUMMARIZE_SCHEMA = JSON.stringify({
+  type: 'object',
+  additionalProperties: false,
+  properties: { summary: { type: 'string' } },
+  required: ['summary'],
 });
 
 export const IMPROVE_SCHEMA = JSON.stringify({

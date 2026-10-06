@@ -9,7 +9,7 @@ import type { ActionItem, JobActionProposal } from '../contracts.js';
 import { isObject, readJSON, writeFileAtomic } from '../store/json.js';
 import { jobStateDirectory } from '../store/jobs.js';
 import { decodeAction, encodeAction } from './store.js';
-import type { FindType } from './prompts.js';
+import { SUMMARY_INSTRUCTION, type FindType } from './prompts.js';
 
 export const FOUND_FILE = 'actions-found.json';
 
@@ -142,6 +142,7 @@ This is ${where}. Each source line starts with its line number and a tab. Find t
 THESE lines. The wiki page (when given) is what this source became in the knowledge base: use it \
 to understand who and what the lines are about, but take an action only from the source lines.
 For each action also give:
+${SUMMARY_INSTRUCTION}
 - lines: the source line numbers it comes from, e.g. "210-214" (the quote must be on them).
 - quote: copied verbatim from those lines (without the line numbers).
 - notePath: "${esc(o.file)}".

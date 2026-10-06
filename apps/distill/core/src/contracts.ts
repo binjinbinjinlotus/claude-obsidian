@@ -1188,6 +1188,10 @@ export interface ActionItem {
   fields: Record<string, string | null>;
   /** Why it needs doing (shown as "Why:"). */
   why?: string | null;
+  /** 2–4 plain sentences on what the action is about: context, who, what was asked, by when.
+   *  Written at finding time from the original plus the wiki; older items get it on first open
+   *  (action-summary.md). Not editable; separate from `body`. */
+  summary?: string | null;
   source: ActionSource;
   vaultPath?: string | null;
   labels?: string[];
@@ -2018,6 +2022,8 @@ export interface DistillCore {
   dismissActions(ids: string[]): Promise<void>;
   /** Write the draft now ("Create message"). progress key: action:<id>. */
   draftAction(id: string, opts?: { signal?: AbortSignal }): Promise<ActionItem>;
+  /** Write the summary of an item that has none (older items), from its original and wiki context. */
+  summarizeAction(id: string, opts?: { signal?: AbortSignal }): Promise<ActionItem>;
   /** Improve the draft after your edit (improve prompt + model); keeps previousBody for Undo. */
   improveAction(id: string, opts?: { signal?: AbortSignal }): Promise<ActionItem>;
   /** Put previousBody back. */

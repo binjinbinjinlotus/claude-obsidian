@@ -1189,6 +1189,11 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
     },
     {
       method: 'POST',
+      pattern: /^\/v1\/actions\/([^/]+)\/summarize$/,
+      handler: async ({ params, res }) => abortOnClose(res, (signal) => core.summarizeAction(params[0]!, { signal })),
+    },
+    {
+      method: 'POST',
       pattern: /^\/v1\/actions\/([^/]+)\/improve$/,
       handler: async ({ params, res }) => abortOnClose(res, (signal) => core.improveAction(params[0]!, { signal })),
     },

@@ -19,7 +19,7 @@ import {
 import { createRunnerRegistry } from '../runners/registry.js';
 import { MemorySecretStore } from '../runners/secrets.js';
 import { actionPreferences, decodeSettings } from '../store/settings.js';
-import { DRAFT_SCHEMA, FIND_SCHEMA, IMPROVE_SCHEMA } from './ai.js';
+import { DRAFT_SCHEMA, FIND_SCHEMA, IMPROVE_SCHEMA, SUMMARIZE_SCHEMA } from './ai.js';
 import { normalizeSite, refusal } from './atlassian.js';
 import { createActionsService, describeByType, isDuplicate, type ActionsService } from './index.js';
 import { markdownToADF, markdownToStorage, parseBlocks } from './markdown.js';
@@ -42,6 +42,7 @@ class FakeRunner implements AgentRunner {
   find: Answer = () => ({ structured: { items: [] } });
   draft: Answer = (req) => ({ structured: { title: '', body: `Draft for: ${/Title: (.*)/.exec(req.prompt)?.[1]}`, fields: [] } });
   improve: Answer = () => ({ structured: { body: 'Improved text.' } });
+  summarize: Answer = () => ({ structured: { summary: 'Mei runs the **tea club**. You offered to book the room for Saturday.' } });
   constructor(readonly id = 'fake') {}
   problems() {
     return [];
@@ -50,7 +51,7 @@ class FakeRunner implements AgentRunner {
     this.requests.push(req);
     await new Promise((r) => setImmediate(r));
     if (req.signal?.aborted) return { resultText: 'cancelled', isError: true, costUSD: 0, denials: [], raw: '' };
-    const answer = req.outputSchema === FIND_SCHEMA ? this.find : req.outputSchema === DRAFT_SCHEMA ? this.draft : this.improve;
+    const answer = req.outputSchema === FIND_SCHEMA ? this.find : req.outputSchema === DRAFT_SCHEMA ? this.draft : req.outputSchema === SUMMARIZE_SCHEMA ? this.summarize : this.improve;
     const a = await answer(req);
     return { resultText: '', isError: false, costUSD: 0.001, denials: [], raw: '{}', ...a };
   }
@@ -1078,5 +1079,60 @@ describe('labels on actions', () => {
   test('cleanLabels trims, drops #, blanks and duplicates', async () => {
     const { cleanLabels } = await import('./index.js');
     assert.deepEqual(cleanLabels([' #tea ', 'Tea', '', '##gyokuro', 'tea-shops']), ['tea', 'gyokuro', 'tea-shops']);
+  });
+});
+
+describe('action summary (action-summary.md)', () => {
+  test('finding asks for a summary and keeps it as plain text; Send to copies it', async () => {
+    const h = harness();
+    writeTea(h);
+    h.runner.find = () => ({
+      structured: { items: [{ ...TEA_FOUND.items[0], summary: '- Mei runs the **tea club**.\n- You offered to book the room for Saturday.' }] },
+    });
+    await h.service.findInJob(job(h, 'job-s', ['inbox/tea.md'], ['wiki/sources/tea.md']));
+    assert.match(h.runner.requests[0]!.prompt, /- summary: 2–4 plain sentences/);
+    const [item] = await h.service.listActions();
+    assert.equal(item!.summary, 'Mei runs the tea club. You offered to book the room for Saturday.');
+    const sent = await h.service.sendActionTo(item!.id, 'slack');
+    assert.equal(sent.summary, item!.summary);
+  });
+
+  test('an item found without a summary has none, and a confirmed to-do without a note takes it', async () => {
+    const h = harness();
+    writeTea(h);
+    h.runner.find = () => ({ structured: { items: [{ ...TEA_FOUND.items[0], summary: 'You offered to book the room.' }, { ...TEA_FOUND.items[0], title: 'Second one', quote: 'tell Mei so she can bring the new tin' }] } });
+    await h.service.findInJob(job(h, 'job-t', ['inbox/tea.md'], ['wiki/sources/tea.md']));
+    const items = await h.service.listActions();
+    const withSummary = items.find((i) => i.summary)!;
+    const without = items.find((i) => !i.summary)!;
+    assert.equal(without.summary ?? null, null);
+    const [confirmed] = await h.service.confirmActions([withSummary.id]);
+    assert.equal(confirmed!.body, 'You offered to book the room.');
+  });
+
+  test('summarize fills an older item once and keeps its status', async () => {
+    const h = harness();
+    const t = await h.service.createAction({ type: 'todo', title: 'Book the room' });
+    assert.equal(t.summary ?? null, null);
+    const [a, b] = await Promise.all([h.service.summarizeAction(t.id), h.service.summarizeAction(t.id)]);
+    assert.equal(a.summary, 'Mei runs the tea club. You offered to book the room for Saturday.');
+    assert.equal(b.summary, a.summary);
+    assert.equal(a.status, t.status);
+    assert.equal(h.runner.requests.filter((r) => r.outputSchema === SUMMARIZE_SCHEMA).length, 1, 'one run for two calls');
+    assert.equal(a.events.at(-1)!.event, 'summarized');
+    await h.service.summarizeAction(t.id);
+    assert.equal(h.runner.requests.filter((r) => r.outputSchema === SUMMARIZE_SCHEMA).length, 1, 'already summarized: no run');
+  });
+
+  test('a failed summary sets an error and Try again clears it', async () => {
+    const h = harness();
+    const t = await h.service.createAction({ type: 'todo', title: 'Book the room' });
+    h.runner.summarize = () => ({ structured: { summary: '' } });
+    const failed = await h.service.summarizeAction(t.id);
+    assert.match(failed.error!.message, /^Couldn’t summarize/);
+    h.runner.summarize = () => ({ structured: { summary: 'Now it works.' } });
+    const ok = await h.service.summarizeAction(t.id);
+    assert.equal(ok.summary, 'Now it works.');
+    assert.equal(ok.error ?? null, null);
   });
 });

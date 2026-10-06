@@ -223,11 +223,28 @@ export function bestHeading(text: string, query: string): string | undefined {
   return best?.heading;
 }
 
+/** A title as plain text (action-summary.md): no `**bold**`, `_italic_`, `code`, leading `#`, or link
+ *  syntax. "**✍ Quick notes**" → "✍ Quick notes"; emoji stay. */
+export function plainTitle(s: string): string {
+  const out = s
+    .replace(/^\s*#{1,6}\s+/, '')
+    .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
+    .replace(/\[\[([^\]]+)\]\]/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/(^|[^\w*])([*_])(?=\S)(.+?)(?<=\S)\2(?!\w)/g, '$1$3')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/\*\*|__/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return out || s.trim();
+}
+
 export function titleOfPage(text: string, file: string): string {
   const fm = /^---\n(?:[\s\S]*?\n)?title:\s*["']?(.+?)["']?\s*\n[\s\S]*?---/.exec(text);
-  if (fm?.[1]) return fm[1];
+  if (fm?.[1]) return plainTitle(fm[1]);
   const h = /^#\s+(.+)$/m.exec(text);
-  return h?.[1]?.trim() ?? path.basename(file, path.extname(file));
+  return plainTitle(h?.[1]?.trim() ?? path.basename(file, path.extname(file)));
 }
 
 /** A wiki ref with its section's excerpt; undefined when the heading isn't on the page. */

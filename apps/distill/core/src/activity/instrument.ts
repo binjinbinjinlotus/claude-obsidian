@@ -245,6 +245,7 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
     listActionTypes: 'read',
     listActions: 'read', // its History sweep is logged from `action` events
     getAction: 'read',
+    summarizeAction: 'read', // fills an older item's summary on first open; routine, not the owner's change
     listConnections: 'read',
     signInURL: 'read',
     listCollectors: 'read',
