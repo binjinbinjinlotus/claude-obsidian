@@ -50,6 +50,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Action summary](docs/specs/action-summary.md) | built (core, API, macOS; Ask rows show the summary, no click-to-open yet) |
 | [Action buttons and script commands](docs/specs/action-buttons.md) | designed (canvas row 15, board ScriptActions) |
 | [Resizable panes](docs/specs/resizable-panes.md) | built (macOS: every split screen, `PaneSplit.swift`) |
+| [Review queue](docs/specs/review-queue.md) | designed (canvas row 16, board ReviewQueue) |
 
 ## Layout
 
