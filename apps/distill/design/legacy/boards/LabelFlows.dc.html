@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Distill — How notes get labels</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&amp;family=DM+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0;font-family:"DM Sans",-apple-system,sans-serif;color:#1D1C1A;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 1600px; height: 900px; box-sizing: border-box; background: #EAE8E3; padding: 28px; display: flex; flex-direction: column; gap: 22px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 30px; letter-spacing: -0.03em">How a note gets its labels</h1>
+<span style="font-size: 14px; color: #6B6862">Three ways in. Labels always reuse existing ones first; a new label is marked <b>new</b>. Anything the AI applied on its own lands in Labels → <b>To review</b>.</span>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; flex-grow: 1; min-height: 0">
+<sc-for list="{{flows}}" as="f" hint-placeholder-count="3">
+<section style="display: flex; flex-direction: column; gap: 16px; padding: 22px; border-radius: 20px; background: #FFFFFF; box-shadow: 0 0 0 1px rgba(29,28,26,0.06), 0 12px 30px rgba(29,28,26,0.08)">
+<div style="display: flex; align-items: center; gap: 12px">
+<span style="width: 40px; height: 40px; border-radius: 13px; display: flex; align-items: center; justify-content: center; background: {{f.tint}}">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{{f.ink}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{f.icon}}"></path></svg>
+</span>
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1">
+<span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 19px; letter-spacing: -0.02em">{{f.name}}</span>
+<span style="font-size: 12px; color: #6B6862">{{f.sub}}</span>
+</span>
+<dc-import name="Pill" text="{{f.badge}}" fill="{{f.badgeBg}}" ink="{{f.badgeFg}}" hint-size="110px,24px"></dc-import>
+</div>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px">
+<sc-for list="{{f.steps}}" as="s" hint-placeholder-count="4">
+<li style="display: flex; gap: 10px; align-items: flex-start">
+<span style="width: 22px; height: 22px; flex-shrink: 0; border-radius: 11px; display: flex; align-items: center; justify-content: center; background: #F6F5F2; font-size: 11px; font-weight: 800; color: #48463F">{{s.n}}</span>
+<span style="font-size: 13px; line-height: 1.45; color: #1D1C1A">{{s.text}}</span>
+</li>
+</sc-for>
+</ol>
+<div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: flex-end">
+<div style="border-radius: 14px; padding: 14px 16px; background: {{f.panelBg}}; display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: {{f.panelHead}}">{{f.panelTitle}}</span>
+<sc-for list="{{f.lines}}" as="l" hint-placeholder-count="6">
+<span style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; color: {{l.c}}">{{l.t}}</span>
+</sc-for>
+</div>
+</div>
+</section>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const dim = '#9B978F', ink = '#1D1C1A', blue = '#1F6FEB', lime = '#3D6110', peach = '#B03A0A';
+const tl = (t, c) => ({ t, c: c || '#E8E6E1' });
+return {
+flows: [
+{
+name: 'In Distill', sub: 'Write a note, quick note, paste or drop', badge: 'You confirm', badgeBg: '#E3EEFF', badgeFg: blue,
+tint: '#E3EEFF', ink: blue, icon: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z',
+steps: [
+{ n: 1, text: 'You click Add to queue. The note is queued right away.' },
+{ n: 2, text: 'Haiku reads it and suggests labels, reusing existing ones.' },
+{ n: 3, text: 'You accept, edit, or add your own. Nothing is applied until you do.' },
+{ n: 4, text: 'If you close the window without choosing, the note stays unlabeled and shows in Labels → Unlabeled.' }
+],
+panelBg: '#F6F5F2', panelHead: '#6B6862', panelTitle: 'SUGGESTIONS IN THE CAPTURE WINDOW',
+lines: [tl('✦ #project-x      existing', lime), tl('✦ #incidents      new', peach), tl('+ add label', blue), tl(''), tl('[ Skip ]   [ Apply 2 labels ]', ink)]
+},
+{
+name: 'Queue folder', sub: 'A file dropped straight into the folder', badge: 'AI labels, you review', badgeBg: '#E9FBC9', badgeFg: lime,
+tint: '#E9FBC9', ink: lime, icon: 'M22 12h-6l-2 3h-4l-2-3H2M5.5 5h13L22 12v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z',
+steps: [
+{ n: 1, text: 'Distill sees a new file in the queue folder (Finder, scripts, sync).' },
+{ n: 2, text: 'When the batch runs, the AI picks labels and they are written with the note.' },
+{ n: 3, text: 'Each such note is marked to review.' },
+{ n: 4, text: 'In Labels → To review you correct or confirm them. Confirming clears the mark.' }
+],
+panelBg: '#F6F5F2', panelHead: '#6B6862', panelTitle: 'WRITTEN TO THE NOTE',
+lines: [tl('---', dim), tl('title: Auth service retry bug', ink), tl('tags:', ink), tl('  - project-x', ink), tl('  - incidents', ink), tl('labels_by: ai', lime), tl('labels_reviewed: false', peach), tl('---', dim)]
+},
+{
+name: 'CLI', sub: 'distill note add from a terminal or an agent', badge: 'Caller labels, else AI', badgeBg: '#FFE4D6', badgeFg: peach,
+tint: '#FFE4D6', ink: peach, icon: 'M4 17l6-5-6-5M12 19h8',
+steps: [
+{ n: 1, text: 'note add queues the note and answers with suggested labels and a request ID.' },
+{ n: 2, text: 'The caller (you or an agent) sends labels back with note label <request-id>.' },
+{ n: 3, text: 'Those labels count as reviewed. Passing --label on note add skips the round trip.' },
+{ n: 4, text: 'No reply before the batch runs? The AI labels apply and the note is marked to review.' }
+],
+panelBg: '#1D1C1A', panelHead: '#9B978F', panelTitle: 'TERMINAL',
+lines: [
+tl('$ distill note add --title "Retry bug" \\', '#FFFFFF'), tl('    --text "Auth retries loop on 503" --source slack', '#FFFFFF'),
+tl('Queued  Retry bug.md', '#B9F06A'), tl('Request nr_7f3c2a', '#E8E6E1'), tl('Suggested  #project-x  #incidents (new)', '#FFB894'),
+tl('Label it:  distill note label nr_7f3c2a --label …', '#9B978F'), tl(''),
+tl('$ distill note label nr_7f3c2a --label project-x --label auth', '#FFFFFF'), tl('Labeled  #project-x  #auth (new)', '#B9F06A')
+]
+}
+]
+};
+}
+}
+</script>
+</body>
+</html>

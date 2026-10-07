@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Distill — Loading states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&amp;family=DM+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0;font-family:"DM Sans",-apple-system,sans-serif;color:#1D1C1A;-webkit-font-smoothing:antialiased}
+button,input{font-family:inherit;cursor:pointer}
+@keyframes shimmer{0%{background-position:-240px 0}100%{background-position:240px 0}}
+.sk{border-radius:8px;background:linear-gradient(90deg,#EFEDE8 0px,#F8F7F4 80px,#EFEDE8 160px);background-size:480px 100%;animation:shimmer 1.4s linear infinite}
+@keyframes rise{0%{transform:translateY(0);opacity:0}30%{opacity:1}100%{transform:translateY(-14px);opacity:0}}
+.bub{position:absolute;border-radius:50%;background:#7FB52E;animation:rise 1.6s ease-in infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin 0.9s linear infinite}
+@keyframes pulse{0%,100%{opacity:.45}50%{opacity:1}}
+.pulse{animation:pulse 1.4s ease-in-out infinite}
+@media (prefers-reduced-motion: reduce){.sk,.bub,.spin,.pulse{animation:none}}
+</style>
+</helmet>
+<div style="width: 1600px; height: 1760px; box-sizing: border-box; background: #F6F5F2; padding: 30px 36px; display: flex; flex-direction: column; gap: 22px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 26px; letter-spacing: -0.02em">Waiting on the AI</span>
+<span style="font-size: 13px; color: #6B6862; max-width: 1100px; line-height: 1.5">One shared pattern: the bubbling flask says "working", a line says what it is doing and which model, the start shows as a clock time (“started at 3:41 PM”, never a ticking timer), and there is always a way out (Stop, Skip or Close — the work keeps going in the background where that is safe). Shimmer marks where the result will land. Motion stops with Reduce Motion.</span>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); gap: 26px 24px; flex-grow: 1">
+
+<!-- 1 Ask answering -->
+<section style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 14px; font-weight: 700">1 · Ask is answering</span>
+<div style="flex-grow: 1; border-radius: 20px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+<div style="align-self: flex-end; max-width: 300px; padding: 10px 14px; border-radius: 16px 16px 4px 16px; background: #E9FBC9; font-size: 14px">What did we decide about retries?</div>
+<div style="display: flex; align-items: center; gap: 10px">
+<span style="position: relative; width: 26px; height: 28px; flex-shrink: 0">
+<svg width="26" height="28" viewBox="0 0 40 44" aria-hidden="true"><path d="M15 3h10v12l11 19a5 5 0 0 1-4.3 7.5H8.3A5 5 0 0 1 4 34l11-19z" fill="#FFFFFF" stroke="#6B7785" stroke-width="2.6" stroke-linejoin="round"></path><path d="M9 28h22l3.6 6.4a3 3 0 0 1-2.6 4.6H8a3 3 0 0 1-2.6-4.6z" fill="#B9F06A"></path></svg>
+<span class="bub" style="left: 10px; top: 14px; width: 4px; height: 4px"></span><span class="bub" style="left: 15px; top: 16px; width: 3px; height: 3px; animation-delay: .5s"></span>
+</span>
+<span style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1">
+<span style="font-size: 13px; font-weight: 700" class="pulse">Reading your notes…</span>
+<span style="font-size: 11px; color: #6B6862">Sonnet · Medium · 6 pages · started at 3:12 PM</span>
+</span>
+<dc-import name="SoftButton" title="Stop" size="small" tint="#1D1C1A" fill="#F6F5F2" hint-size="57px,30px"></dc-import>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span class="sk" style="height: 12px; width: 92%"></span><span class="sk" style="height: 12px; width: 86%"></span><span class="sk" style="height: 12px; width: 58%"></span>
+</div>
+<div style="display: flex; gap: 8px"><span class="sk" style="height: 26px; width: 130px; border-radius: 12px"></span><span class="sk" style="height: 26px; width: 100px; border-radius: 12px"></span></div>
+<div style="margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 20px; background: #F6F5F2; opacity: 0.6">
+<span style="font-size: 13px; color: #9B978F; flex-grow: 1">Ask a follow-up after this answer…</span>
+<span style="width: 30px; height: 30px; border-radius: 15px; background: #D6D3CC"></span>
+</div>
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">The input waits until the answer lands (one turn per chat at a time). Stop cancels the run; the question stays so you can resend. The status line steps through "Reading your notes…" → "Writing the answer…".</span>
+</section>
+
+<!-- 2 Quick ask -->
+<section style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 14px; font-weight: 700">2 · Quick ask window</span>
+<div style="flex-grow: 1; border-radius: 20px; background: #DCD9D2; padding: 22px; display: flex; align-items: flex-start; justify-content: center; position: relative; padding-top: 48px">
+<div style="position: absolute; right: 22px; bottom: 22px; width: 44px; height: 44px; border-radius: 22px; background: #FFFFFF; box-shadow: 0 0 0 3px #B9F06A, 0 6px 14px rgba(29,28,26,0.18)"></div>
+<div style="width: 390px; display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 16px; position: relative; isolation: isolate; min-height: 160px; box-sizing: border-box"><div style="position: absolute; inset: 0; z-index: -1"><dc-import name="QuickShell" part="frame" width="100%" height="100%" hint-size="100%,100%"></dc-import></div>
+<dc-import name="QuickShell" part="bar" title="Quick ask" hint-size="100%,22px"></dc-import>
+
+
+<div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: #F6F5F2">
+<svg class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F6FEB" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 1-9 9"></path></svg>
+<span style="flex-grow: 1; font-size: 14px; color: #1D1C1A">Best water temp for sencha?</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 7px"><span class="sk" style="height: 11px; width: 90%"></span><span class="sk" style="height: 11px; width: 64%"></span></div>
+<div style="display: flex; align-items: center; gap: 12px; padding-top: 4px; border-top: 1px solid #ECEAE5">
+<span style="font-size: 11px; color: #9B978F; flex-grow: 1">Haiku · Low · started at 3:14 PM · Esc keeps it running</span>
+<dc-import name="SoftButton" title="Stop" size="mini" tint="#1C1B19" fill="#F6F5F2" hint-size="48px,26px"></dc-import>
+</div>
+</div>
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">Esc closes the window but not the run: the flask gets a green ring and the answer waits in History (click the flask to reopen). Stop cancels it.</span>
+</section>
+
+<!-- 3 Label suggestions -->
+<section style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 14px; font-weight: 700">3 · Suggesting labels after Add to queue</span>
+<div style="flex-grow: 1; border-radius: 20px; background: #DCD9D2; padding: 22px; display: flex; align-items: flex-start; justify-content: center; position: relative; padding-top: 48px">
+<div style="position: absolute; right: 22px; bottom: 22px; width: 44px; height: 44px; border-radius: 22px; background: #FFFFFF; box-shadow: 0 6px 14px rgba(29,28,26,0.18)"></div>
+<div style="width: 390px; display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 16px; position: relative; isolation: isolate; min-height: 160px; box-sizing: border-box"><div style="position: absolute; inset: 0; z-index: -1"><dc-import name="QuickShell" part="frame" width="100%" height="100%" hint-size="100%,100%"></dc-import></div>
+<dc-import name="QuickShell" part="bar" title="Quick note" hint-size="100%,22px"></dc-import>
+
+
+<div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: #F3FDE4">
+<span style="width: 24px; height: 24px; border-radius: 12px; background: #3D6110; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800">✓</span>
+<span style="font-size: 13px; font-weight: 700">Queued “Gyokuro at 60 °C”</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px">
+<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B03A0A" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 1-9 9"></path></svg>
+<span style="font-size: 12px; font-weight: 700; flex-grow: 1" class="pulse">Suggesting labels…</span>
+<span style="font-size: 11px; color: #6B6862">Haiku · started at 3:20 PM</span>
+</div>
+<div style="display: flex; gap: 6px"><span class="sk" style="height: 26px; width: 70px; border-radius: 13px"></span><span class="sk" style="height: 26px; width: 90px; border-radius: 13px"></span><span class="sk" style="height: 26px; width: 80px; border-radius: 13px"></span></div>
+<div style="display: flex; align-items: center; gap: 10px; padding-top: 4px; border-top: 1px solid #ECEAE5">
+<input type="text" aria-label="Add a label" placeholder="Type a label while you wait" style="flex-grow: 1; height: 28px; border: none; border-radius: 14px; background: #F6F5F2; padding: 0 10px; font-size: 12px; cursor: text">
+<dc-import name="SoftButton" title="Skip" size="small" tint="#1C1B19" fill="#F6F5F2" hint-size="57px,30px"></dc-import>
+</div>
+</div>
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">The note is already safe in the queue, so you can type your own labels or Skip right away. Suggestions slide into the shimmer chips when they arrive.</span>
+</section>
+
+<!-- 4 Labels suggest batch -->
+<section style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 14px; font-weight: 700">4 · Labels → Suggest for 23 notes</span>
+<div style="flex-grow: 1; border-radius: 20px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 16px; background: #FFF4EE">
+<svg class="spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B03A0A" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 1-9 9"></path></svg>
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1">
+<span style="font-size: 14px; font-weight: 700">Suggesting labels · 9 of 23</span>
+<span style="font-size: 12px; color: #6B6862">Haiku · started at 3:21 PM · you can leave this screen</span>
+</span>
+<dc-import name="SoftButton" title="Stop" size="small" tint="#1C1B19" fill="#FFFFFF" hint-size="57px,30px"></dc-import>
+</div>
+<div style="height: 6px; border-radius: 3px; background: #F6F5F2; overflow: hidden"><div style="width: 39%; height: 100%; background: #B03A0A; border-radius: 3px"></div></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="4">
+<div style="display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 12px; background: #F6F5F2">
+<span style="width: 180px; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.title}}</span>
+<span style="flex-grow: 1; display: flex; gap: 6px; align-items: center">
+<span class="{{r.cls}}" style="height: 22px; width: 64px; border-radius: 11px; background: {{r.bg}}; color: #3D6110; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center">{{r.l1}}</span>
+<span class="{{r.cls}}" style="height: 22px; width: 76px; border-radius: 11px; background: {{r.bg}}; color: #3D6110; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center">{{r.l2}}</span>
+</span>
+<span style="font-size: 11px; color: #9B978F">{{r.state}}</span>
+</div>
+</sc-for>
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">Rows fill in as each note is done. When all are done, one change goes to Review ("Apply AI labels to 23 notes"); after you approve, they show under To review. Stop keeps what is done so far.</span>
+</section>
+
+<!-- 5 Batch / review -->
+<section style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 14px; font-weight: 700">5 · Batch running → Review</span>
+<div style="flex-grow: 1; border-radius: 20px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 16px; background: #E3EEFF">
+<svg class="spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1F6FEB" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 1-9 9"></path></svg>
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1">
+<span style="font-size: 14px; font-weight: 700">Reading 3 sources into Research</span>
+<span style="font-size: 12px; color: #6B6862">Claude Code · Sonnet · started at 3:41 PM · nothing is written until you approve</span>
+</span>
+<dc-import name="SoftButton" title="Cancel" size="small" tint="#1C1B19" fill="#FFFFFF" hint-size="71px,30px"></dc-import>
+</div>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px">
+<sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+<li style="display: flex; align-items: center; gap: 10px; font-size: 13px; color: {{s.fg}}">
+<span style="width: 18px; height: 18px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; background: {{s.dotBg}}; color: #FFFFFF">{{s.mark}}</span>{{s.text}}
+</li>
+</sc-for>
+</ol>
+<div style="margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #F6F5F2">
+<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3D6110" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 1-9 9"></path></svg>
+<span style="font-size: 12px; font-weight: 600; flex-grow: 1">After Approve: “Applying 4 changes…”</span>
+<span style="font-size: 11px; color: #6B6862">Approve and Reject stay disabled meanwhile</span>
+</div>
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">Queue shows the running batch with steps from the job's progress. In Review, Approve shows "Applying…" on the button and the card locks until the vault write finishes.</span>
+</section>
+
+<!-- 6 Slow / failed -->
+<section style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 14px; font-weight: 700">6 · Slow, starting, or failed</span>
+<div style="flex-grow: 1; border-radius: 20px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; padding: 20px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #F6F5F2">
+<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6B6862" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 1-9 9"></path></svg>
+<span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 13px; font-weight: 700">Starting Distill…</span><span style="font-size: 11px; color: #6B6862">App launch, before the core answers. Screens show shimmer, not empty states.</span></span>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #FFFBEA">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B7791F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; color: #B7791F"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 13px; font-weight: 700">Still working · started at 3:12 PM</span><span style="font-size: 11px; color: #6B6862">Shown after 60 s: big questions on Opus can take a few minutes.</span></span>
+<dc-import name="SoftButton" title="Stop" size="mini" tint="#1C1B19" fill="#FFFFFF" hint-size="48px,26px"></dc-import>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #FFF4EE">
+<span style="width: 20px; height: 20px; border-radius: 10px; background: #B03A0A; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800">!</span>
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 13px; font-weight: 700">Couldn't get labels</span><span style="font-size: 11px; color: #6B6862">OpenRouter: API key missing. The note is still queued.</span></span>
+<dc-import name="SoftButton" title="Retry" size="mini" tint="#1C1B19" fill="#FFFFFF" hint-size="55px,26px"></dc-import>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #F6F5F2">
+<span style="width: 20px; height: 20px; border-radius: 10px; background: #6B6862; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800">■</span>
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 13px; font-weight: 700">Stopped</span><span style="font-size: 11px; color: #6B6862">Your question is kept. Cost so far: $0.02</span></span>
+<dc-import name="PrimaryButton" title="Ask again" size="mini" hint-size="81px,26px"></dc-import>
+</div>
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">Errors always say what failed, what is safe, and one next step. Settings → AI runners: runner cards use the same spinner while "Checking Codex…".</span>
+</section>
+<section style="display: flex; flex-direction: column; gap: 10px"><span style="font-size: 14px; font-weight: 700">7 · Finding actions</span><div style="flex-grow: 1; border-radius: 20px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow: hidden"><div style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #F2F7FF"><span style="width: 12px; height: 12px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0"></span><span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 13px; font-weight: 700">Finding actions in 2 notes…</span><span style="font-size: 11px; color: #6B6862">Sonnet · started at 3:44 PM · after the batch was applied</span></span></div><div style="display: flex; align-items: center; gap: 10px"><span style="width: 28px; height: 28px; border-radius: 8px; background: #ECEAE5"></span><div style="display: flex; flex-direction: column; gap: 6px; flex-grow: 1"><span class="sk" style="height: 8px; width: 24%"></span><span class="sk" style="height: 11px; width: 70%"></span></div></div><div style="display: flex; align-items: center; gap: 10px"><span style="width: 28px; height: 28px; border-radius: 8px; background: #ECEAE5"></span><div style="display: flex; flex-direction: column; gap: 6px; flex-grow: 1"><span class="sk" style="height: 8px; width: 24%"></span><span class="sk" style="height: 11px; width: 54%"></span></div></div><div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: #F6F5F2"><span style="width: 12px; height: 12px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0"></span><span style="font-size: 12px; font-weight: 600; flex-grow: 1">Looking for actions in this answer…</span><span style="font-size: 11px; color: #6B6862">Ask · Sonnet</span></div></div><span style="font-size: 12px; color: #6B6862; line-height: 1.45">After a batch is applied, and when an Ask answer finishes. Shimmer rows hold the place of the items still coming; nothing is added until you confirm. Same pattern in Actions’ lists.</span></section><section style="display: flex; flex-direction: column; gap: 10px"><span style="font-size: 14px; font-weight: 700">8 · Writing and polishing a draft</span><div style="flex-grow: 1; border-radius: 20px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow: hidden"><div style="display: flex; align-items: center; gap: 8px"><span style="width: 26px; height: 26px; border-radius: 8px; background: #FFE0EC; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#A3245A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; color: #A3245A"><path d="M4 5h16v11H9l-5 4z"/><path d="M10 8.5l-1 5M14 8.5l-1 5M8.3 10h7M8 12h7"/></svg></span><span style="font-size: 12px; font-weight: 700; flex-grow: 1">Message to Mei</span><dc-import name="Pill" text="Writing" fill="#E3EEFF" ink="#1F6FEB" busy="true" hint-size="85px,24px"></dc-import></div><div style="position: relative; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 12px; background: #F6F5F2; overflow: hidden"><span class="sk" style="height: 10px; width: 92%"></span><span class="sk" style="height: 10px; width: 84%"></span><span class="sk" style="height: 10px; width: 60%"></span><div style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 6px 0 12px; border-radius: 15px; background: #FFFFFF; box-shadow: 0 6px 16px rgba(29,28,26,.18); white-space: nowrap"><span style="width: 12px; height: 12px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0"></span><span style="font-size: 12px; font-weight: 700">Writing with Sonnet…</span><span style="height: 22px; display: flex; align-items: center; padding: 0 9px; border-radius: 11px; background: #F6F5F2; font-size: 11px; font-weight: 700; color: #48463F">Cancel</span></div></div><div style="display: flex; align-items: center; gap: 8px; margin-top: 4px"><span style="width: 26px; height: 26px; border-radius: 8px; background: #FFE0EC; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#A3245A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; color: #A3245A"><path d="M4 5h16v11H9l-5 4z"/><path d="M10 8.5l-1 5M14 8.5l-1 5M8.3 10h7M8 12h7"/></svg></span><span style="font-size: 12px; font-weight: 700; flex-grow: 1">After your edit</span><dc-import name="Pill" text="Polishing" fill="#E3EEFF" ink="#1F6FEB" busy="true" hint-size="99px,24px"></dc-import></div><div style="position: relative; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 12px; background: #F6F5F2; overflow: hidden"><span class="sk" style="height: 10px; width: 92%"></span><span class="sk" style="height: 10px; width: 84%"></span><span class="sk" style="height: 10px; width: 60%"></span><div style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 6px 0 12px; border-radius: 15px; background: #FFFFFF; box-shadow: 0 6px 16px rgba(29,28,26,.18); white-space: nowrap"><span style="width: 12px; height: 12px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0"></span><span style="font-size: 12px; font-weight: 700">Polishing with Sonnet…</span><span style="height: 22px; display: flex; align-items: center; padding: 0 9px; border-radius: 11px; background: #F6F5F2; font-size: 11px; font-weight: 700; color: #48463F">Cancel</span></div></div></div><span style="font-size: 12px; color: #6B6862; line-height: 1.45">Writing a Slack, Jira or Confluence draft, and the AI pass after you edit one: the text dims with a shimmer, the model is named, Cancel keeps what was there.</span></section><section style="display: flex; flex-direction: column; gap: 10px"><span style="font-size: 14px; font-weight: 700">9 · Creating in Jira or Confluence</span><div style="flex-grow: 1; border-radius: 20px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow: hidden"><div style="display: flex; align-items: center; gap: 8px"><span style="width: 26px; height: 26px; border-radius: 8px; background: #DDF2FF; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0B5C86" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; color: #0B5C86"><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z"/><path d="M10 9h4M10 13h4"/></svg></span><span style="font-size: 12px; font-weight: 700; flex-grow: 1">Cap payment client retries at 3</span><dc-import name="Pill" text="Creating" fill="#E3EEFF" ink="#1F6FEB" busy="true" hint-size="92px,24px"></dc-import></div><div style="position: relative; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 12px; background: #F6F5F2; overflow: hidden"><span class="sk" style="height: 10px; width: 92%"></span><span class="sk" style="height: 10px; width: 84%"></span><span class="sk" style="height: 10px; width: 60%"></span><div style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 6px 0 12px; border-radius: 15px; background: #FFFFFF; box-shadow: 0 6px 16px rgba(29,28,26,.18); white-space: nowrap"><span style="width: 12px; height: 12px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0"></span><span style="font-size: 12px; font-weight: 700">Creating in Jira…</span></div></div><div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: #F2F7FF; box-shadow: 0 0 0 1px #D6E4FB"><span style="width: 12px; height: 12px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0"></span><span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 12px; font-weight: 700; color: #1F6FEB">Waiting for you to sign in, in your browser</span><span style="font-size: 11px; color: #6B6862">We opened acme.atlassian.net. The draft is safe.</span></span><span style="font-size: 11px; font-weight: 700">Cancel</span></div></div><span style="font-size: 12px; color: #6B6862; line-height: 1.45">Creating can’t be cancelled halfway; it takes a second or two. Signing in happens in the browser while the card waits. Errors follow section 6: what failed, the draft is safe, one next step.</span></section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":1760}}'>
+class Component extends DCLogic {
+renderVals() {
+const done = (title, l1, l2) => ({ title, l1: '#' + l1, l2: '#' + l2, cls: '', bg: '#F3FDE4', state: 'Done' });
+const wait = (title, state) => ({ title, l1: '', l2: '', cls: 'sk', bg: '', state });
+const step = (text, st) => ({ text, fg: st === 'todo' ? '#9B978F' : '#1D1C1A', mark: st === 'done' ? '✓' : st === 'now' ? '…' : '', dotBg: st === 'done' ? '#3D6110' : st === 'now' ? '#1F6FEB' : '#D6D3CC' });
+return {
+rows: [done('Q3 architecture sync', 'architecture', 'project-x'), done('Hiring loop feedback', 'hiring', 'people'), wait('Auth retry bug', 'Working…'), wait('Ideas for weekend', 'Waiting')],
+steps: [step('Moved 3 files to inbox', 'done'), step('Read sources and existing pages', 'done'), step('Drafting 4 page changes', 'now'), step('Ready for your review', 'todo'), step('After you apply: finding actions', 'todo')]
+};
+}
+}
+</script>
+</body>
+</html>

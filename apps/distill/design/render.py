@@ -462,7 +462,7 @@ def screen_boards(screens, comps, H):
 
 # ---------------------------------------------------------------- everything
 def build_all(H=None):
-    """{file: (html, width, canvas title, kind)}; kind is component | states | screen | page. Where a board sits: pages.json."""
+    """{file: (html, width, canvas title, kind)}; kind is component | states | screen | page | legacy. Where a board sits: pages.json."""
     comps, screens = schema()
     H = sizes() if H is None else H
     out = {}
@@ -472,6 +472,26 @@ def build_all(H=None):
         out[f] = (html, W, title, 'states')
     for f, (html, W, title, kind) in screen_boards(screens, comps, H).items():
         out[f] = (html, W, title, kind)
+    for f, (html, W, title) in legacy_boards().items():
+        out[f] = (html, W, title, 'legacy')
+    return out
+
+
+LEGACY_DIR = os.path.join(ROOT, 'legacy', 'boards')
+
+
+def legacy_boards():
+    """Boards made before the schema (legacy/README.md), kept verbatim in legacy/boards/ so the canvas never holds
+    a board the repo doesn't. {file: (html, $preview width, title)}; they leave as they move into the schema."""
+    out = {}
+    for f in sorted(os.listdir(LEGACY_DIR)) if os.path.isdir(LEGACY_DIR) else []:
+        if f.endswith('.dc.html'):
+            with open(os.path.join(LEGACY_DIR, f), encoding='utf-8') as fh:
+                html = fh.read()
+            m = re.search(r"data-props='([^']*)'", html)
+            W = json.loads(m.group(1).replace('&#39;', "'"))['$preview']['width']
+            title = re.search(r'<title>(?:Distill — )?(.*?)</title>', html).group(1)
+            out[f] = (html, W, title)
     return out
 
 

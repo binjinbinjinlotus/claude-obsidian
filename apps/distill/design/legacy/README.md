@@ -1,5 +1,11 @@
 # Legacy canvas generators
 
+`boards/` holds the 23 boards these generators made that are not in the
+schema yet, copied verbatim from the canvas on 2026-10-06 (v12). `render.py`
+publishes them from here like any other board (kind `legacy`), so the canvas
+never holds a board the repo doesn't. Edit a board here only as a stopgap;
+the way out is moving it into `screens/`, which deletes its file here.
+
 Versioned copies of the ad-hoc Python generators that built the design canvas
 before the schema (`../components.json`, `../screens/`, `../render.py`). They
 were copied unchanged from the session scratchpad at canvas v57 (2026-10-03), so they still

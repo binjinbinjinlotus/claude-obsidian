@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Distill — Labels to review</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&amp;family=DM+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0;font-family:"DM Sans",-apple-system,sans-serif;color:#1D1C1A;-webkit-font-smoothing:antialiased}
+a{color:#1F6FEB}a:hover{color:#1858C4}
+button,input{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="position: relative; width: 1200px; height: 760px; isolation: isolate"><div style="position: absolute; inset: 0; z-index: -1"><dc-import name="WindowShell" layer="frame" width="1200" height="760" hint-size="1200px,760px"></dc-import></div><div style="position: absolute; left: 38px; top: 36px; z-index: 2"><dc-import name="WindowShell" layer="controls" hint-size="52px,12px"></dc-import></div>
+<div style="position: absolute; left: 20px; top: 20px; right: 20px; bottom: 20px; display: flex; border-radius: 16px; overflow: hidden; background: #FFFFFF">
+
+<div style="width: 220px; height: 720px; flex-shrink: 0"><dc-import name="Sidebar" section="labels" height="720" hint-size="220px,720px"></dc-import></div>
+
+<main style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0">
+<header style="display: flex; flex-direction: column; gap: 6px; padding: 30px 44px 0">
+<h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 30px; letter-spacing: -0.03em; line-height: 1.05">Labels to review</h1>
+<span style="font-size: 14px; color: #6B6862">Only labels you haven't confirmed yet. To browse or edit notes, open them in Obsidian.</span>
+</header>
+
+<div style="display: flex; align-items: center; gap: 8px; padding: 18px 44px 0">
+<sc-for list="{{tabs}}" as="f" hint-placeholder-count="2">
+<button type="button" aria-pressed="{{f.on}}" style="height: 32px; display: flex; align-items: center; gap: 7px; padding: 0 13px; border: none; border-radius: 16px; font-size: 13px; font-weight: 600; background: {{f.bg}}; color: {{f.fg}}">{{f.label}} <span style="font-size: 12px; font-weight: 700; opacity: 0.8">{{f.count}}</span></button>
+</sc-for>
+</div>
+
+<div style="display: flex; align-items: center; gap: 14px; margin: 16px 44px 0; padding: 14px 16px; border-radius: 18px; background: #FFF4EE">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="#B03A0A" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg>
+<div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1">
+<span style="font-size: 14px; font-weight: 700">23 notes have no labels</span>
+<span style="font-size: 12px; color: #6B6862">AI labels them the same way as files dropped in the queue folder, reusing your labels first. They then show up here under To review.</span>
+</div>
+<dc-import name="DropdownButton" title="Haiku" height="30" radius="15" hint-size="75px,30px"></dc-import>
+<dc-import name="SoftButton" title="Suggest labels for 23 notes" size="small" tint="#FFFFFF" fill="#B03A0A" hint-size="222px,30px"></dc-import>
+</div>
+
+<div style="flex-grow: 1; display: flex; flex-direction: column; padding: 10px 44px 0; overflow: hidden">
+<div style="display: flex; align-items: center; gap: 14px; padding: 8px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: #9B978F">
+<input type="checkbox" checked aria-label="Select all" style="accent-color: #1F6FEB">
+<span style="width: 300px">NOTE</span>
+<span style="width: 110px">LABELED BY</span>
+<span style="flex-grow: 1">LABELS</span>
+</div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+<div style="display: flex; align-items: center; gap: 14px; padding: 10px 12px; border-radius: 14px; background: {{r.rowBg}}">
+<input type="checkbox" aria-label="Select {{r.title}}" checked="{{r.checked}}" style="accent-color: #1F6FEB">
+<span style="width: 300px; display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.title}}</span>
+<a href="#" style="font-size: 11px; text-decoration: none">Open in Obsidian ↗</a>
+</span>
+<span style="width: 110px; font-size: 12px; color: #6B6862">{{r.origin}}</span>
+<span style="flex-grow: 1; display: flex; gap: 6px; flex-wrap: wrap; align-items: center">
+<sc-for list="{{r.labels}}" as="l" hint-placeholder-count="2">
+<span style="height: 28px; display: flex; align-items: center; gap: 4px; padding: 0 4px 0 10px; border-radius: 14px; font-size: 12px; font-weight: 600; border: {{l.border}}; background: {{l.bg}}; color: {{l.fg}}">#{{l.name}}<span style="font-size: 10px; font-weight: 700; opacity: 0.7">{{l.tag}}</span><button type="button" aria-label="Remove {{l.name}}" style="width: 18px; height: 18px; border: none; background: transparent; color: inherit; font-size: 13px; padding: 0">×</button></span>
+</sc-for>
+<button type="button" aria-label="Add label to {{r.title}}" style="width: 28px; height: 28px; border: none; border-radius: 14px; background: transparent; color: #1F6FEB; font-size: 16px">+</button>
+</span>
+<dc-import name="SoftButton" title="Confirm" size="small" tint="#1F6FEB" fill="#E3EEFF" hint-size="78px,30px"></dc-import>
+</div>
+</sc-for>
+</div>
+
+<footer style="flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 16px 44px; border-top: 1px solid #ECEAE5">
+<span style="font-size: 13px; font-weight: 600">4 selected</span>
+<span style="flex-grow: 1; font-size: 12px; color: #6B6862; text-align: right">Confirming writes the labels through Review, like any other vault change</span>
+<dc-import name="PrimaryButton" title="Confirm 4 notes" size="regular" hint-size="160px,40px"></dc-import>
+</footer>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":760}}'>
+class Component extends DCLogic {
+renderVals() {
+const navItem = (label, icon, href, active, count) => ({ label, icon, href, count: count || '', weight: active ? 600 : 400, bg: active ? '#FFFFFF' : 'transparent', shadow: active ? '0 1px 3px rgba(29,28,26,0.08)' : 'none', stroke: active ? '#1F6FEB' : '#6B6862' });
+const tab = (label, count, active) => ({ label, count, on: active ? 'true' : 'false', bg: active ? '#1F6FEB' : '#F6F5F2', fg: active ? '#FFFFFF' : '#48463F' });
+const ai = (name, isNew) => ({ name, style: isNew ? 'suggestedNew' : 'suggestedExisting', tag: isNew ? 'new' : '', border: isNew ? '1.5px dashed #FFB894' : '1.5px dashed #B9F06A', bg: isNew ? '#FFF4EE' : '#F3FDE4', fg: isNew ? '#B03A0A' : '#3D6110' });
+return {
+nav: [
+navItem('Queue', 'M22 12h-6l-2 3h-4l-2-3H2M5.5 5h13L22 12v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z', 'Main.dc.html', false),
+navItem('Review', 'M9 11l3 3 8-8M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9', 'Review.dc.html', false),
+navItem('Ask', 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z', 'Ask.dc.html', false),
+navItem('Labels', 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01', '#', true, 12),
+navItem('History', 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2', '#', false)
+],
+tabs: [tab('To review', 12, true), tab('Unlabeled', 23, false)],
+rows: [
+{ title: 'Q3 architecture sync', origin: 'Queue folder', checked: true, rowBg: '#F6F5F2', labels: [ai('architecture', false), ai('project-x', false)] },
+{ title: 'Auth service retry bug', origin: 'CLI · no reply', checked: true, rowBg: '#F6F5F2', labels: [ai('project-x', false), ai('incidents', true)] },
+{ title: 'Hiring loop feedback', origin: 'Suggest button', checked: true, rowBg: '#F6F5F2', labels: [ai('hiring', false)] },
+{ title: 'Gongfu brewing guide', origin: 'Queue folder', checked: true, rowBg: '#F6F5F2', labels: [ai('tea', false), ai('brewing', false)] },
+{ title: 'Ideas for weekend', origin: 'Suggest button', checked: false, rowBg: 'transparent', labels: [ai('personal', true)] }
+]
+};
+}
+}
+</script>
+</body>
+</html>
