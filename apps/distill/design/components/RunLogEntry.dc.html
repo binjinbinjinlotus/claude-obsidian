@@ -3,17 +3,17 @@
 <x-dc>
 <div style="width: {{w}}; display: flex; flex-direction: column; gap: 8px; padding: 9px 10px; border-radius: 10px; background: {{bg}}; box-sizing: border-box">
 <div style="display: flex; align-items: center; gap: 10px; min-width: 0">
-<span style="width: 20px; height: 20px; border-radius: 10px; background: {{dotBg}}; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0"><sc-if value="{{spin}}" hint-placeholder-val="{{ false }}"><span style="width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB"></span></sc-if><sc-if value="{{still}}" hint-placeholder-val="{{ true }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{{dotInk}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{dotD}}"></path></svg></sc-if></span>
-<span style="font-size: 12px; font-weight: 700; color: #1D1C1A; white-space: nowrap; flex-shrink: 0; font-variant-numeric: tabular-nums">{{time}}</span>
+<span style="width: 20px; height: 20px; border-radius: 10px; background: {{dotBg}}; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0"><sc-if value="{{spin}}" hint-placeholder-val="{{ false }}"><span style="width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: var(--primary)"></span></sc-if><sc-if value="{{still}}" hint-placeholder-val="{{ true }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="stroke: {{dotInk}}"><path d="{{dotD}}"></path></svg></sc-if></span>
+<span style="font-size: 12px; font-weight: 700; color: var(--ink); white-space: nowrap; flex-shrink: 0; font-variant-numeric: tabular-nums">{{time}}</span>
 <span style="font-size: 12px; color: {{sumInk}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; min-width: 0">{{summary}}</span>
-<span style="font-size: 11px; color: #9B978F; white-space: nowrap; flex-shrink: 0; font-variant-numeric: tabular-nums">{{meta}}</span>
-<sc-if value="{{expandable}}" hint-placeholder-val="{{ true }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#9B978F" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0"><path d="{{chev}}"></path></svg></sc-if>
+<span style="font-size: 11px; color: var(--faint); white-space: nowrap; flex-shrink: 0; font-variant-numeric: tabular-nums">{{meta}}</span>
+<sc-if value="{{expandable}}" hint-placeholder-val="{{ true }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; stroke: var(--faint)"><path d="{{chev}}"></path></svg></sc-if>
 </div>
 <sc-if value="{{showFiles}}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 3px; margin-left: 30px">
-<sc-for list="{{lines}}" as="l" hint-placeholder-count="3"><span style="display: flex; gap: 8px; font-size: 12px; color: {{l.ink}}; line-height: 1.45"><span style="width: 190px; flex-shrink: 0; font-weight: 600">{{l.what}}</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #1D1C1A">{{l.name}}</span></span></sc-for>
+<sc-for list="{{lines}}" as="l" hint-placeholder-count="3"><span style="display: flex; gap: 8px; font-size: 12px; color: {{l.ink}}; line-height: 1.45"><span style="width: 190px; flex-shrink: 0; font-weight: 600">{{l.what}}</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink)">{{l.name}}</span></span></sc-for>
 </div></sc-if>
 <sc-if value="{{showOutput}}" hint-placeholder-val="{{ false }}"><div style="margin-left: 30px; display: flex; flex-direction: column; gap: 6px">
-<div style="display: flex; align-items: center; gap: 6px"><span style="font-size: 10px; font-weight: 800; letter-spacing: .06em; color: {{outHeadInk}}">{{outHead}}</span><sc-if value="{{hasRuntime}}" hint-placeholder-val="{{ false }}"><span style="font-size: 11px; color: #9B978F; margin-left: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0">{{runtime}}</span></sc-if><span style="flex-grow: 1"></span><span role="button" style="font-size: 11px; font-weight: 600; color: #1F6FEB">Copy output</span><span role="button" style="font-size: 11px; font-weight: 600; color: #1F6FEB; margin-left: 6px">Open log</span></div>
+<div style="display: flex; align-items: center; gap: 6px"><span style="font-size: 10px; font-weight: 800; letter-spacing: .06em; color: {{outHeadInk}}">{{outHead}}</span><sc-if value="{{hasRuntime}}" hint-placeholder-val="{{ false }}"><span style="font-size: 11px; color: var(--faint); margin-left: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0">{{runtime}}</span></sc-if><span style="flex-grow: 1"></span><span role="button" style="font-size: 11px; font-weight: 600; color: var(--primary)">Copy output</span><span role="button" style="font-size: 11px; font-weight: 600; color: var(--primary); margin-left: 6px">Open log</span></div>
 <div style="padding: 8px 10px; border-radius: 8px; background: #1F1E1C; display: flex; flex-direction: column; gap: 1px">
 <sc-for list="{{lines}}" as="l" hint-placeholder-count="3"><span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; line-height: 1.5; color: {{l.term}}; white-space: pre-wrap; word-break: break-all">{{l.text}}</span></sc-for>
 </div></div></sc-if>
@@ -21,19 +21,19 @@
 </x-dc>
 <script type="text/x-dc-logic">
 const px = (v, d) => (v === undefined || v === null || v === '') ? d : (/^[0-9.]+$/.test(String(v)) ? v + 'px' : String(v));
-const R = {"success": ["#F3FDE4", "#3D6110", "M5 12.5l4.5 4.5L19 7.5"], "nothing": ["#F6F5F2", "#9B978F", "M6 12h12"], "failed": ["#FFE4D6", "#B03A0A", "M12 7v6M12 17h.01"], "timedout": ["#FFF4D6", "#8A5A00", "M12 7v5l3 2"], "skipped": ["#F6F5F2", "#6B6862", "M8 6l8 6-8 6"], "running": ["#E3EEFF", "#1F6FEB", ""]};
+const R = {"success": ["#F3FDE4", "var(--limeInk)", "M5 12.5l4.5 4.5L19 7.5"], "nothing": ["var(--panel)", "var(--faint)", "M6 12h12"], "failed": ["var(--peachTint)", "var(--peachInk)", "M12 7v6M12 17h.01"], "timedout": ["#FFF4D6", "#8A5A00", "M12 7v5l3 2"], "skipped": ["var(--panel)", "var(--muted)", "M8 6l8 6-8 6"], "running": ["var(--primaryTint)", "var(--primary)", ""]};
 const r = R[p.result] || R.success, kind = p.outputKind || 'files', exp = on(p.expanded, false);
 const raw = (p.lines || '').split('|').filter(Boolean);
 const lines = raw.map((t) => {
   const i = t.indexOf(' — ');
   const what = i > 0 ? t.slice(0, i) : t, name = i > 0 ? t.slice(i + 3) : '';
   const skip = /^Skipped|^Waiting|^Ignored/.test(what);
-  return { text: t, what, name, ink: skip ? '#8A5A00' : '#3D6110', term: kind === 'stderr' && !/^\$/.test(t) ? '#FFB894' : '#E8E6E1' };
+  return { text: t, what, name, ink: skip ? '#8A5A00' : 'var(--limeInk)', term: kind === 'stderr' && !/^\$/.test(t) ? 'var(--peach)' : '#E8E6E1' };
 });
 return { w: px(p.width, '100%'), time: p.time || '9:00 AM', summary: p.summary || 'Copied 3 files · skipped 2 already collected',
-  sumInk: p.result === 'failed' ? '#B03A0A' : p.result === 'timedout' ? '#8A5A00' : '#48463F', meta: p.meta === undefined || p.meta === null ? '1.2 s' : p.meta,
+  sumInk: p.result === 'failed' ? 'var(--peachInk)' : p.result === 'timedout' ? '#8A5A00' : '#48463F', meta: p.meta === undefined || p.meta === null ? '1.2 s' : p.meta,
   dotBg: r[0], dotInk: r[1], dotD: r[2], spin: p.result === 'running', still: p.result !== 'running',
-  expandable: raw.length > 0, chev: exp ? 'M6 9l6 6 6-6' : 'M9 6l6 6-6 6', bg: exp ? '#F6F5F2' : 'transparent',
+  expandable: raw.length > 0, chev: exp ? 'M6 9l6 6 6-6' : 'M9 6l6 6-6 6', bg: exp ? 'var(--panel)' : 'transparent',
   showFiles: exp && kind === 'files', showOutput: exp && kind !== 'files', lines,
-  runtime: p.runtime || '', hasRuntime: !!p.runtime, outHead: kind === 'stderr' ? 'STDERR' : 'OUTPUT', outHeadInk: kind === 'stderr' ? '#B03A0A' : '#9B978F' };
+  runtime: p.runtime || '', hasRuntime: !!p.runtime, outHead: kind === 'stderr' ? 'STDERR' : 'OUTPUT', outHeadInk: kind === 'stderr' ? 'var(--peachInk)' : 'var(--faint)' };
 </script>

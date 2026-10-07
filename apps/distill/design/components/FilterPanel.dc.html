@@ -1,21 +1,21 @@
 <!-- FilterPanel: source template. render.py wraps it in the page shell and writes data-props from components.json.
      @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
 <x-dc>
-<div style="width: {{w}}; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px rgba(29,28,26,.08), 0 14px 32px rgba(29,28,26,.18); display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden">
+<div style="width: {{w}}; border-radius: 14px; background: var(--window); box-shadow: 0 0 0 1px rgba(29,28,26,.08), 0 14px 32px rgba(29,28,26,.18); display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden">
 <div style="max-height: {{maxH}}; overflow: hidden; padding: 6px 6px 4px">
-<sc-if value="{{scrolled}}" hint-placeholder-val="{{ false }}"><div style="height: 3px; margin: 0 40% 4px; border-radius: 2px; background: #ECEAE5"></div></sc-if>
+<sc-if value="{{scrolled}}" hint-placeholder-val="{{ false }}"><div style="height: 3px; margin: 0 40% 4px; border-radius: 2px; background: var(--border)"></div></sc-if>
 <sc-for list="{{rows}}" as="r" hint-placeholder-count="12">
-<sc-if value="{{r.isHead}}" hint-placeholder-val="{{ false }}"><div style="display: flex; align-items: center; padding: 10px 10px 4px; font-size: 10px; font-weight: 800; letter-spacing: .06em; color: {{r.headInk}}"><span style="flex-grow: 1">{{r.label}}</span><span style="font-weight: 700; letter-spacing: 0; color: #1F6FEB">{{r.note}}</span></div></sc-if>
-<sc-if value="{{r.isSub}}" hint-placeholder-val="{{ false }}"><div style="padding: 6px 10px 2px; font-size: 10px; font-weight: 700; color: #9B978F">{{r.label}}</div></sc-if>
-<sc-if value="{{r.isSearch}}" hint-placeholder-val="{{ false }}"><div style="margin: 2px 6px 4px; height: 28px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border-radius: 14px; background: {{r.bg}}; box-shadow: {{r.ring}}; font-size: 12px; color: {{r.ink}}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9B978F" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 11a7 7 0 1 0 14 0a7 7 0 1 0 -14 0M20 20l-4-4"></path></svg>{{r.label}}</div></sc-if>
+<sc-if value="{{r.isHead}}" hint-placeholder-val="{{ false }}"><div style="display: flex; align-items: center; padding: 10px 10px 4px; font-size: 10px; font-weight: 800; letter-spacing: .06em; color: {{r.headInk}}"><span style="flex-grow: 1">{{r.label}}</span><span style="font-weight: 700; letter-spacing: 0; color: var(--primary)">{{r.note}}</span></div></sc-if>
+<sc-if value="{{r.isSub}}" hint-placeholder-val="{{ false }}"><div style="padding: 6px 10px 2px; font-size: 10px; font-weight: 700; color: var(--faint)">{{r.label}}</div></sc-if>
+<sc-if value="{{r.isSearch}}" hint-placeholder-val="{{ false }}"><div style="margin: 2px 6px 4px; height: 28px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border-radius: 14px; background: {{r.bg}}; box-shadow: {{r.ring}}; font-size: 12px; color: {{r.ink}}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="stroke: var(--faint)"><path d="M4 11a7 7 0 1 0 14 0a7 7 0 1 0 -14 0M20 20l-4-4"></path></svg>{{r.label}}</div></sc-if>
 <sc-if value="{{r.isRow}}" hint-placeholder-val="{{ true }}"><div style="display: flex; align-items: center; gap: 9px; padding: 6px 10px; border-radius: 8px; background: {{r.bg}}">
-<span style="width: 14px; height: 14px; border-radius: {{r.box}}; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; background: {{r.boxBg}}; box-shadow: inset 0 0 0 1.5px {{r.boxRing}}; flex-shrink: 0"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity: {{r.tick}}"><path d="M5 12l5 5 9-10"></path></svg></span>
-<span style="flex-grow: 1; font-size: 13px; font-weight: {{r.weight}}; color: #1D1C1A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.label}}</span><span style="font-size: 11px; color: #9B978F">{{r.count}}</span></div></sc-if>
-<sc-if value="{{r.isMore}}" hint-placeholder-val="{{ false }}"><div style="padding: 4px 10px 6px 33px; font-size: 12px; font-weight: 600; color: #1F6FEB">{{r.label}}</div></sc-if>
+<span style="width: 14px; height: 14px; border-radius: {{r.box}}; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; background: {{r.boxBg}}; box-shadow: inset 0 0 0 1.5px {{r.boxRing}}; flex-shrink: 0"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity: {{r.tick}}; stroke: var(--window)"><path d="M5 12l5 5 9-10"></path></svg></span>
+<span style="flex-grow: 1; font-size: 13px; font-weight: {{r.weight}}; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.label}}</span><span style="font-size: 11px; color: var(--faint)">{{r.count}}</span></div></sc-if>
+<sc-if value="{{r.isMore}}" hint-placeholder-val="{{ false }}"><div style="padding: 4px 10px 6px 33px; font-size: 12px; font-weight: 600; color: var(--primary)">{{r.label}}</div></sc-if>
 </sc-for>
 </div>
-<div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px 10px; border-top: 1px solid #ECEAE5">
-<dc-import name="LinkButton" title="Clear all" hint-size="70px,28px"></dc-import><span style="flex-grow: 1; font-size: 11px; color: #9B978F; text-align: right">{{summary}}</span>
+<div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px 10px; border-top: 1px solid var(--border)">
+<dc-import name="LinkButton" title="Clear all" hint-size="70px,28px"></dc-import><span style="flex-grow: 1; font-size: 11px; color: var(--faint); text-align: right">{{summary}}</span>
 <dc-import name="PrimaryButton" title="Done" size="small" hint-size="64px,30px"></dc-import>
 </div>
 </div>
@@ -28,9 +28,9 @@ const list = v => String(v || '').split('|').map(x => x.trim()).filter(Boolean);
 const chosen = new Set([].concat(list(p.selected), list(p.due), list(p.person), list(p.label), list(p.note), list(p.priority), list(p.more)));
 const status = p.status || 'Open', query = p.personQuery || '', expanded = p.expanded || '';
 const rows = [];
-const head = (label, key, n) => rows.push({ isHead: true, label, note: n ? n + ' selected' : '', headInk: p.focus === key ? '#1F6FEB' : '#9B978F' });
+const head = (label, key, n) => rows.push({ isHead: true, label, note: n ? n + ' selected' : '', headInk: p.focus === key ? 'var(--primary)' : 'var(--faint)' });
 const row = (label, on, count, single) => rows.push({ isRow: true, label, count: count === undefined ? '' : String(count), weight: on ? 600 : 400,
-  bg: on ? '#F2F7FF' : 'transparent', box: single ? '50%' : '4px', boxBg: on ? '#1F6FEB' : '#FFFFFF', boxRing: on ? '#1F6FEB' : '#D6D3CC', tick: on ? 1 : 0 });
+  bg: on ? '#F2F7FF' : 'transparent', box: single ? '50%' : '4px', boxBg: on ? 'var(--primary)' : 'var(--window)', boxRing: on ? 'var(--primary)' : '#D6D3CC', tick: on ? 1 : 0 });
 const name = it => Array.isArray(it) ? it[0] : it;
 const sections = DATA[kind].map(([key, label, single, search, items]) => [key, () => {
   if (key === 'more') {
@@ -43,7 +43,7 @@ const sections = DATA[kind].map(([key, label, single, search, items]) => [key, (
   head(label, key, items.filter(x => chosen.has(name(x))).length);
   const q = search ? query : '';
   const ph = { person: 'Find a person', recipient: 'Find a person or channel', assignee: 'Find a person' }[key] || 'Find…';
-  if (search) rows.push({ isSearch: true, label: q || ph, ink: q ? '#1D1C1A' : '#9B978F', bg: q ? '#FFFFFF' : '#F6F5F2', ring: q ? '0 0 0 2px #1F6FEB' : 'none' });
+  if (search) rows.push({ isSearch: true, label: q || ph, ink: q ? 'var(--ink)' : 'var(--faint)', bg: q ? 'var(--window)' : 'var(--panel)', ring: q ? '0 0 0 2px var(--primary)' : 'none' });
   let shown = items.filter(x => !q || name(x).toLowerCase().includes(q.toLowerCase()));
   const all = shown.length;
   if (expanded !== key && !q && all > 6) shown = shown.slice(0, 5);

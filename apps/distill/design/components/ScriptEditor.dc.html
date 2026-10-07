@@ -2,18 +2,18 @@
      @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
 <x-dc>
 <div style="width: {{w}}; display: flex; flex-direction: column; gap: 8px; min-width: 0; box-sizing: border-box">
-<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0"><dc-import name="SegmentedPills" options="zsh|Python|JavaScript|TypeScript" selection="{{langLabel}}" height="26" track="#F6F5F2" hint-size="300px,26px"></dc-import><span style="flex-grow: 1"></span><span style="font-size: 11.5px; color: #9B978F; white-space: nowrap">{{runsWith}}</span></div>
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0"><dc-import name="SegmentedPills" options="zsh|Python|JavaScript|TypeScript" selection="{{langLabel}}" height="26" track="var(--panel)" hint-size="300px,26px"></dc-import><span style="flex-grow: 1"></span><span style="font-size: 11.5px; color: var(--faint); white-space: nowrap">{{runsWith}}</span></div>
 <div title="{{full}}" style="display: flex; align-items: center; gap: 6px; min-width: 0">
-<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9B978F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0"><path d="M6 3h9l5 5v13H6zM14 3v6h6"></path></svg>
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; stroke: var(--faint)"><path d="M6 3h9l5 5v13H6zM14 3v6h6"></path></svg>
 <span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; color: #48463F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-grow: 1">{{path}}</span>
-<span role="button" style="font-size: 12px; font-weight: 600; color: #1F6FEB; white-space: nowrap; flex-shrink: 0; padding: 0 4px">Reveal in Finder</span>
-<span role="button" style="font-size: 12px; font-weight: 600; color: #1F6FEB; white-space: nowrap; flex-shrink: 0; padding: 0 4px">Open in editor</span>
-<sc-if value="{{external}}" hint-placeholder-val="{{ false }}"><span role="button" style="font-size: 12px; font-weight: 600; color: #1F6FEB; white-space: nowrap; flex-shrink: 0; padding: 0 4px">Choose…</span></sc-if>
+<span role="button" style="font-size: 12px; font-weight: 600; color: var(--primary); white-space: nowrap; flex-shrink: 0; padding: 0 4px">Reveal in Finder</span>
+<span role="button" style="font-size: 12px; font-weight: 600; color: var(--primary); white-space: nowrap; flex-shrink: 0; padding: 0 4px">Open in editor</span>
+<sc-if value="{{external}}" hint-placeholder-val="{{ false }}"><span role="button" style="font-size: 12px; font-weight: 600; color: var(--primary); white-space: nowrap; flex-shrink: 0; padding: 0 4px">Choose…</span></sc-if>
 </div>
-<sc-if value="{{managed}}" hint-placeholder-val="{{ true }}"><div style="display: flex; flex-direction: column; padding: 10px 12px; border-radius: 10px; background: #FFFFFF; box-shadow: inset 0 0 0 1.5px #BFD5FA; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; line-height: 1.6; overflow: hidden">
-<sc-for list="{{lines}}" as="l" hint-placeholder-count="5"><div style="display: flex; gap: 12px; min-width: 0"><span style="width: 16px; flex-shrink: 0; text-align: right; color: #C2BEB6">{{l.n}}</span><span style="white-space: pre; color: #1D1C1A; overflow: hidden; text-overflow: ellipsis; min-width: 0">{{l.t}}</span></div></sc-for>
+<sc-if value="{{managed}}" hint-placeholder-val="{{ true }}"><div style="display: flex; flex-direction: column; padding: 10px 12px; border-radius: 10px; background: var(--window); box-shadow: inset 0 0 0 1.5px #BFD5FA; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; line-height: 1.6; overflow: hidden">
+<sc-for list="{{lines}}" as="l" hint-placeholder-count="5"><div style="display: flex; gap: 12px; min-width: 0"><span style="width: 16px; flex-shrink: 0; text-align: right; color: #C2BEB6">{{l.n}}</span><span style="white-space: pre; color: var(--ink); overflow: hidden; text-overflow: ellipsis; min-width: 0">{{l.t}}</span></div></sc-for>
 </div></sc-if>
-<span style="font-size: 11.5px; color: #9B978F; line-height: 1.45">{{hint}}</span>
+<span style="font-size: 11.5px; color: var(--faint); line-height: 1.45">{{hint}}</span>
 </div>
 </x-dc>
 <script type="text/x-dc-logic">

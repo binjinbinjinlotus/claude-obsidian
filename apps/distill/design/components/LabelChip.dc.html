@@ -6,8 +6,8 @@
 <script type="text/x-dc-logic">
 const num = (v, d) => (v === undefined || v === null || v === '' || isNaN(Number(v))) ? d : Number(v);
 const style = p.style || 'plain';
-const S = { suggestedExisting: ['#3D6110', '#F3FDE4', '1.5px dashed #B9F06A'], suggestedNew: ['#B03A0A', '#FFF4EE', '1.5px dashed #FFB894'],
-            plain: ['#1F6FEB', '#E3EEFF', 'none'], muted: ['#9B978F', '#F6F5F2', '1.5px dashed #ECEAE5'] }[style] || ['#1F6FEB', '#E3EEFF', 'none'];
+const S = { suggestedExisting: ['var(--limeInk)', '#F3FDE4', '1.5px dashed var(--lime)'], suggestedNew: ['var(--peachInk)', '#FFF4EE', '1.5px dashed var(--peach)'],
+            plain: ['var(--primary)', 'var(--primaryTint)', 'none'], muted: ['var(--faint)', 'var(--panel)', '1.5px dashed var(--border)'] }[style] || ['var(--primary)', 'var(--primaryTint)', 'none'];
 const h = num(p.height, 26), removable = on(p.removable, false);
 return { text: (on(p.sparkle, false) ? '✦ ' : '') + '#' + (p.labelName || 'tea'), ink: S[0], fill: S[1], border: S[2], h: h + 'px', r: h / 2 + 'px',
   newTag: style === 'suggestedNew' && on(p.showNewTag, true), removable, padR: removable ? '4px' : '10px' };

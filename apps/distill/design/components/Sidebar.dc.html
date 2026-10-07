@@ -1,20 +1,20 @@
 <!-- Sidebar: source template. render.py wraps it in the page shell and writes data-props from components.json.
      @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
 <x-dc>
-<aside style="width: 220px; height: {{height}}; flex-shrink: 0; background: #F6F5F2; display: flex; flex-direction: column; padding: 16px 14px; gap: 22px; box-sizing: border-box">
+<aside style="width: 220px; height: {{height}}; flex-shrink: 0; background: var(--panel); display: flex; flex-direction: column; padding: 16px 14px; gap: 22px; box-sizing: border-box">
 <div style="height: 12px"></div>
 <div style="display: flex; align-items: center; gap: 9px; padding: 0 6px">
-<svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><path d="M12 3h8v8l7 13a3 3 0 0 1-2.6 4.5H7.6A3 3 0 0 1 5 24l7-13z" fill="#FFFFFF" stroke="#6B7785" stroke-width="2" stroke-linejoin="round"></path><path d="M8.6 18.5h14.8l2.5 4.8a2 2 0 0 1-1.8 2.9H7.9a2 2 0 0 1-1.8-2.9z" fill="#B9F06A"></path><circle cx="15" cy="14.5" r="1.3" fill="#1F6FEB"></circle><circle cx="18" cy="11.5" r="0.9" fill="#FF9A6B"></circle></svg>
+<svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><path d="M12 3h8v8l7 13a3 3 0 0 1-2.6 4.5H7.6A3 3 0 0 1 5 24l7-13z" stroke-width="2" stroke-linejoin="round" style="fill: var(--window); stroke: var(--flaskLine)"></path><path d="M8.6 18.5h14.8l2.5 4.8a2 2 0 0 1-1.8 2.9H7.9a2 2 0 0 1-1.8-2.9z" style="fill: var(--lime)"></path><circle cx="15" cy="14.5" r="1.3" style="fill: var(--primary)"></circle><circle cx="18" cy="11.5" r="0.9" fill="#FF9A6B"></circle></svg>
 <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -0.02em">distill</span>
 </div>
 <nav style="display: flex; flex-direction: column; gap: 2px" aria-label="Sections">
 <sc-for list="{{items}}" as="it" hint-placeholder-count="6">
 <sc-if value="{{it.isTop}}" hint-placeholder-val="{{ true }}">
-<a href="{{it.href}}" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; color: #1D1C1A; text-decoration: none; font-size: 14px; font-weight: {{it.weight}}; background: {{it.bg}}; box-shadow: {{it.shadow}}">
-<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="{{it.stroke}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{it.d}}"></path></svg>
+<a href="{{it.href}}" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; color: var(--ink); text-decoration: none; font-size: 14px; font-weight: {{it.weight}}; background: {{it.bg}}; box-shadow: {{it.shadow}}">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="stroke: {{it.stroke}}"><path d="{{it.d}}"></path></svg>
 <span style="flex-grow: 1">{{it.label}}</span>
 <sc-if value="{{it.pill}}" hint-placeholder-val="{{ false }}"><span style="font-size: 11px; font-weight: 700; color: {{it.pillFg}}; background: {{it.pillBg}}; border-radius: 9px; padding: 2px 8px">{{it.count}}</span></sc-if>
-<sc-if value="{{it.plain}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; color: #6B6862">{{it.count}}</span></sc-if>
+<sc-if value="{{it.plain}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; color: var(--muted)">{{it.count}}</span></sc-if>
 </a>
 </sc-if>
 <sc-if value="{{it.isSub}}" hint-placeholder-val="{{ false }}">
@@ -27,20 +27,20 @@
 </nav>
 <sc-if value="{{showRecent}}" hint-placeholder-val="{{ false }}">
 <div style="display: flex; flex-direction: column">
-<div style="font-size: 11px; font-weight: 700; color: #9B978F; padding: 0 12px 4px; letter-spacing: 0.06em">RECENT QUESTIONS</div>
+<div style="font-size: 11px; font-weight: 700; color: var(--faint); padding: 0 12px 4px; letter-spacing: 0.06em">RECENT QUESTIONS</div>
 <sc-for list="{{recent}}" as="q" hint-placeholder-count="3">
 <a href="Ask.dc.html" title="{{q.help}}" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 13px; color: {{q.fg}}; text-decoration: none">
 <span style="flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{q.text}}</span>
-<sc-if value="{{q.running}}" hint-placeholder-val="{{ false }}"><span style="width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0"></span></sc-if>
+<sc-if value="{{q.running}}" hint-placeholder-val="{{ false }}"><span style="width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: var(--primary); flex-shrink: 0"></span></sc-if>
 </a>
 </sc-for>
 </div>
 </sc-if>
-<div style="margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 12px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5">
+<div style="margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 12px; background: var(--window); box-shadow: 0 0 0 1px var(--border)">
 <span style="width: 30px; height: 30px; border-radius: 9px; background: {{chipBg}}; color: {{chipFg}}; display: flex; align-items: center; justify-content: center; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 15px">{{initial}}</span>
 <span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{vault}}</span>
-<sc-if value="{{hasStatus}}" hint-placeholder-val="{{ true }}"><span style="font-size: 11px; color: #6B6862">{{status}}</span></sc-if></span>
-<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6B6862" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10l5-5 5 5M7 14l5 5 5-5"></path></svg>
+<sc-if value="{{hasStatus}}" hint-placeholder-val="{{ true }}"><span style="font-size: 11px; color: var(--muted)">{{status}}</span></sc-if></span>
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="stroke: var(--muted)"><path d="M7 10l5-5 5 5M7 14l5 5 5-5"></path></svg>
 </div>
 </aside>
 </x-dc>
@@ -70,24 +70,24 @@ top.forEach(([key, label, count, highlight, href]) => {
   const shown = open ? '' : (count === '0' ? '' : count);
   const parentOnly = active && !(open && sub);
   items.push({ isTop: true, isSub: false, label, href, d: P[key], count: shown,
-    pill: !!shown && highlight, plain: !!shown && !highlight, pillBg: key === 'review' || key === 'collectors' ? '#FFE4D6' : '#E3EEFF', pillFg: key === 'review' || key === 'collectors' ? '#B03A0A' : '#1F6FEB',
-    weight: active ? 600 : 400, stroke: active ? '#1F6FEB' : '#6B6862',
-    bg: parentOnly ? '#FFFFFF' : 'transparent', shadow: parentOnly ? '0 1px 3px rgba(29,28,26,0.08)' : 'none' });
+    pill: !!shown && highlight, plain: !!shown && !highlight, pillBg: key === 'review' || key === 'collectors' ? 'var(--peachTint)' : 'var(--primaryTint)', pillFg: key === 'review' || key === 'collectors' ? 'var(--peachInk)' : 'var(--primary)',
+    weight: active ? 600 : 400, stroke: active ? 'var(--primary)' : 'var(--muted)',
+    bg: parentOnly ? 'var(--window)' : 'transparent', shadow: parentOnly ? '0 1px 3px rgba(29,28,26,0.08)' : 'none' });
   if (open) subs[key].forEach(([skey, slabel, scount, shref]) => {
     const on = sub === skey;
     items.push({ isTop: false, isSub: true, label: slabel, href: shref, count: scount === '0' ? '' : scount,
-      fg: on ? '#1D1C1A' : '#48463F', countFg: on ? '#1F6FEB' : '#9B978F', weight: on ? 600 : 500,
-      bg: on ? '#FFFFFF' : 'transparent', shadow: on ? '0 1px 3px rgba(29,28,26,0.08)' : 'none' });
+      fg: on ? 'var(--ink)' : '#48463F', countFg: on ? 'var(--primary)' : 'var(--faint)', weight: on ? 600 : 500,
+      bg: on ? 'var(--window)' : 'transparent', shadow: on ? '0 1px 3px rgba(29,28,26,0.08)' : 'none' });
   });
 });
 const recent = [];
 if (p.recentRunning) recent.push({ text: p.recentRunning, running: true, fg: '#48463F', help: 'Still answering — open it' });
 if (p.recentFailed) recent.push({ text: p.recentFailed, running: false, fg: '#48463F', help: 'Couldn’t answer — open it' });
-['Green tea water temperature', 'What did I add this week?', 'Oolong oxidation range'].forEach((t) => recent.push({ text: t, running: false, fg: t === p.recentOpen ? '#1F6FEB' : '#48463F', help: '' }));
+['Green tea water temperature', 'What did I add this week?', 'Oolong oxidation range'].forEach((t) => recent.push({ text: t, running: false, fg: t === p.recentOpen ? 'var(--primary)' : '#48463F', help: '' }));
 const vault = p.vault || 'Research';
-const chips = { R: ['#FFE0EC', '#A3245A'], W: ['#DDF2FF', '#0B5C86'] };
+const chips = { R: ['var(--pinkTint)', 'var(--pinkInk)'], W: ['var(--skyTint)', 'var(--skyInk)'] };
 const initial = vault === 'Choose a vault' ? '?' : vault.charAt(0).toUpperCase();
-const chip = chips[initial] || ['#F6F5F2', '#6B6862'];
+const chip = chips[initial] || ['var(--panel)', 'var(--muted)'];
 const status = p.status ?? 'Sonnet · ready';
 return { items, recent: recent.slice(0, 5), showRecent: section === 'ask', vault, initial, chipBg: chip[0], chipFg: chip[1], status, hasStatus: vault !== 'Choose a vault' && status !== '',
   height: (p.height || 720) + 'px' };
