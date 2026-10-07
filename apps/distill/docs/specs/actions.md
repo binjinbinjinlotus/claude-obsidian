@@ -240,7 +240,7 @@ card `jira-card-required`.
   An optional field goes along only when it has a value.
 - **Use for future <PROJECT> <Type>s** saves the value in
   `actionPreferences.types.jira.requiredDefaults["TLS|Task"][fieldId] =
-  {name, value}`. A saved value fills the field on new drafts and at Create.
+  {name, value}`. A saved value fills the field on new drafts and at Create. It is shown, never copied onto the item, so a ticket moved to another project (with the same site-wide field) doesn't carry it.
   Optional fields stay hidden unless a value is saved for them.
 - **From the note:** after a draft, an empty asked field takes a choice the
   note names exactly (whole words, ignoring case), tagged

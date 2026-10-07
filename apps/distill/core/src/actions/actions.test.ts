@@ -1311,11 +1311,39 @@ describe('Jira required fields (actions.md, fake Jira)', () => {
     const d = await h.service.createAction({ type: 'jira', title: 'Cap retries', fields: { project: 'TLS', issueType: 'Task' } });
     await h.service.whenIdle();
     const drafted = (await h.service.getAction(d.id))!;
-    assert.equal(drafted.fields['jira.customfield_11063'], 'Platform', 'the saved value wins over the note');
+    assert.equal(drafted.fields['jira.customfield_11063'] ?? null, null, 'the saved value wins over the note (it applies at Create, never copied)');
     assert.equal(drafted.fields['jira.customfield_11063:from'] ?? null, null);
 
     const decoded = decodeSettings({ actionPreferences: { types: { jira: { requiredDefaults: { 'TLS|Task': { customfield_11063: { name: 'Team', value: 'Platform' }, bad: { value: 3 }, blank: { name: 'X', value: ' ' } }, 'PX|Bug': 'nope' } } } } });
     assert.deepEqual(actionPreferences(decoded).types.jira!.requiredDefaults, { 'TLS|Task': { customfield_11063: { name: 'Team', value: 'Platform' } } });
+  });
+
+  test('a saved TLS value never goes on a ticket moved to another project with the same field', async () => {
+    const prefs = structuredClone(DEFAULT_ACTION_PREFERENCES);
+    prefs.types.jira = { ...prefs.types.jira, requiredDefaults: { 'TLS|Task': { customfield_11063: { name: 'Team', value: 'Platform' } } } };
+    const h = harness({ prefs });
+    const posts: unknown[] = [];
+    // PX's Task screen requires the same (site-wide) custom field.
+    const px: FakeHTTP['routes'] = [
+      (m, url) =>
+        m === 'GET' && url.startsWith(`${SITE}/rest/api/3/project/search?action=create`)
+          ? { status: 200, json: { isLast: true, values: [{ id: '10000', key: 'TLS', name: 'Telus API Marketplace' }, { id: '10002', key: 'PX', name: 'Payments X' }] } }
+          : undefined,
+      (m, url) => (m === 'GET' && url.startsWith(`${SITE}/rest/api/3/issue/createmeta/PX/issuetypes?`) ? { status: 200, json: { issueTypes: [{ id: '10001', name: 'Task' }] } } : undefined),
+      (m, url) => (m === 'GET' && url.startsWith(`${SITE}/rest/api/3/issue/createmeta/PX/issuetypes/10001?`) ? { status: 200, json: { fields: [TEAM] } } : undefined),
+    ];
+    await connected(h, [...px, ...requiredRoutes([], posts)]);
+    h.runner.draft = () => ({ structured: { title: 'Cap retries', body: 'b', fields: [] } });
+    const d = await h.service.createAction({ type: 'jira', title: 'Cap retries', fields: { project: 'TLS', issueType: 'Task' } });
+    await h.service.whenIdle();
+    await h.service.updateAction(d.id, { fields: { project: 'PX' } });
+    const moved = await h.service.performAction(d.id, 'create');
+    assert.deepEqual(moved.error, { code: 'refused', message: 'Fill in Team first', field: 'jira.customfield_11063' }, 'PX has no saved Team');
+    assert.equal(posts.length, 0);
+    // Back in TLS, the saved value still applies at Create.
+    await h.service.updateAction(d.id, { fields: { project: 'TLS' } });
+    assert.equal((await h.service.performAction(d.id, 'create')).status, 'created');
+    assert.deepEqual((posts[0] as { fields: Record<string, unknown> }).fields.customfield_11063, { id: '20100' });
   });
 
   test('a draft prefills a value the note names exactly, tagged from the note; two names for one choice prefill nothing', async () => {

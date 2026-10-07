@@ -45,9 +45,9 @@ extension ActionsStore {
     }
 
     /// Copy the ticket text: the title and description, then each filled field by name.
-    func copyJiraTicket(_ item: ActionItem, fields: [JiraField]) {
+    func copyJiraTicket(_ item: ActionItem, fields: [JiraField], defaults: [String: JiraRequiredDefault]) {
         let values = item.fields.compactMapValues { $0 }
-        let lines = fields.compactMap { f in JiraRequired.display(f, values[f.key]).map { "\(f.name): \($0)" } }
+        let lines = fields.compactMap { f in JiraRequired.display(f, JiraRequired.value(f, values: values, defaults: defaults)).map { "\(f.name): \($0)" } }
         let text = ([item.title, item.body ?? ""] + (lines.isEmpty ? [] : [lines.joined(separator: "\n")])).filter { !$0.isEmpty }.joined(separator: "\n\n")
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
@@ -279,7 +279,7 @@ struct JiraRequiredRow: View {
                         Button { store.openJiraCreatePage(item) } label: {
                             HStack(spacing: 3) { Text("Open in Jira"); Image(systemName: "arrow.up.right").font(.system(size: 9, weight: .bold)) }
                         }
-                        Button("Copy the ticket text") { store.copyJiraTicket(item, fields: all) }
+                        Button("Copy the ticket text") { store.copyJiraTicket(item, fields: all, defaults: defaults) }
                     }
                     .buttonStyle(.plain).font(Theme.body(12.5, .semibold)).foregroundStyle(Theme.primary).padding(.top, 2)
                 }

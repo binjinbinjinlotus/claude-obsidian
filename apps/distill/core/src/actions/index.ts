@@ -1942,8 +1942,10 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
   }
 
   /**
-   * actions.md, Jira required fields: after a draft, an empty field the project + type asks for gets its
-   * saved value, else a value the note names exactly (tagged "from the note"). Best effort.
+   * actions.md, Jira required fields: after a draft, an empty field the project + type asks for gets a
+   * value the note names exactly (tagged "from the note"). Best effort. A saved value wins, but is never
+   * copied onto the item: it applies at Create for this project + type only (a ticket moved to another
+   * project with the same field doesn't carry it).
    */
   async function fillJiraRequired(item: ActionItem): Promise<ActionItem> {
     if (item.type !== 'jira' || !item.fields.project?.trim() || !atlassian.isConnected()) return item;
@@ -1960,10 +1962,7 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     for (const f of extraFields(check.fields)) {
       if (!asked(f) && !saved?.[f.id]) continue;
       if (!isEmptyValue(item.fields[fieldKey(f.id)])) continue;
-      if (saved?.[f.id]) {
-        patch[fieldKey(f.id)] = saved[f.id]!.value;
-        continue;
-      }
+      if (saved?.[f.id]) continue;
       const v = fromNote(f, text);
       if (v) {
         patch[fieldKey(f.id)] = v;
