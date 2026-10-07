@@ -50,6 +50,25 @@ final class PeopleEditTests: XCTestCase {
         XCTAssertEqual(PeopleEdit.addable(p, type: "todo"), [])
     }
 
+    /// A person added from a type's ＋ handles that type from their first name, in the same save.
+    func testAPersonAddedFromATypesPlusHandlesThatType() {
+        var p = jinOnly()
+        var edit = PeopleEdit()
+        edit.add(id: "p-1", forType: "todo")
+        XCTAssertEqual(p.handlesFor("todo"), ["you"], "not before they're named")
+        edit.saveName("p-1", "Linu Chui", in: &p)
+        XCTAssertEqual(p.handlesFor("todo"), ["you", "p-1"])
+        XCTAssertEqual(p.handlesFor("slack"), ["you"], "only that type")
+        edit.add(id: "p-2")
+        edit.saveName("p-2", "Mei", in: &p)
+        XCTAssertEqual(p.handlesFor("todo"), ["you", "p-1"], "+ Add a person adds to no type")
+        edit.add(id: "p-3", forType: "todo")
+        edit.remove("p-3", types: ["todo"], in: &p)
+        edit.add(id: "p-4")
+        edit.saveName("p-4", "Ana", in: &p)
+        XCTAssertEqual(p.handlesFor("todo"), ["you", "p-1"], "a removed draft's type doesn't carry over")
+    }
+
     /// (c) The alias keeps inner spaces; it's trimmed, and a repeat in any case adds nothing.
     func testAliasKeepsTheSpace() {
         XCTAssertEqual(PeopleEdit.alias("  Linus Chui ", to: []), ["Linus Chui"])

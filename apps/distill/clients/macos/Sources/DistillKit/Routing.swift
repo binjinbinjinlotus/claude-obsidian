@@ -478,13 +478,18 @@ extension CoreClient {
 /// person with an empty name, so saving them blank made the new row vanish half a second later.
 public struct PeopleEdit: Equatable, Sendable {
     public private(set) var newPerson: ActionPerson?
+    /// Added from this type's "Handles items for" ＋: they handle it from their first name.
+    public private(set) var newPersonType: String?
 
     public init() {}
 
     /// The rows the page shows: Settings' people, then the one being added.
     public func rows(_ p: ActionPreferences) -> [ActionPerson] { p.people + (newPerson.map { [$0] } ?? []) }
 
-    public mutating func add(id: String) { newPerson = ActionPerson(id: id, name: "") }
+    public mutating func add(id: String, forType type: String? = nil) {
+        newPerson = ActionPerson(id: id, name: "")
+        newPersonType = type
+    }
 
     /// The name field's save (trimmed, never empty for anyone but you): the new person joins Settings
     /// with it; anyone else is renamed, and a person removed meanwhile stays removed.
@@ -492,6 +497,8 @@ public struct PeopleEdit: Equatable, Sendable {
         if let n = newPerson, n.id == id {
             newPerson = nil
             p.people.append(ActionPerson(id: id, name: name, aliases: n.aliases))
+            if let type = newPersonType { p.setHandlesFor(type, p.handlesFor(type) + [id]) }
+            newPersonType = nil
         } else {
             p.setName(id, name)
         }
@@ -503,7 +510,7 @@ public struct PeopleEdit: Equatable, Sendable {
     }
 
     public mutating func remove(_ id: String, types: [String], in p: inout ActionPreferences) {
-        if newPerson?.id == id { newPerson = nil; return }
+        if newPerson?.id == id { newPerson = nil; newPersonType = nil; return }
         p.removePerson(id, types: types)
     }
 

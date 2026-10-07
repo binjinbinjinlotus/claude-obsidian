@@ -143,9 +143,10 @@ struct PeopleSettingsPage: View {
         SettingsEdits.setActions(&engine.settings) { edit.setAliases(p.id, aliases, in: &$0) }
     }
 
-    private func addPerson() {
+    /// From a type's ＋: once named, they handle that type too.
+    private func addPerson(forType type: String? = nil) {
         let id = "p-" + UUID().uuidString.prefix(8).lowercased()
-        edit.add(id: id)
+        edit.add(id: id, forType: type)
         editingName = id
     }
 
@@ -175,7 +176,7 @@ struct PeopleSettingsPage: View {
                     }
                     // Nobody left to add: the menu had nothing to pick, so ＋ adds a person.
                     if missing.isEmpty {
-                        Button { addPerson() } label: { Text("＋").font(Theme.body(12)).foregroundStyle(Theme.muted) }
+                        Button { addPerson(forType: t.id) } label: { Text("＋").font(Theme.body(12)).foregroundStyle(Theme.muted) }
                             .buttonStyle(.plain).help("Everyone in People is here. Add a person")
                             .padding(.horizontal, 9).frame(height: 24)
                             .overlay(Capsule().strokeBorder(Color(hex: 0xD6D3CC), style: StrokeStyle(lineWidth: 1.5, dash: [3, 2])))
@@ -183,7 +184,7 @@ struct PeopleSettingsPage: View {
                         Menu {
                             ForEach(missing) { p in Button(p.isYou ? "\(p.name) (you)" : p.name) { set(t.id, handles + [p.id]) } }
                             Divider()
-                            Button("Add a person…") { addPerson() }
+                            Button("Add a person…") { addPerson(forType: t.id) }
                         } label: {
                             Text("＋").font(Theme.body(12)).foregroundStyle(Theme.muted)
                         }

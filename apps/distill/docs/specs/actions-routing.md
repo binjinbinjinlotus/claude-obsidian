@@ -37,7 +37,8 @@ goes to the note's Highlights.
     saved to Settings only then (the core drops a person with an empty name).
   - Each type's "Handles items for" chips with × and a ＋ menu (named people not there yet,
     then "Add a person…"), plus a plain line under them, such as "Your to-dos, and the ones
-    you do for Aditya." With nobody left to add, ＋ adds a person instead of a menu.
+    you do for Aditya." With nobody left to add, ＋ adds a person instead of a menu. A person added from a type's ＋
+    handles that type from their first name, in the same save.
   - A preview line: "In the last 7 days this would have sent N to your lists, N to Pending and
     N to Highlights." It comes from `POST /v1/actions/routing-preview` with the People being
     edited. It counts items found from notes in those days while routing was on; items found
