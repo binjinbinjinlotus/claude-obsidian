@@ -5,6 +5,10 @@ Distill app: what worked, what broke, and what we changed because of it. After t
 first beta, the owner will review it and turn the practice into a reusable skill,
 so the next product starts with these lessons instead of hitting the same limits.
 
+**The analysis.** [AI-BUILD-PLAYBOOK.md](AI-BUILD-PLAYBOOK.md) distils this log, git
+history and the lead session into evidence-backed learnings and a list of agents,
+skills and rule files to create.
+
 **How to read it.**
 - **Practices** are what we do now, each with the reason.
 - **Friction log** lists the issues and limits we hit, newest first, each with what
