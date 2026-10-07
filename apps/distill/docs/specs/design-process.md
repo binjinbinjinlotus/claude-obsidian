@@ -24,8 +24,11 @@ it behaves: https://claude.ai/artifact/7PAQ8AKofpY9yPvakwvUMB
 - A pure bug fix that restores designed behavior can go straight to code;
   the canvas is updated afterwards if the fix adds visible states (example:
   the "answering…" rows in History).
-- The canvas is organized by flow, one row per flow, and shows every state
-  of every screen. A board that shows the app window must not contradict any
+- The canvas has a page per area (Capture & Queue, Review, Ask, Actions,
+  Automations, Settings & Shell, and three component pages) and a row per
+  flow on each page, and shows every state of every screen. `design/pages.json`
+  places every board; a page holds at most 30 boards, because one page with
+  all of them never drew in the viewer. A board that shows the app window must not contradict any
   other board.
 - No local previews: no HTTP servers, browser pages or Playwright for design
   work. Boards are checked by offscreen rendering (WKWebView to PNG) or by
@@ -53,8 +56,10 @@ boards are never edited by hand.
 2. `python3 apps/distill/design/render.py OUT --canvas LIVE/canvas.json`
    (add `--measure` when heights may change). It prints the boards that
    changed and writes `OUT/canvas.json`: positions and component frame sizes
-   stay as the user left them, heights update, new boards go at the end of
-   their row.
+   stay as the user left them, heights update, and a new board goes to the
+   end of its row on the page `pages.json` gives it. A board `pages.json`
+   doesn't list fails the render: add it to a row there first. `--repack`
+   lays every page out afresh.
 3. The lead publishes the changed boards and `canvas.json`.
 4. The user reviews on the canvas.
 5. Build the Swift change; `make test` (or `python3
@@ -69,8 +74,8 @@ names), write `components/<Name>.dc.html` (`<x-dc>` markup, then
 props, `on(v, d)` reads a boolean), list its states and give it a `board`
 (`file`, `title`, `heading`, `intro`, `width`, `cols`; `wrap` frames each
 cell). A states board shared by several components lists them in
-`board.components`; the others point at it with `board.file`. Render; the
-new boards are appended to row 0.
+`board.components`; the others point at it with `board.file`. List both
+boards in a component page's row in `pages.json`, then render.
 
 ### Add a state
 
@@ -103,11 +108,11 @@ Board.dc.html:STATE_ID` imports one and writes only if it renders back byte
 for byte. `--measure` leaves page boards at their window height.
 
 A row list can use another row component: `{"list": KEY, "row":
-"CollectorRow", "selected": 0}`. A screen file can open its own canvas row:
-`"rowNote": {"id": "flow7", "text": "7 · …"}` adds the row title 240 px above
-`row` when the canvas has no note with that id. A board can sit in another
-flow's row with its own `"row"` (2026-10-04: CollectorsLog, from
-`screens/collectors.json`, sits in the Live log row next to LiveLog).
+"CollectorRow", "selected": 0}`. Where a board sits is `pages.json`'s job: a
+page lists its rows, a row its boards in order and an optional `title1` note
+(`{"id", "text"}`), created 300 px above the row when missing. A board can sit
+in another flow's row (CollectorsLog, from `screens/collectors.json`, is in the
+Live log row next to LiveLog).
 
 ### Drift test
 

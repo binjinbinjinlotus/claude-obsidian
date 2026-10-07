@@ -1,10 +1,5 @@
 {
  "$doc": "Collectors (designed 2026-10-04, calmer pass the same day): one base (list + detail); states override the list, the detail or the overlay. Fragments in screens/collectors/ are the detail panes, the add steps, the Already collected sheet and the cards; they import CollectorRow, QueuePath, ScheduleField, RunLogEntry and ScriptConsent.",
- "row": 19825,
- "rowNote": {
-  "id": "flow7",
-  "text": "7 \u00b7 Collectors (bring material into the queue on a schedule)"
- },
  "templates": {
   "header": "<header style=\"display: flex; align-items: center; gap: 12px; padding: 30px 32px 0\">\n<div style=\"display: flex; flex-direction: column; gap: 6px; flex-grow: 1; min-width: 0\"><h1 style=\"margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 30px; letter-spacing: -0.03em; line-height: 1.05\">{title}</h1>\n<span style=\"font-size: 13px; color: #6B6862\">{sub}</span></div>{right}</header>"
  },
@@ -1242,7 +1237,6 @@
    "title": "Live log \u00b7 collector runs, installs and Test runs",
    "heading": "Live log \u00b7 collector runs, installs and Test runs",
    "intro": "\u201cIs it possible to see the live log when a collector is running?\u201d The status card keeps its last lines; <b>Show log</b> opens the whole output in place of the detail (\u2039 goes back): while a script runs, while packages install, after Run now or a Test run, and from <b>All runs</b> (Open log in an opened run). Lines come in the order the script printed them, stdout in white, stderr in peach with a peach gutter, the command and Distill\u2019s own lines in grey, a faint time when the second changes. It follows the newest line; scroll up and Jump to latest appears (as for batches). Copy takes the whole output. After the run the same view shows what was kept: the last 64 KB, in order. Runs saved before this show Output, then stderr.",
-   "row": 31000,
    "width": 2520,
    "sections": [
     {

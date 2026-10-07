@@ -1,10 +1,5 @@
 {
   "$doc": "Action context (designed 2026-10-05): actions found inside the batch before Review, from every line of the original plus the source's new wiki page; each item points at the original's lines (.raw/captured/) and the wiki section; the To confirm preview shows what Create draft will write. Spec: docs/specs/action-context.md.",
-  "row": 43000,
-  "rowNote": {
-    "id": "flow12",
-    "text": "12 · Action context (actions from the original + the wiki)"
-  },
   "templates": {},
   "layouts": {
     "pane": "<div style=\"flex-grow: 1; min-height: 0; overflow: hidden; position: relative\">{detail}</div>"

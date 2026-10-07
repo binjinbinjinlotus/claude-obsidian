@@ -1,6 +1,5 @@
 {
  "$doc": "Page boards (one app window each) imported by tools/import_board.py --page, then edited by hand. The document wrapper (title, CSS, data-props, script with the sc-for data) is kept verbatim in each base's doc.",
- "row": 2519,
  "templates": {
   "page-header": "<header style=\"display: flex; align-items: flex-start; gap: 16px\">\n<div style=\"display: flex; flex-direction: column; gap: 6px; flex-grow: 1\">\n<h1 style=\"margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 34px; letter-spacing: -0.03em; line-height: 1.05\">{title}</h1>\n<span style=\"font-size: 15px; color: #6B6862\">{sub}</span>{path}\n</div>\n{right}\n</header>"
  },

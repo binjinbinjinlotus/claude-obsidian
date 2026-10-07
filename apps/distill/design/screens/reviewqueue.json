@@ -1,10 +1,5 @@
 {
   "$doc": "Review queue (designed 2026-10-05): approvals queue one apply at a time per vault; after each apply waiting batches are re-checked and stale ones rebuilt (unapproved: before the owner looks; approved: rebuilt, then one more OK, decision A); exit 75 reads Updating, never a failure; bounded self-recovery (rules first, then a recovery model, default Opus); the batch tabs become a left list. Spec: docs/specs/review-queue.md.",
-  "row": 69920,
-  "rowNote": {
-    "id": "flow16",
-    "text": "16 · Review queue (approve several batches; they go in one at a time, stale plans rebuild themselves, stuck ones recover)"
-  },
   "templates": {},
   "layouts": {
     "pane": "<div style=\"flex-grow: 1; min-height: 0; overflow: hidden; position: relative\">{detail}</div>"

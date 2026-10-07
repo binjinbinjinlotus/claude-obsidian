@@ -1,6 +1,5 @@
 {
   "$doc": "Actions: whose items, Pending and Highlights (proposal 2026-10-06, design only, not built; waits for the owner's review). An item found in a note goes to the owner's lists only when its owner is one of that type's people (Settings → Actions → Whose items Distill handles); things others owe the owner go to Pending; everyone else's go to the note's Highlights. Pending and Highlights are drawn in a static sidebar copy (routing/sidebar-*.html) laid over the shared Sidebar, which stays unchanged.",
-  "row": 13625,
   "templates": {},
   "layouts": {
     "pane": "<div style=\"flex-grow: 1; min-height: 0; overflow: hidden; position: relative\">{detail}</div>"

@@ -221,25 +221,51 @@ class Screens(unittest.TestCase):
 
 
 class Canvas(unittest.TestCase):
-    def test_merged_canvas_has_no_explicit_pages(self):
-        # Explicit pages and "page" keys blank the canvas viewer (v98, 2026-10-06), so a merge removes them.
+    # One page with all the boards never drew in the canvas viewer; area pages of 3 to 17 did
+    # (docs/specs/design-system-plan.md, 2026-10-06). So every board has a page, and pages stay small.
+    P = render.pages()
+
+    def test_every_board_has_one_page(self):
+        listed = [f for p in self.P['pages'] for r in p['rows'] for f in r['boards']]
+        self.assertEqual(sorted(f for f in set(listed) if listed.count(f) > 1), [], 'boards on two rows')
+        self.assertEqual(sorted(set(render.build_all()) - set(listed)), [], 'boards pages.json places nowhere')
+
+    def test_pages_stay_small(self):
+        for p in self.P['pages']:
+            self.assertRegex(p['id'], r'^[A-Za-z0-9_-]{1,40}$')
+            n = sum(len(r['boards']) for r in p['rows'])
+            self.assertLessEqual(n, self.P['maxBoards'], f'page {p["id"]} holds {n} boards')
+        self.assertLessEqual(len(self.P['pages']), 40)
+
+    def merge(self, live):
         import contextlib
         import io
         import tempfile
         with tempfile.TemporaryDirectory() as d:
-            live = os.path.join(d, 'live.json')
-            with open(live, 'w', encoding='utf-8') as f:
-                json.dump({'v': 3, 'pages': [{'id': 'p', 'name': 'P'}], 'launch': {'view': 'canvas', 'page': 'p'}, 'order': ['A.dc.html'],
-                           'boards': {'A.dc.html': {'x': 0, 'y': 0, 'w': 100, 'h': 100, 'title': 'A', 'page': 'p'}},
-                           'notes': {'n': {'kind': 'title1', 'text': 'N', 'x': 0, 'y': -240, 'page': 'p'}}}, f)
+            path = os.path.join(d, 'live.json')
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(live, f)
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                render.merge_canvas(live, d, {}, [])
+                render.merge_canvas(path, d, {}, [])
             with open(os.path.join(d, 'canvas.json'), encoding='utf-8') as f:
-                c = json.load(f)
-        self.assertEqual(c['pages'], [])
-        self.assertEqual(c['launch'], {'view': 'canvas'})
-        keyed = [k for sec in ('boards', 'notes') for k, v in c[sec].items() if 'page' in v]
-        self.assertEqual(keyed, [], 'boards or notes with a "page" key')
+                return json.load(f)
+
+    def test_merge_puts_every_board_on_its_page(self):
+        first = self.P['pages'][0]
+        f = first['rows'][0]['boards'][0]
+        c = self.merge({'v': 3, 'pages': [], 'launch': {'view': 'canvas'}, 'order': [f], 'notes': {},
+                        'boards': {f: {'x': 0, 'y': 70000, 'w': 100, 'h': 100, 'title': 'A'}}})
+        self.assertEqual([p['id'] for p in c['pages']], [p['id'] for p in self.P['pages']])
+        self.assertEqual(c['launch'], {'view': 'canvas', 'page': first['id']})
+        self.assertEqual(c['boards'][f]['page'], first['id'])
+        self.assertEqual(c['boards'][f]['y'], render.TITLE_ROOM, 'a board moved to its page goes to its row')
+        note = first['rows'][0]['note']['id']
+        self.assertEqual(c['notes'][note]['page'], first['id'])
+
+    def test_merge_refuses_a_board_without_a_page(self):
+        with self.assertRaises(SystemExit):
+            self.merge({'v': 3, 'order': ['Stray.dc.html'], 'notes': {},
+                        'boards': {'Stray.dc.html': {'x': 0, 'y': 0, 'w': 100, 'h': 100}}})
 
 
 def report():

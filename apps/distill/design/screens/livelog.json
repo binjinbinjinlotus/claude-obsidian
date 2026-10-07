@@ -1,10 +1,5 @@
 {
  "$doc": "Live log (designed 2026-10-04): what a running batch is doing, step by step, and what a collector run, package install or Test run prints, live and afterwards. One view, LogLine rows; it opens in place of the screen it came from (‹ back). Batch frames are here; the collector frames are CollectorsLog in screens/collectors.json, placed in this row. Spec: docs/specs/live-log.md.",
- "row": 31000,
- "rowNote": {
-  "id": "flow9",
-  "text": "9 · Live log (what a batch or a collector is doing, as it happens)"
- },
  "templates": {},
  "layouts": {
   "pane": "<div style=\"flex-grow: 1; min-height: 0; overflow: hidden; position: relative\">{detail}</div>"

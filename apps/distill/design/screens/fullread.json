@@ -1,10 +1,5 @@
 {
  "$doc": "Full reads (designed 2026-10-05): batches sized to what one session can read, coverage counted by the core from the tool results, automatic continuations and fresh-session parts, the hard stop, the detail check, archive with the batch, automatic repair. Spec: docs/specs/full-read.md.",
- "row": 38200,
- "rowNote": {
-  "id": "flow11",
-  "text": "11 \u00b7 Full reads (every source read to its last line, checked by Distill)"
- },
  "templates": {},
  "layouts": {
   "pane": "<div style=\"flex-grow: 1; min-height: 0; overflow: hidden; position: relative\">{detail}</div>"

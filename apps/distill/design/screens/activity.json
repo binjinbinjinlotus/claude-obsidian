@@ -1,10 +1,5 @@
 {
  "$doc": "Activity (designed 2026-10-04): History → Activity. One base (toolbar, day-grouped list, detail on the right); states override the list, the toolbar chips, the detail or the overlay. ActivityRow is the row; fragments in screens/activity/ are the detail panes, the Filter popover, the empty states and the cards. Spec: docs/specs/activity-log.md.",
- "row": 26400,
- "rowNote": {
-  "id": "flow8",
-  "text": "8 · Activity (what changed, when, and from where; Restore from Distill’s trash)"
- },
  "templates": {
   "header": "<header style=\"display: flex; align-items: center; gap: 12px; padding: 30px 32px 0\">\n<div style=\"display: flex; flex-direction: column; gap: 6px; flex-grow: 1; min-width: 0\"><h1 style=\"margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 30px; letter-spacing: -0.03em; line-height: 1.05\">{title}</h1>\n<span style=\"font-size: 13px; color: #6B6862\">{sub}</span></div>{right}</header>"
  },

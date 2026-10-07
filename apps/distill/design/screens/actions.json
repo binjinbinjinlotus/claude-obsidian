@@ -1,6 +1,5 @@
 {
  "$doc": "Imported from the published canvas by tools/import_board.py, then edited by hand. Bases: one per tab; states: overrides on a base (frames) or cards; boards: ordered sections. Fragments (screens/actions/*.html) are bespoke markup that is not a component yet.",
- "row": 13625,
  "templates": {
   "header": "<header style=\"display: flex; align-items: flex-start; gap: 12px; padding: 28px 32px 0\">\n<div style=\"display: flex; flex-direction: column; gap: 5px; flex-grow: 1\"><span style=\"font-size: 11px; font-weight: 800; letter-spacing: .06em; color: #9B978F\">ACTIONS</span><h1 style=\"margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 30px; letter-spacing: -0.03em; line-height: 1.05\">{title}</h1>\n<span style=\"font-size: 13px; color: #6B6862\">{sub}</span></div>{right}</header>"
  },

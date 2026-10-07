@@ -17,6 +17,20 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**The canvas has a page per area, and pages stay small (2026-10-06).** This
+supersedes the "no explicit canvas pages" part of "The design canvas moves to a
+fresh artifact". Pages did not blank the viewer: one page holding all 141 boards
+did. That one page never drew, with explicit pages or without (4 of 4 runs), while
+the same boards on 7 area pages drew (3 of 3), as recorded in
+[design-system-plan.md](design-system-plan.md). The owner approved steps 1–3 of
+that plan. `design/pages.json` now places every board on a page and a row:
+Capture & Queue, Review, Ask, Actions, Automations, Settings & Shell, and three
+component pages. `render.py` refuses a board that pages.json doesn't place, a
+page holds at most 30 boards (the largest area page that drew held 17), the
+canvas opens on the first page, and `test_design.py` checks all three. Each page
+has its own link (`#page-<id>`), so page ids never change. Row notes moved from
+`rowNote` in `screens/*.json` to pages.json.
+
 **Whose items Distill handles is built (2026-10-06).** The ActionsRouting design is now in
 the core and the Mac app (spec [actions-routing.md](actions-routing.md)). Choices made while
 building:

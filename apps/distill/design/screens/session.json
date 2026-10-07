@@ -1,7 +1,5 @@
 {
   "$doc": "Session continuity (designed 2026-10-05): the system-wide rule that Distill never silently replaces an AI session. Wherever it would resume one that no longer exists, SessionReplaceConfirm appears where you acted. Fragments in screens/session/ are the Review, Ask and Terminal contexts and the CLI card. Spec: docs/specs/session-continuity.md.",
-  "row": 35400,
-  "rowNote": {"id": "flow-session", "text": "10 · Session continuity (when an AI session is gone, Distill asks before using a new one)"},
   "templates": {},
   "layouts": {
     "pane": "{detail}"

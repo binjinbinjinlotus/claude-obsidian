@@ -1,10 +1,5 @@
 {
   "$doc": "Action summary (designed 2026-10-05): every found action carries a 2–4 sentence summary written at finding time from the original and the wiki; a To confirm row shows one line of it and the clean source name; clicking a row selects it into the right pane (type and target, title, summary, FROM with Open original lines and Open wiki section, quote, why, fields, what Create draft will write; Add / Create draft and Dismiss; ↑/↓ and Return). Same on Slack, Jira, Confluence and Ask. Spec: docs/specs/action-summary.md.",
-  "row": 53400,
-  "rowNote": {
-    "id": "flow14",
-    "text": "14 · Action summary (know what a found action is about before you act)"
-  },
   "templates": {},
   "layouts": {
     "pane": "<div style=\"flex-grow: 1; min-height: 0; overflow: hidden; position: relative\">{detail}</div>"

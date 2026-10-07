@@ -12,8 +12,12 @@ Writes, into OUT_DIR:
 --only Board      render only these boards (file name with or without .dc.html; repeatable)
 --canvas FILE     merge FILE (a copy of the live canvas.json) into OUT_DIR/canvas.json: x/y/w and
                   component frame sizes stay as the user left them, states and screen boards take the
-                  heights from sizes.json, missing boards are appended at the end of their row. Boards
-                  whose output differs from the .dc.html next to FILE are printed as "changed".
+                  heights from sizes.json. Every board sits on the page and row pages.json gives it: a
+                  new board, or one on the wrong page, goes to the end of its row there; a board
+                  pages.json doesn't list fails. Boards whose output differs from the .dc.html next
+                  to FILE are printed as "changed".
+--repack          with --canvas: lay out every page afresh from pages.json (rows 120 px apart, a
+                  title1 row note 300 px above its row, boards 80 px apart)
 --measure         render each generated states/screen board offscreen (WKWebView, no window) and store
                   its measured height in sizes.json, then render again at that height. macOS only.
 
@@ -31,7 +35,6 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com">\n'
          '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&amp;family=DM+Sans:wght@400;500;600;700&amp;display=swap">')
 BASE_CSS = 'body{margin:0;font-family:"DM Sans",-apple-system,sans-serif;color:#1D1C1A;-webkit-font-smoothing:antialiased}'
-COMPONENT_ROW_Y = 240  # row "0 · Components" on the canvas
 
 
 def load(name):
@@ -456,18 +459,16 @@ def screen_boards(screens, comps, H):
 
 # ---------------------------------------------------------------- everything
 def build_all(H=None):
-    """{file: (html, width, canvas title, row y or None, kind)}; kind is component | states | screen."""
+    """{file: (html, width, canvas title, kind)}; kind is component | states | screen | page. Where a board sits: pages.json."""
     comps, screens = schema()
     H = sizes() if H is None else H
     out = {}
     for c in comps:
-        out[f'{c["name"]}.dc.html'] = (component_board(c), c['preview'][0], f'{c["name"]} (component)', COMPONENT_ROW_Y, 'component')
+        out[f'{c["name"]}.dc.html'] = (component_board(c), c['preview'][0], f'{c["name"]} (component)', 'component')
     for f, (html, W, title) in states_boards(comps, H).items():
-        out[f] = (html, W, title, COMPONENT_ROW_Y, 'states')
+        out[f] = (html, W, title, 'states')
     for f, (html, W, title, kind) in screen_boards(screens, comps, H).items():
-        # A board may sit in another flow's row ("row" on the board), e.g. a Collectors board in the Live log row.
-        row = next((b.get('row', s.get('row')) for s in screens for b in s.get('boards', []) if b['file'] == f), None)
-        out[f] = (html, W, title, row, kind)
+        out[f] = (html, W, title, kind)
     return out
 
 
@@ -515,35 +516,35 @@ def same_board(a, b):
     return ja == jb and a.replace(pa.group(0), '') == b.replace(pb.group(0), '')
 
 
-def drop_pages(c):
-    """One implicit page: pages [] and no "page" key on launch, a board or a note.
-    Explicit pages blank the canvas viewer (v98, 2026-10-06: every board stayed undrawn), so they are removed.
-    Returns what was removed."""
-    removed = []
-    if c.get('pages'):
-        removed.append('explicit pages %s removed' % [p.get('id') for p in c['pages']])
-    c['pages'] = []
-    launch = c.setdefault('launch', {'view': 'canvas'})
-    if launch.pop('page', None) is not None:
-        removed.append('"page" key removed from launch')
-    for sec in ('boards', 'notes'):
-        keyed = [k for k, v in c.get(sec, {}).items() if v.pop('page', None) is not None]
-        if keyed:
-            removed.append('"page" key removed from %d %s' % (len(keyed), sec))
-    return removed
+def pages():
+    """pages.json: {"maxBoards", "retiredNotes", "pages": [{"id", "name", "rows": [{"note": {"id", "text"} | null, "boards": [file]}]}]}."""
+    return load('pages.json')
 
 
-def merge_canvas(live_path, out_dir, built, written):
-    """Live canvas.json + this render → OUT_DIR/canvas.json. Prints the boards that changed."""
+ROW_GAP, TITLE_ROOM, GAP = 120, 300, 80  # px between rows, a row title above its row, between boards in a row
+
+
+def board_places(P):
+    """{file: (page id, row index)} for every board pages.json lists."""
+    return {f: (p['id'], i) for p in P['pages'] for i, r in enumerate(p['rows']) for f in r['boards']}
+
+
+def merge_canvas(live_path, out_dir, built, written, repack=False):
+    """Live canvas.json + this render → OUT_DIR/canvas.json. Prints the boards that changed.
+
+    Pages come from pages.json: one page per area, every board on the page and row pages.json gives it.
+    A single page with all the boards never drew in the viewer, so a board pages.json doesn't place
+    fails the merge. A board keeps the position the user left it at; one that is new, or on another
+    page than pages.json says, goes to the end of its row there. repack lays every page out afresh."""
     live_dir = os.path.dirname(os.path.abspath(live_path))
     with open(live_path, encoding='utf-8') as f:
         c = json.load(f)
-    for msg in drop_pages(c):
-        print('warning:', msg, file=sys.stderr)
+    P = pages()
+    places = board_places(P)
     boards, order = c['boards'], c['order']
-    changed, added, resized = [], [], []
+    changed, added, resized, moved = [], [], [], []
     for f in written:
-        html, W, title, row, kind = built[f]
+        html, W, title, kind = built[f]
         old = os.path.join(live_dir, f)
         if not os.path.exists(old):
             changed.append(f)
@@ -557,27 +558,54 @@ def merge_canvas(live_path, out_dir, built, written):
                 resized.append((f, boards[f]['h'], h))
                 boards[f]['h'] = h
             continue
-        if row is None:
-            print(f'warning: {f} has no canvas row; not placed', file=sys.stderr)
-            continue
-        in_row = [k for k, v in boards.items() if v['y'] == row]
-        x = max((boards[k]['x'] + boards[k]['w'] for k in in_row), default=-80) + 80
-        boards[f] = {'x': x, 'y': row, 'w': W, 'h': h or 400, 'title': title}
-        last = max((order.index(k) for k in in_row if k in order), default=len(order) - 1)
-        order.insert(last + 1, f)
+        boards[f] = {'x': 0, 'y': 0, 'w': W, 'h': h or 400, 'title': title}
+        order.append(f)
         added.append(f)
+    unplaced = sorted(f for f in boards if f not in places)
+    if unplaced:
+        raise SystemExit('pages.json places no page for: ' + ', '.join(unplaced))
+    ours = [{'id': p['id'], 'name': p['name']} for p in P['pages']]
+    known = {p['id'] for p in ours}
+    c['pages'] = ours + [p for p in c.get('pages') or [] if p['id'] not in known]  # a page the user added stays
+    if (c.get('launch') or {}).get('page') not in known:
+        c['launch'] = {'view': 'canvas', 'page': ours[0]['id']}
     notes = c.setdefault('notes', {})
-    for s in schema()[1]:  # a screen file may open its own row: {"rowNote": {"id", "text"}}, title 240 px above the boards
-        n = s.get('rowNote')
-        if n and n['id'] not in notes:
-            notes[n['id']] = {'kind': 'title1', 'maxW': 8000, 'text': n['text'], 'w': 240, 'x': 0, 'y': s['row'] - 240}
-            print('note   ', n['id'], n['text'])
+    for n in P.get('retiredNotes', []):
+        notes.pop(n, None)
+    todo = [f for f in boards if repack or f in added or boards[f].get('page') != places[f][0]]
+    for p in P['pages']:
+        y = 0
+        for i, r in enumerate(p['rows']):
+            here = [f for f in r['boards'] if f in boards]
+            kept = [f for f in here if f not in todo]
+            if kept:  # the row stays where the user left it
+                ry = min(boards[f]['y'] for f in kept)
+                x = max(boards[f]['x'] + boards[f]['w'] for f in kept) + GAP
+            else:
+                ry = y + (TITLE_ROOM if r.get('note') else 0)
+                x = 0
+            for f in here:
+                if f in todo:
+                    if f not in added:
+                        moved.append(f)
+                    boards[f].update(x=x, y=ry, page=p['id'])
+                    x += boards[f]['w'] + GAP
+            bottom = max((boards[f]['y'] + boards[f]['h'] for f in here), default=ry)
+            n = r.get('note')
+            if n and (n['id'] not in notes or repack or notes[n['id']].get('page') != p['id']):
+                width = max((boards[f]['x'] + boards[f]['w'] for f in here), default=8000)
+                notes[n['id']] = {**notes.get(n['id'], {'text': n['text']}), 'kind': 'title1', 'maxW': min(8000, width),
+                                  'w': 240, 'x': 0, 'y': ry - TITLE_ROOM, 'page': p['id']}
+                print('note   ', p['id'], n['id'], notes[n['id']]['text'])
+            y = max(y, bottom + ROW_GAP)
     with open(os.path.join(out_dir, 'canvas.json'), 'w', encoding='utf-8') as fh:
         json.dump(c, fh, indent=2, ensure_ascii=False)
     for f in changed:
         print('changed', f)
     for f in added:
-        print('added  ', f, '(end of row y=%d)' % boards[f]['y'])
+        print('added  ', f, '(page %s)' % boards[f]['page'])
+    for f in moved:
+        print('placed ', f, '(page %s)' % boards[f]['page'])
     for f, a, b in resized:
         print('height ', f, a, '->', b)
     return changed, added, resized
@@ -589,7 +617,7 @@ def main(argv):
         print(__doc__)
         return 2
     out_dir = args.pop(0)
-    only, canvas, do_measure = [], None, False
+    only, canvas, do_measure, repack = [], None, False, False
     while args:
         a = args.pop(0)
         if a == '--only':
@@ -598,6 +626,8 @@ def main(argv):
             canvas = args.pop(0)
         elif a == '--measure':
             do_measure = True
+        elif a == '--repack':
+            repack = True
         elif a == '--include-pending':
             pass
         else:
@@ -615,14 +645,14 @@ def main(argv):
     def write():
         # Boards import components at render time, so the component files always go along (they are
         # tiny). Only `files` are reported and merged.
-        for f in [f for f in built if built[f][4] == 'component' and f not in files] + files:
+        for f in [f for f in built if built[f][3] == 'component' and f not in files] + files:
             with open(os.path.join(out_dir, f), 'w', encoding='utf-8') as fh:
                 fh.write(built[f][0])
         shutil.copy(os.path.join(ROOT, 'support.js'), os.path.join(out_dir, 'support.js'))
 
     write()
     if do_measure:
-        targets = [f for f in files if built[f][4] in ('states', 'screen')]  # a page board keeps its window height
+        targets = [f for f in files if built[f][3] in ('states', 'screen')]  # a page board keeps its window height
         got = measure(out_dir, targets, {f: built[f][1] for f in targets})
         H = sizes()
         moved = {f: (H.get(f), h) for f, h in got.items() if H.get(f) != h}
@@ -635,7 +665,7 @@ def main(argv):
         built = build_all(H)
         write()
     if canvas:
-        merge_canvas(canvas, out_dir, built, files)
+        merge_canvas(canvas, out_dir, built, files, repack)
     print(f'wrote {len(files)} boards to {out_dir}')
     return 0
 

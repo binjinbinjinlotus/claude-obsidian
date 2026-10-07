@@ -1,10 +1,5 @@
 {
  "$doc": "Resizable panes (designed 2026-10-05): drag the divider between two columns on every split screen; min and max per column, double-click for the automatic width, widths remembered per screen in Distill's UI preferences. Spec: docs/specs/resizable-panes.md.",
- "row": 48000,
- "rowNote": {
-  "id": "flow13",
-  "text": "13 · Resizable panes (drag the divider between two columns)"
- },
  "templates": {},
  "layouts": {
   "pane": "<div style=\"flex-grow: 1; min-height: 0; overflow: hidden; position: relative\">{detail}</div>"
