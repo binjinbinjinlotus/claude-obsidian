@@ -89,6 +89,16 @@ isn't.
 ## Friction log (newest first)
 
 ### 2026-10-06
+- **Mutation testing found what line coverage hid.** ActionsFilters went from
+  59% to 100% line coverage with new tests, yet Routing and Automations, at about
+  90% coverage, first scored 53% and 55%: their decoders and words ran in tests
+  but nothing checked the values. Muter couldn't install (Xcode 16.4 too old), so
+  a scripted harness (`clients/macos/scripts/mutate.py`) mutates copies of the
+  package, never the checkout. Two pinned wordings turned out to be wrong English
+  ("Kept 1 hours", "Messages You has to send") and were fixed.
+  - *Lesson:* treat coverage as a map of what ran, and mutation score as what is
+    checked; read every expected string a test pins, since a test can lock in a
+    bug as easily as catch one.
 - **The owner asked for subagents to build, and a separate one to verify.**
   The remaining Review-queue items went to a builder subagent. The builder
   handed the board's eleven `sa-` snapshot states to a forked subagent, which

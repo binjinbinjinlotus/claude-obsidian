@@ -83,7 +83,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 - `clients/macos/Sources/DistillKit/`: UI-free Swift client (DTOs, CoreClient,
   CoreLauncher). `clients/macos/Sources/Distill/`: the AppKit/SwiftUI app.
 - `clients/macos/Tests/`: DistillKitTests and DistillTests.
-- `clients/macos/scripts/`: `build-app.sh`, `distill.sh`, `make-icon.sh`.
+- `clients/macos/scripts/`: `build-app.sh`, `distill.sh`, `make-icon.sh`, `mutate.py` (mutation testing).
 
 ## Specs and decisions
 
