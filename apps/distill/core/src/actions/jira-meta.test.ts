@@ -40,9 +40,9 @@ const jiraKind = (e: unknown) => (e instanceof CoreError ? e.details?.jira : und
 
 describe('JiraMeta lists', () => {
   test('projects: objects with a key only, sorted by key, with the site, account and fetch time', async () => {
-    const { client, calls } = fakeClient([[PROJECTS, { status: 200, json: { isLast: true, values: [{ key: 'TLS', name: 'Telus' }, 'junk', null, { name: 'no key' }, { key: 'ABC', name: 1 }] } }]]);
+    const { client, calls } = fakeClient([[PROJECTS, { status: 200, json: { isLast: true, values: [{ key: 'TLS', name: 'Telus', id: '10000' }, 'junk', null, { name: 'no key' }, { key: 'ABC', name: 1, id: 5 }, { key: 'OPS', name: 'Ops', id: '' }] } }]]);
     const r = await new JiraMeta(client, clock().now).projects();
-    assert.deepEqual(r, { site: 'acme.atlassian.net', account: 'Jin', fetchedAt: '2026-10-06T12:00:00Z', projects: [{ key: 'ABC', name: '' }, { key: 'TLS', name: 'Telus' }] });
+    assert.deepEqual(r, { site: 'acme.atlassian.net', account: 'Jin', fetchedAt: '2026-10-06T12:00:00Z', projects: [{ key: 'ABC', name: '' }, { key: 'OPS', name: 'Ops' }, { key: 'TLS', name: 'Telus', id: '10000' }] }, 'the id only when it is text');
     assert.deepEqual(calls, [`${PROJECTS}?action=create&orderBy=key&startAt=0&maxResults=50`]);
   });
 
@@ -122,6 +122,42 @@ describe('JiraMeta lists', () => {
     assert.equal((await new JiraMeta(none.client, clock().now).fields('TLS', '1')).priorities, null);
     const open = fakeClient([['/rest/api/3/issue/createmeta/', { status: 200, json: { fields: [{ fieldId: 'priority', name: 'Priority' }] } }]]);
     assert.deepEqual((await new JiraMeta(open.client, clock().now).fields('TLS', '1')).priorities, []);
+  });
+});
+
+describe('JiraMeta users', () => {
+  const USERS = '/rest/api/3/user/assignable/search';
+  const projects: [string, Reply] = [PROJECTS, { status: 200, json: { isLast: true, values: [{ key: 'TLS' }] } }];
+
+  test('active people with an account id, the name falling back to the id; the project and query trimmed and encoded', async () => {
+    const f = fakeClient([projects, [USERS, { status: 200, json: [{ accountId: 'a1', displayName: 'Mei Chen' }, { accountId: 'a2', active: false, displayName: 'Gone' }, { accountId: 'a3', active: true }, { displayName: 'No id' }, { accountId: 7 }, null, 'x'] }]]);
+    const r = await new JiraMeta(f.client, clock().now).users(' t/ls ', '  mei & co ');
+    assert.deepEqual(r, { users: [{ accountId: 'a1', name: 'Mei Chen' }, { accountId: 'a3', name: 'a3' }] });
+    assert.deepEqual(f.calls, [`${PROJECTS}?action=create&orderBy=key&startAt=0&maxResults=50`, `${USERS}?project=T%2FLS&query=mei%20%26%20co&maxResults=20`]);
+  });
+
+  test('a blank query asks nothing; a body that is not a list is nobody', async () => {
+    const f = fakeClient([projects, [USERS, { status: 200, json: { values: [{ accountId: 'a1' }] } }]]);
+    const meta = new JiraMeta(f.client, clock().now);
+    assert.deepEqual(await meta.users('TLS', '   '), { users: [] });
+    assert.equal(f.calls.length, 0);
+    assert.deepEqual(await meta.users('TLS', 'mei'), { users: [] });
+  });
+
+  test('not connected: the connection words, and no search; a failed search is a Jira error', async () => {
+    const off = fakeClient([], { connected: false });
+    await assert.rejects(new JiraMeta(off.client, clock().now).users('TLS', 'mei'), (e: unknown) => jiraKind(e) === 'not_connected');
+    assert.equal(off.calls.length, 0);
+    const bad = fakeClient([projects, [USERS, { status: 403, json: [] }]]);
+    await assert.rejects(new JiraMeta(bad.client, clock().now).users('TLS', 'mei'), (e: unknown) => jiraKind(e) === 'error' && e instanceof CoreError && e.details?.status === 403);
+  });
+
+  test('a search is never cached', async () => {
+    const f = fakeClient([projects, [USERS, { status: 200, json: [] }]]);
+    const meta = new JiraMeta(f.client, clock().now);
+    await meta.users('TLS', 'mei');
+    await meta.users('TLS', 'mei');
+    assert.equal(f.calls.filter((c) => c.startsWith(USERS)).length, 2);
   });
 });
 

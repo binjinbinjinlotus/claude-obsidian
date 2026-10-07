@@ -85,6 +85,11 @@ describe('HTTP API: actions and connections', () => {
     assert.equal(page.status, 200);
     assert.match(page.body.url, /CreateIssueDetails!init\.jspa/);
     assert.deepEqual(last('jiraCreateURL')!.args, ['act-1']);
+    await request(port, 'GET', '/v1/jira/projects/TLS/users');
+    assert.deepEqual(last('jiraUsers')!.args, ['TLS', ''], 'no ?q=: an empty search');
+    for (const p of ['/v1/jira/projects/TLS/users/x', '/x/v1/jira/projects/TLS/users', '/v1/actions/act-1/jira-create-url/x', '/x/v1/actions/act-1/jira-create-url']) {
+      assert.equal((await request(port, 'GET', p)).status, 404, p);
+    }
   });
 
   it('whose items: owner, Pending, Highlights, preview and ?route= (actions-routing.md)', async () => {
