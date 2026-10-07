@@ -68,12 +68,13 @@ final class FieldDraftAppTests: XCTestCase {
         XCTAssertEqual(d.text, "Mei")
     }
 
-    func testANewPersonInSettingsIsAddedWithTheirFirstName() {
+    func testSettingsNameIsRenameOnlySoARemovedPersonStaysRemoved() {
         var p = ActionPreferences()
-        let new = ActionPerson(id: "p-1", name: "", aliases: ["Linu"])
-        p.setName(new, "Linu Chui")
-        XCTAssertEqual(p.people.last, ActionPerson(id: "p-1", name: "Linu Chui", aliases: ["Linu"]))
-        p.setName(new, "Linu C")
-        XCTAssertEqual(p.people.filter { $0.id == "p-1" }.map(\.name), ["Linu C"], "renamed, not added twice")
+        p.people = p.people + [ActionPerson(id: "p-1", name: "Linu", aliases: ["L"])]
+        p.setName("p-1", "Linu Chui")
+        XCTAssertEqual(p.people.last, ActionPerson(id: "p-1", name: "Linu Chui", aliases: ["L"]))
+        p.removePerson("p-1", types: [])
+        p.setName("p-1", "Linu C") // the field's pending save lands after Remove
+        XCTAssertEqual(p.people.map(\.id), ["you"], "not brought back")
     }
 }

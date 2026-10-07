@@ -190,14 +190,9 @@ extension ActionPreferences {
     }
 
     /// Saves a person's name as the People field saves it (trimmed; never empty for anyone but you).
-    /// A person just added is kept in the page until named, so the core never sees an empty name
-    /// (it drops those): their first name adds them here.
-    public mutating func setName(_ person: ActionPerson, _ name: String) {
-        guard people.contains(where: { $0.id == person.id }) else {
-            people.append(ActionPerson(id: person.id, name: name, aliases: person.aliases))
-            return
-        }
-        people = people.map { $0.id == person.id ? ActionPerson(id: $0.id, name: name, aliases: $0.aliases) : $0 }
+    /// Rename only: a person removed while their name was being typed stays removed.
+    public mutating func setName(_ id: String, _ name: String) {
+        people = people.map { $0.id == id ? ActionPerson(id: $0.id, name: name, aliases: $0.aliases) : $0 }
     }
 
     /// Removes a person, and them from every type's Handles items for.

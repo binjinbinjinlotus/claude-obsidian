@@ -137,10 +137,14 @@ struct PeopleSettingsPage: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Color(hex: 0xF0EEEA)).frame(height: 1) }
     }
 
+    /// A person just added joins Settings with their first name (the core drops an empty one).
     private func saveName(_ p: ActionPerson, _ name: String) {
-        let person = newPerson?.id == p.id ? newPerson ?? p : p
-        if newPerson?.id == p.id { newPerson = nil }
-        SettingsEdits.setActions(&engine.settings) { $0.setName(person, name) }
+        if let n = newPerson, n.id == p.id {
+            newPerson = nil
+            SettingsEdits.setActions(&engine.settings) { $0.people.append(ActionPerson(id: n.id, name: name, aliases: n.aliases)) }
+        } else {
+            SettingsEdits.setActions(&engine.settings) { $0.setName(p.id, name) }
+        }
     }
 
     private func setAliases(_ p: ActionPerson, _ aliases: [String]) {
