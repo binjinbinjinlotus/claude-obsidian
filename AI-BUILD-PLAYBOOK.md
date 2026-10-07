@@ -60,7 +60,7 @@ The final gates on the routing merge show the size of the safety net:
 (Verifier round 8, at `b5f7c1d`.)
 
 The lead session started 65 named subagents (counted from the transcript's
-Agent calls). Agents also left 56 worktrees under `.claude/worktrees/`
+Agent calls). Agents also left 55 worktrees under `.claude/worktrees/`
 (`git worktree list`), none of them cleaned up.
 
 ---
@@ -121,8 +121,8 @@ This is the loop as it ran for routing on 2026-10-06, the cleanest example:
 ### Communication pattern
 
 The owner asked "where are we?" (or a variant) 13 times in the lead
-transcript. 229 owner-turn entries were agent hand-backs relayed into the
-lead's context. The numbered pending list works ("2, not need to restored, i
+transcript. 229 owner-turn entries were agent messages (hand-backs and idle
+notes) relayed into the lead's context. The numbered pending list works ("2, not need to restored, i
 deleted them 3. let buid it … do 7, 8, 9 ,10", 2026-10-04). The rest of
 status reporting is a cost the model hasn't solved yet (section 8).
 
@@ -139,7 +139,7 @@ the kind the builder's own tests had passed over.
 
 | Round | Scope | Bugs fixed (commit) | Notes |
 | --- | --- | --- | --- |
-| 1 | Review-queue recovery | **Unbounded loop**: runner-failed ↔ plan-error alternated past `maxAttempts` and `maxCostUSD`; a fake runner gave 42 session turns (`c8a5706`). A stale one-minute timer restarted a recovery the owner had reset (`45bd38c`). A slow agent answer acted on a replaced recovery (`c9ccf51`). | Also simulated the owner's stuck batch on a copied job entry with a fake runner. |
+| 1 | Review-queue recovery | **Unbounded loop**: runner-failed ↔ plan-error alternated past `maxAttempts` and `maxCostUSD`; a fake runner gave 42 session turns (`c8a5706`). A stale one-minute timer restarted a recovery the owner had reset (`45bd38c`). A slow agent answer acted on a replaced recovery (`c9ccf51`). | The brief also asked it to replay the owner's stuck batch on a copied job entry with a fake runner. |
 | 2 | Automations, apply queue | **`collects: false` dropped** by `POST /v1/collectors`, so a "Commands for buttons" script would run hourly as a collector (`964d851`). Added a missing engine test for the stale-again path (`c4eabe9`). | The core test passed because it called the service directly, not the route. |
 | 3 | Lock retries, wording, snapshots | None. | Still reviewed memory, keys and wording paths, with line references. |
 | — | Install blocked | Flaky `AskBackgroundTests`: a race in the test, not the app (`c0a9081`). | Proved by injecting a 50 ms delay into `refresh()`; couldn't reproduce under CPU load alone (20/20 passes). |
@@ -287,8 +287,9 @@ root causes repeat, and section 7 turns them into rules.
   yet: the builder reported all six items done, but left out the stuck
   'Recovering' fix you asked for. HEAD `d0a7041` has none of it"
   (2026-10-06 04:42).
-- **Cost:** one extra builder round and about 25 minutes before `7e4698a`.
-  The owner's batch stayed stuck in the meantime.
+- **Cost:** one extra builder round. The cause was found at 04:08, the
+  omission noticed at 04:42 and the fix committed at 04:50 (`7e4698a`); the
+  owner's batch stayed stuck throughout.
 - **Root cause:**
   - The urgent fix was sent to the builder mid-task, as a message, after the
     numbered brief.
@@ -326,7 +327,7 @@ the architect's work until `4771533`).
    wrong. Find out which"). It ran **repeated controls**:
    - one page holding all 141 boards stayed blank in 4 of 4 runs, with
      explicit pages or without, on a fresh artifact and on the live canvas;
-   - the same boards on 7 area pages drew in 3 of 3 runs
+   - the same boards on 7 pages (6 areas plus components) drew in 3 of 3 runs
      (`design-system-plan.md`, `4475d2a`).
 
    The cause was one huge page (about 75,000 px each way), not pages. The
@@ -477,8 +478,8 @@ schema owns them.
 
 From `design-system-plan.md` and `4771533`:
 
-- **Pages and their limit.** There are 7 area pages plus component pages,
-  and a page holds at most 30 boards. The largest area page that drew held
+- **Pages and their limit.** `pages.json` has 6 area pages and 3 component
+  pages, and a page holds at most 30 boards. The largest area page that drew held
   17.
 - **Links.** Each page has a stable `#page-<id>` link: the owner's deep link
   per area. Single-board links don't work, because the viewer rewrites the
@@ -780,7 +781,7 @@ A short instruction file (or a section of `apps/distill/AGENTS.md`):
 - `git add` takes paths you own. Check `git diff --cached --stat` before
   each commit.
 - Each worker uses a private scratchpad subfolder.
-- The lead removes merged worktrees. There are 56 stale ones under
+- The lead removes merged worktrees. There are 55 left behind under
   `.claude/worktrees/` today.
 - The stash is shared across worktrees: use WIP commits, not a bare
   `git stash`.
@@ -813,8 +814,8 @@ instruction file, not in product skills. This is open question 4 in
 
 ### 8.1 Status and attention load on the owner
 
-The owner asked "where are we?" 13 times, and the lead relayed 229 agent
-hand-backs, many as "that's the agent's closing note; it matches".
+The owner asked "where are we?" 13 times, and 229 agent messages (hand-backs
+and idle notes) reached the lead, many as "that's the agent's closing note; it matches".
 - **Experiment:** a single status file the lead rewrites, such as
   `.vault-meta`-style runtime state or an artifact page. It would hold
   running, waiting-on-owner and done, each with a hash. Agent idle notes
@@ -875,8 +876,7 @@ the click-through went to the owner.
 
 ### 8.8 Worktree and agent hygiene
 
-There are 56 stale agent worktrees and dozens of named agents in one
-session.
+There are 55 leftover agent worktrees and 65 named agents in one session.
 - **Experiment:** the lead removes a worker's worktree after its merge, and
   a weekly check lists worktrees whose branch is merged.
 - **Open question:** at what point is a fresh lead session, primed with
