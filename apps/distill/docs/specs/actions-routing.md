@@ -34,7 +34,8 @@ goes to the note's Highlights.
   - People: a name, then "The notes call them" alias chips with × and ＋, and Remove. The
     alias field opens focused; Return or clicking away adds a typed name, Esc closes it.
   - "＋ Add a person". The new row stays on the page, focused, until it has a name, and is
-    saved to Settings only then (the core drops a person with an empty name).
+    saved to Settings only then (the core drops a person with an empty name). Adding again
+    while it is unnamed keeps that row, so a name typed in it is not lost.
   - Each type's "Handles items for" chips with × and a ＋ menu (named people not there yet,
     then "Add a person…"), plus a plain line under them, such as "Your to-dos, and the ones
     you do for Aditya." With nobody left to add, ＋ adds a person instead of a menu. A person added from a type's ＋

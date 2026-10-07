@@ -39,6 +39,20 @@ final class PeopleEditTests: XCTestCase {
         XCTAssertEqual(p.people.map(\.id), ["you"])
     }
 
+    /// Typing a name, then ＋ Add a person (or a type's ＋) again before the pause saved it: the
+    /// row was replaced, and its late save renamed nobody, so the typed name was lost.
+    func testAddingAgainKeepsTheRowBeingNamed() {
+        var p = jinOnly()
+        var edit = PeopleEdit()
+        XCTAssertEqual(edit.add(id: "p-1"), "p-1")
+        XCTAssertEqual(edit.add(id: "p-2", forType: "todo"), "p-1", "the row being named stays")
+        XCTAssertEqual(edit.rows(p).map(\.id), ["you", "p-1"])
+        edit.saveName("p-1", "Linu", in: &p) // the field's save of the name typed before the second click
+        XCTAssertEqual(p.people.map(\.id), ["you", "p-1"])
+        XCTAssertEqual(p.handlesFor("todo"), ["you", "p-1"], "the type's ＋ still applies")
+        XCTAssertEqual(edit.add(id: "p-3"), "p-3", "named: the next add is a new row")
+    }
+
     /// (b) With only you, the ＋ menu had nothing to offer; the page now shows Add a person instead.
     func testHandlesForPlusHasNobodyToAddWhenOnlyYou() {
         var p = jinOnly()

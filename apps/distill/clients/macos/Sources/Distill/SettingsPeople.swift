@@ -146,8 +146,7 @@ struct PeopleSettingsPage: View {
     /// From a type's ＋: once named, they handle that type too.
     private func addPerson(forType type: String? = nil) {
         let id = "p-" + UUID().uuidString.prefix(8).lowercased()
-        edit.add(id: id, forType: type)
-        editingName = id
+        editingName = edit.add(id: id, forType: type)
     }
 
     // MARK: Each type

@@ -486,9 +486,17 @@ public struct PeopleEdit: Equatable, Sendable {
     /// The rows the page shows: Settings' people, then the one being added.
     public func rows(_ p: ActionPreferences) -> [ActionPerson] { p.people + (newPerson.map { [$0] } ?? []) }
 
-    public mutating func add(id: String, forType type: String? = nil) {
+    /// The id of the row to name. A person already being added keeps their row (a name typed in it
+    /// may not be saved yet: replacing the row dropped it); a type's ＋ makes them handle that type.
+    @discardableResult
+    public mutating func add(id: String, forType type: String? = nil) -> String {
+        if let n = newPerson {
+            if let type { newPersonType = type }
+            return n.id
+        }
         newPerson = ActionPerson(id: id, name: "")
         newPersonType = type
+        return id
     }
 
     /// The name field's save (trimmed, never empty for anyone but you): the new person joins Settings
