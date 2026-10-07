@@ -409,7 +409,9 @@ max 12 000 characters) and its wiki sections (`<wiki>`, up to 3); an older
 item without `raw` gets its note's text centred on its quote (`<source>`,
 max 12 000 characters) instead of the note's first 12 000 characters. Notes
 and answers are wrapped as data and the model is told to ignore instructions
-inside them. Output is structured (find: `items[{type, title, body?,
+inside them. In the find prompt a note's own `<document` or `</document` is
+written `&lt;document` / `&lt;/document`, so no note can close its fence or
+open another; the rest of the note stays verbatim for the quotes. Output is structured (find: `items[{type, title, body?,
 fields[{key,value}], why, quote, notePath?}]`; draft: `{title, body,
 fields}`; improve: `{body}`); a JSON object in the text is the fallback.
 

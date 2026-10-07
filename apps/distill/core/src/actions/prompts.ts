@@ -57,8 +57,10 @@ ${waiting.map((w) => `- ${w.id}: ${w.text.replace(/\s+/g, ' ').trim().replace(/<
 
 export function buildFindPrompt(o: { instructions: string; types: FindType[]; documents: FindDocument[]; today: string; extra?: string; routing?: string }): string {
   const types = o.types.map((t) => `- ${t.id} (${t.label}): ${t.recognizes}${t.fields.length > 0 ? ` Fields: ${t.fields.join(', ')}.` : ''}`);
+  // A note's own <document> or </document> can't open or close a fence; the rest stays verbatim (quotes are copied from it).
+  const fenced = (text: string) => text.replace(/<(\/?document\b)/gi, '&lt;$1');
   const docs = o.documents.map(
-    (d) => `<document path="${d.path.replace(/"/g, "'")}"${d.title ? ` title="${d.title.replace(/"/g, "'")}"` : ''}>\n${d.text}\n</document>`,
+    (d) => `<document path="${d.path.replace(/"/g, "'")}"${d.title ? ` title="${d.title.replace(/"/g, "'")}"` : ''}>\n${fenced(d.text)}\n</document>`,
   );
   return `${o.instructions.trim()}
 

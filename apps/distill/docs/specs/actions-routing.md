@@ -148,6 +148,8 @@ notes | Meetings.
   - The lines come from notes, so the prompt fences each page's text in a `<page>` block marked
     as data to copy exactly. A line is one line with `<` and `>` written as `&lt;` and `&gt;`, so
     no note text can open or close a block.
+  - The section's text replaces the old section in place (or goes at the end), with one blank line
+    between it and the rest; a section on the page's first line stays the first line.
   - The section reaches the page only in that batch's bundle, which the user approves in Review.
 - Nothing is tracked per item:
   - A batch that skipped a page, got it wrong or was rejected leaves it due for the next batch.

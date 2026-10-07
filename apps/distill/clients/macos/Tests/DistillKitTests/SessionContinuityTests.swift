@@ -97,4 +97,34 @@ final class SessionContinuityTests: XCTestCase {
         XCTAssertEqual(SessionReplaceText.body(place: "batch", reason: "fromTheFuture", runner: "X"),
                        "It can’t be resumed. Distill will start a new session to continue.")
     }
+
+    func testEveryReasonAndWhatTheNewSessionCarries() {
+        XCTAssertEqual(SessionReplaceText.reason("neverStarted", runner: "Codex"), "it never started: the batch stopped before Codex read the sources")
+        XCTAssertEqual(SessionReplaceText.reason("runnerGone", runner: "Codex"), "Codex isn’t available anymore")
+        XCTAssertEqual(SessionReplaceText.reason("recovery", runner: "Codex"), "a fresh session may get this batch going again")
+        XCTAssertEqual(SessionReplaceText.noun("terminal"), "batch")
+        XCTAssertEqual(SessionReplaceText.noun("conversation"), "conversation")
+        XCTAssertEqual(SessionReplaceText.heading(place: "conversation", reason: "missing"), "This conversation’s AI session isn’t available anymore")
+        XCTAssertEqual(SessionReplaceText.carries(place: "conversation"),
+                       "The new session starts with this conversation so far, so your follow-up keeps its context.")
+        XCTAssertEqual(SessionReplaceText.carries(place: "terminal"), "It starts with this batch’s sources, labels and plan. The batch in Distill is not changed.")
+        XCTAssertEqual(SessionReplaceText.carries(place: "batch"), "The new session starts with this batch’s sources, your labels and the plan you are reviewing.")
+        XCTAssertEqual(SessionReplaceText.continueTitle(place: "conversation"), "Continue")
+        XCTAssertEqual(SessionReplaceText.runnerName(nil), "Claude Code")
+        XCTAssertEqual(SessionReplaceText.runnerName("claude-code"), "Claude Code")
+        XCTAssertEqual(SessionReplaceText.runnerName("codex"), "Codex")
+        XCTAssertEqual(SessionReplaceText.runnerName("openrouter"), "openrouter")
+    }
+
+    func testTheMarkerKeepsEveryFieldToSendAgain() throws {
+        let made = SessionUnavailable(place: "batch", reason: "missing", message: "m", detail: "d", action: "approve", text: "t", rules: ["r"],
+                                      labels: "later", pages: ["wiki/a.md"], at: "2026-10-06T10:00:00Z")
+        XCTAssertEqual([made.action, made.text, made.labels, made.at], ["approve", "t", "later", "2026-10-06T10:00:00Z"])
+        XCTAssertEqual(made.rules, ["r"])
+        XCTAssertEqual(made.pages, ["wiki/a.md"])
+        let decoded = try JSONDecoder.core.decode(SessionUnavailable.self, from: JSONEncoder.core.encode(made))
+        XCTAssertEqual(decoded, made)
+        XCTAssertEqual(decoded.labels, "later")
+        XCTAssertEqual(decoded.pages, ["wiki/a.md"])
+    }
 }

@@ -168,7 +168,8 @@ export function withOthersSection(text: string, lines: string[]): string {
   const before = all.slice(0, start);
   const after = all.slice(end);
   while (before.length > 0 && before.at(-1)!.trim() === '') before.pop();
-  const out = [...before, ...(block.length > 0 ? ['', ...block] : []), ...(after.length > 0 ? ['', ...after] : [])].join('\n');
+  // One blank line between the parts that are there (none before a section on the page's first line).
+  const out = [before, block, after].filter((part) => part.length > 0).map((part) => part.join('\n')).join('\n\n');
   return out.replace(/\s+$/, '') + '\n';
 }
 

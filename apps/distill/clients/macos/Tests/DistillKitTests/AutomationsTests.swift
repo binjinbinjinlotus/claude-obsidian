@@ -236,4 +236,138 @@ final class AutomationsTests: XCTestCase {
         guard case .array(let cmds)? = patch["script"]?["commands"] else { return XCTFail("commands") }
         XCTAssertEqual(cmds.first?["id"], .string("send"))
     }
+
+    // MARK: Decoding every field
+
+    func testCommandsDecodeEveryField() throws {
+        let c = try JSONDecoder.core.decode(ScriptCommand.self, from: Data(#"""
+        {"id":"send","description":"Posts it","endOptions":true,"timeoutSeconds":30,"result":{"json":true,"keyPattern":"k","urlPattern":"u"},
+         "args":[{"name":"thread","kind":"flag","flag":"--thread","value":"v","required":true,"pattern":"^\\d","hint":"a ts"}]}
+        """#.utf8))
+        XCTAssertEqual(c.label, "send", "no label: the id")
+        XCTAssertEqual(c.description, "Posts it")
+        XCTAssertEqual(c.endOptions, true)
+        XCTAssertEqual(c.timeoutSeconds, 30)
+        XCTAssertEqual(c.result, ScriptResultParse(json: true, keyPattern: "k", urlPattern: "u"))
+        XCTAssertEqual(c.args, [ScriptCommandArg(name: "thread", kind: .flag, flag: "--thread", value: "v", required: true, pattern: "^\\d", hint: "a ts")])
+        XCTAssertEqual(c.args.first?.id, "thread")
+        let bare = try JSONDecoder.core.decode(ScriptCommand.self, from: Data(#"{"args":[{}]}"#.utf8))
+        XCTAssertEqual(bare.id, "")
+        XCTAssertEqual(bare.args.first?.kind, .positional)
+        XCTAssertNil(bare.args.first?.flag)
+        XCTAssertNil(bare.endOptions)
+        XCTAssertNil(bare.timeoutSeconds)
+        XCTAssertNil(bare.result)
+        let full = ScriptCommand(id: "a", label: "A", description: "d", args: c.args, endOptions: false, timeoutSeconds: 5, result: c.result)
+        XCTAssertEqual(full.endOptions, false)
+        XCTAssertEqual(full.timeoutSeconds, 5)
+        XCTAssertEqual(full.result, c.result)
+        XCTAssertEqual(ScriptResultParse(json: false, keyPattern: "k", urlPattern: "u").urlPattern, "u")
+        XCTAssertEqual(try JSONDecoder.core.decode(ScriptCommand.self, from: JSONEncoder.core.encode(full)), full)
+    }
+
+    func testButtonsDecodeEveryFieldWithItsDefault() throws {
+        let b = try JSONDecoder.core.decode(AutomationButton.self, from: Data(#"{"id":"b","icon":"paperplane","when":["ready"],"storeResult":false,"confirm":false}"#.utf8))
+        XCTAssertEqual(b.icon, "paperplane")
+        XCTAssertEqual(b.when, ["ready"])
+        XCTAssertFalse(b.storeResult)
+        XCTAssertFalse(b.confirm)
+        XCTAssertFalse(b.shows(for: .open))
+        XCTAssertTrue(b.shows(for: .ready))
+        let d = try JSONDecoder.core.decode(AutomationButton.self, from: Data("{}".utf8))
+        XCTAssertTrue(d.storeResult, "results are kept unless told")
+        XCTAssertTrue(d.confirm)
+        XCTAssertNil(d.when)
+        XCTAssertEqual(d.label, "Run")
+        let made = AutomationButton(id: "x")
+        XCTAssertTrue(made.confirm)
+        XCTAssertTrue(made.storeResult)
+        XCTAssertEqual(made.slot, .primary)
+        XCTAssertTrue(made.shows(for: .open))
+        XCTAssertFalse(made.shows(for: .done))
+    }
+
+    func testButtonInfoAndPreviewDefaults() throws {
+        let info = try JSONDecoder.core.decode(ActionButtonInfo.self, from: Data(#"{"id":"b","label":"Send","scriptName":"Slack CLI","commandLabel":"Send a message","reason":"off"}"#.utf8))
+        XCTAssertFalse(info.available, "not available unless the core says so")
+        XCTAssertEqual(info.scriptName, "Slack CLI")
+        XCTAssertEqual(info.commandLabel, "Send a message")
+        XCTAssertEqual(info.reason, "off")
+        XCTAssertEqual(info.id, "b")
+        XCTAssertTrue(ActionButtonInfo(button: AutomationButton(id: "b")).available)
+        // Encoded flat: the button's keys beside the core's.
+        let json = try JSONDecoder.core.decode(JSONValue.self, from: JSONEncoder.core.encode(info))
+        XCTAssertEqual(json["label"], .string("Send"))
+        XCTAssertEqual(json["available"], .bool(false))
+        XCTAssertEqual(try JSONDecoder.core.decode(ActionButtonInfo.self, from: JSONEncoder.core.encode(info)), info)
+        let made = ActionButtonPreview()
+        XCTAssertTrue(made.needsApproval, "shown before it runs unless the core says otherwise")
+        XCTAssertFalse(made.needsConsent)
+        let decoded = try JSONDecoder.core.decode(ActionButtonPreview.self, from: Data(#"{"approvalHash":"h"}"#.utf8))
+        XCTAssertTrue(decoded.needsApproval)
+        XCTAssertFalse(decoded.needsConsent)
+        XCTAssertEqual(decoded.approvalHash, "h")
+    }
+
+    func testRunsDecodeEveryFieldAndRoundTrip() throws {
+        let run = try JSONDecoder.core.decode(ActionButtonRun.self, from: Data(#"""
+        {"runId":"r1","buttonId":"b","label":"Send","startedAt":"2026-10-06T10:00:00Z","endedAt":"2026-10-06T10:00:02Z","durationMs":1200,
+         "result":"success","exitCode":0,"stdoutTail":"ok","stderrTail":"warn","external":{"key":"OPS-1","url":"https://x/OPS-1"},"message":"Sent"}
+        """#.utf8))
+        XCTAssertEqual(run, ActionButtonRun(runId: "r1", buttonId: "b", label: "Send", startedAt: CoreDate.parse("2026-10-06T10:00:00Z")!,
+                                            endedAt: CoreDate.parse("2026-10-06T10:00:02Z"), durationMs: 1200, result: "success", exitCode: 0,
+                                            stdoutTail: "ok", stderrTail: "warn", externalKey: "OPS-1", externalURL: "https://x/OPS-1", message: "Sent"))
+        XCTAssertTrue(run.succeeded)
+        XCTAssertFalse(run.isRunning)
+        XCTAssertEqual(run.id, "r1")
+        XCTAssertEqual(try JSONDecoder.core.decode(ActionButtonRun.self, from: JSONEncoder.core.encode(run)), run)
+        let urlOnly = ActionButtonRun(runId: "r2", buttonId: "b", label: "L", startedAt: Date(timeIntervalSince1970: 0), externalURL: "https://x")
+        XCTAssertEqual(try JSONDecoder.core.decode(ActionButtonRun.self, from: JSONEncoder.core.encode(urlOnly)).externalURL, "https://x")
+        let plain = ActionButtonRun(runId: "r3", buttonId: "b", label: "L", startedAt: Date(timeIntervalSince1970: 0))
+        XCTAssertTrue(plain.isRunning)
+        XCTAssertNil(try JSONDecoder.core.decode(JSONValue.self, from: JSONEncoder.core.encode(plain))["external"])
+        let old = try JSONDecoder.core.decode(ActionButtonRun.self, from: Data("{}".utf8))
+        XCTAssertEqual(old.result, "failed")
+        XCTAssertEqual(old.startedAt, .distantPast)
+    }
+
+    func testARefusalForConsentOnlyDoesntAskForApproval() throws {
+        let r = try XCTUnwrap(CoreClient.buttonRefusal(Data(#"{"error":{"needsConsent":true}}"#.utf8)))
+        XCTAssertFalse(r.needsApproval)
+        XCTAssertTrue(r.needsConsent)
+        XCTAssertEqual(r.message, "")
+        XCTAssertNil(CoreClient.buttonRefusal(Data(#"{"error":{"needsApproval":false}}"#.utf8)))
+        XCTAssertNil(CoreClient.buttonRefusal(Data("not json".utf8)))
+    }
+
+    // MARK: Words and slots
+
+    func testASecondSendSlotButtonGoesToMore() {
+        func info(_ id: String, _ slot: AutomationButton.Slot, enabled: Bool = true) -> ActionButtonInfo {
+            ActionButtonInfo(button: AutomationButton(id: id, label: id, enabled: enabled, slot: slot))
+        }
+        let item = ActionItem(id: "a", status: .ready, title: "T")
+        let s = AutomationText.slots([info("p1", .primary), info("s1", .send), info("m1", .more), info("s2", .send), info("off", .primary, enabled: false)], for: item)
+        XCTAssertEqual(s.send?.id, "s1")
+        XCTAssertEqual(s.primary.map(\.id), ["p1"])
+        XCTAssertEqual(s.more.map(\.id), ["m1", "s2"])
+    }
+
+    func testRunLineDurationsAndSlugs() {
+        func line(_ ms: Int) -> String {
+            AutomationText.runLine(ActionButtonRun(runId: "r", buttonId: "b", label: "Send", durationMs: ms, result: "success"), time: "10:42 AM")
+        }
+        XCTAssertEqual(line(999), "Send · 999 ms · 10:42 AM")
+        XCTAssertEqual(line(1000), "Send · 1.0 s · 10:42 AM")
+        XCTAssertEqual(AutomationText.slug("2FA setup", taken: []), "2fa-setup", "a leading digit is fine")
+        XCTAssertEqual(AutomationText.slug("!!!", taken: []), "command")
+        XCTAssertEqual(AutomationText.slug("Send", taken: ["send", "send-2"]), "send-3")
+    }
+
+    func testRoleWords() {
+        XCTAssertEqual(AutomationRole.allCases.map(\.title), ["Collect on a schedule", "Commands for buttons", "Both"])
+        XCTAssertEqual(AutomationRole.commands.detail, "A script you call with arguments from action buttons. Never runs on its own.")
+        XCTAssertEqual(AutomationRole.collect.detail, "Folder or script. Fills the queue, like a collector today.")
+        XCTAssertEqual(AutomationRole.both.detail, "A script that collects and also offers commands.")
+    }
 }

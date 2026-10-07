@@ -30,6 +30,17 @@ publish one, so `tokens.css` goes only onto canvases, as
 the version; `tokens.json` and the bundle are copied onto the canvas server
 side.
 
+**Swift mutation testing uses our own harness, `scripts/mutate.py` (2026-10-06).**
+Muter would not install (Homebrew: "Your Xcode (16.4) at /Applications/Xcode.app
+is too outdated"), so a small harness applies one classic operator at a time in
+throwaway copies of the package (never the checkout), rebuilds, and runs only the
+test classes that exercise the file. Build failures are invalid and left out;
+score = killed / (killed + survived). `--kit-only` builds DistillKit and its tests
+alone, which makes a mutant about 10 s; its scores are a lower bound, since
+DistillTests are left out. Survivors are either killed by a stronger test or
+written down as equivalent (or not killable on this machine, such as a hard-coded
+en_US locale). See [Tooling](tooling.md).
+
 **The canvas has a page per area, and pages stay small (2026-10-06).** This
 supersedes the "no explicit canvas pages" part of "The design canvas moves to a
 fresh artifact". Pages did not blank the viewer: one page holding all 141 boards
