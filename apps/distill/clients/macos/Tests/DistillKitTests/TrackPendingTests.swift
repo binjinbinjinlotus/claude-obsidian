@@ -61,6 +61,8 @@ final class TrackPendingTests: XCTestCase {
         XCTAssertEqual(TrackPending.blockReason(typed, people: people), "Fill in who you’re waiting on")
         typed.name = "Jin"
         XCTAssertEqual(TrackPending.blockReason(typed, people: people), "Pick someone other than you")
+        typed.name = "The user" // the core reads it as you too (routing.ts ME_WORDS)
+        XCTAssertEqual(TrackPending.blockReason(typed, people: people), "Pick someone other than you")
         typed.name = "Vladan  Dimitrijevic"
         XCTAssertNil(TrackPending.blockReason(typed, people: people))
         XCTAssertEqual(typed.waitingOn, "Vladan  Dimitrijevic", "a name not in People is kept as written (inner spaces too)")

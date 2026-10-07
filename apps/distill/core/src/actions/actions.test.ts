@@ -2069,6 +2069,13 @@ describe('whose items: routing found items (actions-routing.md)', () => {
     const slack = await h.service.trackAsPending(anant.id, { waitingOn: '  Mei Tanaka ' });
     assert.deepEqual([slack.owner, slack.ownerID, slack.due, slack.events.at(-1)!.detail], ['Mei Tanaka', null, null, 'waiting on Mei Tanaka (found as Slack message)']);
     await h.service.restoreAction(anant.id);
+    // A found message being drafted is busy, not "a message you added" (verifier, 2026-10-07).
+    const controller = new AbortController();
+    const drafting = h.service.draftAction(anant.id, { signal: controller.signal });
+    assert.equal((await h.service.getAction(anant.id))!.status, 'drafting');
+    await assert.rejects(h.service.trackAsPending(anant.id, { waitingOn: 'Mei' }), { code: 'busy' });
+    controller.abort();
+    assert.equal((await drafting).status, 'pending', 'still to confirm, untouched');
     await h.service.dismissActions([anant.id]);
     assert.equal((await h.service.getAction(anant.id))!.status, 'dismissed', 'Dismiss still works after Undo');
 
@@ -2109,6 +2116,7 @@ describe('whose items: routing found items (actions-routing.md)', () => {
     await h.service.removeAction(removed.id);
     await refuse(h.service.trackAsPending(removed.id, { waitingOn: 'Mei' }), /this one is removed/);
     const message = await h.service.createAction({ type: 'slack', title: 'Tell Mei', fields: { to: 'Mei' } });
+    await h.service.whenIdle(); // its draft written: busy is checked first
     await refuse(h.service.trackAsPending(message.id, { waitingOn: 'Mei' }), /Only a to-do can move to Pending/);
   });
 

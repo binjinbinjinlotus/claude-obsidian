@@ -54,7 +54,10 @@ final class TrackPendingAppTests: XCTestCase {
         }
         var moved = false
         store.finishTrack(found("c2")) { store.selected["todo"] = "c3"; moved = true }
+        store.finishTrack(found("c2")) // a double click: one request, no "already in Pending" error
         await waitUntil { store.routed["c2"] != nil }
+        XCTAssertEqual(SessionCoreProtocol.calls.filter { $0.path.hasSuffix("/track-pending") }.count, 1)
+        XCTAssertTrue(store.trackSending.isEmpty)
         XCTAssertNil(store.items["c2"], "it leaves To confirm")
         XCTAssertEqual(store.waiting.map(\.id), ["c2"], "Pending's count goes up")
         XCTAssertTrue(moved)

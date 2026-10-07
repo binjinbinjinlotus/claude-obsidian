@@ -72,11 +72,14 @@ public enum TrackPending {
         return d
     }
 
+    /// What the core reads as you (routing.ts ME_WORDS).
+    static let meWords: Set<String> = ["me", "i", "the user", "user", "you", "myself"]
+
     /// The People id a name matches: exact on a name or an alias, ignoring case; nil for none or two.
     public static func match(_ name: String, people: [ActionPerson]) -> String? {
         let n = name.trimmingCharacters(in: .whitespaces).lowercased()
         guard !n.isEmpty else { return nil }
-        if ["me", "i", "myself", "you"].contains(n) { return ActionPerson.youID }
+        if meWords.contains(n) { return ActionPerson.youID }
         let hits = people.filter { ([$0.name] + $0.aliases).contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty && $0.trimmingCharacters(in: .whitespaces).lowercased() == n } }
         return hits.count == 1 ? hits[0].id : nil
     }
@@ -184,7 +187,7 @@ public enum TrackPending {
         func add(_ id: String?, _ written: String?) {
             let w = (written ?? "").trimmingCharacters(in: .whitespaces)
             let pid = id.flatMap { id in people.first { $0.id == id }?.id } ?? match(w, people: people)
-            guard pid != ActionPerson.youID, pid != nil || !w.isEmpty, !["me", "i", "myself", "you"].contains(w.lowercased()) else { return }
+            guard pid != ActionPerson.youID, pid != nil || !w.isEmpty, !meWords.contains(w.lowercased()) else { return }
             let c = Choice(personID: pid, name: Routing.displayName(id: pid, written: w, people: people), handle: handle(pid, people: people))
             if !inNote.contains(where: { $0.id == c.id }) { inNote.append(c) }
         }

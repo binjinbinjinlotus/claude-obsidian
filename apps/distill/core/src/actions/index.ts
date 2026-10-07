@@ -2588,6 +2588,8 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       }
       // To confirm (any type) or an open to-do: the same item, now something you wait for.
       if (item.route === 'waiting') throw new CoreError('invalid_state', 'It is already in Pending.');
+      // Before the type check: a found message being drafted is To confirm, not "a message you added".
+      if (item.status === 'drafting' || item.status === 'creating') throw new CoreError('busy', 'Wait until it finishes.');
       const fromConfirm = item.status === 'pending';
       if (!fromConfirm && !LIVE_STATUSES.includes(item.status)) {
         throw new CoreError('invalid_state', `Only an item to confirm or an open to-do can go to Pending; this one is ${item.status}.`);
@@ -2596,7 +2598,6 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         const label = actionTypeDef(item.type)?.label ?? item.type;
         throw new CoreError('invalid_request', `Only a to-do can move to Pending; a ${label.toLowerCase()} you added is something you do.`);
       }
-      if (item.status === 'drafting' || item.status === 'creating') throw new CoreError('busy', 'Wait until it finishes.');
       if (!written) throw new CoreError('invalid_request', 'Fill in who you’re waiting on.', { missing: ['Waiting on'] });
       const how = fromConfirm ? `found as ${item.type === TODO_TYPE ? 'to-do' : (actionTypeDef(item.type)?.label ?? item.type)}` : 'moved from To do';
       return mutate(id, (i) => {

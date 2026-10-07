@@ -30,9 +30,12 @@ extension ActionsStore {
     /// Tracks it, moves the selection on (`onDone`), and shows "Tracked as Pending · waiting on Aditya · Undo".
     func finishTrack(_ item: ActionItem, onDone: (() -> Void)? = nil) {
         PendingSaves.shared.flushAll() // a name still being typed
-        guard let draft = tracking[item.id], let waitingOn = draft.waitingOn, trackBlock(item) == nil, let client else { return }
+        guard let draft = tracking[item.id], let waitingOn = draft.waitingOn, trackBlock(item) == nil, let client,
+              !trackSending.contains(item.id) else { return }
+        trackSending.insert(item.id)
         let tab = self.tab
         Task {
+            defer { trackSending.remove(item.id) }
             do {
                 let tracked = try await client.trackAsPending(item.id, waitingOn: waitingOn, by: draft.by)
                 put(tracked)
