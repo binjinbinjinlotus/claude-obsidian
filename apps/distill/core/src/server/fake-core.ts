@@ -726,9 +726,11 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       const item = requireAction(id);
       return Object.assign(item, owner === null ? { route: 'others' as const, status: 'open' as const } : { owner, ownerUnclear: false });
     },
-    async trackAsPending(id) {
-      record('trackAsPending', id);
-      return Object.assign(requireAction(id), { route: 'waiting' as const });
+    async trackAsPending(id, req) {
+      if (req) record('trackAsPending', id, req);
+      else record('trackAsPending', id);
+      if (req && !req.waitingOn?.trim()) throw new CoreError('invalid_request', 'Fill in who you’re waiting on.', { missing: ['Waiting on'] });
+      return Object.assign(requireAction(id), { route: 'waiting' as const }, req ? { owner: req.waitingOn, due: req.by ?? null } : {});
     },
     async claimAction(id) {
       record('claimAction', id);

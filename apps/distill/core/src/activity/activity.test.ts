@@ -555,6 +555,36 @@ describe('instrumentCore', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  test('Track as Pending from To confirm and To do names who and how it was found (actions-routing.md)', async () => {
+    const dir = tmp('distill-activity-track-');
+    const log = new ActivityLog({ dir });
+    const trash = new Trash({ dir: path.join(dir, 'trash') });
+    const fake = createFakeCore();
+    let before: Record<string, unknown> = { status: 'pending' };
+    let after: Record<string, unknown> = {};
+    const item = (patch: Record<string, unknown>) => ({ id: 'act-1', type: 'todo', title: 'Write the migration guide', status: 'open', events: [], ...patch });
+    (fake as unknown as Record<string, unknown>).getAction = async () => item(before);
+    (fake as unknown as Record<string, unknown>).trackAsPending = async () => item(after);
+    const core = instrumentCore(fake, { log, trash, askDir: path.join(dir, 'ask') });
+    after = { route: 'waiting', ownerID: 'p-aditya', due: '2026-10-09', events: [{ at: '', event: 'pending', detail: 'waiting on Aditya Pradhan (found as to-do)' }] };
+    await runWithSource('app', () => core.trackAsPending('act-1', { waitingOn: 'p-aditya', by: '2026-10-09' }));
+    before = { status: 'open' };
+    after = { route: 'waiting', owner: 'Mei', events: [{ at: '', event: 'pending', detail: 'waiting on Mei (moved from To do)' }] };
+    await runWithSource('app', () => core.trackAsPending('act-1', { waitingOn: 'Mei' }));
+    before = { route: 'others' };
+    after = { route: 'waiting', events: [{ at: '', event: 'routed', detail: 'tracked as Pending' }] };
+    await runWithSource('app', () => core.trackAsPending('act-1'));
+    const entries = log.list().entries.reverse();
+    assert.deepEqual(entries.map((e) => [e.type, e.summary]), [
+      ['action.routed', 'Tracked “Write the migration guide” as Pending · waiting on Aditya Pradhan (found as to-do)'],
+      ['action.routed', 'Tracked “Write the migration guide” as Pending · waiting on Mei (moved from To do)'],
+      ['action.routed', 'Tracking “Write the migration guide” as Pending'],
+    ]);
+    assert.deepEqual(entries[0]!.details, { route: 'waiting', from: 'to confirm', actionType: 'todo', waitingOn: 'p-aditya', by: '2026-10-09' });
+    assert.equal(entries[1]!.details?.from, 'to do');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   test('a spec that throws never drops the entry, and never replaces the core\'s error (2026-10-04)', async (t) => {
     const dir = tmp('distill-activity-spec-error-');
     const log = new ActivityLog({ dir });

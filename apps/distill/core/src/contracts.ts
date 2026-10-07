@@ -1355,6 +1355,28 @@ export interface ActionItem {
   due?: string | null;
   /** Pending: a later note looks like it was delivered. Only a suggestion; the item stays open. */
   received?: ActionReceived | null;
+  /** Track as Pending from To confirm or To do: where it was, so Undo (restoreAction) puts it back. */
+  trackedFrom?: ActionTrackedFrom | null;
+}
+
+/** actions-routing.md, Track as Pending: the route, status and whose-fields before it went to Pending. */
+export interface ActionTrackedFrom {
+  /** null = no route (an item found before routing). */
+  route: ActionRoute | null;
+  status: ActionStatus;
+  owner: string | null;
+  ownerID: string | null;
+  owedTo: string | null;
+  owedToID: string | null;
+  due: string | null;
+  ownerUnclear: boolean;
+}
+
+/** `POST /v1/actions/:id/track-pending`: who you are waiting on (a People id or a name as written) and by when. */
+export interface TrackPendingRequest {
+  waitingOn?: string;
+  /** YYYY-MM-DD; absent or null = no date (it never turns Overdue). */
+  by?: string | null;
 }
 
 /** actions-routing.md: list = your lists, waiting = Pending, others = Highlights → Others' actions. */
@@ -2553,8 +2575,13 @@ export interface DistillCore {
   // ── actions-routing.md: whose items, Pending and Highlights ──
   /** Whose is this?: "you", a People id or a name sets the owner and routes the item again; null = Not mine (→ Highlights). */
   assignActionOwner(id: string, owner: string | null): Promise<ActionItem>;
-  /** Highlights → Track as Pending: an Others' action becomes something you wait for. */
-  trackAsPending(id: string): Promise<ActionItem>;
+  /**
+   * Track as Pending: something someone else will do becomes something you wait for (route waiting, owed to
+   * you), the same item. From Highlights (an Others' action; `req` optional), from To confirm (any type) or
+   * from an open to-do (`waitingOn` required). Records event `pending`; restoreAction undoes it while it is
+   * the item's last event.
+   */
+  trackAsPending(id: string, req?: TrackPendingRequest): Promise<ActionItem>;
   /** Highlights → It's mine: an Others' action goes to its type's list as yours. */
   claimAction(id: string): Promise<ActionItem>;
   /** Pending → Mark received (done, event `received`). */

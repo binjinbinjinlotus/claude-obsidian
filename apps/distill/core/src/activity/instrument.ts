@@ -720,7 +720,19 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
       fail: ([id], before: ActionItem | undefined) => ({ type: 'action.routed', object: actionObject(id, before), summary: `Couldn't set whose ${q(before?.title)} is`.replace('  ', ' ') }),
     },
     trackAsPending: {
-      ok: (_a, item) => ({ type: 'action.routed', object: actionObject(item.id, item), summary: `Tracking ${q(item.title)} as Pending`, details: { route: 'waiting' } }),
+      before: (id) => getAction(id),
+      ok: (_a, item, before: ActionItem | undefined) => {
+        // actions-routing.md: "Tracked “…” as Pending · waiting on Aditya Pradhan (found as to-do)" from To
+        // confirm or To do; Highlights' Others' actions keep "Tracking … as Pending".
+        const tracked = item.events.at(-1)?.event === 'pending' ? item.events.at(-1)!.detail : null;
+        if (!tracked) return { type: 'action.routed', object: actionObject(item.id, item), summary: `Tracking ${q(item.title)} as Pending`, details: { route: 'waiting' } };
+        return {
+          type: 'action.routed',
+          object: actionObject(item.id, item),
+          summary: `Tracked ${q(item.title)} as Pending · ${tracked}`,
+          details: { route: 'waiting', from: before?.status === 'pending' ? 'to confirm' : 'to do', actionType: item.type, waitingOn: item.ownerID ?? 'named', by: item.due ?? null },
+        };
+      },
       fail: ([id]) => ({ type: 'action.routed', object: { kind: 'action', id }, summary: `Couldn't track it as Pending` }),
     },
     claimAction: {
