@@ -146,9 +146,15 @@ def hex_colors(text):
     return out
 
 
+TOKENIZED_SCREENS = ['queue', 'review', 'reviewqueue', 'session', 'fullread']  # step 3 moves the rest in batches
+
+
 def token_checked_files():
     """The templates already moved to tokens (design-system-plan.md, step 3)."""
-    return sorted(glob.glob(os.path.join(ROOT, 'components', '*.html')))
+    files = glob.glob(os.path.join(ROOT, 'components', '*.html')) + [os.path.join(ROOT, 'render.py')]
+    for name in TOKENIZED_SCREENS:
+        files += [os.path.join(ROOT, 'screens', name + '.json')] + glob.glob(os.path.join(ROOT, 'screens', name, '*.html'))
+    return sorted(files)
 
 
 class Tokens(unittest.TestCase):
@@ -189,7 +195,7 @@ class Tokens(unittest.TestCase):
     def test_svg_colours_are_styles(self):
         # var() in an SVG fill or stroke attribute is not CSS: WebKit draws it, Chrome does not. A token
         # colour or a {{hole}} that can carry one goes in style="fill: …" instead.
-        rx = re.compile(r'<(?:svg|path|circle|rect|line|polyline|polygon|ellipse|g)\b[^>]*\s(?:fill|stroke)="[^"]*(?:var\(|\{\{)')
+        rx = re.compile(r'<(?:svg|path|circle|rect|line|polyline|polygon|ellipse|g)\b[^>]*\s(?:fill|stroke)=\\?"[^"\\]*(?:var\(|\{\{)')
         for path in token_checked_files():
             with open(path, encoding='utf-8') as f:
                 self.assertEqual(rx.findall(f.read()), [], f'{os.path.relpath(path, ROOT)}: SVG colour attribute holds var() or a hole')

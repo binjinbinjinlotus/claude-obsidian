@@ -1,23 +1,23 @@
 <header style="display: flex; align-items: flex-end; gap: 16px; padding: 30px 44px 0">
 <div style="display: flex; flex-direction: column; gap: 6px; flex-grow: 1">
 <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 30px; letter-spacing: -0.03em; line-height: 1.05">Ask your vault</h1>
-<span style="font-size: 14px; color: #6B6862">Answers come only from your notes, with the pages they cite.</span>
+<span style="font-size: 14px; color: var(--muted)">Answers come only from your notes, with the pages they cite.</span>
 </div>
-<dc-import name="SoftButton" title="New chat" size="small" tint="#1D1C1A" fill="#F6F5F2" hint-size="86px,30px"></dc-import>
+<dc-import name="SoftButton" title="New chat" size="small" tint="var(--ink)" fill="var(--panel)" hint-size="86px,30px"></dc-import>
 </header>
 <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 16px; padding: 22px 44px; overflow: hidden">
-<div style="align-self: flex-end; max-width: 520px; padding: 12px 16px; border-radius: 18px 18px 4px 18px; background: #E9FBC9; font-size: 15px; line-height: 1.45">How hot should the water be for green tea?</div>
+<div style="align-self: flex-end; max-width: 520px; padding: 12px 16px; border-radius: 18px 18px 4px 18px; background: var(--limeTint); font-size: 15px; line-height: 1.45">How hot should the water be for green tea?</div>
 <article style="display: flex; flex-direction: column; gap: 10px; max-width: 760px">
-<div style="display: flex; align-items: center; gap: 8px"><span style="width: 26px; height: 26px; border-radius: 13px; background: #E3EEFF; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1F6FEB" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg></span><span style="font-size: 13px; font-weight: 700">Claude</span><span style="font-size: 12px; color: #9B978F">from 2 pages · answered Tuesday at 3:12 PM</span></div>
+<div style="display: flex; align-items: center; gap: 8px"><span style="width: 26px; height: 26px; border-radius: 13px; background: var(--primaryTint); display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="stroke: var(--primary)"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg></span><span style="font-size: 13px; font-weight: 700">Claude</span><span style="font-size: 12px; color: var(--faint)">from 2 pages · answered Tuesday at 3:12 PM</span></div>
 <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #2A2925">Your notes say sencha brews best at <strong>70–80 °C</strong>; boiling water pulls out bitter catechins.</p>
 </article>
-<div style="align-self: flex-end; max-width: 520px; padding: 12px 16px; border-radius: 18px 18px 4px 18px; background: #F6F5F2; color: #6B6862; font-size: 15px; line-height: 1.45">And does it differ for gyokuro?</div>
+<div style="align-self: flex-end; max-width: 520px; padding: 12px 16px; border-radius: 18px 18px 4px 18px; background: var(--panel); color: var(--muted); font-size: 15px; line-height: 1.45">And does it differ for gyokuro?</div>
 <div style="align-self: flex-start; width: 620px"><dc-import name="SessionReplaceConfirm" place="conversation" reason="notFound" detail="claude exited 1: No conversation found with session ID: 8c1d…04ab" hint-size="620px,190px"></dc-import></div>
 </div>
 <footer style="display: flex; flex-direction: column; gap: 10px; padding: 0 44px 26px">
-<label style="display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 18px; border-radius: 24px; background: #FFFFFF; box-shadow: 0 0 0 1.5px #ECEAE5, 0 6px 18px rgba(29,28,26,0.06)">
-<span style="flex-grow: 1; font-size: 15px; color: #9B978F">Ask a follow-up…</span>
-<span style="font-size: 12px; color: #9B978F">⌘↩</span>
+<label style="display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 18px; border-radius: 24px; background: var(--window); box-shadow: 0 0 0 1.5px var(--border), 0 6px 18px rgba(29,28,26,0.06)">
+<span style="flex-grow: 1; font-size: 15px; color: var(--faint)">Ask a follow-up…</span>
+<span style="font-size: 12px; color: var(--faint)">⌘↩</span>
 <dc-import name="SendButton" hint-size="38px,38px"></dc-import>
 </label>
 </footer>

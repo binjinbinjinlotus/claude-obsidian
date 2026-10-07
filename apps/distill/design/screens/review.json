@@ -2,14 +2,14 @@
  "$doc": "The Review screen (needs your OK) and its states, moved into the schema on 2026-10-05 (the hand-made Review board is replaced). Review and History share one layout: a short summary, groups that fold (New pages, Updated, Sources), each source merged with the page it produced and its labels.",
  "templates": {
   "main": "{tabs}<div style=\"flex-grow: 1; display: flex; gap: 28px; padding: 30px {pad}px 0; overflow: hidden; min-height: 0\">\n<section style=\"flex-grow: 1; display: flex; flex-direction: column; gap: 18px; min-width: 0; overflow: hidden; padding-bottom: 20px\">\n{heading}\n{notices}\n<div style=\"display: flex; flex-direction: column; gap: 12px\">{groups}</div>\n</section>\n{conversation}\n</div>\n{footer}",
-  "heading": "<div style=\"display: flex; flex-direction: column; gap: 8px\">\n<div style=\"display: flex; align-items: center; gap: 10px\"><span style=\"display: inline-flex; flex-shrink: 0\">{pill}</span><span style=\"font-size: 12px; color: #6B6862; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; min-width: 0\">{meta}</span>{right}</div>\n<h1 style=\"margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 28px; letter-spacing: -0.03em; line-height: 1.1\">{title}</h1>\n<p style=\"margin: 2px 0 0; font-size: 15px; line-height: 1.5; color: #1D1C1A\">{summary}</p>\n<p style=\"margin: 0; font-size: 13px; line-height: 1.5; color: #6B6862; white-space: nowrap; overflow: hidden; text-overflow: ellipsis\">{prose}</p>\n</div>",
+  "heading": "<div style=\"display: flex; flex-direction: column; gap: 8px\">\n<div style=\"display: flex; align-items: center; gap: 10px\"><span style=\"display: inline-flex; flex-shrink: 0\">{pill}</span><span style=\"font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; min-width: 0\">{meta}</span>{right}</div>\n<h1 style=\"margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 28px; letter-spacing: -0.03em; line-height: 1.1\">{title}</h1>\n<p style=\"margin: 2px 0 0; font-size: 15px; line-height: 1.5; color: var(--ink)\">{summary}</p>\n<p style=\"margin: 0; font-size: 13px; line-height: 1.5; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis\">{prose}</p>\n</div>",
   "group": "<section style=\"display: flex; flex-direction: column; padding: 4px 6px 6px; border-radius: 16px; background: #FBFAF8\">{head}{rows}</section>",
-  "conversation": "<aside style=\"width: {w}px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; padding-bottom: 20px\">\n<h2 style=\"margin: 0; font-size: 14px; font-weight: 700\">Conversation</h2>\n<div style=\"flex-grow: 1; display: flex; flex-direction: column; gap: 10px; overflow: hidden\">{turns}</div>\n<label for=\"reply\" style=\"font-size: 12px; font-weight: 600; color: #6B6862\">Reply to Claude</label>\n<textarea id=\"reply\" rows=\"3\" placeholder=\"e.g. Put the shading notes on the Gyokuro page instead\" style=\"resize: none; border: none; border-radius: 14px; padding: 12px 14px; font-size: 13px; color: #1D1C1A; background: #F6F5F2\"></textarea>\n<span style=\"font-size: 11px; color: #9B978F\">Model Sonnet · $1.84</span>\n</aside>",
-  "footer": "<footer style=\"flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 16px {pad}px; border-top: 1px solid #ECEAE5\">\n{left}<span style=\"flex-grow: 1\"></span>{status}{right}\n</footer>"
+  "conversation": "<aside style=\"width: {w}px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; padding-bottom: 20px\">\n<h2 style=\"margin: 0; font-size: 14px; font-weight: 700\">Conversation</h2>\n<div style=\"flex-grow: 1; display: flex; flex-direction: column; gap: 10px; overflow: hidden\">{turns}</div>\n<label for=\"reply\" style=\"font-size: 12px; font-weight: 600; color: var(--muted)\">Reply to Claude</label>\n<textarea id=\"reply\" rows=\"3\" placeholder=\"e.g. Put the shading notes on the Gyokuro page instead\" style=\"resize: none; border: none; border-radius: 14px; padding: 12px 14px; font-size: 13px; color: var(--ink); background: var(--panel)\"></textarea>\n<span style=\"font-size: 11px; color: var(--faint)\">Model Sonnet · $1.84</span>\n</aside>",
+  "footer": "<footer style=\"flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 16px {pad}px; border-top: 1px solid var(--border)\">\n{left}<span style=\"flex-grow: 1\"></span>{status}{right}\n</footer>"
  },
  "layouts": {
   "review-frame": "{main}",
-  "review-page": "<div style=\"position: relative; width: 1200px; height: 760px; isolation: isolate\"><div style=\"position: absolute; inset: 0; z-index: -1\"><dc-import name=\"WindowShell\" layer=\"frame\" width=\"1200\" height=\"760\" hint-size=\"1200px,760px\"></dc-import></div><div style=\"position: absolute; left: 38px; top: 36px; z-index: 2\"><dc-import name=\"WindowShell\" layer=\"controls\" hint-size=\"52px,12px\"></dc-import></div>\n<div style=\"position: absolute; left: 20px; top: 20px; right: 20px; bottom: 20px; display: flex; border-radius: 16px; overflow: hidden; background: #FFFFFF\">\n<div style=\"width: 220px; height: 720px; flex-shrink: 0\"><dc-import name=\"Sidebar\" section=\"review\" review-count=\"1\" status=\"Sonnet · waiting on you\" height=\"720\" hint-size=\"220px,720px\"></dc-import></div>\n<main style=\"flex-grow: 1; display: flex; flex-direction: column; min-width: 0\">\n{main}\n</main>\n</div>\n</div>"
+  "review-page": "<div style=\"position: relative; width: 1200px; height: 760px; isolation: isolate\"><div style=\"position: absolute; inset: 0; z-index: -1\"><dc-import name=\"WindowShell\" layer=\"frame\" width=\"1200\" height=\"760\" hint-size=\"1200px,760px\"></dc-import></div><div style=\"position: absolute; left: 38px; top: 36px; z-index: 2\"><dc-import name=\"WindowShell\" layer=\"controls\" hint-size=\"52px,12px\"></dc-import></div>\n<div style=\"position: absolute; left: 20px; top: 20px; right: 20px; bottom: 20px; display: flex; border-radius: 16px; overflow: hidden; background: var(--window)\">\n<div style=\"width: 220px; height: 720px; flex-shrink: 0\"><dc-import name=\"Sidebar\" section=\"review\" review-count=\"1\" status=\"Sonnet · waiting on you\" height=\"720\" hint-size=\"220px,720px\"></dc-import></div>\n<main style=\"flex-grow: 1; display: flex; flex-direction: column; min-width: 0\">\n{main}\n</main>\n</div>\n</div>"
  },
  "bases": {
   "review": {
@@ -26,7 +26,7 @@
    "layout": "review-frame",
    "doc": {
     "title": "Distill — Review",
-    "css": "\nbody{margin:0;font-family:\"DM Sans\",-apple-system,sans-serif;color:#1D1C1A;-webkit-font-smoothing:antialiased}\na{color:#1F6FEB}a:hover{color:#1858C4}\nbutton,textarea{font-family:inherit;cursor:pointer}\n",
+    "css": "\nbody{margin:0;font-family:\"DM Sans\",-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}\na{color:var(--primary)}a:hover{color:#1858C4}\nbutton,textarea{font-family:inherit;cursor:pointer}\n",
     "props": "{\"$preview\":{\"width\":1200,\"height\":760}}",
     "script": "class Component extends DCLogic { renderVals() { return {}; } }"
    },
@@ -43,8 +43,8 @@
          "c": "Pill",
          "props": {
           "text": "Ready for your OK",
-          "fill": "#FFE4D6",
-          "ink": "#B03A0A"
+          "fill": "var(--peachTint)",
+          "ink": "var(--peachInk)"
          },
          "size": [
           "139px",
@@ -59,7 +59,7 @@
        }
       },
       "notices": {
-       "html": "<div style=\"display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6B6862\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#1F6FEB\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0\"><path d=\"M9 6h11M9 12h11M9 18h11\"/><path d=\"M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17\"/></svg>After you apply, Distill looks for actions in these 22 notes with Sonnet and asks you to confirm them.</div>"
+       "html": "<div style=\"display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted)\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0; stroke: var(--primary)\"><path d=\"M9 6h11M9 12h11M9 18h11\"/><path d=\"M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17\"/></svg>After you apply, Distill looks for actions in these 22 notes with Sonnet and asks you to confirm them.</div>"
       },
       "groups": [
        {
@@ -176,7 +176,7 @@
          },
          "rows": [
           {
-           "html": "<div style=\"padding: 0 10px 8px 30px; font-size: 12px; color: #6B6862; line-height: 1.5\">Most used labels: <b style=\"color: #3D6110; font-weight: 600\">#tea-club</b> 8 · <b style=\"color: #3D6110; font-weight: 600\">#tasting</b> 8 · <b style=\"color: #3D6110; font-weight: 600\">#wazuka</b> 7 · <b style=\"color: #3D6110; font-weight: 600\">#gyokuro</b> 6 · 2 new: <b style=\"color: #B03A0A; font-weight: 600\">#shading</b>, <b style=\"color: #B03A0A; font-weight: 600\">#sourcing</b></div>"
+           "html": "<div style=\"padding: 0 10px 8px 30px; font-size: 12px; color: var(--muted); line-height: 1.5\">Most used labels: <b style=\"color: var(--limeInk); font-weight: 600\">#tea-club</b> 8 · <b style=\"color: var(--limeInk); font-weight: 600\">#tasting</b> 8 · <b style=\"color: var(--limeInk); font-weight: 600\">#wazuka</b> 7 · <b style=\"color: var(--limeInk); font-weight: 600\">#gyokuro</b> 6 · 2 new: <b style=\"color: var(--peachInk); font-weight: 600\">#shading</b>, <b style=\"color: var(--peachInk); font-weight: 600\">#sourcing</b></div>"
           }
          ]
         }
@@ -186,7 +186,7 @@
        "t": "conversation",
        "vars": {
         "w": 290,
-        "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #E3EEFF\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div>"
+        "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--primaryTint)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div>"
        }
       },
       "footer": {
@@ -197,7 +197,7 @@
          "c": "SoftButton",
          "props": {
           "title": "Reject",
-          "tint": "#B03A0A",
+          "tint": "var(--peachInk)",
           "fill": "transparent"
          },
          "size": [
@@ -206,7 +206,7 @@
          ]
         },
         "status": {
-         "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6862; margin-right: 6px\">Approving also confirms the labels shown</span>"
+         "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-right: 6px\">Approving also confirms the labels shown</span>"
         },
         "right": [
          {
@@ -415,7 +415,7 @@
          ]
         },
         {
-         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: #1F6FEB\">Show 14 more</div>"
+         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: var(--primary)\">Show 14 more</div>"
         }
        ]
       }
@@ -590,7 +590,7 @@
          ]
         },
         {
-         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: #1F6FEB\">Show 14 more</div>"
+         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: var(--primary)\">Show 14 more</div>"
         }
        ]
       }
@@ -765,14 +765,14 @@
          ]
         },
         {
-         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: #1F6FEB\">Show 14 more</div>"
+         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: var(--primary)\">Show 14 more</div>"
         }
        ]
       }
      }
     ],
     "main.vars.footer.vars.status": {
-     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6862; margin-right: 6px\"><span style=\"width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0\"></span>Saving your labels into the change and checking it again…</span>"
+     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-right: 6px\"><span style=\"width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: var(--primary); flex-shrink: 0\"></span>Saving your labels into the change and checking it again…</span>"
     },
     "main.vars.footer.vars.right": [
      {
@@ -806,7 +806,7 @@
    "label": "4 · The label edit could not be checked: nothing changed",
    "set": {
     "main.vars.notices": {
-     "html": "<div style=\"display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #FFF4EE\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#B03A0A\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0; margin-top: 1px\"><path d=\"M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8v5M12 16h.01\"/></svg><span style=\"display: flex; flex-direction: column; gap: 2px\"><span style=\"font-size: 13px; font-weight: 700; color: #B03A0A\">Couldn’t save your label edit</span><span style=\"font-size: 12px; color: #48463F; line-height: 1.45\">The vault changed after Claude prepared this batch (wiki/index.md), so the core refused the edited change. Your edit was not kept; the labels are as before. Reply to Claude to rebuild the batch, or Reject.</span></span></div>"
+     "html": "<div style=\"display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #FFF4EE\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0; margin-top: 1px; stroke: var(--peachInk)\"><path d=\"M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8v5M12 16h.01\"/></svg><span style=\"display: flex; flex-direction: column; gap: 2px\"><span style=\"font-size: 13px; font-weight: 700; color: var(--peachInk)\">Couldn’t save your label edit</span><span style=\"font-size: 12px; color: #48463F; line-height: 1.45\">The vault changed after Claude prepared this batch (wiki/index.md), so the core refused the edited change. Your edit was not kept; the labels are as before. Reply to Claude to rebuild the batch, or Reject.</span></span></div>"
     },
     "main.vars.groups": [
      {
@@ -970,7 +970,7 @@
          ]
         },
         {
-         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: #1F6FEB\">Show 14 more</div>"
+         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: var(--primary)\">Show 14 more</div>"
         }
        ]
       }
@@ -1145,14 +1145,14 @@
          ]
         },
         {
-         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: #1F6FEB\">Show 14 more</div>"
+         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: var(--primary)\">Show 14 more</div>"
         }
        ]
       }
      }
     ],
     "main.vars.footer.vars.status": {
-     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6862; margin-right: 6px\">Approve when the labels are in</span>"
+     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-right: 6px\">Approve when the labels are in</span>"
     },
     "main.vars.footer.vars.right": [
      {
@@ -1198,8 +1198,8 @@
        "c": "Pill",
        "props": {
         "text": "Ready for your OK",
-        "fill": "#FFE4D6",
-        "ink": "#B03A0A"
+        "fill": "var(--peachTint)",
+        "ink": "var(--peachInk)"
        },
        "size": [
         "139px",
@@ -1241,8 +1241,8 @@
        "c": "Pill",
        "props": {
         "text": "Ready for your OK",
-        "fill": "#FFE4D6",
-        "ink": "#B03A0A"
+        "fill": "var(--peachTint)",
+        "ink": "var(--peachInk)"
        },
        "size": [
         "139px",
@@ -1257,7 +1257,7 @@
      }
     },
     "main.vars.notices": {
-     "html": "<div style=\"display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6B6862\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#1F6FEB\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0\"><path d=\"M9 6h11M9 12h11M9 18h11\"/><path d=\"M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17\"/></svg>After you apply, Distill looks for actions in these 2 notes with Sonnet and asks you to confirm them.</div>"
+     "html": "<div style=\"display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted)\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0; stroke: var(--primary)\"><path d=\"M9 6h11M9 12h11M9 18h11\"/><path d=\"M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17\"/></svg>After you apply, Distill looks for actions in these 2 notes with Sonnet and asks you to confirm them.</div>"
     },
     "main.vars.groups": [
      {
@@ -1432,7 +1432,7 @@
        "props": {
         "text": "Applied at 11:52 PM",
         "fill": "#F3FDE4",
-        "ink": "#3D6110"
+        "ink": "var(--limeInk)"
        },
        "size": [
         "150px",
@@ -1447,7 +1447,7 @@
      }
     },
     "main.vars.notices": {
-     "html": "<div style=\"display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6B6862\"><b style=\"color: #3D6110\">✓</b> Found 5 actions to confirm · <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Review them</a></div>"
+     "html": "<div style=\"display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted)\"><b style=\"color: var(--limeInk)\">✓</b> Found 5 actions to confirm · <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Review them</a></div>"
     },
     "main.vars.groups": [
      {
@@ -1564,14 +1564,14 @@
        },
        "rows": [
         {
-         "html": "<div style=\"padding: 0 10px 8px 30px; font-size: 12px; color: #6B6862; line-height: 1.5\">Most used labels: <b style=\"color: #3D6110; font-weight: 600\">#tea-club</b> 8 · <b style=\"color: #3D6110; font-weight: 600\">#tasting</b> 8 · <b style=\"color: #3D6110; font-weight: 600\">#wazuka</b> 7 · <b style=\"color: #3D6110; font-weight: 600\">#gyokuro</b> 6 · 2 new: <b style=\"color: #B03A0A; font-weight: 600\">#shading</b>, <b style=\"color: #B03A0A; font-weight: 600\">#sourcing</b></div>"
+         "html": "<div style=\"padding: 0 10px 8px 30px; font-size: 12px; color: var(--muted); line-height: 1.5\">Most used labels: <b style=\"color: var(--limeInk); font-weight: 600\">#tea-club</b> 8 · <b style=\"color: var(--limeInk); font-weight: 600\">#tasting</b> 8 · <b style=\"color: var(--limeInk); font-weight: 600\">#wazuka</b> 7 · <b style=\"color: var(--limeInk); font-weight: 600\">#gyokuro</b> 6 · 2 new: <b style=\"color: var(--peachInk); font-weight: 600\">#shading</b>, <b style=\"color: var(--peachInk); font-weight: 600\">#sourcing</b></div>"
         }
        ]
       }
      }
     ],
     "main.vars.footer.vars.left": {
-     "html": "<span style=\"font-size: 12px; color: #9B978F\">Operation ingest-20261004-tea-club-batch</span>"
+     "html": "<span style=\"font-size: 12px; color: var(--faint)\">Operation ingest-20261004-tea-club-batch</span>"
     },
     "main.vars.footer.vars.status": "",
     "main.vars.footer.vars.right": ""
@@ -1761,7 +1761,7 @@
          ]
         },
         {
-         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: #1F6FEB\">Show 14 more</div>"
+         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: var(--primary)\">Show 14 more</div>"
         }
        ]
       }
@@ -1793,7 +1793,7 @@
       ]
      },
      {
-      "html": "<button type=\"button\" aria-label=\"More ways to approve\" style=\"width: 34px; height: 40px; border: none; border-radius: 0 20px 20px 0; background: #1F6FEB; display: inline-flex; align-items: center; justify-content: center; margin-left: -6px; box-shadow: inset 1px 0 0 rgba(255,255,255,.35)\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6 9l6 6 6-6\"/></svg></button></span>"
+      "html": "<button type=\"button\" aria-label=\"More ways to approve\" style=\"width: 34px; height: 40px; border: none; border-radius: 0 20px 20px 0; background: var(--primary); display: inline-flex; align-items: center; justify-content: center; margin-left: -6px; box-shadow: inset 1px 0 0 rgba(255,255,255,.35)\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"stroke: var(--window)\"><path d=\"M6 9l6 6 6-6\"/></svg></button></span>"
      }
     ]
    }
@@ -1982,7 +1982,7 @@
          ]
         },
         {
-         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: #1F6FEB\">Show 14 more</div>"
+         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: var(--primary)\">Show 14 more</div>"
         }
        ]
       }
@@ -2014,11 +2014,11 @@
       ]
      },
      {
-      "html": "<button type=\"button\" aria-label=\"More ways to approve\" style=\"width: 34px; height: 40px; border: none; border-radius: 0 20px 20px 0; background: #1F6FEB; display: inline-flex; align-items: center; justify-content: center; margin-left: -6px; box-shadow: inset 1px 0 0 rgba(255,255,255,.35)\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6 9l6 6 6-6\"/></svg></button></span>"
+      "html": "<button type=\"button\" aria-label=\"More ways to approve\" style=\"width: 34px; height: 40px; border: none; border-radius: 0 20px 20px 0; background: var(--primary); display: inline-flex; align-items: center; justify-content: center; margin-left: -6px; box-shadow: inset 1px 0 0 rgba(255,255,255,.35)\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"stroke: var(--window)\"><path d=\"M6 9l6 6 6-6\"/></svg></button></span>"
      }
     ],
     "overlay": {
-     "html": "<div role=\"menu\" style=\"position: absolute; right: 30px; bottom: 74px; width: 330px; padding: 6px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 12px 32px rgba(29,28,26,.16), 0 0 0 1px #ECEAE5; display: flex; flex-direction: column; gap: 2px; z-index: 5\"><button type=\"button\" role=\"menuitem\" style=\"text-align: left; border: none; background: #F2F7FF; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px\"><span style=\"font-size: 13px; font-weight: 700; color: #1D1C1A\">Approve 8 sources</span><span style=\"font-size: 12px; color: #6B6862; line-height: 1.4\">Adds them to your vault and confirms the labels shown.</span></button><button type=\"button\" role=\"menuitem\" style=\"text-align: left; border: none; background: transparent; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px\"><span style=\"font-size: 13px; font-weight: 700; color: #1D1C1A\">Approve, review labels later</span><span style=\"font-size: 12px; color: #6B6862; line-height: 1.4\">Adds them with their labels unconfirmed. They wait in Labels → To review.</span></button></div>"
+     "html": "<div role=\"menu\" style=\"position: absolute; right: 30px; bottom: 74px; width: 330px; padding: 6px; border-radius: 14px; background: var(--window); box-shadow: 0 12px 32px rgba(29,28,26,.16), 0 0 0 1px var(--border); display: flex; flex-direction: column; gap: 2px; z-index: 5\"><button type=\"button\" role=\"menuitem\" style=\"text-align: left; border: none; background: #F2F7FF; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px\"><span style=\"font-size: 13px; font-weight: 700; color: var(--ink)\">Approve 8 sources</span><span style=\"font-size: 12px; color: var(--muted); line-height: 1.4\">Adds them to your vault and confirms the labels shown.</span></button><button type=\"button\" role=\"menuitem\" style=\"text-align: left; border: none; background: transparent; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px\"><span style=\"font-size: 13px; font-weight: 700; color: var(--ink)\">Approve, review labels later</span><span style=\"font-size: 12px; color: var(--muted); line-height: 1.4\">Adds them with their labels unconfirmed. They wait in Labels → To review.</span></button></div>"
     }
    }
   },
@@ -2203,7 +2203,7 @@
          ]
         },
         {
-         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: #1F6FEB\">Show 14 more</div>"
+         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: var(--primary)\">Show 14 more</div>"
         }
        ]
       }
@@ -2235,7 +2235,7 @@
       ]
      },
      {
-      "html": "<button type=\"button\" aria-label=\"More ways to approve\" style=\"width: 34px; height: 40px; border: none; border-radius: 0 20px 20px 0; background: #1F6FEB; display: inline-flex; align-items: center; justify-content: center; margin-left: -6px; box-shadow: inset 1px 0 0 rgba(255,255,255,.35)\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6 9l6 6 6-6\"/></svg></button></span>"
+      "html": "<button type=\"button\" aria-label=\"More ways to approve\" style=\"width: 34px; height: 40px; border: none; border-radius: 0 20px 20px 0; background: var(--primary); display: inline-flex; align-items: center; justify-content: center; margin-left: -6px; box-shadow: inset 1px 0 0 rgba(255,255,255,.35)\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"stroke: var(--window)\"><path d=\"M6 9l6 6 6-6\"/></svg></button></span>"
      }
     ]
    }
@@ -2246,7 +2246,7 @@
    "label": "4 · Part of a batch: its own Claude session rebuilds the change",
    "set": {
     "main.vars.notices": {
-     "html": "<div style=\"display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #F2F7FF\"><span style=\"width: 13px; height: 13px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0; margin-top: 2px\"></span><span style=\"display: flex; flex-direction: column; gap: 2px\"><span style=\"font-size: 13px; font-weight: 700; color: #1F6FEB\">Rebuilding the change for your 8 sources…</span><span style=\"font-size: 12px; color: #48463F; line-height: 1.45\">In this batch’s own Claude session (the one that read these notes). Your 8 source pages and their labels stay exactly as you saw them; the index, log, hot cache, overview and ledgers are written again for just these 8.</span></span></div>"
+     "html": "<div style=\"display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #F2F7FF\"><span style=\"width: 13px; height: 13px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: var(--primary); flex-shrink: 0; margin-top: 2px\"></span><span style=\"display: flex; flex-direction: column; gap: 2px\"><span style=\"font-size: 13px; font-weight: 700; color: var(--primary)\">Rebuilding the change for your 8 sources…</span><span style=\"font-size: 12px; color: #48463F; line-height: 1.45\">In this batch’s own Claude session (the one that read these notes). Your 8 source pages and their labels stay exactly as you saw them; the index, log, hot cache, overview and ledgers are written again for just these 8.</span></span></div>"
     },
     "main.vars.groups": [
      {
@@ -2427,14 +2427,14 @@
          ]
         },
         {
-         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: #1F6FEB\">Show 14 more</div>"
+         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: var(--primary)\">Show 14 more</div>"
         }
        ]
       }
      }
     ],
     "main.vars.footer.vars.status": {
-     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6862; margin-right: 6px\"><span style=\"width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0\"></span>Rebuilding with Sonnet…</span>"
+     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-right: 6px\"><span style=\"width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: var(--primary); flex-shrink: 0\"></span>Rebuilding with Sonnet…</span>"
     },
     "main.vars.footer.vars.right": [
      {
@@ -2463,7 +2463,7 @@
       ]
      },
      {
-      "html": "<button type=\"button\" aria-label=\"More ways to approve\" style=\"width: 34px; height: 40px; border: none; border-radius: 0 20px 20px 0; background: #8FB5F5; display: inline-flex; align-items: center; justify-content: center; margin-left: -6px; box-shadow: inset 1px 0 0 rgba(255,255,255,.35)\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6 9l6 6 6-6\"/></svg></button></span>"
+      "html": "<button type=\"button\" aria-label=\"More ways to approve\" style=\"width: 34px; height: 40px; border: none; border-radius: 0 20px 20px 0; background: #8FB5F5; display: inline-flex; align-items: center; justify-content: center; margin-left: -6px; box-shadow: inset 1px 0 0 rgba(255,255,255,.35)\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"stroke: var(--window)\"><path d=\"M6 9l6 6 6-6\"/></svg></button></span>"
      }
     ]
    }
@@ -2480,8 +2480,8 @@
        "c": "Pill",
        "props": {
         "text": "Ready for your OK",
-        "fill": "#FFE4D6",
-        "ink": "#B03A0A"
+        "fill": "var(--peachTint)",
+        "ink": "var(--peachInk)"
        },
        "size": [
         "139px",
@@ -2496,7 +2496,7 @@
      }
     },
     "main.vars.notices": {
-     "html": "<div style=\"display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #F3FDE4\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3D6110\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0; margin-top: 1px\"><path d=\"M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8v5M12 16h.01\"/></svg><span style=\"display: flex; flex-direction: column; gap: 2px\"><span style=\"font-size: 13px; font-weight: 700; color: #3D6110\">Rebuilt and checked by the vault core</span><span style=\"font-size: 12px; color: #48463F; line-height: 1.45\">Distill compared it with what you approved: the 8 source pages are the same, byte for byte, and nothing else from this batch is in it.</span></span></div>"
+     "html": "<div style=\"display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #F3FDE4\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0; margin-top: 1px; stroke: var(--limeInk)\"><path d=\"M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8v5M12 16h.01\"/></svg><span style=\"display: flex; flex-direction: column; gap: 2px\"><span style=\"font-size: 13px; font-weight: 700; color: var(--limeInk)\">Rebuilt and checked by the vault core</span><span style=\"font-size: 12px; color: #48463F; line-height: 1.45\">Distill compared it with what you approved: the 8 source pages are the same, byte for byte, and nothing else from this batch is in it.</span></span></div>"
     },
     "main.vars.groups": [
      {
@@ -2637,7 +2637,7 @@
       ]
      },
      {
-      "html": "<button type=\"button\" aria-label=\"More ways to approve\" style=\"width: 34px; height: 40px; border: none; border-radius: 0 20px 20px 0; background: #1F6FEB; display: inline-flex; align-items: center; justify-content: center; margin-left: -6px; box-shadow: inset 1px 0 0 rgba(255,255,255,.35)\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6 9l6 6 6-6\"/></svg></button></span>"
+      "html": "<button type=\"button\" aria-label=\"More ways to approve\" style=\"width: 34px; height: 40px; border: none; border-radius: 0 20px 20px 0; background: var(--primary); display: inline-flex; align-items: center; justify-content: center; margin-left: -6px; box-shadow: inset 1px 0 0 rgba(255,255,255,.35)\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"stroke: var(--window)\"><path d=\"M6 9l6 6 6-6\"/></svg></button></span>"
      }
     ]
    }
@@ -2649,7 +2649,7 @@
    "set": {
     "sidebar.reviewCount": "2",
     "main.vars.tabs": {
-     "html": "<div style=\"display: flex; gap: 6px; padding: 14px 40px 0\"><span style=\"display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border-radius: 16px; background: #1D1C1A; color: #FFFFFF; font-size: 13px; font-weight: 600; white-space: nowrap\">Tea club notes · Sep 28<span style=\"font-size: 12px; font-weight: 600; opacity: .7\">14 left</span></span><span style=\"display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border-radius: 16px; background: #F6F5F2; color: #1D1C1A; font-size: 13px; font-weight: 600; white-space: nowrap\">Scans · Oct 3<span style=\"font-size: 12px; font-weight: 600; opacity: .7\">3 sources</span></span></div>"
+     "html": "<div style=\"display: flex; gap: 6px; padding: 14px 40px 0\"><span style=\"display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border-radius: 16px; background: var(--ink); color: var(--window); font-size: 13px; font-weight: 600; white-space: nowrap\">Tea club notes · Sep 28<span style=\"font-size: 12px; font-weight: 600; opacity: .7\">14 left</span></span><span style=\"display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border-radius: 16px; background: var(--panel); color: var(--ink); font-size: 13px; font-weight: 600; white-space: nowrap\">Scans · Oct 3<span style=\"font-size: 12px; font-weight: 600; opacity: .7\">3 sources</span></span></div>"
     },
     "main.vars.heading": {
      "t": "heading",
@@ -2658,8 +2658,8 @@
        "c": "Pill",
        "props": {
         "text": "Ready for your OK",
-        "fill": "#FFE4D6",
-        "ink": "#B03A0A"
+        "fill": "var(--peachTint)",
+        "ink": "var(--peachInk)"
        },
        "size": [
         "139px",
@@ -2674,7 +2674,7 @@
      }
     },
     "main.vars.notices": {
-     "html": "<div style=\"display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #F2F7FF\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#1F6FEB\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0; margin-top: 1px\"><path d=\"M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8v5M12 16h.01\"/></svg><span style=\"display: flex; flex-direction: column; gap: 2px\"><span style=\"font-size: 13px; font-weight: 700; color: #1F6FEB\">Rebuilt for your vault as it is now</span><span style=\"font-size: 12px; color: #48463F; line-height: 1.45\">The Scans batch was applied first and changed wiki/index.md, so this batch’s change was rebuilt in its own session and checked again.</span></span></div>"
+     "html": "<div style=\"display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #F2F7FF\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0; margin-top: 1px; stroke: var(--primary)\"><path d=\"M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8v5M12 16h.01\"/></svg><span style=\"display: flex; flex-direction: column; gap: 2px\"><span style=\"font-size: 13px; font-weight: 700; color: var(--primary)\">Rebuilt for your vault as it is now</span><span style=\"font-size: 12px; color: #48463F; line-height: 1.45\">The Scans batch was applied first and changed wiki/index.md, so this batch’s change was rebuilt in its own session and checked again.</span></span></div>"
     },
     "main.vars.groups": [
      {
@@ -2824,7 +2824,7 @@
          ]
         },
         {
-         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: #1F6FEB\">Show 14 more</div>"
+         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: var(--primary)\">Show 14 more</div>"
         }
        ]
       }
@@ -2856,7 +2856,7 @@
       ]
      },
      {
-      "html": "<button type=\"button\" aria-label=\"More ways to approve\" style=\"width: 34px; height: 40px; border: none; border-radius: 0 20px 20px 0; background: #1F6FEB; display: inline-flex; align-items: center; justify-content: center; margin-left: -6px; box-shadow: inset 1px 0 0 rgba(255,255,255,.35)\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6 9l6 6 6-6\"/></svg></button></span>"
+      "html": "<button type=\"button\" aria-label=\"More ways to approve\" style=\"width: 34px; height: 40px; border: none; border-radius: 0 20px 20px 0; background: var(--primary); display: inline-flex; align-items: center; justify-content: center; margin-left: -6px; box-shadow: inset 1px 0 0 rgba(255,255,255,.35)\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"stroke: var(--window)\"><path d=\"M6 9l6 6 6-6\"/></svg></button></span>"
      }
     ]
    }
@@ -2878,7 +2878,7 @@
        "props": {
         "text": "Applied in 2 parts",
         "fill": "#F3FDE4",
-        "ink": "#3D6110"
+        "ink": "var(--limeInk)"
        },
        "size": [
         "140px",
@@ -2893,7 +2893,7 @@
      }
     },
     "main.vars.notices": {
-     "html": "<div style=\"display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 14px; background: #FBFAF8\"><span style=\"font-size: 13px; font-weight: 700\">Applied in parts</span><span style=\"font-size: 12px; color: #48463F; line-height: 1.5\"><b style=\"color: #3D6110\">✓</b> 8 sources at 11:52 PM · ingest-20261004-tea-club-part-1</span><span style=\"font-size: 12px; color: #48463F; line-height: 1.5\"><b style=\"color: #3D6110\">✓</b> 13 sources on Oct 5 at 9:10 AM · ingest-20261005-tea-club-part-2 · labels left to review</span><span style=\"font-size: 12px; color: #6B6862; line-height: 1.5\">1 removed: Tea club social · Sep 30 (still in inbox/)</span></div>"
+     "html": "<div style=\"display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 14px; background: #FBFAF8\"><span style=\"font-size: 13px; font-weight: 700\">Applied in parts</span><span style=\"font-size: 12px; color: #48463F; line-height: 1.5\"><b style=\"color: var(--limeInk)\">✓</b> 8 sources at 11:52 PM · ingest-20261004-tea-club-part-1</span><span style=\"font-size: 12px; color: #48463F; line-height: 1.5\"><b style=\"color: var(--limeInk)\">✓</b> 13 sources on Oct 5 at 9:10 AM · ingest-20261005-tea-club-part-2 · labels left to review</span><span style=\"font-size: 12px; color: var(--muted); line-height: 1.5\">1 removed: Tea club social · Sep 30 (still in inbox/)</span></div>"
     },
     "main.vars.groups": [
      {
@@ -2953,14 +2953,14 @@
        },
        "rows": [
         {
-         "html": "<div style=\"padding: 0 10px 8px 30px; font-size: 12px; color: #6B6862; line-height: 1.5\">Most used labels: <b style=\"color: #3D6110; font-weight: 600\">#tea-club</b> 8 · <b style=\"color: #3D6110; font-weight: 600\">#tasting</b> 8 · <b style=\"color: #3D6110; font-weight: 600\">#wazuka</b> 7 · <b style=\"color: #3D6110; font-weight: 600\">#gyokuro</b> 6 · 2 new: <b style=\"color: #B03A0A; font-weight: 600\">#shading</b>, <b style=\"color: #B03A0A; font-weight: 600\">#sourcing</b></div>"
+         "html": "<div style=\"padding: 0 10px 8px 30px; font-size: 12px; color: var(--muted); line-height: 1.5\">Most used labels: <b style=\"color: var(--limeInk); font-weight: 600\">#tea-club</b> 8 · <b style=\"color: var(--limeInk); font-weight: 600\">#tasting</b> 8 · <b style=\"color: var(--limeInk); font-weight: 600\">#wazuka</b> 7 · <b style=\"color: var(--limeInk); font-weight: 600\">#gyokuro</b> 6 · 2 new: <b style=\"color: var(--peachInk); font-weight: 600\">#shading</b>, <b style=\"color: var(--peachInk); font-weight: 600\">#sourcing</b></div>"
         }
        ]
       }
      }
     ],
     "main.vars.footer.vars.left": {
-     "html": "<span style=\"font-size: 12px; color: #9B978F\">2 operations · ingest-20261004-tea-club-part-1, part-2</span>"
+     "html": "<span style=\"font-size: 12px; color: var(--faint)\">2 operations · ingest-20261004-tea-club-part-1, part-2</span>"
     },
     "main.vars.footer.vars.status": "",
     "main.vars.footer.vars.right": ""
@@ -3150,7 +3150,7 @@
          ]
         },
         {
-         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: #1F6FEB\">Show 14 more</div>"
+         "html": "<div style=\"padding: 6px 10px 4px 44px; font-size: 12px; font-weight: 600; color: var(--primary)\">Show 14 more</div>"
         }
        ]
       }
@@ -3182,7 +3182,7 @@
       ]
      },
      {
-      "html": "<button type=\"button\" aria-label=\"More ways to approve\" style=\"width: 34px; height: 40px; border: none; border-radius: 0 20px 20px 0; background: #1F6FEB; display: inline-flex; align-items: center; justify-content: center; margin-left: -6px; box-shadow: inset 1px 0 0 rgba(255,255,255,.35)\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6 9l6 6 6-6\"/></svg></button></span>"
+      "html": "<button type=\"button\" aria-label=\"More ways to approve\" style=\"width: 34px; height: 40px; border: none; border-radius: 0 20px 20px 0; background: var(--primary); display: inline-flex; align-items: center; justify-content: center; margin-left: -6px; box-shadow: inset 1px 0 0 rgba(255,255,255,.35)\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"stroke: var(--window)\"><path d=\"M6 9l6 6 6-6\"/></svg></button></span>"
      }
     ],
     "overlay": {
@@ -3204,8 +3204,8 @@
        "c": "Pill",
        "props": {
         "text": "Adding to your vault",
-        "fill": "#E3EEFF",
-        "ink": "#1F6FEB",
+        "fill": "var(--primaryTint)",
+        "ink": "var(--primary)",
         "busy": true
        },
        "size": [
@@ -3295,14 +3295,14 @@
      "t": "conversation",
      "vars": {
       "w": 290,
-      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #E3EEFF\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div>"
+      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--primaryTint)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div>"
      }
     },
     "main.vars.footer.vars.left": {
      "html": "<a href=\"#\" style=\"font-size: 12px; font-weight: 600; text-decoration: none\">Show steps</a>"
     },
     "main.vars.footer.vars.status": {
-     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6862; margin-right: 6px\"><span style=\"width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0\"></span>Adding to Research · you can leave this screen</span>"
+     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-right: 6px\"><span style=\"width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: var(--primary); flex-shrink: 0\"></span>Adding to Research · you can leave this screen</span>"
     },
     "main.vars.footer.vars.right": ""
    }
@@ -3321,8 +3321,8 @@
        "c": "Pill",
        "props": {
         "text": "Adding to your vault",
-        "fill": "#E3EEFF",
-        "ink": "#1F6FEB",
+        "fill": "var(--primaryTint)",
+        "ink": "var(--primary)",
         "busy": true
        },
        "size": [
@@ -3412,14 +3412,14 @@
      "t": "conversation",
      "vars": {
       "w": 290,
-      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #E3EEFF\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div>"
+      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--primaryTint)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div>"
      }
     },
     "main.vars.footer.vars.left": {
      "html": "<a href=\"#\" style=\"font-size: 12px; font-weight: 600; text-decoration: none\">Show steps</a>"
     },
     "main.vars.footer.vars.status": {
-     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6862; margin-right: 6px\"><span style=\"width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0\"></span>Applying 31 changes…</span>"
+     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-right: 6px\"><span style=\"width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: var(--primary); flex-shrink: 0\"></span>Applying 31 changes…</span>"
     },
     "main.vars.footer.vars.right": ""
    }
@@ -3439,7 +3439,7 @@
        "props": {
         "text": "Added at 11:53 PM",
         "fill": "#F3FDE4",
-        "ink": "#3D6110"
+        "ink": "var(--limeInk)"
        },
        "size": [
         "150px",
@@ -3529,11 +3529,11 @@
      "t": "conversation",
      "vars": {
       "w": 290,
-      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #E3EEFF\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:53 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Applied ingest-20261004-tea-club: 31 changes.</span></div>"
+      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--primaryTint)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Distill · 11:53 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Applied ingest-20261004-tea-club: 31 changes.</span></div>"
      }
     },
     "main.vars.footer.vars.left": {
-     "html": "<span style=\"font-size: 12px; color: #9B978F\">Operation ingest-20261004-tea-club</span>"
+     "html": "<span style=\"font-size: 12px; color: var(--faint)\">Operation ingest-20261004-tea-club</span>"
     },
     "main.vars.footer.vars.status": "",
     "main.vars.footer.vars.right": [
@@ -3576,7 +3576,7 @@
        "props": {
         "text": "Added at 11:53 PM",
         "fill": "#F3FDE4",
-        "ink": "#3D6110"
+        "ink": "var(--limeInk)"
        },
        "size": [
         "150px",
@@ -3728,11 +3728,11 @@
      "t": "conversation",
      "vars": {
       "w": 290,
-      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #E3EEFF\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:53 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Applied ingest-20261004-tea-club: 31 changes.</span></div>"
+      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--primaryTint)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Distill · 11:53 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Applied ingest-20261004-tea-club: 31 changes.</span></div>"
      }
     },
     "main.vars.footer.vars.left": {
-     "html": "<span style=\"font-size: 12px; color: #9B978F\">Operation ingest-20261004-tea-club</span>"
+     "html": "<span style=\"font-size: 12px; color: var(--faint)\">Operation ingest-20261004-tea-club</span>"
     },
     "main.vars.footer.vars.status": "",
     "main.vars.footer.vars.right": [
@@ -3774,8 +3774,8 @@
        "c": "Pill",
        "props": {
         "text": "Not added yet",
-        "fill": "#FFE4D6",
-        "ink": "#B03A0A"
+        "fill": "var(--peachTint)",
+        "ink": "var(--peachInk)"
        },
        "size": [
         "116px",
@@ -3827,7 +3827,7 @@
      "t": "conversation",
      "vars": {
       "w": 290,
-      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #E3EEFF\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div>"
+      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--primaryTint)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div>"
      }
     },
     "main.vars.footer.vars.left": {
@@ -3854,8 +3854,8 @@
        "c": "Pill",
        "props": {
         "text": "Not added yet",
-        "fill": "#FFE4D6",
-        "ink": "#B03A0A"
+        "fill": "var(--peachTint)",
+        "ink": "var(--peachInk)"
        },
        "size": [
         "116px",
@@ -3947,14 +3947,14 @@
      "t": "conversation",
      "vars": {
       "w": 290,
-      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #E3EEFF\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:53 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Not applied: the vault changed after review.</span></div>"
+      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--primaryTint)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">You · 11:52 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved (22 sources, labels confirmed)</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Distill · 11:53 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Not applied: the vault changed after review.</span></div>"
      }
     },
     "main.vars.footer.vars.left": {
      "html": "<a href=\"#\" style=\"font-size: 12px; font-weight: 600; text-decoration: none\">Show steps</a>"
     },
     "main.vars.footer.vars.status": {
-     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6862; margin-right: 6px\"><span style=\"width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0\"></span>Rebuilding with Sonnet…</span>"
+     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-right: 6px\"><span style=\"width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: var(--primary); flex-shrink: 0\"></span>Rebuilding with Sonnet…</span>"
     },
     "main.vars.footer.vars.right": ""
    }
@@ -3967,7 +3967,7 @@
     "sidebar.reviewCount": "1",
     "sidebar.status": "Sonnet · adding to your vault",
     "main.vars.tabs": {
-     "html": "<div style=\"display: flex; gap: 6px; padding: 14px 40px 0\"><span style=\"display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border-radius: 16px; background: #1D1C1A; color: #FFFFFF; font-size: 13px; font-weight: 600; white-space: nowrap\">Tea club notes · Sep 28<span style=\"font-size: 12px; font-weight: 600; opacity: .7\">adding 8</span></span><span style=\"display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border-radius: 16px; background: #F6F5F2; color: #1D1C1A; font-size: 13px; font-weight: 600; white-space: nowrap\">Scans · Oct 3<span style=\"font-size: 12px; font-weight: 600; opacity: .7\">3 sources</span></span></div>"
+     "html": "<div style=\"display: flex; gap: 6px; padding: 14px 40px 0\"><span style=\"display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border-radius: 16px; background: var(--ink); color: var(--window); font-size: 13px; font-weight: 600; white-space: nowrap\">Tea club notes · Sep 28<span style=\"font-size: 12px; font-weight: 600; opacity: .7\">adding 8</span></span><span style=\"display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border-radius: 16px; background: var(--panel); color: var(--ink); font-size: 13px; font-weight: 600; white-space: nowrap\">Scans · Oct 3<span style=\"font-size: 12px; font-weight: 600; opacity: .7\">3 sources</span></span></div>"
     },
     "main.vars.heading": {
      "t": "heading",
@@ -3976,8 +3976,8 @@
        "c": "Pill",
        "props": {
         "text": "Adding part 1",
-        "fill": "#E3EEFF",
-        "ink": "#1F6FEB",
+        "fill": "var(--primaryTint)",
+        "ink": "var(--primary)",
         "busy": true
        },
        "size": [
@@ -4008,7 +4008,7 @@
       ]
      },
      {
-      "html": "<div style=\"display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 14px; background: #FBFAF8; box-shadow: inset 0 0 0 1px #ECEAE5\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#C9C5BD\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0\"><path d=\"M12 12m-6 0a6 6 0 1 0 12 0a6 6 0 1 0-12 0\"></path></svg><span style=\"font-size: 13px; font-weight: 600; white-space: nowrap\">The 14 sources left</span><span style=\"font-size: 12px; color: #6B6862; flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis\">rebuilt in the same session once part 1 is added, then back here for your OK</span></div>"
+      "html": "<div style=\"display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 14px; background: #FBFAF8; box-shadow: inset 0 0 0 1px var(--border)\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#C9C5BD\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0\"><path d=\"M12 12m-6 0a6 6 0 1 0 12 0a6 6 0 1 0-12 0\"></path></svg><span style=\"font-size: 13px; font-weight: 600; white-space: nowrap\">The 14 sources left</span><span style=\"font-size: 12px; color: var(--muted); flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis\">rebuilt in the same session once part 1 is added, then back here for your OK</span></div>"
      }
     ],
     "main.vars.groups": [
@@ -4037,14 +4037,14 @@
      "t": "conversation",
      "vars": {
       "w": 290,
-      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #E3EEFF\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: #F6F5F2\"><span style=\"font-size: 11px; font-weight: 700; color: #6B6862\">You · 9:08 AM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved 8 sources (labels confirmed)</span></div>"
+      "turns": "<div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Distill · 11:33 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Moved 22 files from the queue into your inbox. Labels were already suggested in the queue, so the batch used them.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--primaryTint)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Claude · 11:47 PM</span><span style=\"font-size: 13px; line-height: 1.45\">Read all 22 notes. Made 22 source pages, 3 concept pages and 1 entity, and updated the index, overview, log, hot cache and both ledgers. Checked by the vault core.</span></div><div style=\"display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 16px 16px 16px 4px; background: var(--panel)\"><span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">You · 9:08 AM</span><span style=\"font-size: 13px; line-height: 1.45\">Approved 8 sources (labels confirmed)</span></div>"
      }
     },
     "main.vars.footer.vars.left": {
      "html": "<a href=\"#\" style=\"font-size: 12px; font-weight: 600; text-decoration: none\">Show steps</a>"
     },
     "main.vars.footer.vars.status": {
-     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6862; margin-right: 6px\"><span style=\"width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0\"></span>Adding part 1 · 8 sources…</span>"
+     "html": "<span style=\"display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-right: 6px\"><span style=\"width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: var(--primary); flex-shrink: 0\"></span>Adding part 1 · 8 sources…</span>"
     },
     "main.vars.footer.vars.right": ""
    }
@@ -4064,7 +4064,7 @@
        "props": {
         "text": "Added at 11:53 PM",
         "fill": "#F3FDE4",
-        "ink": "#3D6110"
+        "ink": "var(--limeInk)"
        },
        "size": [
         "150px",
@@ -4276,7 +4276,7 @@
        "props": {
         "text": "Applied at 11:52 PM",
         "fill": "#F3FDE4",
-        "ink": "#3D6110"
+        "ink": "var(--limeInk)"
        },
        "size": [
         "150px",
@@ -4291,13 +4291,13 @@
      }
     },
     "main.vars.notices": {
-     "html": "<div style=\"display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6B6862\"><b style=\"color: #3D6110\">✓</b> Found 5 actions to confirm · <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Review them</a></div>"
+     "html": "<div style=\"display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted)\"><b style=\"color: var(--limeInk)\">✓</b> Found 5 actions to confirm · <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Review them</a></div>"
     },
     "main.vars.footer.vars.left": {
-     "html": "<span style=\"font-size: 12px; color: #9B978F\">Operation ingest-20261004-tea-club-batch</span>"
+     "html": "<span style=\"font-size: 12px; color: var(--faint)\">Operation ingest-20261004-tea-club-batch</span>"
     },
     "main.vars.footer.vars.status": {
-     "html": "<span style=\"font-size: 12px; color: #6B6862; margin-right: 6px\">22 files from this batch are still in inbox/</span>"
+     "html": "<span style=\"font-size: 12px; color: var(--muted); margin-right: 6px\">22 files from this batch are still in inbox/</span>"
     },
     "main.vars.footer.vars.right": [
      {
@@ -4391,7 +4391,7 @@
        "props": {
         "text": "Applied at 11:52 PM",
         "fill": "#F3FDE4",
-        "ink": "#3D6110"
+        "ink": "var(--limeInk)"
        },
        "size": [
         "150px",
@@ -4406,13 +4406,13 @@
      }
     },
     "main.vars.notices": {
-     "html": "<div style=\"display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6B6862\"><b style=\"color: #3D6110\">✓</b> Found 5 actions to confirm · <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Review them</a></div>"
+     "html": "<div style=\"display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted)\"><b style=\"color: var(--limeInk)\">✓</b> Found 5 actions to confirm · <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Review them</a></div>"
     },
     "main.vars.footer.vars.left": {
-     "html": "<span style=\"font-size: 12px; color: #9B978F\">Operation ingest-20261004-tea-club-batch</span>"
+     "html": "<span style=\"font-size: 12px; color: var(--faint)\">Operation ingest-20261004-tea-club-batch</span>"
     },
     "main.vars.footer.vars.status": {
-     "html": "<span style=\"font-size: 12px; color: #6B6862; margin-right: 6px\">22 files from this batch are still in inbox/</span>"
+     "html": "<span style=\"font-size: 12px; color: var(--muted); margin-right: 6px\">22 files from this batch are still in inbox/</span>"
     },
     "main.vars.footer.vars.right": [
      {
@@ -4509,7 +4509,7 @@
        "props": {
         "text": "Applied at 11:52 PM",
         "fill": "#F3FDE4",
-        "ink": "#3D6110"
+        "ink": "var(--limeInk)"
        },
        "size": [
         "150px",
@@ -4524,13 +4524,13 @@
      }
     },
     "main.vars.notices": {
-     "html": "<div style=\"display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #F3FDE4\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#3D6110\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0; margin-top: 1px\"><path d=\"M5 12.5l4.5 4.5L19 7.5\"></path></svg><span style=\"display: flex; flex-direction: column; gap: 2px\"><span style=\"font-size: 13px; font-weight: 700; color: #3D6110\">Moved 20 files to the Trash</span><span style=\"font-size: 12px; color: #48463F; line-height: 1.45\">2 stayed in inbox/: Kettle comparison.md changed since it was added, and Gyokuro at 60 °C.md changed after you looked, so it was left alone. <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Show in Activity</a></span></span></div>"
+     "html": "<div style=\"display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #F3FDE4\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0; margin-top: 1px; stroke: var(--limeInk)\"><path d=\"M5 12.5l4.5 4.5L19 7.5\"></path></svg><span style=\"display: flex; flex-direction: column; gap: 2px\"><span style=\"font-size: 13px; font-weight: 700; color: var(--limeInk)\">Moved 20 files to the Trash</span><span style=\"font-size: 12px; color: #48463F; line-height: 1.45\">2 stayed in inbox/: Kettle comparison.md changed since it was added, and Gyokuro at 60 °C.md changed after you looked, so it was left alone. <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Show in Activity</a></span></span></div>"
     },
     "main.vars.footer.vars.left": {
-     "html": "<span style=\"font-size: 12px; color: #9B978F\">Operation ingest-20261004-tea-club-batch</span>"
+     "html": "<span style=\"font-size: 12px; color: var(--faint)\">Operation ingest-20261004-tea-club-batch</span>"
     },
     "main.vars.footer.vars.status": {
-     "html": "<span style=\"font-size: 12px; color: #6B6862; margin-right: 6px\">2 files stay in inbox/ <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Why</a></span>"
+     "html": "<span style=\"font-size: 12px; color: var(--muted); margin-right: 6px\">2 files stay in inbox/ <a href=\"#\" style=\"font-weight: 600; text-decoration: none\">Why</a></span>"
     },
     "main.vars.footer.vars.right": "",
     "main.vars.groups": [

@@ -164,7 +164,7 @@ def component_board(c):
 
 
 def state_cell(label, inner, cap):
-    c = f'<span style="font-size: 11px; color: #6B6862; line-height: 1.45; max-width: 260px">{cap}</span>' if cap else ''
+    c = f'<span style="font-size: 11px; color: var(--muted); line-height: 1.45; max-width: 260px">{cap}</span>' if cap else ''
     return f'<div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-start"><span style="font-size: 12px; font-weight: 700">{label}</span>{inner}{c}</div>'
 
 
@@ -202,10 +202,10 @@ def states_boards(comps, H):
         hgt = H.get(f, 300)
         grid = (f'<div style="display: grid; grid-template-columns: repeat({cols}, minmax(0, 1fr)); gap: {gap}">' if cols
                 else f'<div style="display: flex; flex-wrap: wrap; gap: {gap}">') + ''.join(cells) + '</div>'
-        body = (f'<div style="width: {W}px; height: {hgt}px; box-sizing: border-box; background: #F6F5F2; overflow: hidden">\n'
+        body = (f'<div style="width: {W}px; height: {hgt}px; box-sizing: border-box; background: var(--panel); overflow: hidden">\n'
                 f'<div data-measure style="padding: 30px 36px 36px; display: flex; flex-direction: column; gap: 20px">\n'
                 f'<div style="display: flex; flex-direction: column; gap: 6px"><span style="font-family: \'Bricolage Grotesque\', sans-serif; font-weight: 800; font-size: 24px; letter-spacing: -0.02em">{b["heading"]}</span>\n'
-                f'<span style="font-size: 13px; color: #6B6862; line-height: 1.5; max-width: 1100px">{b["intro"]}</span></div>\n'
+                f'<span style="font-size: 13px; color: var(--muted); line-height: 1.5; max-width: 1100px">{b["intro"]}</span></div>\n'
                 f'{grid}\n</div>\n</div>')
         props_json = '{"$preview":{"width":%d,"height":%d}}' % (W, hgt)
         html = page(b['title'], body, props_json, 'class Component extends DCLogic { renderVals() { return {}; } }')
@@ -310,7 +310,7 @@ def render_list(node, screen):
         if 'head' in it:
             text = it['head']
             if it.get('style') == 'plain':
-                out.append(f'<div style="padding: 8px 10px 2px; font-size: 10px; font-weight: 800; letter-spacing: .06em; color: #9B978F">{text}</div>')
+                out.append(f'<div style="padding: 8px 10px 2px; font-size: 10px; font-weight: 800; letter-spacing: .06em; color: var(--faint)">{text}</div>')
                 continue
             if 'fixedCount' in it:
                 n = it['fixedCount']
@@ -321,10 +321,10 @@ def render_list(node, screen):
                         break
                     n += 1
                 n -= 1 if gone is not None and idx[j] <= gone < idx[j] + n else 0
-            c = it.get('color', '#9B978F')
+            c = it.get('color', 'var(--faint)')
             out.append(f'<div style="display: flex; align-items: center; gap: 6px; padding: 10px 12px 4px; font-size: 10px; font-weight: 800; letter-spacing: .06em; color: {c}">'
                        f'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="{c}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; color: {c}"><path d="M6 9l6 6 6-6"/></svg>'
-                       f'{text}<span style="font-weight: 700; color: #9B978F">{n}</span></div>')
+                       f'{text}<span style="font-weight: 700; color: var(--faint)">{n}</span></div>')
             continue
         r = idx[j]
         props = {k: v for k, v in it.items() if k != 'mode'}
@@ -362,7 +362,7 @@ def render_window(s, screen):
     w, h = s['window']['width'], s['window']['height']
     sh = s['sidebar'].get('height', h - 40)
     side = f'<div style="width: 220px; height: {sh}px; flex-shrink: 0">{dc_import("Sidebar", s["sidebar"], ["220px", f"{sh}px"])}</div>'
-    content = side + f'<main style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0; position: relative; background: #FFFFFF">{main}</main>'
+    content = side + f'<main style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0; position: relative; background: var(--window)">{main}</main>'
     return (f'<div style="position: relative; width: {w}px; height: {h}px; flex-shrink: 0; isolation: isolate">'
             f'<div style="position: absolute; inset: 0; z-index: -1">{dc_import("WindowShell", {"layer": "frame", "width": w, "height": h}, [f"{w}px", f"{h}px"])}</div>'
             f'<div style="position: absolute; left: 20px; top: 20px; right: 20px; bottom: 20px; display: flex; border-radius: 16px; overflow: hidden">{content}{regions.get("overlay", "")}</div>'
@@ -399,8 +399,8 @@ def screen_states(screen, comp_names):
 
 
 HEAD = "font-family: 'Bricolage Grotesque', sans-serif"
-BOARD_CSS = (' code{font-size:11px;background:#F6F5F2;padding:1px 4px;border-radius:4px}'
-             ' mark{background:#E9FBC9;color:inherit;border-radius:3px;padding:0 1px;box-shadow:0 0 0 1px #B9F06A}')
+BOARD_CSS = (' code{font-size:11px;background:var(--panel);padding:1px 4px;border-radius:4px}'
+             ' mark{background:var(--limeTint);color:inherit;border-radius:3px;padding:0 1px;box-shadow:0 0 0 1px var(--lime)}')
 
 
 def framed(label, inner):
@@ -410,9 +410,9 @@ def framed(label, inner):
 def card(n, st, body):
     c = st['card']
     return (f'<section style="display: flex; flex-direction: column; gap: 10px; min-width: 0">'
-            f'<div style="display: flex; align-items: center; gap: 8px"><span style="width: 22px; height: 22px; border-radius: 11px; background: #1F6FEB; color: #FFFFFF; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0">{n}</span><span style="font-size: 14px; font-weight: 700">{st["label"]}</span></div>'
+            f'<div style="display: flex; align-items: center; gap: 8px"><span style="width: 22px; height: 22px; border-radius: 11px; background: var(--primary); color: var(--window); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0">{n}</span><span style="font-size: 14px; font-weight: 700">{st["label"]}</span></div>'
             f'<div style="position: relative; height: {c.get("height", 430)}px; border-radius: 18px; background: {c.get("bg", "#E4E1DB")}; overflow: hidden; padding: {c.get("pad", "22px")}; box-sizing: border-box; display: flex; flex-direction: column; align-items: {c.get("align", "center")}; justify-content: flex-start">{body}</div>'
-            f'<span style="font-size: 12px; color: #6B6862; line-height: 1.5">{st.get("caption", "")}</span></section>')
+            f'<span style="font-size: 12px; color: var(--muted); line-height: 1.5">{st.get("caption", "")}</span></section>')
 
 
 def screen_boards(screens, comps, H):
@@ -440,7 +440,7 @@ def screen_boards(screens, comps, H):
                 elif 'block' in sec:  # a full-width block straight on the board, e.g. the owner's answers above the frames
                     parts.append(render_region(sec['block'], screen))
                 elif 'title' in sec:
-                    sub = f'<span style="font-size: 13px; color: #6B6862; line-height: 1.5; max-width: 1300px">{sec["sub"]}</span>' if sec.get('sub') else ''
+                    sub = f'<span style="font-size: 13px; color: var(--muted); line-height: 1.5; max-width: 1300px">{sec["sub"]}</span>' if sec.get('sub') else ''
                     parts.append(f'<div style="display: flex; flex-direction: column; gap: 4px; margin-top: 10px"><span style="{HEAD}; font-weight: 800; font-size: 20px; letter-spacing: -0.01em">{sec["title"]}</span>{sub}</div>')
                 elif 'grid' in sec:
                     cards = []
@@ -450,10 +450,10 @@ def screen_boards(screens, comps, H):
                     parts.append(f'<div style="display: grid; grid-template-columns: repeat({sec.get("cols", 4)}, minmax(0, 1fr)); gap: {sec.get("gap", "30px 24px")}">' + ''.join(cards) + '</div>')
             W, f = b['width'], b['file']
             hgt = H.get(f, 2000)
-            body = (f'<div style="width: {W}px; height: {hgt}px; box-sizing: border-box; background: #F6F5F2; overflow: hidden">\n'
+            body = (f'<div style="width: {W}px; height: {hgt}px; box-sizing: border-box; background: var(--panel); overflow: hidden">\n'
                     f'<div data-measure style="padding: 34px 40px 40px; display: flex; flex-direction: column; gap: 22px">\n'
                     f'<div style="display: flex; flex-direction: column; gap: 8px">\n<span style="{HEAD}; font-weight: 800; font-size: 28px; letter-spacing: -0.02em">{b["heading"]}</span>\n'
-                    f'<span style="font-size: 13px; color: #6B6862; max-width: 1400px; line-height: 1.55">{b["intro"]}</span>\n</div>\n'
+                    f'<span style="font-size: 13px; color: var(--muted); max-width: 1400px; line-height: 1.55">{b["intro"]}</span>\n</div>\n'
                     + ''.join(parts) + '\n</div>\n</div>')
             props_json = '{"$preview":{"width":%d,"height":%d}}' % (W, hgt)
             boards[f] = (page(f'Distill — {b["title"]}', body, props_json, 'class Component extends DCLogic { renderVals() { return {}; } }', BOARD_CSS), W, b['title'], 'screen')
