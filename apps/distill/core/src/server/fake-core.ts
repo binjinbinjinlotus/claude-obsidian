@@ -634,6 +634,15 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
       record('jiraIssueTypes', project, opts?.refresh ? 'refresh' : undefined);
       return { site: 'https://acme.atlassian.net', account: 'Jin Liu', fetchedAt: '2026-10-06T12:00:00Z', project, types: [{ id: '10001', name: 'Task' }] };
     },
+    async jiraUsers(project, query) {
+      record('jiraUsers', project, query);
+      return { users: query ? [{ accountId: 'acc-aditya', name: 'Aditya Pradhan' }] : [] };
+    },
+    async jiraCreateURL(id) {
+      record('jiraCreateURL', id);
+      requireAction(id);
+      return { url: 'https://acme.atlassian.net/secure/CreateIssueDetails!init.jspa?pid=10000' };
+    },
     async jiraFields(project, typeId, opts) {
       record('jiraFields', project, typeId, opts?.refresh ? 'refresh' : undefined);
       return { site: 'https://acme.atlassian.net', account: 'Jin Liu', fetchedAt: '2026-10-06T12:00:00Z', project, typeId, fields: [], priorities: ['P1', 'P2'] };

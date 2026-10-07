@@ -1106,6 +1106,227 @@ describe('Jira pickers: what the account allows (actions.md, fake HTTP)', () => 
   });
 });
 
+/** The owner's case: TLS · Task asks for Team (customfield_11063); `more` adds a field per schema type. */
+const TEAM = {
+  fieldId: 'customfield_11063',
+  name: 'Team',
+  required: true,
+  schema: { type: 'option', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:select', customId: 11063 },
+  allowedValues: ['Platform', 'Payments', 'Mobile', 'Data', 'Developer Experience'].map((value, i) => ({ id: String(20100 + i), value })),
+};
+const EVERY_KIND = [
+  { fieldId: 'components', name: 'Components', required: true, schema: { type: 'array', items: 'component', system: 'components' }, allowedValues: [{ id: '31', name: 'API' }, { id: '32', name: 'Gateway' }, { id: '33', name: 'Billing' }] },
+  { fieldId: 'customfield_200', name: 'Ticket code', required: true, schema: { type: 'string', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:textfield' } },
+  { fieldId: 'customfield_201', name: 'Impact', required: true, schema: { type: 'string', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:textarea' } },
+  { fieldId: 'customfield_202', name: 'Story points', required: true, schema: { type: 'number', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:float' } },
+  { fieldId: 'customfield_203', name: 'Target release date', required: true, schema: { type: 'date', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:datepicker' } },
+  { fieldId: 'customfield_204', name: 'Reviewer', required: true, schema: { type: 'user', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:userpicker' } },
+  {
+    fieldId: 'customfield_205',
+    name: 'Environment',
+    required: true,
+    schema: { type: 'option-with-child', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:cascadingselect' },
+    allowedValues: [{ id: '41', value: 'Staging', children: [{ id: '411', value: 'us-east-1' }, { id: '412', value: 'eu-west-1' }] }, { id: '42', value: 'Production', children: [] }],
+  },
+  { fieldId: 'customfield_206', name: 'Sprint', required: false, schema: { type: 'array', items: 'json', custom: 'com.pyxis.greenhopper.jira:gh-sprint' } },
+  { fieldId: 'customfield_207', name: 'Region', required: true, hasDefaultValue: true, schema: { type: 'option' }, allowedValues: [{ id: '51', value: 'NA' }] },
+];
+
+function requiredRoutes(more: unknown[] = [], posts?: unknown[]): FakeHTTP['routes'] {
+  return [
+    (m, url) =>
+      m === 'GET' && url.startsWith(`${SITE}/rest/api/3/project/search?action=create`)
+        ? { status: 200, json: { startAt: 0, maxResults: 50, total: 1, isLast: true, values: [{ id: '10000', key: 'TLS', name: 'Telus API Marketplace' }] } }
+        : undefined,
+    (m, url) =>
+      m === 'GET' && url.startsWith(`${SITE}/rest/api/3/issue/createmeta/TLS/issuetypes?`)
+        ? { status: 200, json: { startAt: 0, maxResults: 50, total: 1, issueTypes: [{ id: '10001', name: 'Task' }] } }
+        : undefined,
+    (m, url) =>
+      m === 'GET' && url.startsWith(`${SITE}/rest/api/3/issue/createmeta/TLS/issuetypes/10001?`)
+        ? {
+            status: 200,
+            json: {
+              startAt: 0, maxResults: 50, total: 3 + more.length,
+              fields: [
+                { fieldId: 'summary', name: 'Summary', required: true, schema: { type: 'string', system: 'summary' } },
+                { fieldId: 'priority', name: 'Priority', required: false, schema: { type: 'priority', system: 'priority' }, allowedValues: [{ id: '1', name: 'Critical' }, { id: '3', name: 'Normal' }] },
+                TEAM,
+                ...more,
+              ],
+            },
+          }
+        : undefined,
+    (m, url) =>
+      m === 'GET' && url.startsWith(`${SITE}/rest/api/3/user/assignable/search?project=TLS&query=adi`)
+        ? { status: 200, json: [{ accountId: 'acc-aditya', displayName: 'Aditya Pradhan' }, { accountId: 'acc-gone', displayName: 'Adi Gone', active: false }] }
+        : undefined,
+    (m, url, body) => {
+      if (m !== 'POST' || url !== `${SITE}/rest/api/3/issue`) return undefined;
+      posts?.push(body);
+      return { status: 201, json: { id: '9', key: 'TLS-77' } };
+    },
+  ];
+}
+
+describe('Jira required fields (actions.md, fake Jira)', () => {
+  test('the owner’s case: Team (customfield_11063) shows by name with its choices; Create refuses until it’s filled, then sends {id}', async () => {
+    const h = harness();
+    const posts: unknown[] = [];
+    await connected(h, requiredRoutes([], posts));
+    const screen = await h.service.jiraFields('TLS', '10001');
+    assert.deepEqual(screen.extra!.map((f) => [f.id, f.name, f.kind, f.required]), [['customfield_11063', 'Team', 'option', true]]);
+    assert.deepEqual(screen.extra![0]!.options!.map((o) => o.name), ['Platform', 'Payments', 'Mobile', 'Data', 'Developer Experience']);
+
+    const t = await h.service.createAction({ type: 'jira', title: 'Cap retries', body: 'b', fields: { project: 'TLS', issueType: 'Task' } });
+    const refused = await h.service.performAction(t.id, 'create');
+    assert.deepEqual(refused.error, { code: 'refused', message: 'Fill in Team first', field: 'jira.customfield_11063' });
+    assert.equal(refused.status, 'ready');
+    assert.equal(h.http.calls.filter((c) => c.method === 'POST').length, 0, 'zero POSTs');
+    assert.ok(!JSON.stringify(refused.error).includes('11063 first'), 'the name, never the id');
+
+    await h.service.updateAction(t.id, { fields: { 'jira.customfield_11063': 'Juggling' } });
+    assert.deepEqual((await h.service.performAction(t.id, 'create')).error, { code: 'refused', message: 'Juggling isn’t a choice for Team. Pick one.', field: 'jira.customfield_11063' });
+    assert.equal(posts.length, 0);
+
+    await h.service.updateAction(t.id, { fields: { 'jira.customfield_11063': 'payments' } });
+    const created = await h.service.performAction(t.id, 'create');
+    assert.equal(created.status, 'created', JSON.stringify(created.error));
+    const fields = (posts[0] as { fields: Record<string, unknown> }).fields;
+    assert.deepEqual(fields.customfield_11063, { id: '20101' });
+    assert.equal(Object.keys(fields).some((k) => k.startsWith('jira.')), false, 'Distill’s keys never go to Jira');
+  });
+
+  test('every schema type maps to Jira’s shape; an optional one goes only with a value; unsupported optional is left out', async () => {
+    const h = harness();
+    const posts: unknown[] = [];
+    await connected(h, requiredRoutes(EVERY_KIND, posts));
+    const screen = await h.service.jiraFields('TLS', '10001');
+    assert.deepEqual(
+      screen.extra!.map((f) => [f.name, f.kind]),
+      [['Team', 'option'], ['Components', 'options'], ['Ticket code', 'text'], ['Impact', 'textarea'], ['Story points', 'number'], ['Target release date', 'date'], ['Reviewer', 'user'], ['Environment', 'cascading'], ['Sprint', 'unsupported'], ['Region', 'option']],
+      'required without a Jira default first',
+    );
+    assert.deepEqual(screen.extra!.find((f) => f.name === 'Environment')!.options![0], { id: '41', name: 'Staging', children: [{ id: '411', name: 'us-east-1' }, { id: '412', name: 'eu-west-1' }] });
+    assert.deepEqual(await h.service.jiraUsers('TLS', 'adi'), { users: [{ accountId: 'acc-aditya', name: 'Aditya Pradhan' }] }, 'inactive people left out');
+    assert.deepEqual(await h.service.jiraUsers('TLS', ' '), { users: [] }, 'no search for nothing');
+
+    const values = {
+      'jira.customfield_11063': 'Platform',
+      'jira.components': JSON.stringify(['API', 'gateway']),
+      'jira.customfield_200': ' TLS-OPS ',
+      'jira.customfield_201': 'Retries **storm**',
+      'jira.customfield_202': '3.5',
+      'jira.customfield_203': '2026-10-16',
+      'jira.customfield_204': JSON.stringify({ accountId: 'acc-aditya', name: 'Aditya Pradhan' }),
+      'jira.customfield_205': JSON.stringify(['Staging', 'us-east-1']),
+    };
+    const t = await h.service.createAction({ type: 'jira', title: 'Cap retries', body: 'b', fields: { project: 'TLS', issueType: 'Task', ...values } });
+    const created = await h.service.performAction(t.id, 'create');
+    assert.equal(created.status, 'created', JSON.stringify(created.error));
+    const f = (posts[0] as { fields: Record<string, any> }).fields;
+    assert.deepEqual(f.customfield_11063, { id: '20100' });
+    assert.deepEqual(f.components, [{ id: '31' }, { id: '32' }]);
+    assert.equal(f.customfield_200, 'TLS-OPS');
+    assert.equal(f.customfield_201.type, 'doc');
+    assert.equal(f.customfield_202, 3.5);
+    assert.equal(f.customfield_203, '2026-10-16');
+    assert.deepEqual(f.customfield_204, { accountId: 'acc-aditya' });
+    assert.deepEqual(f.customfield_205, { id: '41', child: { id: '411' } });
+    assert.equal('customfield_206' in f, false, 'optional unsupported left out');
+    assert.equal('customfield_207' in f, false, 'Jira fills its own default');
+  });
+
+  test('each type refuses its own way, with zero POSTs', async () => {
+    const h = harness();
+    await connected(h, requiredRoutes(EVERY_KIND));
+    const good: Record<string, string> = {
+      'jira.customfield_11063': 'Platform',
+      'jira.components': '["API"]',
+      'jira.customfield_200': 'x',
+      'jira.customfield_201': 'x',
+      'jira.customfield_202': '3',
+      'jira.customfield_203': '2026-10-16',
+      'jira.customfield_204': '{"accountId":"acc-aditya","name":"Aditya Pradhan"}',
+      'jira.customfield_205': '["Production"]',
+    };
+    const cases: [string, string, string][] = [
+      ['jira.components', '[]', 'Fill in Components first'],
+      ['jira.components', '["API","Nope"]', 'Nope isn’t a choice for Components. Pick one.'],
+      ['jira.customfield_200', '  ', 'Fill in Ticket code first'],
+      ['jira.customfield_202', 'three', 'Story points needs a number.'],
+      ['jira.customfield_203', 'Oct 16', 'Target release date needs a date.'],
+      ['jira.customfield_204', 'Aditya', 'Pick Reviewer from the people Jira knows.'],
+      ['jira.customfield_205', '["Staging","mars-1"]', 'mars-1 isn’t a choice for Environment. Pick one.'],
+    ];
+    for (const [key, value, message] of cases) {
+      const t = await h.service.createAction({ type: 'jira', title: `x ${key}`, body: 'b', fields: { project: 'TLS', issueType: 'Task', ...good, [key]: value } });
+      assert.deepEqual((await h.service.performAction(t.id, 'create')).error, { code: 'refused', message, field: key }, key);
+    }
+    assert.equal(h.http.calls.filter((c) => c.method === 'POST').length, 0);
+  });
+
+  test('a required field Distill can’t fill blocks Create; Open in Jira passes along what it can', async () => {
+    const h = harness();
+    const rollout = { fieldId: 'customfield_300', name: 'Rollout plan', required: true, schema: { type: 'any', custom: 'com.example:rollout' } };
+    await connected(h, requiredRoutes([rollout]));
+    const screen = await h.service.jiraFields('TLS', '10001');
+    assert.equal(screen.extra!.find((f) => f.id === 'customfield_300')!.kind, 'unsupported');
+    const t = await h.service.createAction({ type: 'jira', title: 'Cap retries', body: 'Why it matters', fields: { project: 'TLS', issueType: 'Task', priority: 'Critical', 'jira.customfield_11063': 'Data' } });
+    assert.deepEqual((await h.service.performAction(t.id, 'create')).error, { code: 'refused', message: 'Rollout plan can only be filled in Jira', field: 'jira.customfield_300' });
+    assert.equal(h.http.calls.filter((c) => c.method === 'POST').length, 0);
+
+    const { url } = await h.service.jiraCreateURL(t.id);
+    const u = new URL(url);
+    assert.equal(`${u.origin}${u.pathname}`, `${SITE}/secure/CreateIssueDetails!init.jspa`);
+    assert.deepEqual(Object.fromEntries(u.searchParams), { pid: '10000', issuetype: '10001', summary: 'Cap retries', description: 'Why it matters', priority: '1', customfield_11063: '20103' });
+    const todo = await h.service.createAction({ type: 'todo', title: 'x' });
+    await assert.rejects(h.service.jiraCreateURL(todo.id), { code: 'not_found' });
+  });
+
+  test('saved values per project + type fill the field, also at Create; Settings keeps only well-formed ones', async () => {
+    const prefs = structuredClone(DEFAULT_ACTION_PREFERENCES);
+    prefs.types.jira = { ...prefs.types.jira, requiredDefaults: { 'TLS|Task': { customfield_11063: { name: 'Team', value: 'Platform' } } } };
+    const h = harness({ prefs });
+    const posts: unknown[] = [];
+    await connected(h, requiredRoutes([], posts));
+    const t = await h.service.createAction({ type: 'jira', title: 'Cap retries', body: 'b', fields: { project: 'TLS', issueType: 'Task' } });
+    assert.equal((await h.service.performAction(t.id, 'create')).status, 'created');
+    assert.deepEqual((posts[0] as { fields: Record<string, unknown> }).fields.customfield_11063, { id: '20100' });
+
+    h.runner.draft = () => ({ structured: { title: 'Cap retries', body: 'The Payments team owns it.', fields: [] } });
+    const d = await h.service.createAction({ type: 'jira', title: 'Cap retries', fields: { project: 'TLS', issueType: 'Task' } });
+    await h.service.whenIdle();
+    const drafted = (await h.service.getAction(d.id))!;
+    assert.equal(drafted.fields['jira.customfield_11063'], 'Platform', 'the saved value wins over the note');
+    assert.equal(drafted.fields['jira.customfield_11063:from'] ?? null, null);
+
+    const decoded = decodeSettings({ actionPreferences: { types: { jira: { requiredDefaults: { 'TLS|Task': { customfield_11063: { name: 'Team', value: 'Platform' }, bad: { value: 3 }, blank: { name: 'X', value: ' ' } }, 'PX|Bug': 'nope' } } } } });
+    assert.deepEqual(actionPreferences(decoded).types.jira!.requiredDefaults, { 'TLS|Task': { customfield_11063: { name: 'Team', value: 'Platform' } } });
+  });
+
+  test('a draft prefills a value the note names exactly, tagged from the note; two names for one choice prefill nothing', async () => {
+    const h = harness();
+    const components = EVERY_KIND[0]!;
+    await connected(h, requiredRoutes([components]));
+    h.runner.draft = () => ({ structured: { title: 'Cap retries', body: 'The payments API retries too often.', fields: [] } });
+    const a = await h.service.createAction({ type: 'jira', title: 'Cap retries', fields: { project: 'TLS', issueType: 'Task' } });
+    await h.service.whenIdle();
+    const one = (await h.service.getAction(a.id))!;
+    assert.equal(one.fields['jira.customfield_11063'], 'Payments');
+    assert.equal(one.fields['jira.customfield_11063:from'], 'note');
+    assert.equal(one.fields['jira.components'], '["API"]');
+    assert.equal(one.fields['jira.components:from'], 'note');
+
+    h.runner.draft = () => ({ structured: { title: 'Cap retries', body: 'Mobile and Data both see it; rapid retries.', fields: [] } });
+    const b = await h.service.createAction({ type: 'jira', title: 'Cap retries 2', fields: { project: 'TLS', issueType: 'Task' } });
+    await h.service.whenIdle();
+    const two = (await h.service.getAction(b.id))!;
+    assert.equal(two.fields['jira.customfield_11063'] ?? null, null, 'Mobile and Data: no guess');
+    assert.equal(two.fields['jira.components'] ?? null, null, '"rapid" isn’t "API"');
+  });
+});
+
 describe('Jira and Confluence handlers (fake HTTP)', () => {
   test('Jira create: ADF description, You → accountId, status, then refresh to done', async () => {
     const h = harness();

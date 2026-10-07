@@ -1290,6 +1290,12 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
       pattern: /^\/v1\/jira\/projects\/([^/]+)\/types\/([^/]+)\/fields$/,
       handler: async ({ params, query }) => core.jiraFields(params[0]!, params[1]!, { refresh: query.get('refresh') === '1' }),
     },
+    {
+      method: 'GET',
+      pattern: /^\/v1\/jira\/projects\/([^/]+)\/users$/,
+      handler: async ({ params, query }) => core.jiraUsers(params[0]!, query.get('q') ?? ''),
+    },
+    { method: 'GET', pattern: /^\/v1\/actions\/([^/]+)\/jira-create-url$/, handler: async ({ params }) => core.jiraCreateURL(params[0]!) },
     // ── Where a Slack message goes (action-buttons.md): remembered names per vault, and an item's To row. ──
     {
       method: 'GET',

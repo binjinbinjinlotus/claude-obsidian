@@ -4,7 +4,8 @@
  * priority scheme's allowed values). Cached per account and site for an hour; `refresh` reloads.
  * Secrets stay with the AtlassianClient (Keychain); tests pass a fake fetch.
  */
-import { CoreError, type JiraField, type JiraFields, type JiraIssueTypes, type JiraProjects } from '../contracts.js';
+import { CoreError, type JiraField, type JiraFields, type JiraIssueTypes, type JiraProjects, type JiraUsers } from '../contracts.js';
+import { extraFields, readField } from './jira-required.js';
 import { isObject, isoDate, str, type JSONObject } from '../store/json.js';
 import { ActionHandlerError, type AtlassianClient } from './atlassian.js';
 
@@ -28,7 +29,7 @@ export class JiraMeta {
       const values = await this.paged('/rest/api/3/project/search?action=create&orderBy=key', ['values']);
       const projects = values
         .filter(isObject)
-        .map((p) => ({ key: str(p.key) ?? '', name: str(p.name) ?? '' }))
+        .map((p) => ({ key: str(p.key) ?? '', name: str(p.name) ?? '', ...(str(p.id) ? { id: str(p.id)! } : {}) }))
         .filter((p) => p.key)
         .sort((a, b) => a.key.localeCompare(b.key));
       return { ...base, projects };
@@ -54,17 +55,27 @@ export class JiraMeta {
     const key = project.trim().toUpperCase();
     return this.cached(`fields:${key}:${typeId}`, o.refresh, async (base) => {
       const values = await this.paged(`/rest/api/3/issue/createmeta/${encodeURIComponent(key)}/issuetypes/${encodeURIComponent(typeId)}`, ['fields', 'values']);
-      const fields: JiraField[] = values.filter(isObject).map((f) => {
-        const allowed = Array.isArray(f.allowedValues)
-          ? f.allowedValues.filter(isObject).map((v) => str(v.name) ?? str(v.value) ?? '').filter(Boolean)
-          : undefined;
-        const out: JiraField = { id: str(f.fieldId) ?? str(f.key) ?? '', name: str(f.name) ?? '', required: f.required === true };
-        if (allowed) out.allowed = allowed;
-        return out;
-      });
+      // actions.md, Jira required fields: each field's name, required, schema and allowed values (with ids).
+      const fields: JiraField[] = values.filter(isObject).map(readField);
       const priority = fields.find((f) => f.id === 'priority');
-      return { ...base, project: key, typeId, fields, priorities: priority ? (priority.allowed ?? []) : null };
+      return { ...base, project: key, typeId, fields, priorities: priority ? (priority.allowed ?? []) : null, extra: extraFields(fields) };
     });
+  }
+
+  /** People Jira can assign in a project, matching `query` (not cached: a search). */
+  async users(project: string, query: string): Promise<JiraUsers> {
+    const key = project.trim().toUpperCase();
+    const q = query.trim();
+    if (!q) return { users: [] };
+    await this.projects(); // the connection check, with its plain words
+    const body = await this.getAny(`/rest/api/3/user/assignable/search?project=${encodeURIComponent(key)}&query=${encodeURIComponent(q)}&maxResults=20`);
+    const list = Array.isArray(body) ? body : [];
+    return {
+      users: list.filter(isObject).flatMap((u) => {
+        const id = str(u.accountId);
+        return id && u.active !== false ? [{ accountId: id, name: str(u.displayName) ?? id }] : [];
+      }),
+    };
   }
 
   private async cached<T>(what: string, refresh: boolean | undefined, load: (base: { site: string; account: string | null; fetchedAt: string }) => Promise<T>): Promise<T> {
@@ -97,6 +108,12 @@ export class JiraMeta {
   }
 
   private async get(path: string): Promise<JSONObject> {
+    const json = await this.getAny(path);
+    if (!isObject(json)) throw new CoreError('invalid_state', 'Jira answered with something other than a list of choices.', { jira: 'error' });
+    return json;
+  }
+
+  private async getAny(path: string): Promise<unknown> {
     let res: Awaited<ReturnType<AtlassianClient['call']>>;
     try {
       res = await this.client.call('GET', path);
@@ -107,7 +124,7 @@ export class JiraMeta {
       }
       throw err;
     }
-    if (res.status < 200 || res.status >= 300 || !isObject(res.json)) {
+    if (res.status < 200 || res.status >= 300 || res.json === undefined || res.json === null) {
       throw new CoreError('invalid_state', `Jira answered ${res.status} for the list of choices.`, { jira: 'error', status: res.status });
     }
     return res.json;
@@ -134,6 +151,11 @@ export interface JiraCheck {
   /** Jira's spelling for each value that matched (case-insensitive). */
   project?: string;
   issueType?: string;
+  /** The type's id and its create screen's fields (actions.md, Jira required fields). */
+  typeId?: string;
+  fields?: JiraField[];
+  /** Jira's project id (the create page link). */
+  projectId?: string;
   priority?: string;
   /** The type's create screen has no Priority: leave it out of the request. */
   dropPriority?: boolean;
@@ -157,14 +179,18 @@ export async function checkJiraDraft(meta: JiraMeta, f: { project?: string | nul
     const p = projects.find((x) => x.key === key) ?? projects.find((x) => sameName(project, [x.name]));
     if (!p) return { problem: { field: 'project', message: `${project} isn’t a Jira project you can create tickets in. Pick one.` } };
     out.project = p.key;
+    if (p.id) out.projectId = p.id;
     const typeName = f.issueType?.trim() || 'Task';
     const types = (await meta.issueTypes(p.key)).types;
     const type = types.find((t) => sameName(typeName, [t.name]));
     if (!type) return { ...out, problem: { field: 'issueType', message: `${typeName} isn’t an issue type in ${p.key}. Pick one.` } };
     out.issueType = type.name;
+    out.typeId = type.id;
+    const screen = await meta.fields(p.key, type.id);
+    out.fields = screen.fields;
     const priority = f.priority?.trim();
     if (priority) {
-      const scheme = (await meta.fields(p.key, type.id)).priorities;
+      const scheme = screen.priorities;
       if (scheme === null) out.dropPriority = true;
       else {
         const match = sameName(priority, scheme);

@@ -77,6 +77,16 @@ describe('HTTP API: actions and connections', () => {
     assert.deepEqual(last('jiraFields')!.args, ['TLS', '10001', 'refresh']);
   });
 
+  it('Jira required fields: people search and the create page (actions.md)', async () => {
+    const people = await request(port, 'GET', '/v1/jira/projects/TLS/users?q=adi');
+    assert.deepEqual(people.body.users, [{ accountId: 'acc-aditya', name: 'Aditya Pradhan' }]);
+    assert.deepEqual(last('jiraUsers')!.args, ['TLS', 'adi']);
+    const page = await request(port, 'GET', '/v1/actions/act-1/jira-create-url');
+    assert.equal(page.status, 200);
+    assert.match(page.body.url, /CreateIssueDetails!init\.jspa/);
+    assert.deepEqual(last('jiraCreateURL')!.args, ['act-1']);
+  });
+
   it('whose items: owner, Pending, Highlights, preview and ?route= (actions-routing.md)', async () => {
     await request(port, 'GET', '/v1/actions?route=waiting');
     assert.deepEqual(last('listActions')!.args, [{ route: 'waiting' }]);

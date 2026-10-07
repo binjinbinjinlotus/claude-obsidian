@@ -262,6 +262,8 @@ function buildSpecs(core: Core, deps: InstrumentDeps): Specs {
     jiraProjects: 'read',
     jiraIssueTypes: 'read',
     jiraFields: 'read',
+    jiraUsers: 'read',
+    jiraCreateURL: 'read',
     routingPreview: 'read',
     listHighlights: 'read',
     getHighlight: 'read',

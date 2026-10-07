@@ -207,7 +207,7 @@ function decodeActionSource(v: unknown): Partial<ActionSourcePreferences> | unde
 function decodeActionType(v: unknown): Partial<ActionTypePreferences> | undefined {
   if (!isObject(v)) return undefined;
   const known = [
-    'enabled', 'draftWhen', 'improveAfterEdit', 'draftSelection', 'improveSelection', 'draftPrompt', 'improvePrompt', 'fieldDefaults', 'handlesFor',
+    'enabled', 'draftWhen', 'improveAfterEdit', 'draftSelection', 'improveSelection', 'draftPrompt', 'improvePrompt', 'fieldDefaults', 'handlesFor', 'requiredDefaults',
   ] as const;
   const out = unknownKeys(v, known) as Partial<ActionTypePreferences>;
   const enabled = bool(v.enabled);
@@ -230,6 +230,19 @@ function decodeActionType(v: unknown): Partial<ActionTypePreferences> | undefine
   }
   const handles = strArray(v.handlesFor);
   if (handles) out.handlesFor = [...new Set(handles)];
+  // Jira required fields: "PROJECT|Type" → field id → {name, value}; malformed entries are dropped.
+  if (isObject(v.requiredDefaults)) {
+    const rd: Record<string, Record<string, { name: string; value: string }>> = {};
+    for (const [key, byField] of Object.entries(v.requiredDefaults)) {
+      if (!isObject(byField)) continue;
+      const fields: Record<string, { name: string; value: string }> = {};
+      for (const [id, d] of Object.entries(byField)) {
+        if (isObject(d) && typeof d.value === 'string' && d.value.trim()) fields[id] = { name: typeof d.name === 'string' ? d.name : id, value: d.value };
+      }
+      if (Object.keys(fields).length > 0) rd[key] = fields;
+    }
+    out.requiredDefaults = rd;
+  }
   return out;
 }
 

@@ -87,6 +87,7 @@ import type { CommandRunHandle, CommandRunInput } from '../collectors/index.js';
 import { buttonsFor, ButtonApprovals, normalizeButton, sampleItem, templateValues } from './buttons.js';
 import { normalizeSlackTarget, resolveSlackTarget, SlackPeople } from './slack-target.js';
 import { checkJiraDraft, JiraMeta } from './jira-meta.js';
+import { asked, defaultsKey, extraFields, fieldKey, fromKey, fromNote, isEmptyValue, payloadValue, valueFor } from './jira-required.js';
 import { buildDraftPrompt, buildFindPrompt, buildImprovePrompt, buildSummarizePrompt, DEFAULT_FIND_PROMPT, waitingBlock, type DraftContext, type FindDocument } from './prompts.js';
 import {
   actionTypeDef,
@@ -599,7 +600,7 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
         i.status = before === 'pending' ? 'pending' : 'ready';
       });
       progress({ key, kind: 'actions', message: kind === 'draft' ? 'Draft written' : 'Improved', startedAt, finished: true });
-      if (kind === 'draft' && result.type === 'jira') return await alignJira(result);
+      if (kind === 'draft' && result.type === 'jira') return await fillJiraRequired(await alignJira(result));
       return result;
     } catch (err) {
       const cancelled = controller.signal.aborted;
@@ -1940,6 +1941,69 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
     return item;
   }
 
+  /**
+   * actions.md, Jira required fields: after a draft, an empty field the project + type asks for gets its
+   * saved value, else a value the note names exactly (tagged "from the note"). Best effort.
+   */
+  async function fillJiraRequired(item: ActionItem): Promise<ActionItem> {
+    if (item.type !== 'jira' || !item.fields.project?.trim() || !atlassian.isConnected()) return item;
+    let check;
+    try {
+      check = await checkJiraDraft(jiraMeta, item.fields);
+    } catch {
+      return item;
+    }
+    if (!check.fields || !check.project || !check.issueType || !find(item.id)) return item;
+    const saved = prefs().types.jira?.requiredDefaults?.[defaultsKey(check.project, check.issueType)];
+    const text = [item.title, item.body ?? '', item.summary ?? '', sourceQuote(item.source) ?? ''].join('\n');
+    const patch: Record<string, string> = {};
+    for (const f of extraFields(check.fields)) {
+      if (!asked(f) && !saved?.[f.id]) continue;
+      if (!isEmptyValue(item.fields[fieldKey(f.id)])) continue;
+      if (saved?.[f.id]) {
+        patch[fieldKey(f.id)] = saved[f.id]!.value;
+        continue;
+      }
+      const v = fromNote(f, text);
+      if (v) {
+        patch[fieldKey(f.id)] = v;
+        patch[fromKey(f.id)] = 'note';
+      }
+    }
+    if (Object.keys(patch).length === 0) return item;
+    return mutate(item.id, (i) => Object.assign(i.fields, patch));
+  }
+
+  /** Jira's create page with the project, type, summary, description, priority and the fields Distill can fill. */
+  async function jiraCreatePage(item: ActionItem): Promise<string> {
+    const rec = atlassian.record();
+    if (!rec) throw new CoreError('invalid_state', 'Jira isn’t connected.', { jira: 'not_connected' });
+    const check = await checkJiraDraft(jiraMeta, item.fields);
+    const q = new URLSearchParams();
+    if (check.projectId) q.set('pid', check.projectId);
+    if (check.typeId) q.set('issuetype', check.typeId);
+    q.set('summary', item.title);
+    if (item.body?.trim()) q.set('description', item.body);
+    const prio = check.fields?.find((f) => f.id === 'priority')?.options?.find((o) => o.name === (check.priority ?? item.fields.priority));
+    if (prio) q.set('priority', prio.id);
+    if (check.fields && check.project && check.issueType) {
+      const saved = prefs().types.jira?.requiredDefaults?.[defaultsKey(check.project, check.issueType)];
+      for (const f of extraFields(check.fields)) {
+        const raw = valueFor(f, item.fields, saved);
+        if (raw === undefined) continue;
+        const r = payloadValue(f, raw);
+        if (!('value' in r)) continue;
+        const v = r.value as { id?: string; child?: { id: string } } | { id: string }[] | string | number;
+        if (Array.isArray(v)) for (const o of v) q.append(f.id, o.id);
+        else if (typeof v === 'object' && v && 'id' in v && v.id) {
+          q.set(f.id, v.id);
+          if (v.child) q.set(`${f.id}:1`, v.child.id);
+        } else if (typeof v === 'string' || typeof v === 'number') q.set(f.id, String(v));
+      }
+    }
+    return `${rec.site.replace(/\/$/, '')}/secure/CreateIssueDetails!init.jspa?${q.toString()}`;
+  }
+
   /** The found item's fields for another type: same keys kept; people become a message's To, and back. */
   function mappedFields(item: ActionItem, keys: string[]): Record<string, string | null> {
     const has = new Set(keys);
@@ -2137,6 +2201,16 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
 
     jiraFields(project, typeId, o) {
       return jiraMeta.fields(project, typeId, o);
+    },
+
+    jiraUsers(project, query) {
+      return jiraMeta.users(project, query);
+    },
+
+    async jiraCreateURL(id) {
+      const item = require(id);
+      if (item.type !== 'jira') throw new CoreError('not_found', `${id} isn’t a Jira ticket.`);
+      return { url: await jiraCreatePage(item) };
     },
 
     async listSlackPeople(vaultPath) {

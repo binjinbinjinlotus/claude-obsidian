@@ -197,7 +197,7 @@ export type CollectorsOwned =
 /** Actions and connections: core/src/actions (createActionsService). */
 export type ActionsOwned =
   | 'listActionTypes' | 'listActions' | 'getAction' | 'createAction' | 'updateAction' | 'confirmActions'
-  | 'dismissActions' | 'draftAction' | 'summarizeAction' | 'previewActionButton' | 'previewButtonDraft' | 'jiraProjects' | 'jiraIssueTypes' | 'jiraFields' | 'listSlackPeople' | 'rememberSlackPerson' | 'forgetSlackPerson' | 'slackTarget' | 'runActionButton' | 'stopActionButtonRun' | 'improveAction' | 'undoImprove' | 'performAction' | 'sendActionTo'
+  | 'dismissActions' | 'draftAction' | 'summarizeAction' | 'previewActionButton' | 'previewButtonDraft' | 'jiraProjects' | 'jiraIssueTypes' | 'jiraFields' | 'jiraUsers' | 'jiraCreateURL' | 'listSlackPeople' | 'rememberSlackPerson' | 'forgetSlackPerson' | 'slackTarget' | 'runActionButton' | 'stopActionButtonRun' | 'improveAction' | 'undoImprove' | 'performAction' | 'sendActionTo'
   | 'removeAction' | 'restoreAction' | 'deleteActionForever' | 'detectAskActions'
   | 'assignActionOwner' | 'trackAsPending' | 'claimAction' | 'markReceived' | 'stopWaiting' | 'nudgeAction' | 'routingPreview' | 'listHighlights' | 'getHighlight'
   | 'listConnections' | 'connect' | 'signInURL' | 'disconnect';

@@ -1440,6 +1440,8 @@ export interface ActionTypePreferences {
   fieldDefaults?: Record<string, string>;
   /** Buttons that run an automation's command (action-buttons.md). */
   buttons?: ActionButton[];
+  /** Jira: saved values per "PROJECT|Type" and field id (actions.md, Jira required fields). */
+  requiredDefaults?: Record<string, Record<string, JiraRequiredDefault>>;
   /** actions-routing.md: People ids whose items of this type go to your lists. Absent = ["you"]. */
   handlesFor?: string[];
 }
@@ -1778,7 +1780,7 @@ export interface JiraListBase {
 
 /** Projects the connected account can create issues in. */
 export interface JiraProjects extends JiraListBase {
-  projects: { key: string; name: string }[];
+  projects: { key: string; name: string; /** Jira's id (the create page link). */ id?: string }[];
 }
 
 /** A project's issue types (subtasks left out). */
@@ -1787,12 +1789,41 @@ export interface JiraIssueTypes extends JiraListBase {
   types: { id: string; name: string }[];
 }
 
+/**
+ * The control a Jira field gets (actions.md, Jira required fields), from its schema:
+ * option = one of a list · options = several (chips) · text · textarea · number · date ·
+ * user = a person search · cascading = parent then child · unsupported = Distill can't fill it.
+ */
+export type JiraFieldKind = 'option' | 'options' | 'text' | 'textarea' | 'number' | 'date' | 'user' | 'cascading' | 'unsupported';
+
+/** One allowed value (option, component, version); a cascading parent has `children`. */
+export interface JiraOption {
+  id: string;
+  name: string;
+  children?: { id: string; name: string }[];
+}
+
 /** One field on a create screen; `allowed` for a field with a fixed list (priority). */
 export interface JiraField {
   id: string;
   name: string;
   required: boolean;
   allowed?: string[];
+  /** Jira's schema: type ("option", "array", "string", "number", "date", "user", "option-with-child", …), items, custom. */
+  schema?: { type: string; items?: string | null; custom?: string | null; system?: string | null } | null;
+  kind?: JiraFieldKind;
+  /** Allowed values with their ids (options, components, versions, cascading parents). */
+  options?: JiraOption[];
+  /** Jira fills it when left out (reporter): never asked. */
+  hasDefault?: boolean;
+}
+
+/** A saved value for a project + type's field ("Use for future TLS Tasks"; Settings → Jira ticket → Defaults). */
+export interface JiraRequiredDefault {
+  /** The field's display name when it was saved (shown offline). */
+  name: string;
+  /** Stored as on an item (see jira-required.ts encodings). */
+  value: string;
 }
 
 /** A project + issue type's create screen; `priorities` null when it has no Priority field. */
@@ -1801,6 +1832,13 @@ export interface JiraFields extends JiraListBase {
   typeId: string;
   fields: JiraField[];
   priorities: string[] | null;
+  /** Fields beyond Project, Type, Summary, Description, Priority, Assignee and Labels: required ones first. */
+  extra?: JiraField[];
+}
+
+/** People Jira can assign in a project (a person field's search). */
+export interface JiraUsers {
+  users: { accountId: string; name: string }[];
 }
 
 /** A remembered name → Slack target, per vault (`<state>/actions/slack-people.json`). */
@@ -2467,6 +2505,10 @@ export interface DistillCore {
   jiraProjects(opts?: { refresh?: boolean }): Promise<JiraProjects>;
   jiraIssueTypes(project: string, opts?: { refresh?: boolean }): Promise<JiraIssueTypes>;
   jiraFields(project: string, typeId: string, opts?: { refresh?: boolean }): Promise<JiraFields>;
+  /** actions.md, Jira required fields: people Jira can assign in a project, matching `query` (a person field). */
+  jiraUsers(project: string, query: string): Promise<JiraUsers>;
+  /** Jira's create page for this draft with what Distill can fill passed along (a field Distill can't fill). */
+  jiraCreateURL(id: string): Promise<{ url: string }>;
   /** Remembered Slack names (all vaults, or one), sorted by name. */
   listSlackPeople(vaultPath?: string | null): Promise<SlackPerson[]>;
   /**
