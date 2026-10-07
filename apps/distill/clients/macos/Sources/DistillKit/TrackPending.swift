@@ -150,8 +150,7 @@ public enum TrackPending {
         var row = item
         row.ownerID = d.personID ?? match(d.name, people: people)
         row.owner = d.name.trimmingCharacters(in: .whitespaces)
-        let by = Routing.by(d.by, now: now).map { " · by \($0)" } ?? ""
-        return Routing.pendingMeta(row, people: people) + " " + (ActionList.noteTitle(item) ?? "a note") + by
+        return Routing.pendingMeta(row, people: people) + " " + (ActionList.noteTitle(item) ?? "a note") + " · " + Routing.pendingDate(d.by, now: now)
     }
 
     /// The By field: "Fri, Oct 9".

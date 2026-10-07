@@ -133,10 +133,9 @@ struct PendingMeta: View {
 
     var body: some View {
         let note = ActionList.noteTitle(item)
-        let by = Routing.by(item.due, now: now)
         (Text(Routing.pendingMeta(item, people: store.people) + " ")
          + (note.map { Text(Image(systemName: "doc.text")).foregroundColor(Theme.faint) + Text(" \($0)") } ?? Text("a note"))
-         + Text(by.map { " · by \($0)" } ?? ""))
+         + Text(" · " + Routing.pendingDate(item.due, now: now)))
             .font(Theme.body(11)).foregroundStyle(Theme.muted).lineLimit(1)
     }
 }

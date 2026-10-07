@@ -117,6 +117,12 @@ struct TodoScreen: View {
         self.now = now
     }
 
+    /// Move to Pending: the to-do after this one as the list shows it (else the one before), like To confirm.
+    static func afterMove(_ id: String, visible: [ActionItem], grouping: ActionGrouping, sort: ActionSort, now: Date) -> String? {
+        let ids = ActionList.grouped(visible, by: grouping, sort: sort, now: now).flatMap(\.items).filter { $0.status == .open }.map(\.id)
+        return ConfirmSelection.next(after: id, in: ids)
+    }
+
     private var grouping: ActionGrouping {
         ActionGrouping(rawValue: groupRaw.isEmpty ? (engine.settings.actionPreferences?.todoGroup ?? "due") : groupRaw) ?? .due
     }
@@ -167,7 +173,8 @@ struct TodoScreen: View {
                     .overlay(alignment: .leading) { Rectangle().fill(Theme.border).frame(width: 1) }
                     .zIndex(4)
                 } else if let item = selectedItem ?? (visible.first { $0.status == .open }), store.phase == .loaded, !visible.isEmpty {
-                    TodoDetail(store: store, item: item, editing: $ui.editing, menu: $ui.menu, now: now)
+                    TodoDetail(store: store, item: item, editing: $ui.editing, menu: $ui.menu, now: now,
+                               onMoved: { store.selected["todo"] = Self.afterMove(item.id, visible: visible, grouping: grouping, sort: sort, now: now) })
                         .paneWidth(.todoDetail, automatic: 330)
                         .frame(maxHeight: .infinity, alignment: .top)
                         .overlay(alignment: .leading) { Rectangle().fill(Theme.border).frame(width: 1) }
@@ -774,6 +781,8 @@ struct TodoDetail: View {
     @Binding var editing: Bool
     @Binding var menu: String?
     var now = Date()
+    /// After Move to Pending: select the next to-do.
+    var onMoved: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -798,7 +807,7 @@ struct TodoDetail: View {
                 }
             } else if store.tracking[item.id] != nil {
                 // actions-routing.md: Move to Pending's Cancel · Move to Pending.
-                TrackPendingFooter(store: store, item: item)
+                TrackPendingFooter(store: store, item: item, onDone: onMoved)
             } else {
                 // Same order on every tab: remove on the left; Complete, then the primary action. Automation
                 // buttons move to their own row when the pane is too narrow for one.

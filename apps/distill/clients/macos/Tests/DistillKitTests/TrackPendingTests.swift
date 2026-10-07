@@ -43,6 +43,9 @@ final class TrackPendingTests: XCTestCase {
         XCTAssertEqual(TrackPending.subtitle(item(), d, typeWords: "to-do"), "filled from the to-do")
         XCTAssertEqual(TrackPending.previewLine(item(), d, people: people, now: now), "from Aditya Pradhan · promised in Testing sync · by Fri")
         XCTAssertEqual(TrackPending.byLabel(d.by), "Fri, Oct 9")
+        var noDate = d
+        noDate.by = nil
+        XCTAssertEqual(TrackPending.previewLine(item(), noDate, people: people, now: now), "from Aditya Pradhan · promised in Testing sync · no date")
         XCTAssertEqual(TrackPending.toast(d, people: people), "Tracked as Pending · waiting on Aditya")
     }
 

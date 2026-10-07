@@ -24,9 +24,7 @@ answer the frames assumed:
 item gets Move to Pending… only when it is a to-do (a message, ticket or page you added is
 something you send; dismiss or remove it instead).
 (b) By is optional: "It is filled from the item’s due date when there is one; × clears it. With no
-date the Pending row reads “no date” and never turns Overdue." As built, a row with no date simply
-has no "· by …" (Pending is otherwise unchanged, as the board's intro says; By date already groups
-it under No date).
+date the Pending row reads “no date” and never turns Overdue."
 (c) Undo in the toast restores the item where it was (To confirm, or the to-do list) with the same
 status and fields; the core keeps that in `trackedFrom` and Undo works while nothing has happened
 to it in Pending.

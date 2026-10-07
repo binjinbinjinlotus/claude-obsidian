@@ -135,9 +135,10 @@ cards. The owner's answers to the board's questions are in [Decisions](decisions
     @aditya · the item's owner"); for a to-do, its person when People knows them. Open, it lists
     IN THIS NOTE (whose items, who they're for and who a message goes to in the item's note,
     People order first; never you), then PEOPLE (everyone else), and "Or type any name; someone
-    not in People is kept as written." Typing keeps its spaces (`DraftTextField`).
+    not in People is kept as written." The typed name goes straight into the panel's draft (nothing
+    trimmed or saved to the core), so it keeps its spaces and ⌘Return or the button sends it at once.
   - By: optional, filled from the due date (the to-do's, else the promise's); × clears it. With no
-    date the Pending row has no "by" and never turns Overdue.
+    date the Pending row reads "no date" (`Routing.pendingDate`) and never turns Overdue.
   - "Filled from its owner and due date. It leaves To confirm; nothing is sent to Aditya." (To
     confirm, once someone is filled in), and "IN PENDING IT WILL READ" with the row as Pending
     shows it ("from Aditya Pradhan · promised in Testing sync · by Fri", the same words).
@@ -149,7 +150,8 @@ cards. The owner's answers to the board's questions are in [Decisions](decisions
   who you're waiting on". Picking you is refused ("Pick someone other than you").
 - Keys: ⇧⌥Return opens the panel for the selected To confirm row (list or detail) or the selected
   to-do; Return and ⌥Return are unchanged; none fire inside a text field.
-- After: the item leaves its list, the next To confirm row is selected, Pending's count goes up,
+- After: the item leaves its list, the next row is selected (the next To confirm row, or the next
+  to-do as the list shows it), Pending's count goes up,
   and the toast reads "Tracked as Pending · waiting on Aditya · Undo". Undo puts it back where it
   was (To confirm or the to-do list), with the same status and fields, and selects it.
 - Core: `POST /v1/actions/:id/track-pending {waitingOn, by?}` (`trackAsPending(id, req?)`).

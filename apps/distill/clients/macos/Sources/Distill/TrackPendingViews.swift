@@ -18,6 +18,14 @@ extension ActionsStore {
         trackPicker = draft.waitingOn == nil ? item.id : nil
     }
 
+    /// Waiting on as typed, on every key: a name kept as written (the core matches it to People too). The
+    /// draft holds it as typed, spaces and all, so the button and ⌘Return see it at once.
+    func typeWaitingOn(_ id: String, _ text: String) {
+        tracking[id]?.personID = nil
+        tracking[id]?.name = text
+        tracking[id]?.personFromItem = false
+    }
+
     func cancelTrack(_ item: ActionItem) {
         tracking[item.id] = nil
         if trackPicker == item.id { trackPicker = nil }
@@ -176,8 +184,6 @@ struct TrackPendingPanel: View {
 struct WaitingOnField: View {
     @ObservedObject var store: ActionsStore
     let item: ActionItem
-    @State private var typed = ""
-
     private var open: Bool { store.trackPicker == item.id }
     private var draft: TrackPending.Draft? { store.tracking[item.id] }
 
@@ -192,7 +198,7 @@ struct WaitingOnField: View {
     }
 
     private var picked: some View {
-        Button { typed = ""; store.trackPicker = item.id } label: {
+        Button { store.trackPicker = item.id } label: {
             HStack(spacing: 7) {
                 if let d = draft, d.waitingOn != nil {
                     let name = TrackPending.displayName(d, people: store.people)
@@ -221,19 +227,14 @@ struct WaitingOnField: View {
     private var search: some View {
         HStack(spacing: 7) {
             Image(systemName: "magnifyingglass").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
-            // Typing keeps its spaces (DraftTextField); the name is kept as written until a person is picked.
-            DraftTextField(placeholder: TrackPending.pickerPlaceholder, key: item.id, value: typed, autoFocus: !store.fixtureInlineMenus,
-                           normalize: { $0 }, save: { _, text in
-                               // A late save (the list closing after a pick) never replaces the person just picked.
-                               guard store.trackPicker == item.id else { return }
-                               typed = text
-                               type(text)
-                           })
-                .textFieldStyle(.plain).font(Theme.body(12.5))
-                .onSubmit { PendingSaves.shared.flushAll(); store.trackPicker = nil }
-                .onExitCommand { PendingSaves.shared.flushAll(); store.trackPicker = nil }
+            // Bound straight to the panel's draft with nothing trimmed or saved to the core, so it keeps its
+            // spaces and Track as Pending (button or ⌘Return) uses the text as typed right away.
+            TrackNameField(placeholder: TrackPending.pickerPlaceholder, text: Binding(get: { typed }, set: { store.typeWaitingOn(item.id, $0) }),
+                           autoFocus: !store.fixtureInlineMenus)
+                .onSubmit { store.trackPicker = nil }
+                .onExitCommand { store.trackPicker = nil }
             Image(systemName: "chevron.up").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.muted)
-                .onTapGesture { PendingSaves.shared.flushAll(); store.trackPicker = nil }
+                .onTapGesture { store.trackPicker = nil }
         }
         .padding(.leading, 9).padding(.trailing, 8).frame(minHeight: 30)
         .background(RoundedRectangle(cornerRadius: 7).fill(Theme.window))
@@ -241,19 +242,14 @@ struct WaitingOnField: View {
         .background(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.primaryTint, lineWidth: 3).padding(-2.5))
     }
 
-    /// A typed name: kept as written (the core matches it to People too).
-    private func type(_ text: String) {
-        store.tracking[item.id]?.personID = nil
-        store.tracking[item.id]?.name = text
-        store.tracking[item.id]?.personFromItem = false
-    }
+    /// What the field shows: the name as typed; empty while a person from the list is picked.
+    private var typed: String { draft.map { $0.personID == nil ? $0.name : "" } ?? "" }
 
     private func pick(_ c: TrackPending.Choice) {
         store.tracking[item.id]?.personID = c.personID
         store.tracking[item.id]?.name = c.name
         store.tracking[item.id]?.personFromItem = false
         store.trackPicker = nil
-        typed = ""
     }
 
     private var list: some View {
@@ -354,4 +350,19 @@ struct TrackPendingFooter: View {
 /// Never while typing in a text field.
 enum TrackPendingKey {
     static func allowed() -> Bool { !(NSApp.keyWindow?.firstResponder is NSTextView) }
+}
+
+/// Waiting on's text field, focused when the list opens.
+private struct TrackNameField: View {
+    let placeholder: String
+    @Binding var text: String
+    var autoFocus: Bool
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .textFieldStyle(.plain).font(Theme.body(12.5))
+            .focused($focused)
+            .onAppear { if autoFocus { focused = true } }
+    }
 }

@@ -108,4 +108,31 @@ final class TrackPendingAppTests: XCTestCase {
         XCTAssertEqual(store.tracking["t1"]?.origin, .todo)
         XCTAssertEqual(store.tracking["t1"]?.personID, "p-aditya")
     }
+
+    func testATypedNameIsSentAtOnce() async {
+        let app = model()
+        let store = app.actions
+        var mine = found("c1"); mine.owner = "me"; mine.ownerID = "you"
+        store.loadFixture(types: [], items: [mine])
+        store.startTrack(mine)
+        SessionCoreProtocol.answer = { _ in (200, Self.json("c1", status: "open", route: "waiting", owner: "Linus Chui")) }
+        // Typed and submitted at once: no pause before ⌘Return or the button.
+        store.typeWaitingOn("c1", "Linus Chui")
+        XCTAssertNil(store.trackBlock(mine), "the button is on as soon as the name is typed")
+        store.finishTrack(mine)
+        await waitUntil { SessionCoreProtocol.calls.contains { $0.path.hasSuffix("/track-pending") } }
+        XCTAssertEqual(SessionCoreProtocol.calls.last { $0.path.hasSuffix("/track-pending") }?.body["waitingOn"] as? String, "Linus Chui")
+    }
+
+    func testMoveToPendingSelectsTheNextToDoAsTheListShowsIt() {
+        let day = { (n: Int) in "2026-10-0\(n)" }
+        let now = Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 10, day: 1, hour: 12))!
+        let a = ActionItem(id: "a", status: .open, title: "A", fields: ["due": day(3)])
+        let b = ActionItem(id: "b", status: .open, title: "B", fields: ["due": day(5)])
+        let c = ActionItem(id: "c", status: .open, title: "C", fields: ["due": day(4)])
+        let visible = [a, b, c]
+        XCTAssertEqual(TodoScreen.afterMove("a", visible: visible, grouping: .none, sort: .due, now: now), "c", "the next row by due date")
+        XCTAssertEqual(TodoScreen.afterMove("b", visible: visible, grouping: .none, sort: .due, now: now), "c", "the last row: the one before")
+        XCTAssertNil(TodoScreen.afterMove("a", visible: [a], grouping: .none, sort: .due, now: now))
+    }
 }

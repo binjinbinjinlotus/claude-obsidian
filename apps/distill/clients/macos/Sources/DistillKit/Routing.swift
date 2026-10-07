@@ -333,6 +333,11 @@ public enum Routing {
         "from \(owner(item, people: people)) · promised in"
     }
 
+    /// The end of a Pending row's line: "by Fri", or "no date" (a row with no date never turns Overdue).
+    public static func pendingDate(_ due: String?, now: Date = Date()) -> String {
+        by(due, now: now).map { "by \($0)" } ?? "no date"
+    }
+
     /// "Looks received in 2026-10-06 Standup. Mark received?".
     public static func receivedLine(_ r: ActionReceived) -> String { "Looks received in \(r.noteName). Mark received?" }
 
