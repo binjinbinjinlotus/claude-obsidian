@@ -1,7 +1,7 @@
 {
  "$doc": "Collectors (designed 2026-10-04, calmer pass the same day): one base (list + detail); states override the list, the detail or the overlay. Fragments in screens/collectors/ are the detail panes, the add steps, the Already collected sheet and the cards; they import CollectorRow, QueuePath, ScheduleField, RunLogEntry and ScriptConsent.",
  "templates": {
-  "header": "<header style=\"display: flex; align-items: center; gap: 12px; padding: 30px 32px 0\">\n<div style=\"display: flex; flex-direction: column; gap: 6px; flex-grow: 1; min-width: 0\"><h1 style=\"margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 30px; letter-spacing: -0.03em; line-height: 1.05\">{title}</h1>\n<span style=\"font-size: 13px; color: #6B6862\">{sub}</span></div>{right}</header>"
+  "header": "<header style=\"display: flex; align-items: center; gap: 12px; padding: 30px 32px 0\">\n<div style=\"display: flex; flex-direction: column; gap: 6px; flex-grow: 1; min-width: 0\"><h1 style=\"margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 30px; letter-spacing: -0.03em; line-height: 1.05\">{title}</h1>\n<span style=\"font-size: 13px; color: var(--muted)\">{sub}</span></div>{right}</header>"
  },
  "layouts": {
   "list-detail": "{header}<div style=\"flex-grow: 1; display: flex; gap: 24px; padding: 20px 28px 0 20px; min-height: 0; overflow: hidden; position: relative\"><div style=\"width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 2px\">{list}</div><div style=\"flex-grow: 1; min-width: 0; overflow: hidden; padding: 2px 2px 20px\">{detail}</div></div>",

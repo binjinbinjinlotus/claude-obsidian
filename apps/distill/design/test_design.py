@@ -153,7 +153,7 @@ def hex_colors(text):
 SVG_COLOUR_ATTR = re.compile(r'<(?:svg|path|circle|rect|line|polyline|polygon|ellipse|g)\b[^>]*\s(?:fill|stroke)=\\?"[^"\\]*(?:var\(|\{\{)')
 
 
-TOKENIZED_SCREENS = ['queue', 'review', 'reviewqueue', 'session', 'fullread']  # step 3 moves the rest in batches
+TOKENIZED_SCREENS = ['queue', 'review', 'reviewqueue', 'session', 'fullread', 'actions', 'actionsummary', 'actioncontext', 'routing', 'scriptactions', 'collectors', 'livelog', 'activity', 'panes']
 
 
 def token_checked_files():
