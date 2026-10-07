@@ -146,7 +146,7 @@ def hex_colors(text):
     return out
 
 
-TOKENIZED_SCREENS = ['queue', 'review', 'reviewqueue', 'session', 'fullread', 'actions', 'actionsummary', 'actioncontext', 'routing', 'scriptactions']  # step 3 moves the rest in batches
+TOKENIZED_SCREENS = ['queue', 'review', 'reviewqueue', 'session', 'fullread', 'actions', 'actionsummary', 'actioncontext', 'routing', 'scriptactions', 'collectors', 'livelog', 'activity', 'panes']
 
 
 def token_checked_files():
