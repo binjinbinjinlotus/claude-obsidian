@@ -4,7 +4,7 @@ import DistillKit
 
 /// A TextField that keeps what you type as you type it (FieldDraft, actions.md When field edits
 /// save) and saves the normalised value after a short pause, on Return, when it loses focus, when
-/// `key` changes (another item: saved to the old one), when it goes away and when a window closes.
+/// `key` changes (another item: saved to the old one), when it goes away, when a window closes and on ⌘Q (PendingSaves).
 /// Style it like a TextField; the modifiers apply to the field inside.
 struct DraftTextField: View {
     let placeholder: String
@@ -20,6 +20,8 @@ struct DraftTextField: View {
 
     @State private var draft: FieldDraft?
     @State private var pause: Task<Void, Never>?
+    /// This field's flush in PendingSaves, so ⌘Q saves it.
+    @State private var registration: UUID?
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -29,8 +31,15 @@ struct DraftTextField: View {
             .onChange(of: focused) { _, now in if !now { finish() } }
             .onChange(of: key) { load() }
             .onChange(of: value) { load() }
-            .onAppear { if autoFocus { focused = true } }
-            .onDisappear { finish() }
+            .onAppear {
+                if autoFocus { focused = true }
+                if registration == nil { registration = PendingSaves.shared.register { flush() } }
+            }
+            .onDisappear {
+                finish()
+                if let registration { PendingSaves.shared.unregister(registration) }
+                registration = nil
+            }
             // The main window is kept when closed, so it may not disappear: save without touching the text.
             .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { _ in flush() }
     }

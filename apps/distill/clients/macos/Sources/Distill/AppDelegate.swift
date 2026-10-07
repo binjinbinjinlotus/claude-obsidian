@@ -68,6 +68,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    /// ⌘Q: edits still in their save pause go now (draft fields, then Settings), and quitting
+    /// waits for those saves, at most 2 s, so the last thing typed isn't lost.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let saves = PendingSaves.shared
+        saves.flushAll()
+        engine.saveSettingsNow()
+        guard saves.running > 0 else { return .terminateNow }
+        Task { @MainActor in
+            _ = await saves.waitForSaves(timeout: 2)
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showMainWindow()
         return true
