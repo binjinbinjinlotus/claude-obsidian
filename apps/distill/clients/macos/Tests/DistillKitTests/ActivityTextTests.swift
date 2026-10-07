@@ -174,7 +174,7 @@ final class ActivityTextTests: XCTestCase {
     }
 
     func testKeptWordsSwitchToDaysAtTwoDays() {
-        XCTAssertEqual(t.kept(hours: 1), "Kept 1 hours")
+        XCTAssertEqual(t.kept(hours: 1), "Kept 1 hour")
         XCTAssertEqual(t.kept(hours: 47), "Kept 47 hours")
         XCTAssertEqual(t.kept(hours: 48), "Kept 2 days")
         XCTAssertEqual(t.kept(hours: 60), "Kept 3 days")

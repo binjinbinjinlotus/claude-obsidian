@@ -222,7 +222,9 @@ final class RoutingTests: XCTestCase {
         let three = people + [ActionPerson(id: "p-mei", name: "Mei Tanaka")]
         XCTAssertEqual(Routing.handlesHint(type: "todo", handles: ["you", "p-aditya", "p-mei"], people: three), "Your to-dos, and the ones you do for Aditya and Mei.")
         XCTAssertEqual(Routing.handlesHint(type: "slack", handles: ["you", "p-aditya", "p-mei"], people: three), "Messages Jin, Aditya and Mei have to send.")
-        XCTAssertEqual(Routing.handlesHint(type: "slack", handles: ["you"], people: [ActionPerson(id: "you", name: "")]), "Messages You has to send.")
+        XCTAssertEqual(Routing.handlesHint(type: "slack", handles: ["you"], people: [ActionPerson(id: "you", name: "")]), "Messages you have to send.")
+        XCTAssertEqual(Routing.handlesHint(type: "jira", handles: ["you", "p-aditya"], people: [ActionPerson(id: "you", name: ""), people[1]]),
+                       "Tickets you and Aditya have to file.")
     }
 
     func testByAndOverdueEdges() {

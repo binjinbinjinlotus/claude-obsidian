@@ -255,7 +255,7 @@ public enum Routing {
     /// Each type's line under Handles items for: "Your to-dos, and the ones you do for Aditya." / "Messages Jin has to send."
     public static func handlesHint(type: String, handles: [String], people: [ActionPerson]) -> String {
         let you = people.first { $0.isYou }
-        let youName = you.map { firstName($0.name) }.flatMap { $0.isEmpty ? nil : $0 } ?? "You"
+        let youName = you.map { firstName($0.name) }.flatMap { $0.isEmpty ? nil : $0 } ?? "you"
         let others = handles.filter { $0 != ActionPerson.youID }.compactMap { id in people.first { $0.id == id } }.map(\.firstName)
         let mine = handles.contains(ActionPerson.youID)
         if handles.isEmpty { return "Nobody’s: these go to Pending or Highlights." }
@@ -268,7 +268,7 @@ public enum Routing {
             let (things, verb) = type == "slack" ? ("Messages", "send") : type == "jira" ? ("Tickets", "file") : type == "confluence" ? ("Pages", "write") : ("Items", "do")
             let who = mine ? ([youName] + others) : others
             let names = who.count <= 1 ? who.joined() : who.dropLast().joined(separator: ", ") + " and " + who.last!
-            return "\(things) \(names) \(who.count == 1 ? "has" : "have") to \(verb)."
+            return "\(things) \(names) \(who.count == 1 && names != "you" ? "has" : "have") to \(verb)."
         }
     }
 

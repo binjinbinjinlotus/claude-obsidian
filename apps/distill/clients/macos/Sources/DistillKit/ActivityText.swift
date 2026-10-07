@@ -291,9 +291,9 @@ public struct ActivityText: Sendable {
         }
     }
 
-    /// "Kept 30 days", "Kept 24 hours".
+    /// "Kept 30 days", "Kept 24 hours", "Kept 1 hour".
     public func kept(hours: Int) -> String {
-        if hours < 48 { return "Kept \(hours) hours" }
+        if hours < 48 { return hours == 1 ? "Kept 1 hour" : "Kept \(hours) hours" }
         let days = Int((Double(hours) / 24).rounded())
         return "Kept \(days) days"
     }
