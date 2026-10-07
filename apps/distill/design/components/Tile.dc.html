@@ -6,6 +6,6 @@
 <script type="text/x-dc-logic">
 const num = (v, d) => (v === undefined || v === null || v === '' || isNaN(Number(v))) ? d : Number(v);
 const s = num(p.size, 40), display = on(p.display, false);
-return { text: p.text || 'NOTE', fill: p.fill || 'var(--limeTint)', ink: p.ink || 'var(--limeInk)', s: s + 'px', r: (s * 0.3) + 'px',
+return { text: p.text || 'NOTE', fill: p.fill || '#E9FBC9', ink: p.ink || '#3D6110', s: s + 'px', r: (s * 0.3) + 'px',
   family: display ? "'Bricolage Grotesque', sans-serif" : "'DM Sans', sans-serif", fs: display ? (s * 0.42) + 'px' : '10px', fw: display ? 800 : 700 };
 </script>

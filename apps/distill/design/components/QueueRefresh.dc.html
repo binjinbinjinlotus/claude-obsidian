@@ -2,15 +2,15 @@
      @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
 <x-dc>
 <span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; white-space: nowrap">
-<span role="button" title="Check the queue folder for files and folders added outside Distill" style="height: 26px; display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; border-radius: 13px; color: {{btnInk}}; font-size: 12.5px; font-weight: 600; opacity: {{btnOp}}"><sc-if value="{{spin}}" hint-placeholder-val="{{ false }}"><span style="width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: var(--primary)"></span></sc-if><sc-if value="{{still}}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="{{btnInk}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"></path></svg></sc-if>{{btnTitle}}</span>
+<span role="button" title="Check the queue folder for files and folders added outside Distill" style="height: 26px; display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; border-radius: 13px; color: {{btnInk}}; font-size: 12.5px; font-weight: 600; opacity: {{btnOp}}"><sc-if value="{{spin}}" hint-placeholder-val="{{ false }}"><span style="width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB"></span></sc-if><sc-if value="{{still}}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="{{btnInk}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"></path></svg></sc-if>{{btnTitle}}</span>
 <sc-if value="{{hasNote}}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: {{noteW}}; color: {{noteInk}}; padding: 0 8px; height: 22px; border-radius: 11px; background: {{noteBg}}">{{note}}</span></sc-if>
 </span>
 </x-dc>
 <script type="text/x-dc-logic">
 const st = p.state || 'idle';
-const N = {"idle": [p.checked || 'checked at 3:41 AM', 'var(--faint)', 'transparent', 400], "found": [p.found || '2 new items found', 'var(--limeInk)', '#F3FDE4', 600], "nothing": ['Nothing new', 'var(--muted)', 'var(--panel)', 600], "error": [p.error || 'Can’t read the queue folder', 'var(--peachInk)', 'var(--peachTint)', 600], "checking": ['', '', '', 400]};
+const N = {"idle": [p.checked || 'checked at 3:41 AM', '#9B978F', 'transparent', 400], "found": [p.found || '2 new items found', '#3D6110', '#F3FDE4', 600], "nothing": ['Nothing new', '#6B6862', '#F6F5F2', 600], "error": [p.error || 'Can’t read the queue folder', '#B03A0A', '#FFE4D6', 600], "checking": ['', '', '', 400]};
 const n = N[st] || N.idle;
 return { spin: st === 'checking', still: st !== 'checking', btnTitle: st === 'checking' ? 'Checking…' : 'Refresh',
-  btnInk: st === 'checking' ? 'var(--muted)' : 'var(--primary)', btnOp: 1,
+  btnInk: st === 'checking' ? '#6B6862' : '#1F6FEB', btnOp: 1,
   hasNote: st !== 'checking' && !!n[0], note: n[0], noteInk: n[1], noteBg: n[2], noteW: n[3] };
 </script>

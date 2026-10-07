@@ -1,7 +1,7 @@
 <!-- Segmented: source template. render.py wraps it in the page shell and writes data-props from components.json.
      @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
 <x-dc>
-<span style="display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: {{r}}; background: {{track}}; box-shadow: inset 0 0 0 1px var(--border); white-space: nowrap; box-sizing: border-box">
+<span style="display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: {{r}}; background: {{track}}; box-shadow: inset 0 0 0 1px #ECEAE5; white-space: nowrap; box-sizing: border-box">
 <sc-for list="{{segs}}" as="s" hint-placeholder-count="2"><span style="height: {{s.h}}; display: inline-flex; align-items: center; padding: 0 10px; border-radius: {{s.r}}; background: {{s.bg}}; color: {{s.fg}}; font-size: 12px; font-weight: 700">{{s.label}}</span></sc-for>
 </span>
 </x-dc>
@@ -10,6 +10,6 @@ const num = (v, d) => (v === undefined || v === null || v === '' || isNaN(Number
 const opts = String(p.options || 'Any label|All labels').split('|').map(o => o.trim()).filter(Boolean);
 const sel = p.selection === undefined || p.selection === '' ? opts[0] : String(p.selection);
 const h = num(p.height, 24);
-return { r: (h / 2 + 2) + 'px', track: p.track || 'var(--window)',
-  segs: opts.map(o => ({ label: o, h: h + 'px', r: h / 2 + 'px', bg: o === sel ? 'var(--primary)' : 'transparent', fg: o === sel ? 'var(--window)' : 'var(--muted)' })) };
+return { r: (h / 2 + 2) + 'px', track: p.track || '#FFFFFF',
+  segs: opts.map(o => ({ label: o, h: h + 'px', r: h / 2 + 'px', bg: o === sel ? '#1F6FEB' : 'transparent', fg: o === sel ? '#FFFFFF' : '#6B6862' })) };
 </script>

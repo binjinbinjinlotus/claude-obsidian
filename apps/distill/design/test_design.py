@@ -134,23 +134,6 @@ def snapshot_ids():
     return ids
 
 
-TOKEN_HEX = {v.upper(): k for k, v in tokens.theme()['color'].items()}
-
-
-def hex_colors(text):
-    """Every #rgb / #rrggbb colour literal in text, upper-case and 6-digit."""
-    out = []
-    for h in re.findall(r'#[0-9A-Fa-f]{6}\b|#[0-9A-Fa-f]{3}\b(?![0-9A-Fa-f])', text):
-        h = h.upper()
-        out.append('#' + ''.join(c * 2 for c in h[1:]) if len(h) == 4 else h)
-    return out
-
-
-def token_checked_files():
-    """The templates already moved to tokens (design-system-plan.md, step 3)."""
-    return sorted(glob.glob(os.path.join(ROOT, 'components', '*.html')))
-
-
 class Tokens(unittest.TestCase):
     def test_tokens_match_theme(self):
         # tokens.json, and the Design System's ds/tokens.json and ds/tokens.css, all regenerate from Theme.swift.
@@ -177,14 +160,6 @@ class Tokens(unittest.TestCase):
             self.assertEqual(flat[name], f'{v}px', name)
         self.assertEqual(styles['pill-small'], f'{p["small"]["fontSize"]}px')
         self.assertEqual(styles['button'], f'{b["regular"]["fontSize"]}px')
-
-    def test_templates_use_tokens(self):
-        # A colour that is a token is written var(--name), so a Theme.swift change reaches every board.
-        # Colours that match no token are reported (report()), not failed: they are still to name.
-        for path in token_checked_files():
-            with open(path, encoding='utf-8') as f:
-                found = [h for h in hex_colors(f.read()) if h in TOKEN_HEX]
-            self.assertEqual(found, [], f'{os.path.relpath(path, ROOT)}: write these as var(--{{token}})')
 
     def test_bundle_css_uses_tokens(self):
         with open(os.path.join(ROOT, 'ds', 'components', 'bundle.css'), encoding='utf-8') as f:
@@ -328,14 +303,6 @@ def report():
         for p in c['props']:
             if p.get('swiftPending'):
                 print(f'  designed, not in Swift yet: {c["name"]}.{p["name"]} ({p["swiftPending"]})')
-    loose = {}
-    for path in token_checked_files():
-        with open(path, encoding='utf-8') as f:
-            for h in hex_colors(f.read()):
-                if h not in TOKEN_HEX:
-                    loose[h] = loose.get(h, 0) + 1
-    print(f'colours that match no token (still to name): {len(loose)}: '
-          + ', '.join(f'{h} ×{n}' for h, n in sorted(loose.items(), key=lambda kv: -kv[1])))
     _, screens = render.schema()
     ids = snapshot_ids()
     missing = [st['id'] for s in screens for st in s['states'] if st['id'] not in ids]

@@ -2,15 +2,15 @@
      @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
 <x-dc>
 <sc-if value="{{isFrame}}" hint-placeholder-val="{{ true }}">
-<div style="position: relative; width: {{w}}; height: {{h}}; box-sizing: border-box; border-radius: 16px; background: var(--window); box-shadow: 0 0 0 1px rgba(29,28,26,0.06), 0 14px 32px rgba(29,28,26,0.20)">
-<sc-if value="{{cut}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 0; right: 0; bottom: 64px; height: 22px; background: linear-gradient(rgba(255,255,255,0), var(--window))"></span><span style="position: absolute; right: 5px; top: 40%; width: 4px; height: 60px; border-radius: 2px; background: rgba(29,28,26,0.3)"></span></sc-if>
+<div style="position: relative; width: {{w}}; height: {{h}}; box-sizing: border-box; border-radius: 16px; background: #FFFFFF; box-shadow: 0 0 0 1px rgba(29,28,26,0.06), 0 14px 32px rgba(29,28,26,0.20)">
+<sc-if value="{{cut}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 0; right: 0; bottom: 64px; height: 22px; background: linear-gradient(rgba(255,255,255,0), #FFFFFF)"></span><span style="position: absolute; right: 5px; top: 40%; width: 4px; height: 60px; border-radius: 2px; background: rgba(29,28,26,0.3)"></span></sc-if>
 <sc-if value="{{grip}}" hint-placeholder-val="{{ true }}"><span aria-hidden="true" title="Drag to resize" style="position: absolute; right: 6px; bottom: 6px; width: 12px; height: 12px; background: linear-gradient(135deg, transparent 0 45%, #C9C6BF 45% 52%, transparent 52% 65%, #C9C6BF 65% 72%, transparent 72%)"></span></sc-if>
 </div>
 </sc-if>
 <sc-if value="{{isBar}}" hint-placeholder-val="{{ false }}">
 <div style="display: flex; align-items: center; gap: 8px; height: 22px">
-<span style="flex-grow: 1; font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; color: var(--faint)">{{title}}</span>
-<span title="Close (Esc)" style="width: 22px; height: 22px; border-radius: 11px; background: var(--panel); display: flex; align-items: center; justify-content: center"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="3.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></span>
+<span style="flex-grow: 1; font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; color: #9B978F">{{title}}</span>
+<span title="Close (Esc)" style="width: 22px; height: 22px; border-radius: 11px; background: #F6F5F2; display: flex; align-items: center; justify-content: center"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#6B6862" stroke-width="3.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></span>
 </div>
 </sc-if>
 </x-dc>

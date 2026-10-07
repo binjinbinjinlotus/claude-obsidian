@@ -12,6 +12,6 @@ const ICONS = @@ICONS@@;
 const d = ICONS[p.systemImage || ''] || '', active = on(p.active, false);
 return { title: p.title || 'Claude Code', w: px(p.width, 'auto'), h: num(p.height, 32) + 'px', r: num(p.radius, 10) + 'px',
   fs: num(p.fontSize, 12) + 'px', op: on(p.enabled, true) ? 1 : 0.45, d, hasIcon: !!d,
-  bg: active ? 'var(--primaryTint)' : 'var(--window)', ring: active ? '#BFD5FA' : 'var(--border)', ink: active ? 'var(--primary)' : 'var(--ink)', fw: active ? 700 : 600,
-  iconInk: active ? 'var(--primary)' : 'var(--muted)', caret: active ? 'var(--primary)' : 'var(--faint)' };
+  bg: active ? '#E3EEFF' : '#FFFFFF', ring: active ? '#BFD5FA' : '#ECEAE5', ink: active ? '#1F6FEB' : '#1D1C1A', fw: active ? 700 : 600,
+  iconInk: active ? '#1F6FEB' : '#6B6862', caret: active ? '#1F6FEB' : '#9B978F' };
 </script>

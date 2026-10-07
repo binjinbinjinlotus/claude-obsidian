@@ -2,14 +2,14 @@
      @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
 <x-dc>
 <span style="height: {{h}}; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px 0 {{padL}}; border-radius: {{r}}; background: {{bg}}; box-shadow: {{ring}}; white-space: nowrap; box-sizing: border-box">
-<sc-if value="{{drop}}" hint-placeholder-val="{{ true }}"><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--limeTint); display: inline-flex; align-items: center; justify-content: center"><svg width="10" height="10" viewBox="0 0 24 24" fill="var(--limeInk)" aria-hidden="true"><path d="M12 3c3.5 4.2 6 7.6 6 10.5a6 6 0 0 1-12 0C6 10.6 8.5 7.2 12 3z"></path></svg></span></sc-if>
-<span style="font-size: 12px; font-weight: 700; color: var(--ink)">{{text}}</span>
-<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span>
+<sc-if value="{{drop}}" hint-placeholder-val="{{ true }}"><span style="width: 20px; height: 20px; border-radius: 50%; background: #E9FBC9; display: inline-flex; align-items: center; justify-content: center"><svg width="10" height="10" viewBox="0 0 24 24" fill="#3D6110" aria-hidden="true"><path d="M12 3c3.5 4.2 6 7.6 6 10.5a6 6 0 0 1-12 0C6 10.6 8.5 7.2 12 3z"></path></svg></span></sc-if>
+<span style="font-size: 12px; font-weight: 700; color: #1D1C1A">{{text}}</span>
+<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#6B6862" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span>
 </x-dc>
 <script type="text/x-dc-logic">
 const compact = on(p.compact, false);
 let text = on(p.showRunner, true) ? (p.runner || 'Claude Code') + ' · ' + (p.model || 'Sonnet') : (p.model || 'Sonnet');
 if (on(p.showEffort, false)) text += ' · ' + (p.effort || 'Medium');
 return { text, drop: !compact, padL: compact ? '10px' : '6px', h: compact ? '26px' : '30px', r: compact ? '13px' : '15px',
-  bg: compact ? 'var(--panel)' : 'var(--window)', ring: compact ? 'none' : 'inset 0 0 0 1px var(--border)' };
+  bg: compact ? '#F6F5F2' : '#FFFFFF', ring: compact ? 'none' : 'inset 0 0 0 1px #ECEAE5' };
 </script>

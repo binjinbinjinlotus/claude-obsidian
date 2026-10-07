@@ -3,24 +3,24 @@
 <x-dc>
 <div style="width: {{w}}; display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 12px; border-radius: 12px; background: {{bg}}; box-shadow: {{ring}}; box-sizing: border-box; opacity: {{op}}">
 <span style="width: 28px; height: 28px; border-radius: 8px; background: {{tBg}}; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{tInk}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{tD}}"></path></svg></span>
-<div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1; min-width: 0"><span style="font-size: 13px; font-weight: 600; line-height: 1.3; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{title}}</span>
+<div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1; min-width: 0"><span style="font-size: 13px; font-weight: 600; line-height: 1.3; color: #1D1C1A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{title}}</span>
 <span style="font-size: 11px; color: {{sumInk}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{summary}}</span></div>
-<sc-if value="{{showHover}}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0"><sc-if value="{{canRun}}" hint-placeholder-val="{{ true }}"><dc-import name="IconButton" system-image="play" tint="var(--primary)" help="Run now" hint-size="26px,26px"></dc-import></sc-if><dc-import name="IconButton" system-image="ellipsis" help="More" hint-size="26px,26px"></dc-import></span></sc-if>
-<sc-if value="{{showSelRun}}" hint-placeholder-val="{{ false }}"><dc-import name="IconButton" system-image="play" tint="var(--primary)" fill="var(--window)" help="Run now" hint-size="26px,26px"></dc-import></sc-if>
+<sc-if value="{{showHover}}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0"><sc-if value="{{canRun}}" hint-placeholder-val="{{ true }}"><dc-import name="IconButton" system-image="play" tint="#1F6FEB" help="Run now" hint-size="26px,26px"></dc-import></sc-if><dc-import name="IconButton" system-image="ellipsis" help="More" hint-size="26px,26px"></dc-import></span></sc-if>
+<sc-if value="{{showSelRun}}" hint-placeholder-val="{{ false }}"><dc-import name="IconButton" system-image="play" tint="#1F6FEB" fill="#FFFFFF" help="Run now" hint-size="26px,26px"></dc-import></sc-if>
 <sc-if value="{{showPill}}" hint-placeholder-val="{{ false }}"><dc-import name="Pill" text="{{status}}" fill="{{sBg}}" ink="{{sInk}}" busy="{{busy}}" size="small" hint-size="80px,20px"></dc-import></sc-if>
 </div>
 </x-dc>
 <script type="text/x-dc-logic">
 const px = (v, d) => (v === undefined || v === null || v === '') ? d : (/^[0-9.]+$/.test(String(v)) ? v + 'px' : String(v));
-const K = {"folder": ["var(--limeTint)", "var(--limeInk)", "M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"], "script": ["#EDE7FF", "#5B3FC4", "M4 5h16v14H4zM7.5 9.5l3 2.5-3 2.5M12.5 15h4"]};
-const S = {"on": ["#F3FDE4", "var(--limeInk)"], "off": ["var(--panel)", "var(--muted)"], "running": ["var(--primaryTint)", "var(--primary)"], "error": ["var(--peachTint)", "var(--peachInk)"], "consent": ["#FFF4D6", "#8A5A00"]};
+const K = {"folder": ["#E9FBC9", "#3D6110", "M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"], "script": ["#EDE7FF", "#5B3FC4", "M4 5h16v14H4zM7.5 9.5l3 2.5-3 2.5M12.5 15h4"]};
+const S = {"on": ["#F3FDE4", "#3D6110"], "off": ["#F6F5F2", "#6B6862"], "running": ["#E3EEFF", "#1F6FEB"], "error": ["#FFE4D6", "#B03A0A"], "consent": ["#FFF4D6", "#8A5A00"]};
 const k = K[p.kind] || K.folder, s = S[p.statusKind] || S.on;
 const sel = on(p.selected, false), hover = on(p.hover, false), bad = p.statusKind === 'error' || p.statusKind === 'consent';
 // Run now: on hover, and always on the selected row (a script that waits for your OK has no Run now here; its detail says Allow and run).
 const canRun = on(p.runEnabled, true) && p.statusKind !== 'running' && p.statusKind !== 'consent';
 return { w: px(p.width, '100%'), tBg: k[0], tInk: k[1], tD: k[2], title: p.title || 'Distill Inbox',
-  summary: p.summary || 'Every hour · copied 3 at 9:00 AM', sumInk: bad ? s[1] : 'var(--muted)',
+  summary: p.summary || 'Every hour · copied 3 at 9:00 AM', sumInk: bad ? s[1] : '#6B6862',
   status: p.status || 'On', sBg: s[0], sInk: s[1], busy: p.statusKind === 'running' ? 'true' : 'false',
-  bg: sel ? '#F2F7FF' : hover ? 'var(--panel)' : 'transparent', ring: sel ? 'inset 0 0 0 1.5px #BFD5FA' : 'none',
+  bg: sel ? '#F2F7FF' : hover ? '#F6F5F2' : 'transparent', ring: sel ? 'inset 0 0 0 1.5px #BFD5FA' : 'none',
   showPill: (p.statusKind === 'running' || bad) && !hover, showHover: hover, canRun, showSelRun: sel && !hover && canRun, op: p.statusKind === 'off' && !sel ? 0.6 : 1 };
 </script>

@@ -6,8 +6,8 @@
 <script type="text/x-dc-logic">
 const s = p.state || 'idle';
 const line = on(p.line, true);
-const C = { idle: line ? 'var(--border)' : 'transparent', hover: '#D9D6CF', dragging: 'var(--primary)', limit: 'var(--peachInk)' };
+const C = { idle: line ? '#ECEAE5' : 'transparent', hover: '#D9D6CF', dragging: '#1F6FEB', limit: '#B03A0A' };
 const wide = s === 'dragging' || s === 'limit';
 return { lineColor: C[s] || C.idle, lineWidth: wide ? '2px' : '1px', lineLeft: wide ? '3.5px' : '4px',
-  grip: s === 'hover' ? 'var(--faint)' : (s === 'idle' ? 'transparent' : C[s]), gripOpacity: s === 'idle' ? 0 : 1 };
+  grip: s === 'hover' ? '#9B978F' : (s === 'idle' ? 'transparent' : C[s]), gripOpacity: s === 'idle' ? 0 : 1 };
 </script>

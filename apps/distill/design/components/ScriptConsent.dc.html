@@ -3,22 +3,22 @@
 <x-dc>
 <div style="width: {{w}}; box-sizing: border-box">
 <sc-if value="{{isAllowed}}" hint-placeholder-val="{{ false }}"><div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; background: #F3FDE4">
-<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--limeInk)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z M8.5 12l2.5 2.5 4.5-5"></path></svg>
-<span style="font-size: 12px; color: var(--limeInk); flex-grow: 1; min-width: 0">{{allowedText}}</span>
-<span role="button" style="font-size: 12px; font-weight: 600; color: var(--primary); white-space: nowrap">Revoke</span></div></sc-if>
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#3D6110" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z M8.5 12l2.5 2.5 4.5-5"></path></svg>
+<span style="font-size: 12px; color: #3D6110; flex-grow: 1; min-width: 0">{{allowedText}}</span>
+<span role="button" style="font-size: 12px; font-weight: 600; color: #1F6FEB; white-space: nowrap">Revoke</span></div></sc-if>
 <sc-if value="{{isCard}}" hint-placeholder-val="{{ true }}"><div style="display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 14px; background: #FFF8E6; box-shadow: inset 0 0 0 1px #F5D98B">
 <div style="display: flex; align-items: flex-start; gap: 10px">
 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8A5A00" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 1px"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z M12 8v4M12 15.5h.01"></path></svg>
 <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
-<span style="font-size: 14px; font-weight: 700; color: var(--ink)">{{heading}}</span>
+<span style="font-size: 14px; font-weight: 700; color: #1D1C1A">{{heading}}</span>
 <span style="font-size: 12.5px; color: #48463F; line-height: 1.5">{{body}}</span>
 </div></div>
-<div style="display: flex; align-items: center; gap: 8px; margin-left: 28px; padding: 7px 10px; border-radius: 8px; background: var(--window); box-shadow: inset 0 0 0 1px #F0E3BD; min-width: 0">
-<span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; min-width: 0">{{command}}</span>
-<span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10.5px; color: var(--faint); white-space: nowrap; flex-shrink: 0">{{hash}}</span></div>
+<div style="display: flex; align-items: center; gap: 8px; margin-left: 28px; padding: 7px 10px; border-radius: 8px; background: #FFFFFF; box-shadow: inset 0 0 0 1px #F0E3BD; min-width: 0">
+<span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; color: #1D1C1A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; min-width: 0">{{command}}</span>
+<span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10.5px; color: #9B978F; white-space: nowrap; flex-shrink: 0">{{hash}}</span></div>
 <div style="display: flex; align-items: center; gap: 8px; margin-left: 28px">
 <dc-import name="PrimaryButton" title="{{allowTitle}}" system-image="checkmark" size="small" hint-size="160px,30px"></dc-import>
-<dc-import name="SoftButton" title="{{secondTitle}}" size="small" tint="var(--ink)" fill="var(--window)" stroke="var(--border)" hint-size="110px,30px"></dc-import>
+<dc-import name="SoftButton" title="{{secondTitle}}" size="small" tint="#1D1C1A" fill="#FFFFFF" stroke="#ECEAE5" hint-size="110px,30px"></dc-import>
 </div></div></sc-if>
 </div>
 </x-dc>

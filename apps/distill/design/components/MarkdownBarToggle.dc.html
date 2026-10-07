@@ -7,5 +7,5 @@
 const num = (v, d) => (v === undefined || v === null || v === '' || isNaN(Number(v))) ? d : Number(v);
 const isOn = on(p.isOn, false), h = num(p.height, 24);
 return { on: isOn ? 'true' : 'false', h: h + 'px', r: h / 2 + 'px', pad: (h >= 26 ? 9 : 8) + 'px', fs: (h >= 26 ? 12 : 11) + 'px',
-  bg: isOn ? 'var(--primaryTint)' : 'var(--panel)', fg: isOn ? 'var(--primary)' : '#48463F' };
+  bg: isOn ? '#E3EEFF' : '#F6F5F2', fg: isOn ? '#1F6FEB' : '#48463F' };
 </script>
