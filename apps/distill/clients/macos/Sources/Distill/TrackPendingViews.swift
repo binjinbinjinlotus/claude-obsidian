@@ -220,12 +220,17 @@ struct WaitingOnField: View {
             Image(systemName: "magnifyingglass").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
             // Typing keeps its spaces (DraftTextField); the name is kept as written until a person is picked.
             DraftTextField(placeholder: TrackPending.pickerPlaceholder, key: item.id, value: typed, autoFocus: !store.fixtureInlineMenus,
-                           normalize: { $0 }, save: { _, text in typed = text; type(text) })
+                           normalize: { $0 }, save: { _, text in
+                               // A late save (the list closing after a pick) never replaces the person just picked.
+                               guard store.trackPicker == item.id else { return }
+                               typed = text
+                               type(text)
+                           })
                 .textFieldStyle(.plain).font(Theme.body(12.5))
-                .onSubmit { store.trackPicker = nil }
-                .onExitCommand { store.trackPicker = nil }
+                .onSubmit { PendingSaves.shared.flushAll(); store.trackPicker = nil }
+                .onExitCommand { PendingSaves.shared.flushAll(); store.trackPicker = nil }
             Image(systemName: "chevron.up").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.muted)
-                .onTapGesture { store.trackPicker = nil }
+                .onTapGesture { PendingSaves.shared.flushAll(); store.trackPicker = nil }
         }
         .padding(.leading, 9).padding(.trailing, 8).frame(minHeight: 30)
         .background(RoundedRectangle(cornerRadius: 7).fill(Theme.window))

@@ -122,7 +122,8 @@ extension StatesSnapshot {
         let f = Flow.actions
         func shot(_ file: String, _ state: String, _ desc: String, _ e: AppModel, ui: TodoUI = TodoUI(),
                   size: CGSize = CGSize(width: 1200, height: 900), overlay: AnyView? = nil) {
-            main(file, f, "Actions · Track as Pending", state, desc, e, section: .actions, size: size) {
+            // The board's detail pane is 440 pt.
+            main(file, f, "Actions · Track as Pending", state, desc, e, section: .actions, defaults: [PaneSpec.todoDetail.key: 440.0], size: size) {
                 TodoScreen(store: e.actions, ui: ui)
                     .overlay(alignment: .topLeading) { overlay }
                     .overlay(alignment: .bottom) {
