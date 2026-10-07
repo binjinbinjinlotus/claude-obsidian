@@ -2061,6 +2061,8 @@ describe('whose items: routing found items (actions-routing.md)', () => {
     assert.deepEqual(await h.service.routingPreview({ people: PEOPLE }), { days: 7, lists: 0, waiting: 0, others: 0, beforeRouting: found.length });
     await h.service.createAction({ type: 'todo', title: 'mine' });
     assert.equal((await h.service.routingPreview()).beforeRouting, found.length, 'items you add are not finds');
+    h.clock.t = new Date('2026-10-12T15:00:00Z');
+    assert.equal((await h.service.routingPreview()).beforeRouting, 0, 'only finds from the last 7 days');
   });
 });
 

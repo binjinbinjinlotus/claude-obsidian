@@ -3,7 +3,7 @@ type: spec
 title: Decisions
 status: built
 created: 2026-10-02
-updated: 2026-10-06
+updated: 2026-10-07
 tags:
   - distill
   - decisions
@@ -14,6 +14,27 @@ tags:
 Newest first. Each entry: what was decided, why, and where it lives. Add an
 entry in the same change that makes a decision; never rewrite an old one —
 supersede it with a new entry.
+
+## 2026-10-07
+
+**Free-text fields keep what you type and save after a pause (2026-10-07).**
+The to-do Title, People and Labels fields and a name in Settings → People read
+the stored value back on every key, so a trimmed save removed the space or
+comma you had just typed. They now keep a draft (`FieldDraft`,
+`DraftTextField`): the text stays as typed, and the trimmed value is saved
+after a 0.7 s pause, on Return, on focus loss, on switching items and when a
+window closes. An empty title or name is not saved. Quitting within the pause
+can still lose that last edit (no quit hook yet). See
+[actions.md](actions.md) (the to-do detail, edit in place).
+
+**A new person stays on the page until named (2026-10-07).** The core drops
+a person with an empty name, so "＋ Add a person" saved a blank row that
+vanished on the reply. The row is now kept by the page (`PeopleEdit`) and
+joins Settings with its first name; a second add while one is unnamed keeps
+that row. A type's ＋ with nobody left to add adds a person who handles that
+type once named. The routing preview names notes found before routing
+(`beforeRouting`) instead of counting them. See
+[actions-routing.md](actions-routing.md).
 
 ## 2026-10-06
 
