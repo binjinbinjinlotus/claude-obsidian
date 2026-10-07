@@ -221,8 +221,7 @@ describe("the Others' actions section", () => {
   });
 
   test('withOthersSection finds the section on the first line, indented, and stops at an indented heading', () => {
-    // (A section on the first line comes back after one blank line; only the rest is pinned here.)
-    assert.equal(withOthersSection("## Others' actions\n- old\n## Next\nAfter.", ['- new']).replace(/^\n/, ''), `${OTHERS_HEADING}\n\n- new\n\n## Next\nAfter.\n`);
+    assert.equal(withOthersSection("## Others' actions\n- old\n## Next\nAfter.", ['- new']), `${OTHERS_HEADING}\n\n- new\n\n## Next\nAfter.\n`);
     assert.equal(withOthersSection("Text\n  \n  ## Others' actions\n- old\n ## Next\nAfter.\n\n\n", ['- new']), `Text\n\n${OTHERS_HEADING}\n\n- new\n\n ## Next\nAfter.\n`);
     assert.equal(OTHERS_HEADING, "## Others' actions");
   });
@@ -230,6 +229,8 @@ describe("the Others' actions section", () => {
   test('withOthersSection with no lines removes the section', () => {
     assert.equal(withOthersSection("# Page\n\nText.\n\n## Others' actions\n- **Old**: gone\n\n## Next\nAfter.\n", []), '# Page\n\nText.\n\n## Next\nAfter.\n');
     assert.equal(withOthersSection("# Page\n\nText.\n\n## Others' actions\n- **Old**: gone\n", []), '# Page\n\nText.\n');
+    assert.equal(withOthersSection("## Others' actions\n- old\n\n## Next\nAfter.", []), '## Next\nAfter.\n', 'a section on the first line leaves no blank first line');
+    assert.equal(withOthersSection("\n\n## Others' actions\n- old\n", ['- new']), `${OTHERS_HEADING}\n\n- new\n`, 'blank lines before it go too');
   });
 
   test('sectionMatches: same lines in any order, trimmed; blank lines on the page do not count', () => {
