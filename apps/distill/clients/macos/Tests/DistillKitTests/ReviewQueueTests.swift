@@ -482,6 +482,23 @@ final class ReviewQueueTests: XCTestCase {
         job.state = .awaitingApproval
         XCTAssertFalse(ReviewQueueText.needsOwner(job), "recovery waits to try again")
     }
+
+    func testRecoveryKeepsTheCoresSentenceAndWake() throws {
+        let r = try JSONDecoder.core.decode(RecoveryState.self, from: Data(#"{"state":"waiting","signature":"lock","summary":"Obsidian holds the lock.","wake":"retry","proposal":"x"}"#.utf8))
+        XCTAssertEqual(r.summary, "Obsidian holds the lock.")
+        XCTAssertEqual(r.wake, "retry")
+        XCTAssertEqual(r.proposal, "x")
+        XCTAssertFalse(RefreshState(since: Date()).approved, "a rebuild the owner hadn't approved")
+        XCTAssertEqual(RefreshState(since: Date()).stalePaths, [])
+    }
+
+    func testABatchQueuedAtTheSameOrderIsNotAhead() {
+        var mine = Job(id: "m", vaultPath: "/v", files: [], state: .awaitingApproval)
+        mine.queuedApply = QueuedApply(at: Date(), order: 4, planSha256: "h")
+        var tie = Job(id: "t", vaultPath: "/v", files: [], state: .awaitingApproval)
+        tie.queuedApply = QueuedApply(at: Date(), order: 4, planSha256: "h")
+        XCTAssertNil(ReviewQueueText.ahead(of: mine, in: [mine, tie]))
+    }
 }
 
 final class ReviewBatchListTests: XCTestCase {
@@ -633,5 +650,22 @@ final class ReviewBatchListTests: XCTestCase {
             ("daily-check-in-Check-In.md", "Daily check-in Check-in"),
         ]
         for (file, name) in cases { XCTAssertEqual(ReviewBatches.readableName(file), name, file) }
+    }
+
+    func testExtensionsUpToFiveCharactersAreDropped() {
+        XCTAssertEqual(ReviewBatches.readableName("Notes.abcde"), "Notes")
+        XCTAssertEqual(ReviewBatches.readableName("Notes.abcdef"), "Notes.abcdef")
+    }
+
+    func testBatchDateUsesTheGivenZoneAndLocale() {
+        let kiritimati = TimeZone(identifier: "Pacific/Kiritimati")!
+        let fr = Locale(identifier: "fr_FR")
+        // 2026-10-03 12:00 UTC is already Oct 4 in Kiritimati (UTC+14).
+        let started = Date(timeIntervalSince1970: 1_791_028_800)
+        XCTAssertEqual(ReviewBatches.batchDate(Job(id: "a", vaultPath: "/v", files: [], createdAt: started), locale: fr, timeZone: kiritimati), "4 oct.")
+        // A date in the name is that day wherever you are.
+        XCTAssertEqual(ReviewBatches.batchDate(Job(id: "b", vaultPath: "/v", files: ["2026-10-04 Sync.md"], createdAt: started), locale: fr, timeZone: kiritimati), "4 oct.")
+        XCTAssertEqual(ReviewBatches.batchDate(Job(id: "c", vaultPath: "/v", files: ["2026-10-04 Sync.md"], createdAt: started),
+                                               locale: Locale(identifier: "en_US"), timeZone: TimeZone(identifier: "Pacific/Pago_Pago")!), "Oct 4")
     }
 }

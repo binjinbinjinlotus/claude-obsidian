@@ -106,4 +106,63 @@ final class JiraPickersTests: XCTestCase {
             XCTAssertEqual(e.problem, .notConnected("Jira isn’t connected."))
         }
     }
+
+    func testCaptionEdges() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        func ago(_ seconds: Double) -> String { JiraPick.caption(account: nil, fetchedAt: now.addingTimeInterval(-seconds), now: now) }
+        XCTAssertEqual(ago(59), "From your Jira (updated just now)")
+        XCTAssertEqual(ago(60), "From your Jira (updated 1 min ago)")
+        XCTAssertEqual(ago(59 * 60), "From your Jira (updated 59 min ago)")
+        XCTAssertEqual(ago(60 * 60), "From your Jira (updated 1 h ago)")
+        XCTAssertEqual(ago(-300), "From your Jira (updated just now)", "a clock ahead of the fetch never says minus")
+        // An account of exactly 14 characters is shown whole; one more is cut.
+        XCTAssertEqual(JiraPick.caption(account: "abcdefghijklmn", fetchedAt: now, now: now), "From your Jira (abcdefghijklmn · updated just now)")
+        XCTAssertEqual(JiraPick.caption(account: "abcdefghijklmno", fetchedAt: now, now: now), "From your Jira (abcdefghijklmn… · updated just now)")
+    }
+
+    func testListsDecodeLenientlyAndRoundTrip() throws {
+        let list = try JSONDecoder.core.decode(JiraProjectList.self, from: Data(#"{"account":"Jin Liu","projects":[{"key":"TLS","name":"Telus"},{"bad":1}]}"#.utf8))
+        XCTAssertEqual(list.account, "Jin Liu")
+        XCTAssertEqual(list.site, "")
+        XCTAssertEqual(list.projects, [JiraProject(key: "TLS", name: "Telus")])
+        let full = JiraProjectList(site: "https://acme.atlassian.net", account: nil, fetchedAt: Date(timeIntervalSince1970: 1_791_300_600), projects: list.projects)
+        XCTAssertEqual(try JSONDecoder.core.decode(JiraProjectList.self, from: JSONEncoder.core.encode(full)), full)
+        XCTAssertEqual(JiraProject(key: "TLS", name: "").label, "TLS")
+        XCTAssertEqual(JiraProject(key: "TLS", name: "").id, "TLS")
+        XCTAssertEqual(JiraListProblem.other("x").message, "x")
+        XCTAssertEqual(JiraListProblem.notConnected("y").message, "y")
+    }
+
+    func testRoutesAskForAFreshListOnlyWhenTold() async throws {
+        StubProtocol.recorded = []
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [StubProtocol.self]
+        let client = CoreClient(endpoint: CoreEndpoint(port: 5555, token: "t"), session: URLSession(configuration: config))
+        defer { StubProtocol.handler = nil }
+        StubProtocol.handler = { _ in (200, Data(#"{"site":"s","projects":[],"project":"TLS","types":[],"typeId":"1"}"#.utf8)) }
+        _ = try await client.jiraProjects()
+        XCTAssertNil(StubProtocol.recorded.last?.query)
+        _ = try await client.jiraIssueTypes("TLS")
+        XCTAssertEqual(StubProtocol.recorded.last?.path, "/v1/jira/projects/TLS/types")
+        XCTAssertNil(StubProtocol.recorded.last?.query)
+        _ = try await client.jiraIssueTypes("TLS", refresh: true)
+        XCTAssertEqual(StubProtocol.recorded.last?.query, "refresh=1")
+        _ = try await client.jiraCreateScreen("TLS", typeId: "1")
+        XCTAssertNil(StubProtocol.recorded.last?.query)
+        _ = try await client.jiraCreateScreen("TLS", typeId: "1", refresh: true)
+        XCTAssertEqual(StubProtocol.recorded.last?.query, "refresh=1")
+        // Any other Jira problem keeps the core's words; a plain error is an API error.
+        StubProtocol.handler = { _ in (409, Data(#"{"error":{"code":"x","message":"Odd.","jira":"weird"}}"#.utf8)) }
+        do { _ = try await client.jiraProjects(); XCTFail("expected a problem") } catch let e as JiraListError {
+            XCTAssertEqual(e.problem, .other("Odd."))
+        }
+        StubProtocol.handler = { _ in (409, Data(#"{"error":{"code":"x","jira":"auth_expired"}}"#.utf8)) }
+        do { _ = try await client.jiraProjects(); XCTFail("expected a problem") } catch let e as JiraListError {
+            XCTAssertEqual(e.problem, .notConnected("Jira didn’t answer."))
+        }
+        StubProtocol.handler = { _ in (500, Data(#"{"error":{"code":"boom","message":"Broken."}}"#.utf8)) }
+        do { _ = try await client.jiraProjects(); XCTFail("expected an error") } catch let e as CoreClientError {
+            XCTAssertEqual(e, .api(status: 500, code: "boom", message: "Broken."))
+        }
+    }
 }

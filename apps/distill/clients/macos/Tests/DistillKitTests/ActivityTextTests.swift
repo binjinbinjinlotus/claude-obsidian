@@ -443,4 +443,27 @@ final class ActivityTextTests: XCTestCase {
         XCTAssertEqual(ActivityText.Fact("A", "b").id, "A\u{1F}b")
         XCTAssertFalse(ActivityText.Fact("A", "b").code)
     }
+
+    func testDatesUseTheTextsOwnCalendarAndLocale() {
+        // UTC+14: the date can be a day ahead of the Mac's own zone, and French words: never the Mac's settings.
+        var kiritimati = Calendar(identifier: .gregorian)
+        kiritimati.timeZone = TimeZone(identifier: "Pacific/Kiritimati")!
+        let fr = ActivityText(calendar: kiritimati, locale: Locale(identifier: "fr_FR"))
+        let date = Date(timeIntervalSince1970: 1_791_028_800) // 2026-10-03 12:00 UTC = Oct 4 02:00 in Kiritimati
+        let later = date.addingTimeInterval(5 * 86_400)
+        XCTAssertEqual(fr.day(date, now: later), "oct. 4")
+        XCTAssertEqual(fr.date(date, now: later), "oct. 4")
+        XCTAssertEqual(fr.day(date, now: later.addingTimeInterval(400 * 86_400)), "oct. 4, 2026")
+    }
+
+    func testTheFirstOfTwoRestoresAtTheSameTimeStays() {
+        let a = entry("chat.restored", at: now, objectID: "c-1", details: ["trashId": .string("t1")])
+        let b = entry("chat.restored", at: now, objectID: "c-2", details: ["trashId": .string("t1")])
+        XCTAssertEqual(ActivityRestore.index([a, b])["t1"]?.objectID, "c-1")
+    }
+
+    func testVeryLargeNumbersAreNotRoundedToInts() {
+        XCTAssertEqual(t.plain(.number(1e15)), "1000000000000000.0", "from 1e15 on, the number as Swift writes it")
+        XCTAssertEqual(t.plain(.number(999_999_999_999_999)), "999999999999999")
+    }
 }

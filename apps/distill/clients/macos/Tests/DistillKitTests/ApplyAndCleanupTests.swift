@@ -217,8 +217,9 @@ final class ApplyAndCleanupTests: XCTestCase {
     func testSourcesCountFallsBackToTheApprovalThenTheJob() throws {
         var job = approvedJob(state: .running)
         job.approvedChange?.sourcesApproved = nil
-        job.approval = ApprovalRequest(summary: "", sources: [ReviewSource(page: "a.md", title: "A"), ReviewSource(page: "b.md", title: "B", removed: true)])
-        XCTAssertEqual(try XCTUnwrap(ApplyTimeline.make(job: job, steps: [])).sources, "1 source")
+        job.approval = ApprovalRequest(summary: "", sources: [ReviewSource(page: "a.md", title: "A"), ReviewSource(page: "b.md", title: "B", removed: true),
+                                                              ReviewSource(page: "c.md", title: "C")])
+        XCTAssertEqual(try XCTUnwrap(ApplyTimeline.make(job: job, steps: [])).sources, "2 sources", "removed sources don't count")
         job.approval = nil
         XCTAssertEqual(try XCTUnwrap(ApplyTimeline.make(job: job, steps: [])).sources, "1 source", "the job's own sources")
         job.files = []
@@ -232,6 +233,7 @@ final class ApplyAndCleanupTests: XCTestCase {
         job.refresh = RefreshState(since: t0)
         let t = try XCTUnwrap(ApplyTimeline.make(job: job, steps: [step("apply-1", "apply", "failed", "x")]))
         XCTAssertTrue(t.updating)
+        XCTAssertEqual(t.stage, .applying)
         XCTAssertFalse(t.isFailed)
         XCTAssertTrue(t.isRunning)
         XCTAssertEqual(t.help, "Another batch changed the same pages first. This batch’s session is rebuilding the plan against the pages as they are now.")
@@ -280,6 +282,57 @@ final class ApplyAndCleanupTests: XCTestCase {
         var noTurns = approvedJob(state: .running)
         noTurns.turns = []
         XCTAssertTrue(ApplyTimeline.approvalIsLatest(noTurns), "no turns kept: the approval stands")
+    }
+
+    func testOnlyApplySteps() throws {
+        let job = approvedJob(state: .running)
+        // Another step in the apply phase, or one named like an apply, is never the apply.
+        let steps = [step("start-1", "start", "done"), step("apply-1", "apply", "running", at: 2),
+                     JobStep(id: "x-1", at: t0.addingTimeInterval(3), phase: "apply", state: "failed", verb: "tool", text: "other"),
+                     JobStep(id: "apply-note", at: t0.addingTimeInterval(4), phase: "agent", state: "failed", verb: "tool", text: "note")]
+        let t = try XCTUnwrap(ApplyTimeline.make(job: job, steps: steps))
+        XCTAssertNil(t.failedAt)
+        XCTAssertEqual(t.stage, .applying)
+        // Exactly 5 seconds before the approval still counts.
+        let edge = try XCTUnwrap(ApplyTimeline.make(job: job, steps: [step("apply-1", "apply", "failed", "edge", at: -5)]))
+        XCTAssertEqual(edge.failedAt, .applying)
+        XCTAssertEqual(edge.error, "edge")
+    }
+
+    func testTheApprovedRowTimeIsTheApprovalStep() throws {
+        let approved = t0.addingTimeInterval(-30)
+        let steps = [JobStep(id: "a1", at: approved, endedAt: approved, phase: "agent", verb: "answer", text: "You approved"),
+                     JobStep(id: "a2", at: t0, endedAt: t0.addingTimeInterval(1), phase: "agent", verb: "answer", text: "You replied"),
+                     JobStep(id: "a3", at: t0, endedAt: t0.addingTimeInterval(2), phase: "agent", verb: "tool", text: "You approved")]
+        let t = try XCTUnwrap(ApplyTimeline.make(job: approvedJob(state: .running), steps: steps))
+        XCTAssertEqual(t.times.first, approved)
+        XCTAssertFalse(ApplyTimeline(stage: .done).core, "an AI apply unless told")
+    }
+
+    func testPlanReplacedReadsTheApprovalTurnOnly() {
+        let plan = TransactionPlan(operationID: "op", operationType: "ingest", valid: true, changedPaths: [], approvalSHA256: "abcdef0123456789")
+        var job = approvedJob(state: .awaitingApproval)
+        job.approval = ApprovalRequest(summary: "", bundlePath: "/b", plan: plan)
+        job.turns = [TurnRecord(date: t0, author: .user, text: "Approved op-1 (ffffff01…)"), TurnRecord(date: t0, author: .user, text: "Thanks")]
+        XCTAssertTrue(ApplyTimeline.planReplaced(job), "an 8-character prefix is enough; a later reply isn't the approval")
+        job.turns = [TurnRecord(date: t0, author: .user, text: "Approved op-1 (abcdef01…)"), TurnRecord(date: t0, author: .app, text: "Approved (zzzzzzzzzz…)")]
+        XCTAssertFalse(ApplyTimeline.planReplaced(job), "the app's own turn isn't the approval")
+    }
+
+    func testReviewListsRunningPartsAndRebuildsOnly() {
+        var refreshing = Job(id: "r", vaultPath: "/v", files: [], state: .running)
+        refreshing.refresh = RefreshState(since: t0)
+        var part = Job(id: "p", vaultPath: "/v", files: [], state: .running)
+        part.pendingPart = PendingPart(reason: .partial)
+        var finished = Job(id: "f", vaultPath: "/v", files: [], state: .completed)
+        finished.pendingPart = PendingPart(reason: .partial)
+        let plain = Job(id: "x", vaultPath: "/v", files: [], state: .running)
+        XCTAssertEqual(Set(ApplyTimeline.reviewList([refreshing, part, finished, plain]).map(\.id)), ["r", "p"])
+        var failed = approvedJob(state: .failed, op: "op-1")
+        XCTAssertEqual(ApplyTimeline.tabSubtitle(failed), "not added", "the approved operation on a failed job isn't added")
+        failed.state = .completed
+        failed.operationID = "other"
+        XCTAssertEqual(ApplyTimeline.tabSubtitle(failed), "not added")
     }
 
     func testReviewKeepsAnApprovedBatchUntilDoneAndNeverCountsIt() {
