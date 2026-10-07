@@ -1,3 +1,7 @@
 node_modules/
 dist/
 *.tsbuildinfo
+# Stryker mutation testing (npm run test:mutation)
+/core/reports/
+/cli/reports/
+.stryker-tmp/
