@@ -1237,6 +1237,19 @@ describe('Jira required fields (actions.md, fake Jira)', () => {
     assert.equal('customfield_207' in f, false, 'Jira fills its own default');
   });
 
+  test('the system Environment field goes as a document (REST v3), like a text area', async () => {
+    const h = harness();
+    const posts: unknown[] = [];
+    const environment = { fieldId: 'environment', key: 'environment', name: 'Environment', required: true, hasDefaultValue: false, schema: { type: 'string', system: 'environment' } };
+    await connected(h, requiredRoutes([environment], posts));
+    assert.equal((await h.service.jiraFields('TLS', '10001')).extra!.find((f) => f.id === 'environment')!.kind, 'textarea');
+    const t = await h.service.createAction({ type: 'jira', title: 'Cap retries', body: 'b', fields: { project: 'TLS', issueType: 'Task', 'jira.customfield_11063': 'Data', 'jira.environment': 'Staging, us-east-1' } });
+    assert.equal((await h.service.performAction(t.id, 'create')).status, 'created');
+    const env = (posts[0] as { fields: Record<string, any> }).fields.environment;
+    assert.equal(env.type, 'doc');
+    assert.equal(env.version, 1);
+  });
+
   test('each type refuses its own way, with zero POSTs', async () => {
     const h = harness();
     await connected(h, requiredRoutes(EVERY_KIND));

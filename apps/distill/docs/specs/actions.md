@@ -230,7 +230,7 @@ card `jira-card-required`.
   option, text, text area, number and date (YYYY-MM-DD); a JSON array of
   names for several choices; JSON `{accountId, name}` for a person; JSON
   `[parent, child]` for a cascading field. Create maps them by type: option
-  `{id}`, several `[{id}]`, text as is, text area as a document, number as a
+  `{id}`, several `[{id}]`, text as is, text area (and the system Environment field) as a document, number as a
   number, date as the day, person `{accountId}`, cascading
   `{id, child: {id}}`. A value outside Jira's choices refuses ("Juggling isn't
   a choice for Team. Pick one.").

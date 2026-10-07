@@ -37,7 +37,8 @@ export function fieldKind(schema: JiraField['schema']): JiraFieldKind {
     case 'array':
       return OPTION_ITEMS.has(schema.items ?? '') ? 'options' : 'unsupported';
     case 'string':
-      return /textarea/.test(custom) ? 'textarea' : 'text';
+      // REST v3 takes a multi-line custom field and the system Environment field as a document.
+      return /textarea/.test(custom) || schema.system === 'environment' ? 'textarea' : 'text';
     case 'number':
       return 'number';
     case 'date':
