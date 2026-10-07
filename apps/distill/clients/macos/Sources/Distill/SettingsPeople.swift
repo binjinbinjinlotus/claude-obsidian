@@ -41,10 +41,11 @@ struct PeopleSettingsPage: View {
     @ObservedObject var store: ActionsStore
     /// Snapshots: a fixed preview (the app asks the core).
     var fixturePreview: RoutingPreview? = nil
-    @State private var adding: [String: String] = [:]
+    /// People whose "The notes call them" ＋ is open.
+    @State private var adding: Set<String> = []
     @State private var editingName: String?
-    /// Just added and not named yet: shown here, saved with its first name.
-    @State private var newPerson: ActionPerson?
+    /// A person just added and not named yet (kept here, saved with their first name).
+    @State private var edit = PeopleEdit()
 
     private var prefs: ActionPreferences { SettingsEdits.actions(engine.settings) }
     private var types: [SettingsActionType] { ui.actionTypes.filter { !$0.reserved && SettingsEdits.typeEnabled($0, engine.settings) } }
@@ -63,7 +64,7 @@ struct PeopleSettingsPage: View {
                 .font(Theme.body(13)).foregroundStyle(Theme.softInk).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: 820, alignment: .leading)
             caps("People").padding(.top, 4)
-            ForEach(prefs.people + (newPerson.map { [$0] } ?? [])) { person in personRow(person) }
+            ForEach(edit.rows(prefs)) { person in personRow(person) }
             Button { addPerson() } label: { Text("＋ Add a person").font(Theme.body(12.5, .semibold)).foregroundStyle(Theme.primary) }
                 .buttonStyle(.plain).padding(.top, 2).padding(.bottom, 6)
             caps("Each type")
@@ -90,8 +91,9 @@ struct PeopleSettingsPage: View {
                 HStack(spacing: 6) {
                     if editingName == p.id || p.name.isEmpty {
                         DraftTextField(placeholder: p.isYou ? "Your name, as the notes write it" : "Their name", key: p.id, value: p.name,
+                                       autoFocus: edit.newPerson?.id == p.id,
                                        normalize: p.isYou ? FieldText.trimmed : FieldText.nonEmpty,
-                                       save: { _, name in saveName(p, name) })
+                                       save: { id, name in SettingsEdits.setActions(&engine.settings) { edit.saveName(id, name, in: &$0) } })
                             .textFieldStyle(.plain).font(Theme.body(13.5, .semibold)).frame(maxWidth: 260)
                             .onSubmit { editingName = nil }
                     } else {
@@ -110,13 +112,13 @@ struct PeopleSettingsPage: View {
                         .font(Theme.body(12)).padding(.horizontal, 9).frame(height: 24)
                         .background(Capsule().fill(Theme.panel))
                     }
-                    if let text = adding[p.id] {
-                        TextField("Name or @handle", text: Binding(get: { text }, set: { adding[p.id] = $0 }))
-                            .textFieldStyle(.plain).font(Theme.body(12)).frame(width: 120, height: 24).padding(.horizontal, 8)
-                            .overlay(Capsule().strokeBorder(Theme.primary))
-                            .onSubmit { commitAlias(p) }
+                    if adding.contains(p.id) {
+                        AliasField { text in
+                            adding.remove(p.id)
+                            if let text, let aliases = PeopleEdit.alias(text, to: p.aliases) { setAliases(p, aliases) }
+                        }
                     } else {
-                        Button { adding[p.id] = "" } label: {
+                        Button { adding.insert(p.id) } label: {
                             Text("＋").font(Theme.body(12)).foregroundStyle(Theme.muted).padding(.horizontal, 9).frame(height: 24)
                                 .overlay(Capsule().strokeBorder(Color(hex: 0xD6D3CC), style: StrokeStyle(lineWidth: 1.5, dash: [3, 2])))
                         }
@@ -127,8 +129,8 @@ struct PeopleSettingsPage: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             if !p.isYou {
                 Button("Remove") {
-                    if newPerson?.id == p.id { newPerson = nil; return }
-                    SettingsEdits.setActions(&engine.settings) { $0.removePerson(p.id, types: ui.actionTypes.map(\.id)) }
+                    let types = ui.actionTypes.map(\.id)
+                    SettingsEdits.setActions(&engine.settings) { edit.remove(p.id, types: types, in: &$0) }
                 }
                     .buttonStyle(.plain).font(Theme.body(12)).foregroundStyle(Theme.muted)
             }
@@ -137,33 +139,13 @@ struct PeopleSettingsPage: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Color(hex: 0xF0EEEA)).frame(height: 1) }
     }
 
-    /// A person just added joins Settings with their first name (the core drops an empty one).
-    private func saveName(_ p: ActionPerson, _ name: String) {
-        if let n = newPerson, n.id == p.id {
-            newPerson = nil
-            SettingsEdits.setActions(&engine.settings) { $0.people.append(ActionPerson(id: n.id, name: name, aliases: n.aliases)) }
-        } else {
-            SettingsEdits.setActions(&engine.settings) { $0.setName(p.id, name) }
-        }
-    }
-
     private func setAliases(_ p: ActionPerson, _ aliases: [String]) {
-        if newPerson?.id == p.id { newPerson?.aliases = aliases; return }
-        SettingsEdits.setActions(&engine.settings) { pr in
-            pr.people = pr.people.map { $0.id == p.id ? ActionPerson(id: $0.id, name: $0.name, aliases: aliases) : $0 }
-        }
-    }
-
-    private func commitAlias(_ p: ActionPerson) {
-        let v = (adding[p.id] ?? "").trimmingCharacters(in: .whitespaces)
-        adding[p.id] = nil
-        guard !v.isEmpty, !p.aliases.contains(where: { $0.caseInsensitiveCompare(v) == .orderedSame }) else { return }
-        setAliases(p, p.aliases + [v])
+        SettingsEdits.setActions(&engine.settings) { edit.setAliases(p.id, aliases, in: &$0) }
     }
 
     private func addPerson() {
         let id = "p-" + UUID().uuidString.prefix(8).lowercased()
-        newPerson = ActionPerson(id: id, name: "")
+        edit.add(id: id)
         editingName = id
     }
 
@@ -172,7 +154,7 @@ struct PeopleSettingsPage: View {
     private func typeRow(_ t: SettingsActionType) -> some View {
         let handles = prefs.handlesFor(t.id)
         let people = prefs.people
-        let missing = people.filter { !handles.contains($0.id) && !$0.name.isEmpty }
+        let missing = PeopleEdit.addable(prefs, type: t.id)
         return HStack(alignment: .center, spacing: 12) {
             ActionTypeTile(id: t.id, size: 22)
             Text(t.id == "todo" ? "To-do" : t.label).font(Theme.body(13, .semibold)).frame(width: 110, alignment: .leading)
@@ -191,15 +173,24 @@ struct PeopleSettingsPage: View {
                             .background(Capsule().fill(Theme.primaryTint))
                         }
                     }
-                    Menu {
-                        ForEach(missing) { p in Button(p.isYou ? "\(p.name) (you)" : p.name) { set(t.id, handles + [p.id]) } }
-                        if missing.isEmpty { Text("Everyone in People is here") }
-                    } label: {
-                        Text("＋").font(Theme.body(12)).foregroundStyle(Theme.muted)
+                    // Nobody left to add: a menu of one disabled line opened and shut at once, so ＋ adds a person.
+                    if missing.isEmpty {
+                        Button { addPerson() } label: { Text("＋").font(Theme.body(12)).foregroundStyle(Theme.muted) }
+                            .buttonStyle(.plain).help("Everyone in People is here. Add a person")
+                            .padding(.horizontal, 9).frame(height: 24)
+                            .overlay(Capsule().strokeBorder(Color(hex: 0xD6D3CC), style: StrokeStyle(lineWidth: 1.5, dash: [3, 2])))
+                    } else {
+                        Menu {
+                            ForEach(missing) { p in Button(p.isYou ? "\(p.name) (you)" : p.name) { set(t.id, handles + [p.id]) } }
+                            Divider()
+                            Button("Add a person…") { addPerson() }
+                        } label: {
+                            Text("＋").font(Theme.body(12)).foregroundStyle(Theme.muted)
+                        }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                        .padding(.horizontal, 9).frame(height: 24)
+                        .overlay(Capsule().strokeBorder(Color(hex: 0xD6D3CC), style: StrokeStyle(lineWidth: 1.5, dash: [3, 2])))
                     }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                    .padding(.horizontal, 9).frame(height: 24)
-                    .overlay(Capsule().strokeBorder(Color(hex: 0xD6D3CC), style: StrokeStyle(lineWidth: 1.5, dash: [3, 2])))
                 }
                 Text(Routing.handlesHint(type: t.id, handles: handles, people: people)).font(Theme.body(11.5)).foregroundStyle(Theme.faint)
             }
@@ -223,8 +214,9 @@ struct PeopleSettingsPage: View {
                     .font(Theme.body(12.5)).fixedSize(horizontal: false, vertical: true)
             } else if let p = fixturePreview ?? store.routingPreview {
                 (Text("In the last \(p.days) days this would have sent ") + Text("\(p.lists)").bold() + Text(" to your lists, ")
-                 + Text("\(p.waiting)").bold() + Text(" to Pending and ") + Text("\(p.others)").bold() + Text(" to Highlights."))
-                    .font(Theme.body(12.5))
+                 + Text("\(p.waiting)").bold() + Text(" to Pending and ") + Text("\(p.others)").bold() + Text(" to Highlights.")
+                 + Text(p.beforeRoutingNote.map { " " + $0 } ?? "").foregroundColor(Theme.muted))
+                    .font(Theme.body(12.5)).fixedSize(horizontal: false, vertical: true)
             } else {
                 Text("Working out what the last 7 days would have done…").font(Theme.body(12.5)).foregroundStyle(Theme.muted)
             }
@@ -232,5 +224,31 @@ struct PeopleSettingsPage: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color(hex: 0xF2F7FF)))
+    }
+}
+
+/// "The notes call them" ＋'s field: focused when it opens; Return or clicking away adds the name,
+/// Esc closes it without adding. `done(nil)`: closed with nothing to add.
+private struct AliasField: View {
+    let done: (String?) -> Void
+    @State private var text = ""
+    @State private var closed = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField("Name or @handle", text: $text)
+            .textFieldStyle(.plain).font(Theme.body(12)).frame(width: 120, height: 24).padding(.horizontal, 8)
+            .overlay(Capsule().strokeBorder(Theme.primary))
+            .focused($focused)
+            .onAppear { focused = true }
+            .onSubmit { close(text) }
+            .onExitCommand { close(nil) }
+            .onChange(of: focused) { _, now in if !now { close(text) } }
+    }
+
+    private func close(_ value: String?) {
+        guard !closed else { return }
+        closed = true
+        done(value)
     }
 }

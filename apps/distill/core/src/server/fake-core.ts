@@ -751,7 +751,7 @@ export function createFakeCore(init: { jobs?: Job[]; settings?: Partial<Settings
     },
     async routingPreview(prefs) {
       record('routingPreview', prefs);
-      return { days: 7, lists: 14, waiting: 6, others: 31 };
+      return { days: 7, lists: 14, waiting: 6, others: 31, beforeRouting: 0 };
     },
     async listHighlights() {
       record('listHighlights');

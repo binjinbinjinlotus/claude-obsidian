@@ -1491,6 +1491,8 @@ export interface RoutingPreview {
   lists: number;
   waiting: number;
   others: number;
+  /** Items found from notes in those days before routing was on: they have no owner, so they aren't counted. */
+  beforeRouting: number;
 }
 
 /** One note's Highlights (actions-routing.md). */

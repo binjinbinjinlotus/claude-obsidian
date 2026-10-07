@@ -110,7 +110,7 @@ describe('HTTP API: actions and connections', () => {
     assert.deepEqual(last('nudgeAction')!.args, ['act-1', { to: '@aditya', text: 'Hi Aditya, any update?' }]);
     assert.equal((await request(port, 'POST', '/v1/actions/act-1/nudge', { to: '@aditya' })).status, 400);
     const preview = await request(port, 'POST', '/v1/actions/routing-preview', { people: [{ id: 'you', name: 'Jin', aliases: [] }] });
-    assert.deepEqual(preview.body, { days: 7, lists: 14, waiting: 6, others: 31 });
+    assert.deepEqual(preview.body, { days: 7, lists: 14, waiting: 6, others: 31, beforeRouting: 0 });
     assert.deepEqual(last('routingPreview')!.args, [{ people: [{ id: 'you', name: 'Jin', aliases: [] }] }]);
     await request(port, 'POST', '/v1/actions/routing-preview');
     assert.deepEqual(last('routingPreview')!.args, [undefined]);

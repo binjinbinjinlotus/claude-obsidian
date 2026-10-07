@@ -13,6 +13,8 @@ struct DraftTextField: View {
     /// The stored value, normalised.
     let value: String
     var axis: Axis = .horizontal
+    /// Focus the field when it appears (a person just added).
+    var autoFocus = false
     let normalize: (String) -> String?
     let save: (_ key: String, _ value: String) -> Void
 
@@ -27,6 +29,7 @@ struct DraftTextField: View {
             .onChange(of: focused) { _, now in if !now { finish() } }
             .onChange(of: key) { load() }
             .onChange(of: value) { load() }
+            .onAppear { if autoFocus { focused = true } }
             .onDisappear { finish() }
             // The main window is kept when closed, so it may not disappear: save without touching the text.
             .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { _ in flush() }
