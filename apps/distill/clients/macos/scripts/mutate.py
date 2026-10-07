@@ -300,6 +300,12 @@ def sync_copy(dest: Path, kit_only: bool) -> None:
                     f"{PACKAGE}/Resources", f"{dest}/"], check=True)
     if kit_only:
         (dest / "Package.swift").write_text(KIT_ONLY_PACKAGE)
+    # Shared fixtures a test reads five levels above itself (SlackTargetTests: apps/distill/core/…/*.cases.json).
+    shared = PACKAGE.parent.parent / "core" / "src" / "actions"
+    mirror = dest.parent.parent / "core" / "src" / "actions"
+    for case in shared.glob("*.cases.json"):
+        mirror.mkdir(parents=True, exist_ok=True)
+        (mirror / case.name).write_bytes(case.read_bytes())
 
 
 def run(cmd: list[str], cwd: Path, timeout: int) -> tuple[int | None, str]:
