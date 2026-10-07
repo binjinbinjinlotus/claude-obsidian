@@ -173,7 +173,7 @@ struct PeopleSettingsPage: View {
                             .background(Capsule().fill(Theme.primaryTint))
                         }
                     }
-                    // Nobody left to add: a menu of one disabled line opened and shut at once, so ＋ adds a person.
+                    // Nobody left to add: the menu had nothing to pick, so ＋ adds a person.
                     if missing.isEmpty {
                         Button { addPerson() } label: { Text("＋").font(Theme.body(12)).foregroundStyle(Theme.muted) }
                             .buttonStyle(.plain).help("Everyone in People is here. Add a person")
@@ -227,8 +227,9 @@ struct PeopleSettingsPage: View {
     }
 }
 
-/// "The notes call them" ＋'s field: focused when it opens; Return or clicking away adds the name,
-/// Esc closes it without adding. `done(nil)`: closed with nothing to add.
+/// "The notes call them" ＋'s field: focused when it opens; Return adds the name (empty: closes),
+/// clicking away adds a typed name and leaves an empty field open, Esc closes it without adding.
+/// `done(nil)`: closed with nothing to add.
 private struct AliasField: View {
     let done: (String?) -> Void
     @State private var text = ""
@@ -243,7 +244,9 @@ private struct AliasField: View {
             .onAppear { focused = true }
             .onSubmit { close(text) }
             .onExitCommand { close(nil) }
-            .onChange(of: focused) { _, now in if !now { close(text) } }
+            .onChange(of: focused) { _, now in
+                if !now && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { close(text) }
+            }
     }
 
     private func close(_ value: String?) {

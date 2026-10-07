@@ -32,7 +32,7 @@ goes to the note's Highlights.
   your lists. When absent it is `["you"]`.
 - The page shows:
   - People: a name, then "The notes call them" alias chips with × and ＋, and Remove. The
-    alias field opens focused; Return or clicking away adds the name, Esc closes it.
+    alias field opens focused; Return or clicking away adds a typed name, Esc closes it.
   - "＋ Add a person". The new row stays on the page, focused, until it has a name, and is
     saved to Settings only then (the core drops a person with an empty name).
   - Each type's "Handles items for" chips with × and a ＋ menu (named people not there yet,
