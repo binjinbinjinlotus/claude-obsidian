@@ -165,6 +165,15 @@
      "boards": [
       "ScriptActions.dc.html"
      ]
+    },
+    {
+     "note": {
+      "id": "flow17",
+      "text": "17 · Track as Pending (an item someone else will do goes to Pending, from To confirm or an added to-do)"
+     },
+     "boards": [
+      "ActionsTrackPending.dc.html"
+     ]
     }
    ]
   },

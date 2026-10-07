@@ -109,6 +109,26 @@ Actions → Pending, a sidebar sub-item with its count.
   applies. The row then reads "Looks received in 2026-10-06 Standup. Mark received?".
   - It is only a suggestion. Nothing closes on its own.
 
+### Track as Pending from To confirm and To do (proposal 2026-10-07, design only, not built)
+
+Owner request: an item in To confirm, or a to-do already added, that someone else will do should go
+to Pending. Canvas: board "Actions · Track as Pending" (`ActionsTrackPending.dc.html`, page
+4 Actions). Waits for the owner's answers on that board's questions card.
+
+- To confirm: Add as… gets a divider and "Track as Pending…" after the action types; the row's
+  context menu reads Add as ▸, Track as Pending…, Dismiss. Proposed key: ⇧⌥Return.
+- The panel (in the detail, like Add as): Waiting on (a People picker, filled with the item's
+  owner when it isn't you; a name not in People is kept as written) and By (optional, filled from
+  the due date), then Cancel · Track as Pending. When the owner is you, Waiting on is empty and
+  required ("Fill in who you're waiting on").
+- An added to-do: "Move to Pending…" at the end of Send to, with the same panel.
+- After: the item leaves its list, Pending's count goes up, and a toast reads "Tracked as Pending ·
+  waiting on Aditya · Undo" (Undo puts it back where it was).
+- Core (proposed): `POST /v1/actions/:id/track-pending` gains `{waitingOn, by?}`; the item keeps
+  its id, note, line, Why and labels.
+- Open: to-dos only or every type; By optional; Undo back to To confirm; the key; Send to or the
+  ⋯ menu; what Activity records.
+
 ## Highlights
 
 Actions → Highlights: one card per note with routed items, newest first, filtered by All
