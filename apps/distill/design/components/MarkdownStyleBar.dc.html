@@ -1,13 +1,13 @@
 <!-- MarkdownStyleBar: source template. render.py wraps it in the page shell and writes data-props from components.json.
      @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
 <x-dc>
-<div role="toolbar" aria-label="Text style" style="display: flex; align-items: center; gap: 1px; padding: {{pad}}; border-radius: {{radius}}; background: #F6F5F2; width: fit-content">
+<div role="toolbar" aria-label="Text style" style="display: flex; align-items: center; gap: 1px; padding: {{pad}}; border-radius: {{radius}}; background: var(--panel); width: fit-content">
 <sc-for list="{{cells}}" as="c" hint-placeholder-count="10">
 <sc-if value="{{c.divider}}" hint-placeholder-val="{{ false }}"><span style="width: 1px; height: 16px; background: #E1DED8; margin: 0 3px"></span></sc-if>
 <sc-if value="{{c.isText}}" hint-placeholder-val="{{ true }}"><span title="{{c.help}}" style="width: {{size}}; height: {{size}}; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: {{c.bg}}; color: {{c.fg}}; font-size: 12.5px; {{c.css}}">{{c.label}}</span></sc-if>
 <sc-if value="{{c.isPath}}" hint-placeholder-val="{{ false }}"><span title="{{c.help}}" style="width: {{size}}; height: {{size}}; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: {{c.bg}}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{c.fg}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.d}}"></path></svg></span></sc-if>
 </sc-for>
-<sc-if value="{{image}}" hint-placeholder-val="{{ false }}"><span style="width: 1px; height: 16px; background: #E1DED8; margin: 0 3px"></span><span title="Insert image (or paste ⌘V, or drop)" style="height: {{size}}; display: flex; align-items: center; gap: 5px; padding: 0 9px; border-radius: 8px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5; font-size: 12px; font-weight: 700; color: #48463F"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#48463F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18v16H3zM21 16l-5-5-9 9M9 8h.01"></path></svg>Image</span></sc-if>
+<sc-if value="{{image}}" hint-placeholder-val="{{ false }}"><span style="width: 1px; height: 16px; background: #E1DED8; margin: 0 3px"></span><span title="Insert image (or paste ⌘V, or drop)" style="height: {{size}}; display: flex; align-items: center; gap: 5px; padding: 0 9px; border-radius: 8px; background: var(--window); box-shadow: 0 0 0 1px var(--border); font-size: 12px; font-weight: 700; color: #48463F"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#48463F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18v16H3zM21 16l-5-5-9 9M9 8h.01"></path></svg>Image</span></sc-if>
 </div>
 </x-dc>
 <script type="text/x-dc-logic">
@@ -22,7 +22,7 @@ GROUPS[variant].forEach((g, gi) => g.forEach((k, ki) => {
   const [kind, label, d, css] = ITEMS[k];
   const onNow = pressed === k;
   cells.push({ divider: gi > 0 && ki === 0, isText: kind === 'text', isPath: kind === 'path', label, d, css, help: HELP[k],
-    bg: onNow ? '#E3EEFF' : 'transparent', fg: onNow ? '#1F6FEB' : '#48463F' });
+    bg: onNow ? 'var(--primaryTint)' : 'transparent', fg: onNow ? 'var(--primary)' : '#48463F' });
 }));
 return { cells, image: on(p.image, false), size: small ? '24px' : '28px', pad: small ? '2px' : '3px', radius: small ? '9px' : '11px' };
 </script>

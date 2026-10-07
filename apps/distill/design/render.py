@@ -34,7 +34,9 @@ import sys
 ROOT = os.path.dirname(os.path.abspath(__file__))
 FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com">\n'
          '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&amp;family=DM+Sans:wght@400;500;600;700&amp;display=swap">')
-BASE_CSS = 'body{margin:0;font-family:"DM Sans",-apple-system,sans-serif;color:#1D1C1A;-webkit-font-smoothing:antialiased}'
+BASE_CSS = 'body{margin:0;font-family:"DM Sans",-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}'
+TOKENS_CSS = 'ds/distill/tokens.css'  # the Distill Design System's variables, installed on the canvas (design/tokens.py writes it)
+TOKENS_LINK = f'<link rel="stylesheet" href="./{TOKENS_CSS}">'
 
 
 def load(name):
@@ -132,6 +134,7 @@ def page(title, body, props_json, script, css=''):
 <meta charset="utf-8">
 <title>{title}</title>
 <script src="./support.js"></script>
+{TOKENS_LINK}
 </head>
 <body>
 <x-dc>
@@ -370,7 +373,7 @@ def page_doc(doc, body):
     """A page board's document: the window body plus its own CSS, data-props and script, kept verbatim
     (the script carries the sc-for data, so it never goes through str.format)."""
     return ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
-            f'<title>{doc["title"]}</title>\n<script src="./support.js"></script>\n</head>\n<body>\n<x-dc>\n<helmet>\n{FONTS}\n'
+            f'<title>{doc["title"]}</title>\n<script src="./support.js"></script>\n{TOKENS_LINK}\n</head>\n<body>\n<x-dc>\n<helmet>\n{FONTS}\n'
             f'<style>{doc["css"]}</style>\n</helmet>\n{body}\n</x-dc>\n'
             f"<script type=\"text/x-dc\" data-dc-script data-props='{doc['props']}'>\n{doc['script']}\n</script>\n</body>\n</html>\n")
 
@@ -649,6 +652,8 @@ def main(argv):
             with open(os.path.join(out_dir, f), 'w', encoding='utf-8') as fh:
                 fh.write(built[f][0])
         shutil.copy(os.path.join(ROOT, 'support.js'), os.path.join(out_dir, 'support.js'))
+        os.makedirs(os.path.join(out_dir, os.path.dirname(TOKENS_CSS)), exist_ok=True)  # local renders only; the canvas has its install
+        shutil.copy(os.path.join(ROOT, 'ds', 'tokens.css'), os.path.join(out_dir, TOKENS_CSS))
 
     write()
     if do_measure:

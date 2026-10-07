@@ -1,8 +1,8 @@
 <!-- PrimaryButton: source template. render.py wraps it in the page shell and writes data-props from components.json.
      @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
 <x-dc>
-<span style="height: {{h}}; display: inline-flex; align-items: center; gap: {{gap}}; padding: 0 {{pad}}; border-radius: {{r}}; opacity: {{op}}; background: #1F6FEB; color: #FFFFFF; font-size: {{fs}}; font-weight: 600; white-space: nowrap; box-shadow: {{shadow}}; box-sizing: border-box">
-<sc-if value="{{hasIcon}}" hint-placeholder-val="{{ false }}"><svg width="{{ic}}" height="{{ic}}" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{d}}"></path></svg></sc-if>{{title}}</span>
+<span style="height: {{h}}; display: inline-flex; align-items: center; gap: {{gap}}; padding: 0 {{pad}}; border-radius: {{r}}; opacity: {{op}}; background: var(--primary); color: var(--window); font-size: {{fs}}; font-weight: 600; white-space: nowrap; box-shadow: {{shadow}}; box-sizing: border-box">
+<sc-if value="{{hasIcon}}" hint-placeholder-val="{{ false }}"><svg width="{{ic}}" height="{{ic}}" viewBox="0 0 24 24" fill="none" stroke="var(--window)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{d}}"></path></svg></sc-if>{{title}}</span>
 </x-dc>
 <script type="text/x-dc-logic">
 const ICONS = @@ICONS@@;

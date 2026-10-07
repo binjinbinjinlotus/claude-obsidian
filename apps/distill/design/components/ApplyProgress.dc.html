@@ -4,7 +4,7 @@
 <section aria-label="{{heading}}" style="width: {{w}}; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; padding: {{pad}}; border-radius: 16px; background: {{bg}}; box-shadow: inset 0 0 0 1px {{ring}}">
 <div style="display: flex; align-items: center; gap: 10px; padding: 0 8px 6px">
 <span style="font-size: 14px; font-weight: 700; color: {{headInk}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0">{{heading}}</span>
-<sc-if value="{{hasPart}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; color: #6B6862; white-space: nowrap">{{part}}</span></sc-if>
+<sc-if value="{{hasPart}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; color: var(--muted); white-space: nowrap">{{part}}</span></sc-if>
 <span style="flex-grow: 1"></span>
 <a href="#" style="font-size: 12px; font-weight: 600; text-decoration: none; white-space: nowrap">Show steps</a>
 </div>
@@ -45,7 +45,7 @@ const done = !failed && (stage === 'finding' || stage === 'done' || stage === 'a
 const heading = p.heading || (failed ? 'Not added to your vault' : done ? 'Added to ' + vault : 'Adding to ' + vault + '…');
 const summary = folded ? [p.part || '', 'All ' + steps.length + ' steps done', last].filter(Boolean).join(' · ') : (p.part || '');
 return { w: px(p.width, '100%'), rows: folded ? [] : rows, heading, part: summary, hasPart: !!summary,
-  headInk: failed ? '#B03A0A' : done ? '#3D6110' : '#1D1C1A',
-  bg: failed ? '#FFF8F4' : '#FBFAF8', ring: failed ? '#FFE4D6' : '#ECEAE5',
+  headInk: failed ? 'var(--peachInk)' : done ? 'var(--limeInk)' : 'var(--ink)',
+  bg: failed ? '#FFF8F4' : '#FBFAF8', ring: failed ? 'var(--peachTint)' : 'var(--border)',
   help: p.help || '', hasHelp: !!p.help && !folded, pad: folded ? '12px 10px 6px' : '12px 10px 8px' };
 </script>

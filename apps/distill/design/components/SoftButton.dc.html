@@ -9,6 +9,6 @@ const z = SIZES[p.size] || SIZES.regular;
 const ICONS = @@ICONS@@;
 const d = ICONS[p.systemImage || ''] || '';
 const enabled = on(p.enabled, true);
-return { d, hasIcon: !!d, op: enabled ? 1 : 0.45, ic: z[3], gap: z[4] + 'px', title: p.title !== undefined ? p.title : 'Skip labels', tint: p.tint || '#1D1C1A', fill: p.fill || '#F6F5F2', ring: p.stroke ? 'inset 0 0 0 1px ' + p.stroke : 'none',
+return { d, hasIcon: !!d, op: enabled ? 1 : 0.45, ic: z[3], gap: z[4] + 'px', title: p.title !== undefined ? p.title : 'Skip labels', tint: p.tint || 'var(--ink)', fill: p.fill || 'var(--panel)', ring: p.stroke ? 'inset 0 0 0 1px ' + p.stroke : 'none',
   h: z[0] + 'px', pad: (z[1] - 2) + 'px', r: z[0] / 2 + 'px', fs: z[2] + 'px' };
 </script>

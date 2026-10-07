@@ -6,5 +6,5 @@
 <script type="text/x-dc-logic">
 const num = (v, d) => (v === undefined || v === null || v === '' || isNaN(Number(v))) ? d : Number(v);
 const h = num(p.height, 28), removable = on(p.removable, true);
-return { text: p.text || '#tea', fill: p.fill || '#E3EEFF', ink: p.ink || '#1F6FEB', h: h + 'px', r: h / 2 + 'px', removable, padR: removable ? '5px' : '11px' };
+return { text: p.text || '#tea', fill: p.fill || 'var(--primaryTint)', ink: p.ink || 'var(--primary)', h: h + 'px', r: h / 2 + 'px', removable, padR: removable ? '5px' : '11px' };
 </script>

@@ -3,12 +3,12 @@
 <x-dc>
 <div title="{{tip}}" style="width: {{w}}; display: flex; align-items: center; gap: 6px; min-width: 0; box-sizing: border-box">
 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{iconInk}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"></path></svg>
-<sc-if value="{{hasLabel}}" hint-placeholder-val="{{ false }}"><span style="font-size: {{fs}}; color: #9B978F; flex-shrink: 0">{{label}}</span></sc-if>
+<sc-if value="{{hasLabel}}" hint-placeholder-val="{{ false }}"><span style="font-size: {{fs}}; color: var(--faint); flex-shrink: 0">{{label}}</span></sc-if>
 <span style="font-size: {{fs}}; color: {{pathInk}}; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; padding: 1px 4px; border-radius: 5px; background: {{pathBg}}; text-decoration: {{strike}}">{{path}}</span>
-<sc-if value="{{missing}}" hint-placeholder-val="{{ false }}"><span style="font-size: {{fs}}; color: #B03A0A; font-weight: 600; white-space: nowrap; flex-shrink: 0">is missing</span><span role="button" style="height: 26px; display: inline-flex; align-items: center; padding: 0 8px; color: #1F6FEB; font-size: {{fs}}; font-weight: 600; white-space: nowrap; flex-shrink: 0">Create folder</span></sc-if>
+<sc-if value="{{missing}}" hint-placeholder-val="{{ false }}"><span style="font-size: {{fs}}; color: var(--peachInk); font-weight: 600; white-space: nowrap; flex-shrink: 0">is missing</span><span role="button" style="height: 26px; display: inline-flex; align-items: center; padding: 0 8px; color: var(--primary); font-size: {{fs}}; font-weight: 600; white-space: nowrap; flex-shrink: 0">Create folder</span></sc-if>
 <sc-if value="{{present}}" hint-placeholder-val="{{ true }}"><span style="display: inline-flex; align-items: center; gap: 0; flex-shrink: 0">
 <span role="button" title="{{copyHelp}}" style="height: 26px; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border-radius: 13px; background: {{copyBg}}; color: {{copyInk}}; font-size: {{fs}}; font-weight: 600; white-space: nowrap"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="{{copyInk}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{copyD}}"></path></svg>{{copyTitle}}</span>
-<span role="button" title="Show the folder in Finder" style="height: 26px; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; color: #1F6FEB; font-size: {{fs}}; font-weight: 600; white-space: nowrap"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1F6FEB" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-8 8M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg>{{revealTitle}}</span>
+<span role="button" title="Show the folder in Finder" style="height: 26px; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; color: var(--primary); font-size: {{fs}}; font-weight: 600; white-space: nowrap"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-8 8M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg>{{revealTitle}}</span>
 </span></sc-if>
 </div>
 </x-dc>
@@ -20,10 +20,10 @@ const path = p.path || '~/Documents/Distill Queue/Research';
 const full = path.replace(/^~/, '/Users/mei');
 return { w: px(p.width, 'auto'), path, tip: full, fs: compact ? '12px' : '12.5px',
   hasLabel: !!p.label, label: p.label || '',
-  iconInk: missing ? '#B03A0A' : '#9B978F', pathInk: missing ? '#B03A0A' : '#48463F', pathBg: hover ? '#EFEDE8' : 'transparent', strike: 'none',
+  iconInk: missing ? 'var(--peachInk)' : 'var(--faint)', pathInk: missing ? 'var(--peachInk)' : '#48463F', pathBg: hover ? '#EFEDE8' : 'transparent', strike: 'none',
   missing, present: !missing,
   copyTitle: copied ? 'Copied' : (compact ? 'Copy' : 'Copy path'), copyHelp: 'Copy ' + full,
-  copyInk: copied ? '#3D6110' : '#1F6FEB', copyBg: copied ? '#F3FDE4' : 'transparent',
+  copyInk: copied ? 'var(--limeInk)' : 'var(--primary)', copyBg: copied ? '#F3FDE4' : 'transparent',
   copyD: copied ? 'M5 12.5l4.5 4.5L19 7.5' : 'M8 8h11v12H8zM5 16V4h11',
   revealTitle: compact ? 'Reveal' : 'Reveal in Finder' };
 </script>

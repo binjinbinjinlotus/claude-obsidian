@@ -3,11 +3,11 @@
 <x-dc>
 <div style="width: {{w}}; display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 12px; border-radius: 12px; background: {{bg}}; box-shadow: {{ring}}; box-sizing: border-box; opacity: {{op}}">
 <span style="width: 28px; height: 28px; border-radius: 8px; background: {{tBg}}; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{tInk}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{tD}}"></path></svg></span>
-<div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1; min-width: 0"><span style="font-size: 13px; font-weight: 600; line-height: 1.3; color: #1D1C1A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: {{strike}}">{{title}}</span>
-<span style="font-size: 11px; color: #6B6862; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{source}}</span></div>
+<div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1; min-width: 0"><span style="font-size: 13px; font-weight: 600; line-height: 1.3; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: {{strike}}">{{title}}</span>
+<span style="font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{source}}</span></div>
 <sc-if value="{{showActions}}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0">
-<sc-if value="{{isHistory}}" hint-placeholder-val="{{ false }}"><dc-import name="IconButton" system-image="clock.arrow.circlepath" tint="#1F6FEB" help="Restore" hint-size="26px,26px"></dc-import></sc-if>
-<sc-if value="{{canComplete}}" hint-placeholder-val="{{ true }}"><dc-import name="IconButton" system-image="checkmark.circle" tint="#3D6110" help="Complete (you’ve handled it)" hint-size="26px,26px"></dc-import></sc-if>
+<sc-if value="{{isHistory}}" hint-placeholder-val="{{ false }}"><dc-import name="IconButton" system-image="clock.arrow.circlepath" tint="var(--primary)" help="Restore" hint-size="26px,26px"></dc-import></sc-if>
+<sc-if value="{{canComplete}}" hint-placeholder-val="{{ true }}"><dc-import name="IconButton" system-image="checkmark.circle" tint="var(--limeInk)" help="Complete (you’ve handled it)" hint-size="26px,26px"></dc-import></sc-if>
 <dc-import name="IconButton" system-image="ellipsis" help="More" hint-size="26px,26px"></dc-import></span></sc-if>
 <dc-import name="Pill" text="{{status}}" fill="{{sBg}}" ink="{{sInk}}" busy="{{busy}}" size="small" hint-size="80px,20px"></dc-import>
 </div>
@@ -15,11 +15,11 @@
 <script type="text/x-dc-logic">
 const px = (v, d) => (v === undefined || v === null || v === '') ? d : (/^[0-9.]+$/.test(String(v)) ? v + 'px' : String(v));
 const ICONS = @@ICONS@@;
-const T = {"todo": ["#E3EEFF", "#1F6FEB", "checkmark.circle"], "slack": ["#FFE0EC", "#A3245A", "text.bubble"], "jira": ["#DDF2FF", "#0B5C86", "ticket"], "confluence": ["#E9FBC9", "#3D6110", "doc.text"], "email": ["#FFE4D6", "#B03A0A", "envelope"]}, S = {"draft": ["#F6F5F2", "#48463F"], "ready": ["#E9FBC9", "#3D6110"], "busy": ["#E3EEFF", "#1F6FEB"], "created": ["#DDF2FF", "#0B5C86"], "error": ["#FFE4D6", "#B03A0A"], "muted": ["#F6F5F2", "#6B6862"], "completed": ["#E9FBC9", "#3D6110"], "removed": ["#FFE4D6", "#B03A0A"], "sent": ["#E3EEFF", "#1F6FEB"], "dismissed": ["#F6F5F2", "#6B6862"]};
+const T = {"todo": ["var(--primaryTint)", "var(--primary)", "checkmark.circle"], "slack": ["var(--pinkTint)", "var(--pinkInk)", "text.bubble"], "jira": ["var(--skyTint)", "var(--skyInk)", "ticket"], "confluence": ["var(--limeTint)", "var(--limeInk)", "doc.text"], "email": ["var(--peachTint)", "var(--peachInk)", "envelope"]}, S = {"draft": ["var(--panel)", "#48463F"], "ready": ["var(--limeTint)", "var(--limeInk)"], "busy": ["var(--primaryTint)", "var(--primary)"], "created": ["var(--skyTint)", "var(--skyInk)"], "error": ["var(--peachTint)", "var(--peachInk)"], "muted": ["var(--panel)", "var(--muted)"], "completed": ["var(--limeTint)", "var(--limeInk)"], "removed": ["var(--peachTint)", "var(--peachInk)"], "sent": ["var(--primaryTint)", "var(--primary)"], "dismissed": ["var(--panel)", "var(--muted)"]};
 const t = T[p.type] || T.slack, st = S[p.statusKind] || S.draft;
 const sel = on(p.selected, false), hover = on(p.hover, false), hist = p.mode === 'history';
 return { w: px(p.width, '100%'), tBg: t[0], tInk: t[1], tD: ICONS[t[2]] || '', title: p.title || 'Message to Mei Tanaka', source: p.source || 'From Tea club planning · today at 3:44 PM',
   status: p.status || 'Draft', sBg: st[0], sInk: st[1], busy: p.statusKind === 'busy' ? 'true' : 'false',
-  bg: sel ? '#F2F7FF' : hover ? '#F6F5F2' : 'transparent', ring: sel ? 'inset 0 0 0 1.5px #BFD5FA' : 'none',
+  bg: sel ? '#F2F7FF' : hover ? 'var(--panel)' : 'transparent', ring: sel ? 'inset 0 0 0 1.5px #BFD5FA' : 'none',
   showActions: hover, isHistory: hist, canComplete: !hist, op: on(p.faded, false) ? 0.4 : 1, strike: on(p.faded, false) ? 'line-through' : 'none' };
 </script>

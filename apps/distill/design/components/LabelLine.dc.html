@@ -2,17 +2,17 @@
      @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
 <x-dc>
 <div style="width: {{w}}; min-height: 26px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; box-sizing: border-box">
-<sc-if value="{{busy}}" hint-placeholder-val="{{ false }}"><span style="width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: #1F6FEB; flex-shrink: 0"></span></sc-if>
-<sc-if value="{{sparkle}}" hint-placeholder-val="{{ false }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="#3D6110" aria-hidden="true" style="flex-shrink: 0"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg></sc-if>
-<sc-if value="{{clock}}" hint-placeholder-val="{{ false }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#9B978F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2"></path></svg></sc-if>
+<sc-if value="{{busy}}" hint-placeholder-val="{{ false }}"><span style="width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: var(--primary); flex-shrink: 0"></span></sc-if>
+<sc-if value="{{sparkle}}" hint-placeholder-val="{{ false }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="var(--limeInk)" aria-hidden="true" style="flex-shrink: 0"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg></sc-if>
+<sc-if value="{{clock}}" hint-placeholder-val="{{ false }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2"></path></svg></sc-if>
 <sc-if value="{{hasLead}}" hint-placeholder-val="{{ true }}"><span style="font-size: 11.5px; font-weight: 700; color: {{leadInk}}; white-space: nowrap">{{lead}}</span></sc-if>
 <sc-for list="{{chips}}" as="l" hint-placeholder-count="3"><dc-import name="LabelChip" label-name="{{l.name}}" style="{{l.style}}" removable="{{l.rm}}" hint-size="{{l.w}},26px"></dc-import></sc-for>
-<sc-if value="{{editing}}" hint-placeholder-val="{{ false }}"><label style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; background: #FFFFFF; box-shadow: inset 0 0 0 1.5px #1F6FEB; font-size: 12px; color: #9B978F; min-width: 120px; box-sizing: border-box">Add a label…</label></sc-if>
-<sc-if value="{{hasNote}}" hint-placeholder-val="{{ false }}"><span style="font-size: 11.5px; color: #9B978F; white-space: nowrap">{{note}}</span></sc-if>
-<sc-if value="{{showAdd}}" hint-placeholder-val="{{ false }}"><button type="button" style="height: 26px; padding: 0 6px; border: none; background: transparent; color: #6B6862; font-size: 12px; font-weight: 600">+ Add</button></sc-if>
-<sc-if value="{{hasAction}}" hint-placeholder-val="{{ false }}"><button type="button" style="height: 26px; padding: 0 6px; border: none; background: transparent; color: #1F6FEB; font-size: 12px; font-weight: 600">{{action}}</button></sc-if>
-<sc-if value="{{skip}}" hint-placeholder-val="{{ false }}"><button type="button" style="height: 26px; padding: 0 6px; border: none; background: transparent; color: #6B6862; font-size: 12px; font-weight: 600">Send without labels</button></sc-if>
-<sc-if value="{{editing}}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; gap: 2px"><button type="button" style="height: 26px; padding: 0 12px; border: none; border-radius: 13px; background: #1F6FEB; color: #FFFFFF; font-size: 12px; font-weight: 700">Done</button><button type="button" style="height: 26px; padding: 0 8px; border: none; background: transparent; color: #6B6862; font-size: 12px; font-weight: 600">Cancel</button></span></sc-if>
+<sc-if value="{{editing}}" hint-placeholder-val="{{ false }}"><label style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; background: var(--window); box-shadow: inset 0 0 0 1.5px var(--primary); font-size: 12px; color: var(--faint); min-width: 120px; box-sizing: border-box">Add a label…</label></sc-if>
+<sc-if value="{{hasNote}}" hint-placeholder-val="{{ false }}"><span style="font-size: 11.5px; color: var(--faint); white-space: nowrap">{{note}}</span></sc-if>
+<sc-if value="{{showAdd}}" hint-placeholder-val="{{ false }}"><button type="button" style="height: 26px; padding: 0 6px; border: none; background: transparent; color: var(--muted); font-size: 12px; font-weight: 600">+ Add</button></sc-if>
+<sc-if value="{{hasAction}}" hint-placeholder-val="{{ false }}"><button type="button" style="height: 26px; padding: 0 6px; border: none; background: transparent; color: var(--primary); font-size: 12px; font-weight: 600">{{action}}</button></sc-if>
+<sc-if value="{{skip}}" hint-placeholder-val="{{ false }}"><button type="button" style="height: 26px; padding: 0 6px; border: none; background: transparent; color: var(--muted); font-size: 12px; font-weight: 600">Send without labels</button></sc-if>
+<sc-if value="{{editing}}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; gap: 2px"><button type="button" style="height: 26px; padding: 0 12px; border: none; border-radius: 13px; background: var(--primary); color: var(--window); font-size: 12px; font-weight: 700">Done</button><button type="button" style="height: 26px; padding: 0 8px; border: none; background: transparent; color: var(--muted); font-size: 12px; font-weight: 600">Cancel</button></span></sc-if>
 </div>
 </x-dc>
 <script type="text/x-dc-logic">
@@ -27,15 +27,15 @@ const chips = (state === 'waiting' || state === 'suggesting' || state === 'none'
   return { name, style, rm: rm ? 'true' : 'false', w: (8 * name.length + (rm ? 36 : 26) + (isNew && style === 'suggestedNew' ? 26 : 0)) + 'px' };
 });
 const L = {
-  waiting: ['Labels next · 3 at a time', '#9B978F'],
-  suggesting: ['Suggesting labels…', '#6B6862'],
-  suggested: ['Suggested', '#6B6862'],
-  confirmed: ['', '#6B6862'],
-  own: ['', '#6B6862'],
-  editing: ['', '#6B6862'],
-  failed: ['Couldn’t suggest labels', '#B03A0A'],
-  none: ['No labels', '#9B978F'],
-}[state] || ['', '#6B6862'];
+  waiting: ['Labels next · 3 at a time', 'var(--faint)'],
+  suggesting: ['Suggesting labels…', 'var(--muted)'],
+  suggested: ['Suggested', 'var(--muted)'],
+  confirmed: ['', 'var(--muted)'],
+  own: ['', 'var(--muted)'],
+  editing: ['', 'var(--muted)'],
+  failed: ['Couldn’t suggest labels', 'var(--peachInk)'],
+  none: ['No labels', 'var(--faint)'],
+}[state] || ['', 'var(--muted)'];
 const lead = p.lead === '-' ? '' : (p.lead || L[0]);
 const A = { suggested: 'Accept all', confirmed: 'Edit', own: 'Edit', failed: 'Retry', none: '' }[state] || '';
 const action = p.action !== undefined && p.action !== null && p.action !== '' ? (p.action === '-' ? '' : p.action) : A;
