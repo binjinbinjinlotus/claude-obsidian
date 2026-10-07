@@ -472,14 +472,20 @@ private struct ConfirmKeys: ViewModifier {
                 .focusEffectDisabled()
                 .onKeyPress(.downArrow) { move(selection, by: 1) }
                 .onKeyPress(.upArrow) { move(selection, by: -1) }
-                // Return adds as the found type; ⌥Return opens Add as… (actions.md).
+                // Return adds as the found type; ⌥Return opens Add as… (actions.md); ⇧⌥Return opens Track as
+                // Pending… (actions-routing.md). Never while typing in a field.
                 .onKeyPress(keys: [.return]) { press in
+                    guard TrackPendingKey.allowed() else { return .ignored }
                     switch AddAs.addAsKey(press) {
                     case nil: return .ignored
                     case .add?: return act(selection) { store.confirm([$0]) }
                     case .openMenu?:
                         guard let id = selection.wrappedValue else { return .ignored }
                         store.addAsMenu = id
+                        return .handled
+                    case .trackPending?:
+                        guard let id = selection.wrappedValue, let item = items.first(where: { $0.id == id }) else { return .ignored }
+                        store.startTrack(item)
                         return .handled
                     }
                 }
@@ -714,6 +720,8 @@ struct BulkBar: View {
 struct SendToPanel: View {
     @ObservedObject var store: ActionsStore
     let item: ActionItem?
+    /// actions-routing.md: Move to Pending… for one to-do, after a divider (nil: the bulk bar, not offered).
+    var pending: (() -> Void)? = nil
     let pick: (String) -> Void
 
     var body: some View {
@@ -725,7 +733,13 @@ struct SendToPanel: View {
                               badge: t.reserved ? "Coming later" : (suggested == t.id ? "Suggested" : nil),
                               disabled: !t.isUsable) { pick(t.id) }
             }
-            Text("It leaves To do and becomes a draft you check first. Nothing is created until you press Create.")
+            if let pending {
+                Divider().padding(.vertical, 4).padding(.horizontal, 4)
+                ActionMenuRow(title: TrackPending.moveTitle, detail: TrackPending.menuDetail, icon: "clock", iconStyle: (Theme.panel, Theme.muted),
+                              action: pending)
+                Divider().padding(.top, 4).padding(.horizontal, 6)
+            }
+            Text(pending != nil ? TrackPending.sendToFootnote : "It leaves To do and becomes a draft you check first. Nothing is created until you press Create.")
                 .font(Theme.body(11)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 10).padding(.vertical, 6)
         }
@@ -772,6 +786,7 @@ struct TodoDetail: View {
             }
             if editing { editor } else { reading }
             ActionContextBlock(item: item)
+                .zIndex(-1)
             ButtonLastRun(store: store, item: item)
             siblings
             Spacer(minLength: 0)
@@ -781,6 +796,9 @@ struct TodoDetail: View {
                     Spacer()
                     ActionButton(title: "Done", kind: .primary) { editing = false }
                 }
+            } else if store.tracking[item.id] != nil {
+                // actions-routing.md: Move to Pending's Cancel · Move to Pending.
+                TrackPendingFooter(store: store, item: item)
             } else {
                 // Same order on every tab: remove on the left; Complete, then the primary action. Automation
                 // buttons move to their own row when the pane is too narrow for one.
@@ -802,7 +820,9 @@ struct TodoDetail: View {
                 }
                 .overlay(alignment: .bottomTrailing) {
                     if menu == "sendto" {
-                        SendToPanel(store: store, item: item) { store.sendTo(item, type: $0); menu = nil }
+                        SendToPanel(store: store, item: item, pending: TrackPending.origin(item) == .todo ? { store.startTrack(item); menu = nil } : nil) {
+                            store.sendTo(item, type: $0); menu = nil
+                        }
                             .offset(y: -42)
                     }
                 }
@@ -818,6 +838,16 @@ struct TodoDetail: View {
         } else {
             SoftButton(title: "Complete", size: .small, systemImage: "checkmark") { store.complete(item) }
             PrimaryButton(title: "Send to", systemImage: "paperplane", size: .small) { menu = menu == "sendto" ? nil : "sendto" }
+                .background {
+                    // ⇧⌥Return: Move to Pending… (actions-routing.md); never while typing in a field.
+                    Button("") {
+                        guard TrackPendingKey.allowed() else { return }
+                        menu = nil
+                        store.startTrack(item)
+                    }
+                    .keyboardShortcut(.return, modifiers: [.shift, .option])
+                    .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true)
+                }
         }
     }
 
@@ -825,6 +855,9 @@ struct TodoDetail: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(item.title).font(.system(size: 18, weight: .semibold, design: .rounded)).fixedSize(horizontal: false, vertical: true)
                 .onTapGesture(count: 2) { editing = true }
+            if store.tracking[item.id] != nil {
+                TrackPendingPanel(store: store, item: item, labelWidth: 64, now: now)
+            }
             VStack(alignment: .leading, spacing: 4) {
                 if let due = item.field("due") {
                     fieldRow("Due") {

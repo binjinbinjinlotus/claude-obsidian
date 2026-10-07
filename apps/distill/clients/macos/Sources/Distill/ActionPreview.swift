@@ -209,8 +209,11 @@ struct ActionPreview: View {
                     .font(Theme.body(12.5)).foregroundStyle(Theme.softInk).fixedSize(horizontal: false, vertical: true)
             }
             ActionContextSections(item: item)
-            filled
-            willWrite
+            // While Track as Pending is open, what Add would do doesn't apply (canvas tp-panel).
+            if store.tracking[item.id] == nil {
+                filled
+                willWrite
+            }
         }
         .padding(.leading, inPane ? 0 : 46).padding(.trailing, inPane ? 0 : 14).padding(.bottom, inPane ? 0 : 14).padding(.top, 2)
     }
@@ -315,11 +318,26 @@ struct ActionConfirmRow: View {
                             }
                         }
                     }
+                    // actions-routing.md: someone else will do it.
+                    Button(TrackPending.menuTitle) {
+                        store.startTrack(item)
+                        if let onSelect { onSelect() } else { expanded = true }
+                    }
+                    .keyboardShortcut(.return, modifiers: [.shift, .option])
+                    Divider()
                     Button("Dismiss") { store.dismiss([item.id]) }
+                        .keyboardShortcut(.delete, modifiers: [])
                 }
             }
             if expanded && !selects {
-                if let draft = store.addingAs[item.id], let type = store.type(draft.type) {
+                if store.tracking[item.id] != nil {
+                    VStack(alignment: .leading, spacing: 8) {
+                        TrackPendingPanel(store: store, item: item)
+                        TrackPendingFooter(store: store, item: item)
+                    }
+                    .padding(.horizontal, 12).padding(.bottom, 10)
+                    .zIndex(1)
+                } else if let draft = store.addingAs[item.id], let type = store.type(draft.type) {
                     VStack(alignment: .leading, spacing: 8) {
                         AddAsPanel(store: store, item: item, type: type)
                         AddAsPanelFooter(store: store, item: item, type: type)
@@ -387,18 +405,25 @@ struct ConfirmDetail: View {
                     header
                     Text(item.title).font(Theme.display(20)).foregroundStyle(Theme.ink)
                         .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
-                    if let type = addingType {
-                        AddAsPanel(store: store, item: item, type: type)
+                    if tracking {
+                        // actions-routing.md: the panel, then where it came from (canvas tp-panel).
+                        TrackPendingPanel(store: store, item: item, now: store.fixtureNow ?? Date())
+                    } else {
+                        if let type = addingType {
+                            AddAsPanel(store: store, item: item, type: type)
+                        }
+                        summaryBlock
+                        ForWhomLine(store: store, item: item)
                     }
-                    summaryBlock
-                    ForWhomLine(store: store, item: item)
                     ActionPreview(store: store, item: item, inPane: true)
                 }
                 .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 24)
             }
             Divider().overlay(Theme.border)
             Group {
-                if let type = addingType {
+                if tracking {
+                    TrackPendingFooter(store: store, item: item, onDone: onDone)
+                } else if let type = addingType {
                     AddAsPanelFooter(store: store, item: item, type: type, onDone: onDone)
                 } else {
                     HStack(spacing: 10) {
@@ -419,6 +444,8 @@ struct ConfirmDetail: View {
             if !Task.isCancelled { store.summarize(item) }
         }
     }
+
+    private var tracking: Bool { store.tracking[item.id] != nil }
 
     /// Add as: the type whose panel is open for this item.
     private var addingType: ActionTypeInfo? { store.addingAs[item.id].flatMap { store.type($0.type) } }

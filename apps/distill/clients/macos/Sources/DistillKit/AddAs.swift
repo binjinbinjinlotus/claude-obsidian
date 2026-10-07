@@ -114,11 +114,14 @@ public enum AddAs {
     /// Keys in the To-confirm list and its detail: Return adds as the found type (⌘Return too); ⌥Return
     /// opens Add as…. Never while typing in a text field, and not while the panel is open (its own
     /// ⌘Return adds it).
-    public enum Key: Equatable { case add, openMenu }
+    /// ⇧⌥Return opens Track as Pending… (actions-routing.md).
+    public enum Key: Equatable { case add, openMenu, trackPending }
     public static func key(returnWithOption option: Bool) -> Key { option ? .openMenu : .add }
-    /// Return (⌘Return as an alias) adds as the found type; ⌥Return opens Add as…; any other modifier is not ours.
-    public static func key(option: Bool, command: Bool, other: Bool = false) -> Key? {
+    /// Return (⌘Return as an alias) adds as the found type; ⌥Return opens Add as…; ⇧⌥Return opens Track as
+    /// Pending…; any other modifier is not ours.
+    public static func key(option: Bool, command: Bool, shift: Bool = false, other: Bool = false) -> Key? {
         if other || (option && command) { return nil }
+        if shift { return option ? .trackPending : nil }
         return option ? .openMenu : .add
     }
 }
