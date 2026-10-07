@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import {
+  CoreError,
   DEFAULT_ACTION_PREFERENCES,
   type ActionItem,
   type AgentRunner,
@@ -1365,6 +1366,147 @@ describe('Jira required fields (actions.md, fake Jira)', () => {
     const two = (await h.service.getAction(b.id))!;
     assert.equal(two.fields['jira.customfield_11063'] ?? null, null, 'Mobile and Data: no guess');
     assert.equal(two.fields['jira.components'] ?? null, null, '"rapid" isn’t "API"');
+  });
+});
+
+describe('Jira required fields: edges (actions.md, fake Jira)', () => {
+  const opt = (fieldId: string, name: string, required: boolean, schema: object, extra: object = {}) => ({ fieldId, name, required, schema, ...extra });
+  const CODE = opt('customfield_210', 'Ticket code', false, { type: 'string' });
+  const POINTS = opt('customfield_211', 'Story points', false, { type: 'number' });
+  const EFFORT = opt('customfield_212', 'Effort', false, { type: 'number' });
+  const REVIEWER = opt('customfield_213', 'Reviewer', false, { type: 'user' });
+  const ENV = EVERY_KIND.find((f) => f.fieldId === 'customfield_205')!;
+  const COMPONENTS = EVERY_KIND[0]!;
+  const AREA = opt('customfield_214', 'Area', false, { type: 'option' }, { allowedValues: [{ id: '61', value: 'Billing' }] });
+  const screenDown = (h: Harness) => h.http.routes.unshift((m, url) => (m === 'GET' && url.startsWith(`${SITE}/rest/api/3/issue/createmeta/TLS/issuetypes/10001?`) ? { status: 503, json: {} } : undefined));
+
+  test('Open in Jira: ids for choices, several choices repeated, a child as <id>:1, text and numbers as text; a saved value fills in; people and empty fields left out', async () => {
+    const prefs = structuredClone(DEFAULT_ACTION_PREFERENCES);
+    prefs.types.jira = { ...prefs.types.jira, requiredDefaults: { 'TLS|Task': { customfield_11063: { name: 'Team', value: 'Payments' } } } };
+    const h = harness({ prefs });
+    await connected(h, requiredRoutes([COMPONENTS, ENV, CODE, POINTS, EFFORT, REVIEWER]));
+    const t = await h.service.createAction({
+      type: 'jira', title: 'Cap retries', body: '   ',
+      fields: {
+        project: 'tls', issueType: 'task', priority: 'normal',
+        'jira.components': '["API","gateway"]', 'jira.customfield_205': '["Staging","us-east-1"]', 'jira.customfield_210': ' X-1 ',
+        'jira.customfield_211': '3.5', 'jira.customfield_213': '{"accountId":"acc-aditya","name":"Aditya Pradhan"}',
+      },
+    });
+    const { url } = await h.service.jiraCreateURL(t.id);
+    assert.ok(url.startsWith(`${SITE}/secure/CreateIssueDetails!init.jspa?pid=10000&issuetype=10001&summary=Cap+retries&priority=3&`), url);
+    const q = new URL(url).searchParams;
+    assert.deepEqual([...q.keys()], ['pid', 'issuetype', 'summary', 'priority', 'customfield_11063', 'components', 'components', 'customfield_205', 'customfield_205:1', 'customfield_210', 'customfield_211']);
+    assert.equal(q.get('customfield_11063'), '20101', 'the saved Team');
+    assert.deepEqual(q.getAll('components'), ['31', '32']);
+    assert.deepEqual([q.get('customfield_205'), q.get('customfield_205:1')], ['41', '411']);
+    assert.equal(q.get('customfield_210'), 'X-1');
+    assert.equal(q.get('customfield_211'), '3.5');
+    assert.equal(q.has('description'), false, 'a blank description is left out');
+  });
+
+  test('Open in Jira: a priority outside the list or a parent without a child sends only what matches', async () => {
+    const h = harness();
+    await connected(h, requiredRoutes([ENV]));
+    const t = await h.service.createAction({ type: 'jira', title: 'T', body: 'Why', fields: { project: 'TLS', priority: 'Urgent', 'jira.customfield_11063': 'Data', 'jira.customfield_205': '["Production"]' } });
+    const q = new URL((await h.service.jiraCreateURL(t.id)).url).searchParams;
+    assert.deepEqual(Object.fromEntries(q), { pid: '10000', issuetype: '10001', summary: 'T', description: 'Why', customfield_11063: '20103', customfield_205: '42' });
+  });
+
+  test('Open in Jira when Jira can’t be asked: the title and description only; not connected: invalid_state', async () => {
+    const h = harness();
+    const t = await h.service.createAction({ type: 'jira', title: 'T', body: 'Why', fields: { project: 'TLS', priority: 'Critical' } });
+    await assert.rejects(h.service.jiraCreateURL(t.id), (e: unknown) => e instanceof CoreError && e.code === 'invalid_state' && e.details?.jira === 'not_connected' && e.message === 'Jira isn’t connected.');
+    await connected(h, [(m, url) => (m === 'GET' && url.includes('/project/search') ? { status: 503, json: {} } : undefined)]);
+    const q = new URL((await h.service.jiraCreateURL(t.id)).url).searchParams;
+    assert.deepEqual(Object.fromEntries(q), { summary: 'T', description: 'Why' });
+    const todo = await h.service.createAction({ type: 'todo', title: 'x' });
+    await assert.rejects(h.service.jiraCreateURL(todo.id), (e: unknown) => e instanceof CoreError && e.code === 'not_found' && e.message === `${todo.id} isn’t a Jira ticket.`);
+  });
+
+  test('Open in Jira: a Priority with no list sends no priority', async () => {
+    const h = harness();
+    const routes = requiredRoutes();
+    routes.unshift((m, url) =>
+      m === 'GET' && url.startsWith(`${SITE}/rest/api/3/issue/createmeta/TLS/issuetypes/10001?`)
+        ? { status: 200, json: { isLast: true, fields: [{ fieldId: 'priority', name: 'Priority', required: false, schema: { type: 'priority' } }] } }
+        : undefined,
+    );
+    await connected(h, routes);
+    const t = await h.service.createAction({ type: 'jira', title: 'T', fields: { project: 'TLS', priority: 'High' } });
+    assert.deepEqual(Object.fromEntries(new URL((await h.service.jiraCreateURL(t.id)).url).searchParams), { pid: '10000', issuetype: '10001', summary: 'T' });
+    // A screen with no Priority field at all.
+    routes[0] = (m, url) =>
+      m === 'GET' && url.startsWith(`${SITE}/rest/api/3/issue/createmeta/TLS/issuetypes/10001?`) ? { status: 200, json: { isLast: true, fields: [TEAM] } } : undefined;
+    const h2 = harness();
+    await connected(h2, routes);
+    const t2 = await h2.service.createAction({ type: 'jira', title: 'T', fields: { project: 'TLS', priority: 'High', 'jira.customfield_11063': 'Data' } });
+    assert.deepEqual(Object.fromEntries(new URL((await h2.service.jiraCreateURL(t2.id)).url).searchParams), { pid: '10000', issuetype: '10001', summary: 'T', customfield_11063: '20103' });
+  });
+
+  test('Create when the create screen can’t be read: nothing is blocked, Jira checks', async () => {
+    const h = harness();
+    const posts: unknown[] = [];
+    await connected(h, requiredRoutes([], posts));
+    screenDown(h);
+    const t = await h.service.createAction({ type: 'jira', title: 'Cap retries', body: 'b', fields: { project: 'TLS', issueType: 'Task' } });
+    const created = await h.service.performAction(t.id, 'create');
+    assert.equal(created.status, 'created', JSON.stringify(created.error));
+    assert.equal('customfield_11063' in (posts[0] as { fields: object }).fields, false);
+  });
+
+  test('a draft prefills only empty asked fields, from the note or its quote; optional ones and filled ones stay as they are', async () => {
+    const h = harness();
+    await connected(h, requiredRoutes([AREA]));
+    h.runner.draft = () => ({ structured: { title: 'Cap retries', body: 'Billing sees retries.', fields: [] } });
+    const quoted = await h.service.createAction({ type: 'jira', title: 'Cap retries', fields: { project: 'TLS', issueType: 'Task' }, source: { kind: 'note', notePath: 'n.md', quote: 'Owned by the Mobile team' } });
+    await h.service.whenIdle();
+    const q = (await h.service.getAction(quoted.id))!;
+    assert.equal(q.fields['jira.customfield_11063'], 'Mobile', 'named only in the quote');
+    assert.equal(q.fields['jira.customfield_214'] ?? null, null, 'Area is optional: never prefilled');
+
+    h.runner.draft = () => ({ structured: { title: 'Cap retries', body: 'The Payments team owns it.', fields: [] } });
+    const filled = await h.service.createAction({ type: 'jira', title: 'Cap retries 2', fields: { project: 'TLS', issueType: 'Task', 'jira.customfield_11063': 'Data' } });
+    await h.service.whenIdle();
+    const f = (await h.service.getAction(filled.id))!;
+    assert.equal(f.fields['jira.customfield_11063'], 'Data', 'a value already there is kept');
+    assert.equal(f.fields['jira.customfield_11063:from'] ?? null, null);
+
+    h.runner.draft = () => ({ structured: { title: 'Cap retries', body: 'Nobody named.', fields: [] } });
+    const none = await h.service.createAction({ type: 'jira', title: 'Cap retries 3', fields: { project: 'TLS', issueType: 'Task' } });
+    await h.service.whenIdle();
+    const n = (await h.service.getAction(none.id))!;
+    assert.equal('jira.customfield_11063' in n.fields, false);
+    assert.equal('jira.customfield_11063:from' in n.fields, false, 'no source tag without a value');
+  });
+
+  test('a draft when the screen can’t be read or the project is unknown: drafted, nothing prefilled, no error', async () => {
+    const h = harness();
+    await connected(h, requiredRoutes());
+    screenDown(h);
+    h.runner.draft = () => ({ structured: { title: 'Cap retries', body: 'The Payments team owns it.', fields: [] } });
+    for (const project of ['TLS', 'NOPE']) {
+      const a = await h.service.createAction({ type: 'jira', title: `Cap retries ${project}`, fields: { project, issueType: 'Task' } });
+      await h.service.whenIdle();
+      const d = (await h.service.getAction(a.id))!;
+      assert.equal(d.body, 'The Payments team owns it.', project);
+      assert.equal(d.fields['jira.customfield_11063'] ?? null, null, project);
+      assert.notEqual(d.error?.code, 'failed', project);
+    }
+    const errors = h.events.filter((e) => e.type === 'progress' && 'error' in e.progress && e.progress.error);
+    assert.deepEqual(errors, [], 'the prefill gives up quietly: the draft reports no error');
+  });
+
+  test('a drafted ticket with no project yet: drafted, nothing asked of Jira', async () => {
+    const h = harness();
+    await connected(h, requiredRoutes());
+    h.runner.draft = () => ({ structured: { title: 'Cap retries', body: 'The Payments team owns it.', fields: [] } });
+    const before = h.http.calls.length;
+    const a = await h.service.createAction({ type: 'jira', title: 'Cap retries', fields: { issueType: 'Task' } });
+    await h.service.whenIdle();
+    assert.equal((await h.service.getAction(a.id))!.body, 'The Payments team owns it.');
+    assert.equal(h.http.calls.length, before, 'no Jira calls');
+    assert.deepEqual(h.events.filter((e) => e.type === 'progress' && 'error' in e.progress && e.progress.error), []);
   });
 });
 

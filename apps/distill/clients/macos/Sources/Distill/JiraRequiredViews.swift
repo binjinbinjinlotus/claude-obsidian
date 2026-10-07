@@ -46,9 +46,7 @@ extension ActionsStore {
 
     /// Copy the ticket text: the title and description, then each filled field by name.
     func copyJiraTicket(_ item: ActionItem, fields: [JiraField], defaults: [String: JiraRequiredDefault]) {
-        let values = item.fields.compactMapValues { $0 }
-        let lines = fields.compactMap { f in JiraRequired.display(f, JiraRequired.value(f, values: values, defaults: defaults)).map { "\(f.name): \($0)" } }
-        let text = ([item.title, item.body ?? ""] + (lines.isEmpty ? [] : [lines.joined(separator: "\n")])).filter { !$0.isEmpty }.joined(separator: "\n\n")
+        let text = JiraRequired.ticketText(title: item.title, body: item.body, fields: fields, values: item.fields.compactMapValues { $0 }, defaults: defaults)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         show(ActionToast(text: "Copied the ticket text"))

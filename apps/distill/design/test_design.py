@@ -10,7 +10,10 @@ Fails when:
     `swift` name) nor marked `"swift": false` with a `why` (design-only: the view derives it) or
     `"swiftPending"` (designed, not built yet; fails once Swift has it, so the mark gets dropped);
   - a template, a state's prop or a board reference doesn't match components.json;
-  - the schema doesn't render.
+  - the schema doesn't render;
+  - a golden board (testdata/golden/) renders differently. After an intended change to render.py's board
+    chrome or to those boards, regenerate them and review the diff:
+        UPDATE_GOLDEN=1 python3 apps/distill/design/test_design.py
 Reports (never fails): components with no Swift view yet, swiftPending props, and screen states with no snapshot
 state of the same id in clients/macos/Sources/Distill/Snapshot*.swift.
 """
@@ -146,6 +149,10 @@ def hex_colors(text):
     return out
 
 
+# var() in an SVG fill or stroke attribute is not CSS: WebKit draws it, Chrome does not (test_svg_colours_are_styles).
+SVG_COLOUR_ATTR = re.compile(r'<(?:svg|path|circle|rect|line|polyline|polygon|ellipse|g)\b[^>]*\s(?:fill|stroke)=\\?"[^"\\]*(?:var\(|\{\{)')
+
+
 TOKENIZED_SCREENS = ['queue', 'review', 'reviewqueue', 'session', 'fullread', 'actions', 'actionsummary', 'actioncontext', 'routing', 'scriptactions', 'collectors', 'livelog', 'activity', 'panes']
 
 
@@ -195,10 +202,9 @@ class Tokens(unittest.TestCase):
     def test_svg_colours_are_styles(self):
         # var() in an SVG fill or stroke attribute is not CSS: WebKit draws it, Chrome does not. A token
         # colour or a {{hole}} that can carry one goes in style="fill: …" instead.
-        rx = re.compile(r'<(?:svg|path|circle|rect|line|polyline|polygon|ellipse|g)\b[^>]*\s(?:fill|stroke)=\\?"[^"\\]*(?:var\(|\{\{)')
         for path in token_checked_files():
             with open(path, encoding='utf-8') as f:
-                self.assertEqual(rx.findall(f.read()), [], f'{os.path.relpath(path, ROOT)}: SVG colour attribute holds var() or a hole')
+                self.assertEqual(SVG_COLOUR_ATTR.findall(f.read()), [], f'{os.path.relpath(path, ROOT)}: SVG colour attribute holds var() or a hole')
 
     def test_bundle_css_uses_tokens(self):
         with open(os.path.join(ROOT, 'ds', 'components', 'bundle.css'), encoding='utf-8') as f:
@@ -334,8 +340,178 @@ class Canvas(unittest.TestCase):
                         'boards': {'Stray.dc.html': {'x': 0, 'y': 0, 'w': 100, 'h': 100}}})
 
 
+class TokenTools(unittest.TestCase):
+    """The checks above only see today's files; these feed the helpers, the generators and the
+    entry points known inputs so a broken one fails here instead of passing quietly."""
+
+    def test_hex_colors(self):
+        self.assertEqual(hex_colors('a #abc b #A1b2C3; #FFF) #1d1c1a'), ['#AABBCC', '#A1B2C3', '#FFFFFF', '#1D1C1A'])
+        self.assertEqual(hex_colors('#abcd #abcdef12 #ab #abcg x#ggg'), [], 'not 3 or 6 digits')
+
+    def test_svg_colour_attr(self):
+        for bad in ['<svg width="10" fill="var(--ink)">', '<path d="M0" stroke="{{color}}"/>', '<g fill=\\"var(--x)\\">',
+                    '<circle r="2" stroke="#fff" fill="var(--lime)"/>', '<rect\nfill="var(--x)"/>']:
+            self.assertTrue(SVG_COLOUR_ATTR.search(bad), bad)
+        for ok in ['<svg fill="none" stroke="#1D1C1A">', '<path style="fill: var(--ink)"/>', '<div fill="var(--x)">',
+                   '<svg data-fill="var(--x)">', '<path fill="currentColor" d="var(">']:
+            self.assertFalse(SVG_COLOUR_ATTR.search(ok), ok)
+
+    def test_px_and_css(self):
+        self.assertEqual(tokens.px(4), '4px')
+        d = {'name': 'T',
+             'color': {'tokens': [{'name': 'ink', 'value': '#000000'}, {'name': 'chip', 'value': '{ink}'}]},
+             'spacing': {'tokens': [{'name': 'gap', 'value': '4px'}]}, 'radius': {'tokens': [{'name': 'r', 'value': '8px'}]},
+             'size': {'tokens': [{'name': 's', 'value': '20px'}]},
+             'type': {'families': {'body': 'Sans'}, 'groups': [{'styles': [{'name': 'pill', 'fontSize': '11px', 'fontWeight': 700}]}]}}
+        self.assertEqual(tokens.ds_css(d),
+                         '/* T — generated from tokens.json by apps/distill/design/tokens.py (Theme.swift); never edit by hand */\n'
+                         ':root, [data-theme="light"] {--ink: #000000; --chip: var(--ink);}\n'
+                         ':root {--gap: 4px; --r: 8px; --s: 20px; --font-body: Sans; --pill-size: 11px; --pill-weight: 700;}\n')
+
+    def test_ds_tokens_vault_chips_and_usage(self):
+        t = tokens.theme()
+        d = tokens.ds_tokens(t)
+        colors = {x['name']: x for x in d['color']['tokens']}
+        fill, ink = t['vaultChips'][0]
+        self.assertEqual(colors['vaultChip1'], {'name': 'vaultChip1', 'value': '{%s}' % fill, 'usage': 'Vault 1 chip fill (Theme.vaultChips[0]).'})
+        self.assertEqual(colors['vaultChip1Ink'], {'name': 'vaultChip1Ink', 'value': '{%s}' % ink, 'usage': 'Text on vaultChip1.'})
+        self.assertEqual(len([n for n in colors if n.startswith('vaultChip')]), 2 * len(t['vaultChips']))
+        self.assertEqual(colors['ink']['usage'], 'Primary text.')
+        self.assertEqual(colors['ink']['value'], t['color']['ink'])
+        self.assertEqual(tokens.render(), tokens.outputs()[tokens.OUT], 'render() is tokens.json')
+
+    def test_tokens_main_checks_and_writes(self):
+        import contextlib
+        import io
+        import tempfile
+        saved = tokens.OUT, tokens.DS_JSON, tokens.DS_CSS
+        with tempfile.TemporaryDirectory() as d:
+            tokens.OUT, tokens.DS_JSON, tokens.DS_CSS = (os.path.join(d, 'tokens.json'), os.path.join(d, 'ds', 'tokens.json'),
+                                                         os.path.join(d, 'ds', 'tokens.css'))
+            try:
+                err, out = io.StringIO(), io.StringIO()
+                with contextlib.redirect_stderr(err), contextlib.redirect_stdout(out):
+                    self.assertEqual(tokens.main(['--check']), 1, 'missing files are out of date')
+                    self.assertEqual(tokens.main([]), 0)
+                    self.assertEqual(tokens.main(['--check']), 0)
+                for p in (tokens.OUT, tokens.DS_JSON, tokens.DS_CSS):
+                    self.assertIn(os.path.relpath(p), err.getvalue().split('\n')[0])
+                    self.assertIn(f'wrote {os.path.relpath(p)}', out.getvalue())
+                self.assertIn('run python3 apps/distill/design/tokens.py', err.getvalue())
+                expect = tokens.outputs()
+                for p in expect:
+                    self.assertEqual(read(p), expect[p])
+                with open(tokens.DS_CSS, 'a', encoding='utf-8') as f:
+                    f.write('/* edited */')
+                with contextlib.redirect_stderr(io.StringIO()) as err2:
+                    self.assertEqual(tokens.main(['--check']), 1)
+                self.assertIn('tokens.css', err2.getvalue())
+                self.assertNotIn('tokens.json', err2.getvalue(), 'only the stale file is named')
+            finally:
+                tokens.OUT, tokens.DS_JSON, tokens.DS_CSS = saved
+
+    def test_every_board_links_the_tokens(self):
+        # Boards and the components they import read colours as var(--name): every board loads tokens.css
+        # once, in its head, and every var() it uses is a token there.
+        defined = set(re.findall(r'--([A-Za-z0-9-]+):', read(tokens.DS_CSS)))
+        self.assertIn('color:var(--ink)', render.BASE_CSS)
+        for f, (html, *_rest) in render.build_all().items():
+            head = html.split('</head>')[0]
+            self.assertEqual(html.count(render.TOKENS_LINK), 1, f)
+            self.assertIn(render.TOKENS_LINK, head, f)
+            self.assertTrue(head.index('support.js') < head.index(render.TOKENS_LINK), f)
+            used = set(re.findall(r'var\(--([A-Za-z0-9-]+)\)', html))
+            self.assertEqual(sorted(used - defined), [], f'{f}: var() names no token')
+
+    def test_tokens_link_path(self):
+        # The canvas installs the Design System's variables at ds/distill/tokens.css; boards link it relative.
+        self.assertEqual(render.TOKENS_CSS, 'ds/distill/tokens.css')
+        self.assertEqual(render.TOKENS_LINK, '<link rel="stylesheet" href="./ds/distill/tokens.css">')
+
+    def test_card_without_caption(self):
+        # Every card on today's boards has a caption, so the goldens never show the empty one.
+        self.assertTrue(render.card(1, {'card': {}, 'label': 'L'}, '').endswith('<span style="font-size: 12px; color: var(--muted); line-height: 1.5"></span></section>'))
+
+    def test_state_cell_caption(self):
+        self.assertNotIn('<span style="font-size: 11px', render.state_cell('L', '<i></i>', ''))
+        self.assertIn('color: var(--muted); line-height: 1.45; max-width: 260px">Cap</span></div>', render.state_cell('L', '<i></i>', 'Cap'))
+
+    def test_legacy_boards(self):
+        import tempfile
+        built = render.build_all()
+        on_disk = sorted(f for f in os.listdir(render.LEGACY_DIR) if f.endswith('.dc.html'))
+        self.assertEqual(sorted(f for f, b in built.items() if b[3] == 'legacy'), on_disk)
+        saved = render.LEGACY_DIR
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                render.LEGACY_DIR = d
+                board = ('<!doctype html>\n<head>\n<title>Distill — Old board</title>\n<script src="./support.js"></script>\n</head>\n'
+                         '<script src="./support.js"></script>\n'
+                         """<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1234,"height":9},"q":"it&#39;s"}'></script>\n""")
+                for name, text in [('Old.dc.html', board), ('notes.md', 'x'), ('Plain.dc.html', board.replace('Distill — ', ''))]:
+                    with open(os.path.join(d, name), 'w', encoding='utf-8') as f:
+                        f.write(text)
+                got = render.legacy_boards()
+                self.assertEqual(sorted(got), ['Old.dc.html', 'Plain.dc.html'])
+                html, w, title = got['Old.dc.html']
+                self.assertEqual((w, title), (1234, 'Old board'))
+                self.assertEqual(got['Plain.dc.html'][2], 'Old board')
+                self.assertEqual(html.count(render.TOKENS_LINK), 1, 'linked once, after the first support.js')
+                self.assertIn(f'<script src="./support.js"></script>\n{render.TOKENS_LINK}\n</head>', html)
+                render.LEGACY_DIR = os.path.join(d, 'missing')
+                self.assertEqual(render.legacy_boards(), {})
+        finally:
+            render.LEGACY_DIR = saved
+
+    def test_main_writes_the_tokens_css(self):
+        import contextlib
+        import io
+        import tempfile
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(render.main([]), 2)
+            self.assertEqual(render.main(['--only']), 2)
+            with tempfile.TemporaryDirectory() as d:
+                self.assertEqual(render.main([d, '--bogus']), 2)
+                self.assertEqual(render.main([d, '--only', 'Pill']), 0)
+                self.assertEqual(render.main([d, '--only', 'Pill']), 0, 'a second render into the same folder')
+                self.assertEqual(read(os.path.join(d, render.TOKENS_CSS)), read(tokens.DS_CSS))
+                self.assertTrue(os.path.exists(os.path.join(d, 'support.js')))
+                self.assertTrue(os.path.exists(os.path.join(d, 'Pill.dc.html')))
+
+
+GOLDEN_DIR = os.path.join(ROOT, 'testdata', 'golden')
+# One board per kind and per piece of board chrome: a component, a states board (captions), a screen board
+# with numbered cards, one with plain list heads, one with counted list heads, one with section subtitles, a page board
+# (window, sidebar, main) and a legacy board (the tokens link put in).
+GOLDEN_BOARDS = ['Pill.dc.html', 'QuickSourceButtonStates.dc.html', 'QueueLabelGate.dc.html', 'ActionsHistory.dc.html',
+                 'ActionsSlack.dc.html', 'Activity.dc.html', 'MainEmpty.dc.html', 'AppIcon.dc.html']
+
+
+class Golden(unittest.TestCase):
+    """render.py's output for a fixed set of boards, byte for byte. In memory, no canvas, no network."""
+
+    def test_boards_match_goldens(self):
+        built = render.build_all()
+        update = os.environ.get('UPDATE_GOLDEN') == '1'
+        if update:
+            os.makedirs(GOLDEN_DIR, exist_ok=True)
+        for f in GOLDEN_BOARDS:
+            self.assertIn(f, built, f'{f}: no longer built; pick another board for GOLDEN_BOARDS')
+            html, width, title, kind = built[f]
+            got = f'<!-- golden: {kind}, width {width}, title {title} -->\n{html}'
+            path = os.path.join(GOLDEN_DIR, f)
+            if update:
+                with open(path, 'w', encoding='utf-8') as fh:
+                    fh.write(got)
+                continue
+            self.assertTrue(os.path.exists(path), f'{f}: no golden; run UPDATE_GOLDEN=1 python3 apps/distill/design/test_design.py')
+            self.assertEqual(got, read(path), f'{f} renders differently from testdata/golden/{f}; if intended, run '
+                                              'UPDATE_GOLDEN=1 python3 apps/distill/design/test_design.py and review the diff')
+        self.assertEqual(sorted(os.listdir(GOLDEN_DIR)), sorted(GOLDEN_BOARDS), 'golden files no board is checked against')
+
+
 def report():
-    pending = [c['name'] for c in COMPONENTS if not c.get('swift')]
+    pending =[c['name'] for c in COMPONENTS if not c.get('swift')]
     design_only = sum(1 for c in COMPONENTS for p in c['props'] if p.get('swift') is False)
     print(f'components: {len(COMPONENTS)}; no Swift view yet: {", ".join(pending) or "none"}; design-only props: {design_only}')
     for c in COMPONENTS:

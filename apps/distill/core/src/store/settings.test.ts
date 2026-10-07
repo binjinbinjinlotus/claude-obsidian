@@ -228,6 +228,34 @@ describe('decodeActionPreferences', () => {
     for (const w of ['onFind', 'onRequest']) assert.equal(decodeActionPreferences({ types: { t: { draftWhen: w } } })!.types!.t!.draftWhen, w);
   });
 
+  test('requiredDefaults: "PROJECT|Type" → field → {name, value}; malformed entries dropped, an empty project dropped', () => {
+    const p = decodeActionPreferences({
+      types: {
+        jira: {
+          requiredDefaults: {
+            'TLS|Task': {
+              customfield_11063: { name: 'Team', value: 'Platform', extra: 1 },
+              customfield_2: { value: '["A","B"]' },
+              customfield_3: { name: 7, value: 'x' },
+              blank: { name: 'Blank', value: '   ' },
+              noValue: { name: 'No value' },
+              wrongValue: { name: 'Wrong', value: 3 },
+              notObject: 'Platform',
+            },
+            'TLS|Bug': { only: { name: 'Only', value: '' } },
+            'OPS|Story': 'x',
+            'OPS|Bug': null,
+          },
+        },
+      },
+    })!;
+    assert.deepEqual(p.types!.jira!.requiredDefaults, {
+      'TLS|Task': { customfield_11063: { name: 'Team', value: 'Platform' }, customfield_2: { name: 'customfield_2', value: '["A","B"]' }, customfield_3: { name: 'customfield_3', value: 'x' } },
+    });
+    assert.deepEqual(decodeActionPreferences({ types: { jira: { requiredDefaults: { 'TLS|Bug': {} } } } })!.types!.jira, { requiredDefaults: {} }, 'an object with nothing usable decodes to {}');
+    for (const bad of ['x', ['TLS|Task'], null]) assert.deepEqual(decodeActionPreferences({ types: { jira: { requiredDefaults: bad } } })!.types!.jira, {}, JSON.stringify(bad));
+  });
+
   test('historyDays is truncated, not clamped (0 or less = forever)', () => {
     assert.equal(decodeActionPreferences({ historyDays: -4.5 })!.historyDays, -4);
     assert.equal(decodeActionPreferences({ historyDays: 30.9 })!.historyDays, 30);

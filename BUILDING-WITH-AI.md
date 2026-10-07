@@ -92,6 +92,30 @@ isn't.
 
 ## Friction log (newest first)
 
+### 2026-10-07
+- **Tests merged red because main moved under them.** The unit-test branch's
+  jira-meta tests were written before the Jira required fields landed on main;
+  after the merge, 6 failed. They were stale expectations, not bugs (the spec
+  says the create screen is always read before Create).
+  - *Lesson:* a test branch that runs while main changes needs a re-run of the
+    suite on the merge result before the merge commit, not after.
+- **A mutation copy found a product bug the checkout hid.** A new app test
+  passed in the worktree but failed in mutate.py's package copy:
+  `ActionsStore.of(_:)` keyed its cache by `ObjectIdentifier`, so a new
+  `AppModel` at a freed model's address got the old store with a nil engine.
+  Seven other per-model stores use the same pattern.
+  - *Lesson:* a test that passes in one build directory and fails in another
+    is evidence, not noise; check what state it shares before retrying.
+- **Coverage looked fine where nothing was checked.** render.py's changed
+  lines all ran in tests, yet only 54% of mutants died: the board chrome
+  strings were never compared. Golden boards (`testdata/golden/`,
+  `UPDATE_GOLDEN=1` to regenerate) took it to 97%. Many Stryker survivors on
+  defensive guards were equivalent; the reasons are in the round's report,
+  not in the code.
+- **Git stopped mid-session.** macOS revoked the agent's access to
+  `~/Documents`, where the main repository (and so every worktree's git
+  metadata) lives; commits waited for the owner.
+
 ### 2026-10-06
 - **Mutation testing found what line coverage hid.** ActionsFilters went from
   59% to 100% line coverage with new tests, yet Routing and Automations, at about
