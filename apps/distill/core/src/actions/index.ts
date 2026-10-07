@@ -1967,7 +1967,8 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       const v = fromNote(f, text);
       if (v) {
         patch[fieldKey(f.id)] = v;
-        patch[fromKey(f.id)] = 'note';
+        // Several choices: the names the note gave, so a chip added later isn't tagged.
+        patch[fromKey(f.id)] = f.kind === 'options' ? v : 'note';
       }
     }
     if (Object.keys(patch).length === 0) return item;

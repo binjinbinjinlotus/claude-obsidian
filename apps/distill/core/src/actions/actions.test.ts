@@ -1316,7 +1316,7 @@ describe('Jira required fields (actions.md, fake Jira)', () => {
     assert.equal(one.fields['jira.customfield_11063'], 'Payments');
     assert.equal(one.fields['jira.customfield_11063:from'], 'note');
     assert.equal(one.fields['jira.components'], '["API"]');
-    assert.equal(one.fields['jira.components:from'], 'note');
+    assert.equal(one.fields['jira.components:from'], '["API"]', 'the names the note gave');
 
     h.runner.draft = () => ({ structured: { title: 'Cap retries', body: 'Mobile and Data both see it; rapid retries.', fields: [] } });
     const b = await h.service.createAction({ type: 'jira', title: 'Cap retries 2', fields: { project: 'TLS', issueType: 'Task' } });

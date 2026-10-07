@@ -7,7 +7,8 @@
  *   option, text, textarea, number (as text), date (YYYY-MM-DD): the text itself
  *   options: a JSON array of names        cascading: a JSON array [parent, child]
  *   user: a JSON object {accountId, name}
- * `jira.<fieldId>:from` = "note" marks a value prefilled from the note.
+ * `jira.<fieldId>:from` marks a value prefilled from the note: "note", or for several choices the JSON
+ * array of the names the note gave.
  */
 import type { JiraField, JiraFieldKind, JiraOption, JiraRequiredDefault } from '../contracts.js';
 import { isObject, str, type JSONObject } from '../store/json.js';
