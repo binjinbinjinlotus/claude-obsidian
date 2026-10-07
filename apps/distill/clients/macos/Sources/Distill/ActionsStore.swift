@@ -127,11 +127,14 @@ final class ActionsStore: ObservableObject {
     private var toastTask: Task<Void, Never>?
     weak var engine: AppModel?
 
-    fileprivate static var stores: [ObjectIdentifier: ActionsStore] = [:]
+    /// One store per model. Internal so tests can check it; keyed by address, so an entry is reused only
+    /// for its own model: a new model at a freed model's address gets a new store (the old one's engine is nil).
+    static var stores: [ObjectIdentifier: ActionsStore] = [:]
 
     static func of(_ engine: AppModel) -> ActionsStore {
         let key = ObjectIdentifier(engine)
-        if let s = stores[key] { return s }
+        if let s = stores[key], s.engine === engine { return s }
+        stores = stores.filter { $0.value.engine != nil }
         let s = ActionsStore()
         s.engine = engine
         stores[key] = s
