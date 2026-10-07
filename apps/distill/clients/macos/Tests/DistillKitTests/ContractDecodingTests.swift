@@ -190,4 +190,19 @@ final class ContractDecodingTests: XCTestCase {
         XCTAssertEqual(try CoreEvent.decode(Data(#"{"type":"job","job":{"id":"j9","vaultPath":"/v"},"deleted":true}"#.utf8)), .jobDeleted(id: "j9"))
         XCTAssertEqual(try CoreEvent.decode(Data(#"{"type":"log"}"#.utf8)), .log(level: "info", message: ""))
     }
+
+    func testAddedWordsForEachCount() {
+        XCTAssertEqual(ApprovedChange(operationID: "x", changes: 1).addedWords, "1 change applied")
+        XCTAssertEqual(ApprovedChange(operationID: "x", changes: 0).addedWords, "0 changes applied")
+        XCTAssertEqual(ApprovedChange(operationID: "x", changes: 3, sources: 1).addedWords, "1 source page added")
+        XCTAssertEqual(ApprovedChange(operationID: "x", changes: 3, concepts: 2).addedWords, "2 concepts added")
+        XCTAssertEqual(ApprovedChange(operationID: "x", changes: 3, entities: 1).addedWords, "1 entity added")
+        XCTAssertEqual(ApprovedChange(operationID: "x", changes: 3, otherPages: 1).addedWords, "1 page added")
+        XCTAssertEqual(ApprovedChange(operationID: "x", changes: 3, entities: 2, otherPages: 1).addedWords, "2 entities, 1 other page added")
+        XCTAssertEqual(ApprovedChange(operationID: "x", changes: 3, concepts: 1, otherPages: 2).addedWords, "1 concept, 2 other pages added")
+        XCTAssertEqual(ApprovedChange(operationID: "x", changes: 3, sources: 1, otherPages: 2).addedWords, "1 source page, 2 other pages added")
+        XCTAssertEqual(ApprovedChange(operationID: "x", changes: 3, updated: 1).addedWords, "1 page updated")
+        XCTAssertEqual(ApprovedChange(operationID: "x", changes: 3, sources: 2, updated: 4).addedWords, "2 source pages added · 4 pages updated")
+        XCTAssertTrue(VaultProfile(path: "/v", queueDirectory: "/q").inboxURL.hasDirectoryPath)
+    }
 }

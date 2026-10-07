@@ -115,4 +115,16 @@ final class SessionContinuityTests: XCTestCase {
         XCTAssertEqual(SessionReplaceText.runnerName("codex"), "Codex")
         XCTAssertEqual(SessionReplaceText.runnerName("openrouter"), "openrouter")
     }
+
+    func testTheMarkerKeepsEveryFieldToSendAgain() throws {
+        let made = SessionUnavailable(place: "batch", reason: "missing", message: "m", detail: "d", action: "approve", text: "t", rules: ["r"],
+                                      labels: "later", pages: ["wiki/a.md"], at: "2026-10-06T10:00:00Z")
+        XCTAssertEqual([made.action, made.text, made.labels, made.at], ["approve", "t", "later", "2026-10-06T10:00:00Z"])
+        XCTAssertEqual(made.rules, ["r"])
+        XCTAssertEqual(made.pages, ["wiki/a.md"])
+        let decoded = try JSONDecoder.core.decode(SessionUnavailable.self, from: JSONEncoder.core.encode(made))
+        XCTAssertEqual(decoded, made)
+        XCTAssertEqual(decoded.labels, "later")
+        XCTAssertEqual(decoded.pages, ["wiki/a.md"])
+    }
 }

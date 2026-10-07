@@ -259,6 +259,10 @@ final class AutomationsTests: XCTestCase {
         XCTAssertNil(bare.timeoutSeconds)
         XCTAssertNil(bare.result)
         let full = ScriptCommand(id: "a", label: "A", description: "d", args: c.args, endOptions: false, timeoutSeconds: 5, result: c.result)
+        XCTAssertEqual(full.endOptions, false)
+        XCTAssertEqual(full.timeoutSeconds, 5)
+        XCTAssertEqual(full.result, c.result)
+        XCTAssertEqual(ScriptResultParse(json: false, keyPattern: "k", urlPattern: "u").urlPattern, "u")
         XCTAssertEqual(try JSONDecoder.core.decode(ScriptCommand.self, from: JSONEncoder.core.encode(full)), full)
     }
 
