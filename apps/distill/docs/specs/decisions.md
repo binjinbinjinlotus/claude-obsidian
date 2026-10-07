@@ -17,6 +17,19 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**The Distill Design System exists and the canvas installs it (2026-10-06).**
+Step 2 of [design-system-plan.md](design-system-plan.md):
+https://claude.ai/artifact/K5knKHsvunBdHR2iyowDW7 holds the tokens, a README
+and the first two components, PrimaryButton and Pill (`window.Distill`).
+`design/tokens.py` generates its `tokens.json` (the list shape the page reads)
+and a `tokens.css` from Theme.swift. The source lives in `design/ds/`.
+`test_design.py` compares the values, not only the names, with Theme.swift.
+The Design System page doesn't write `tokens.css`, and its type says never to
+publish one, so `tokens.css` goes only onto canvases, as
+`project/ds/distill/tokens.css`. The main canvas's `designSystems` record pins
+the version; `tokens.json` and the bundle are copied onto the canvas server
+side.
+
 **The canvas has a page per area, and pages stay small (2026-10-06).** This
 supersedes the "no explicit canvas pages" part of "The design canvas moves to a
 fresh artifact". Pages did not blank the viewer: one page holding all 141 boards

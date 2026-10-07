@@ -24,6 +24,10 @@ it behaves: https://claude.ai/artifact/7PAQ8AKofpY9yPvakwvUMB
 - A pure bug fix that restores designed behavior can go straight to code;
   the canvas is updated afterwards if the fix adds visible states (example:
   the "answering…" rows in History).
+- The Distill Design System (https://claude.ai/artifact/K5knKHsvunBdHR2iyowDW7)
+  holds the tokens and the bundled components. Its source is `design/ds/`;
+  `design/tokens.py` writes `ds/tokens.json` and `ds/tokens.css` from
+  Theme.swift. The canvas installs it under `project/ds/distill/`.
 - The canvas has a page per area (Capture & Queue, Review, Ask, Actions,
   Automations, Settings & Shell, and three component pages) and a row per
   flow on each page, and shows every state of every screen. `design/pages.json`

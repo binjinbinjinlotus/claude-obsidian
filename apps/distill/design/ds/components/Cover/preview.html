@@ -1,0 +1,31 @@
+<!-- @dsCard height=288 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Cover</title>
+<style>
+body { margin: 0; background: var(--window); }
+.cover { position: relative; width: 960px; height: 288px; background: var(--window); overflow: hidden; }
+.name { position: absolute; left: 40px; bottom: 40px; width: 440px; }
+.name h1 { margin: 0; font: 800 120px/0.92 var(--font-display); letter-spacing: -0.03em; color: var(--ink); }
+.name p { margin: 12px 0 0; font: 400 14px/1.4 var(--font-body); color: var(--muted); }
+.panel { fill: var(--panel); } .blue { fill: var(--primary); } .lime { fill: var(--lime); } .peach { fill: var(--peach); } .sky { fill: var(--skyTint); } .pink { fill: var(--pinkTint); }
+</style></head>
+<body>
+<div class="cover">
+<svg width="960" height="288" viewBox="0 0 960 288" aria-hidden="true" style="position:absolute;inset:0">
+<!-- blocks: panel slab, primary, lime, peach at full value; sky and pink tints for relief -->
+<!-- arrangement: one tall panel slab bleeding off the right edge, capsules laid on it -->
+<!-- pattern: pills (radius-capsule) because buttons, pills and chips are all capsules in Distill -->
+<!-- steps: pill heights 24 and 40 scaled x2; gaps 16 -->
+<rect class="panel" x="520" y="0" width="440" height="288"></rect>
+<rect class="blue" x="560" y="40" width="240" height="80" rx="40"></rect>
+<rect class="lime" x="816" y="40" width="200" height="80" rx="40"></rect>
+<rect class="peach" x="560" y="136" width="120" height="48" rx="24"></rect>
+<rect class="sky" x="696" y="136" width="176" height="48" rx="24"></rect>
+<rect class="pink" x="560" y="200" width="200" height="48" rx="24"></rect>
+<rect class="lime" x="776" y="200" width="80" height="48" rx="24"></rect>
+</svg>
+<div class="name"><h1>Distill</h1><p>Calm white windows, one blue action, soft tints with their inks.</p></div>
+</div>
+</body>
+</html>

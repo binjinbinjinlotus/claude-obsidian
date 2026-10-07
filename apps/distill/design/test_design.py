@@ -4,7 +4,7 @@
     python3 apps/distill/design/test_design.py
 
 Fails when:
-  - tokens.json disagrees with Theme.swift;
+  - tokens.json, ds/tokens.json or ds/tokens.css disagrees with Theme.swift (values, not only names);
   - a component in components.json has no `struct <Name>` (or typealias) in its `swift` file;
   - a prop is neither a parameter / stored property of that struct (under its own name or its
     `swift` name) nor marked `"swift": false` with a `why` (design-only: the view derives it) or
@@ -136,8 +136,35 @@ def snapshot_ids():
 
 class Tokens(unittest.TestCase):
     def test_tokens_match_theme(self):
-        with open(tokens.OUT, encoding='utf-8') as f:
-            self.assertEqual(f.read(), tokens.render(), 'tokens.json disagrees with Theme.swift: run python3 apps/distill/design/tokens.py')
+        # tokens.json, and the Design System's ds/tokens.json and ds/tokens.css, all regenerate from Theme.swift.
+        for path, text in tokens.outputs().items():
+            with open(path, encoding='utf-8') as f:
+                self.assertEqual(f.read(), text, f'{os.path.relpath(path, ROOT)} disagrees with Theme.swift: run python3 apps/distill/design/tokens.py')
+
+    def test_design_system_values(self):
+        # The values the Design System shows are Theme.swift's, not just its names.
+        t = tokens.theme()
+        with open(tokens.DS_JSON, encoding='utf-8') as f:
+            d = json.load(f)
+        colors = {x['name']: x['value'] for x in d['color']['tokens']}
+        for name, hexv in t['color'].items():
+            self.assertEqual(colors.get(name), hexv, f'colour {name}')
+        flat = {x['name']: x['value'] for fam in ('spacing', 'radius', 'size') for x in d[fam]['tokens']}
+        styles = {s['name']: s['fontSize'] for g in d['type']['groups'] for s in g['styles']}
+        b, p = t['button']['sizes'], t['pill']
+        for name, v in [('button-height', b['regular']['height']), ('button-height-small', b['small']['height']),
+                        ('button-height-mini', b['mini']['height']), ('button-pad', b['regular']['paddingPrimary']),
+                        ('pill-height', p['regular']['height']), ('pill-height-small', p['small']['height']),
+                        ('pill-pad', p['regular']['paddingX']), ('pill-pad-small', p['small']['paddingX']),
+                        ('radius-card', t['radius']['card']), ('icon-button', t['iconButton']['size'])]:
+            self.assertEqual(flat[name], f'{v}px', name)
+        self.assertEqual(styles['pill-small'], f'{p["small"]["fontSize"]}px')
+        self.assertEqual(styles['button'], f'{b["regular"]["fontSize"]}px')
+
+    def test_bundle_css_uses_tokens(self):
+        with open(os.path.join(ROOT, 'ds', 'components', 'bundle.css'), encoding='utf-8') as f:
+            css = f.read()
+        self.assertEqual(re.findall(r'#[0-9A-Fa-f]{3,8}\b', css), [], 'bundle.css: a colour literal instead of a token')
 
 
 class Components(unittest.TestCase):

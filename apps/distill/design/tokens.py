@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""tokens.json from clients/macos/Sources/Distill/Theme.swift (colours, type, button and pill sizes, radii, spacing).
+"""Tokens from clients/macos/Sources/Distill/Theme.swift (colours, type, button and pill sizes, radii, spacing).
 
-    python3 apps/distill/design/tokens.py           # rewrite tokens.json
-    python3 apps/distill/design/tokens.py --check   # exit 1 when tokens.json is out of date
+    python3 apps/distill/design/tokens.py           # rewrite the three files below
+    python3 apps/distill/design/tokens.py --check   # exit 1 when any of them is out of date
 
-Theme.swift is the source of truth; never edit tokens.json by hand. Standard library only.
+Writes tokens.json (a name-to-value map, for render.py and the drift test), and for the Distill
+Design System ds/tokens.json (the list shape the Design System page reads) and ds/tokens.css (the
+`:root` variables boards and the component bundle use; the page builds its own only in the browser).
+Theme.swift is the source of truth; never edit these files by hand. Standard library only.
 """
 import json
 import os
@@ -14,6 +17,19 @@ import sys
 ROOT = os.path.dirname(os.path.abspath(__file__))
 THEME = os.path.join(ROOT, '..', 'clients', 'macos', 'Sources', 'Distill', 'Theme.swift')
 OUT = os.path.join(ROOT, 'tokens.json')
+DS_JSON = os.path.join(ROOT, 'ds', 'tokens.json')
+DS_CSS = os.path.join(ROOT, 'ds', 'tokens.css')
+FAMILIES = {'display': '"Bricolage Grotesque", ui-rounded, system-ui, sans-serif',
+            'body': '"DM Sans", -apple-system, system-ui, sans-serif'}
+USAGE = {  # what each Theme colour is for, as the Design System shows it
+    'window': 'Window and card background.', 'panel': 'Sidebar, toolbars, quiet fills.', 'border': 'Hairlines and card borders.',
+    'ink': 'Primary text.', 'muted': 'Secondary text on window or panel.',
+    'faint': 'Placeholder and timestamp text; not for body copy (below 4.5:1 on window).', 'flaskLine': 'App icon flask outline.',
+    'primary': 'Primary action fill; links and focus.', 'primaryTint': 'Selected rows, busy pills.',
+    'lime': 'Joy accent fill (icon liquid).', 'limeTint': 'Success pill fill.', 'limeInk': 'Text on limeTint.',
+    'peach': 'Joy accent fill.', 'peachTint': 'Warning or count pill fill.', 'peachInk': 'Text on peachTint.',
+    'pinkTint': 'Vault chip fill.', 'pinkInk': 'Text on pinkTint.', 'skyTint': 'Vault chip fill.', 'skyInk': 'Text on skyTint.',
+    'working': 'Working indicator.'}
 
 
 def body_of(src, decl):
@@ -105,22 +121,101 @@ def extract(src):
     }
 
 
-def render():
+def theme():
     with open(THEME, encoding='utf-8') as f:
-        return json.dumps(extract(f.read()), indent=2) + '\n'
+        return extract(f.read())
+
+
+def render():
+    return json.dumps(theme(), indent=2) + '\n'
+
+
+def px(v):
+    return f'{v}px'
+
+
+def ds_tokens(t):
+    """The Design System's tokens.json: every family a list of {name, value, usage} (the shape its page reads)."""
+    tok = lambda name, value, usage: {'name': name, 'value': value, 'usage': usage}
+    colors = [tok(n, v, USAGE.get(n, '')) for n, v in t['color'].items()]
+    for i, (fill, ink) in enumerate(t['vaultChips'], 1):  # Theme.vaultChips: a vault's chip, by its place in the list
+        colors += [tok(f'vaultChip{i}', '{%s}' % fill, f'Vault {i} chip fill (Theme.vaultChips[{i - 1}]).'),
+                   tok(f'vaultChip{i}Ink', '{%s}' % ink, f'Text on vaultChip{i}.')]
+    b, p = t['button']['sizes'], t['pill']
+    style = lambda name, size, weight, usage: {'name': name, 'fontSize': px(size), 'lineHeight': 1, 'fontWeight': weight, 'usage': usage}
+    return {
+        'name': 'Distill', 'version': 1,
+        'meta': {'source': 'apps/distill/clients/macos/Sources/Distill/Theme.swift via apps/distill/design/tokens.py'},
+        'color': {'themes': [{'id': 'light', 'name': 'Light'}], 'tokens': colors},
+        'type': {'fonts': [], 'families': FAMILIES, 'groups': [
+            {'name': 'Display', 'family': 'display', 'styles': [
+                {'name': 'display-title', 'fontSize': '24px', 'lineHeight': 1.2, 'fontWeight': 800,
+                 'usage': f'Theme.display: {t["type"]["display"]["weight"]} {t["type"]["display"]["design"]} titles (canvas stand-in {t["type"]["display"]["canvasFamily"]}).'}]},
+            {'name': 'Controls', 'family': 'body', 'styles': [
+                style('button', b['regular']['fontSize'], 600, 'PrimaryButton and SoftButton, regular (semibold).'),
+                style('button-small', b['small']['fontSize'], 600, 'Buttons, small.'),
+                style('button-mini', b['mini']['fontSize'], 600, 'Buttons, mini.'),
+                style('pill', p['regular']['fontSize'], 700, 'Pill, regular (bold).'),
+                style('pill-small', p['small']['fontSize'], 700, 'Pill, small.')]}]},
+        'spacing': {'tokens': [
+            tok('button-gap', px(t['button']['gap']), 'Icon to title in buttons.'),
+            tok('button-pad', px(b['regular']['paddingPrimary']), 'PrimaryButton horizontal padding, regular.'),
+            tok('button-pad-soft', px(b['regular']['paddingSoft']), 'SoftButton horizontal padding, regular.'),
+            tok('button-pad-small', px(b['small']['padding']), 'Button horizontal padding, small.'),
+            tok('button-pad-mini', px(b['mini']['padding']), 'Button horizontal padding, mini.'),
+            tok('pill-pad', px(p['regular']['paddingX']), 'Pill horizontal padding, regular.'),
+            tok('pill-pad-small', px(p['small']['paddingX']), 'Pill horizontal padding, small.'),
+            tok('pill-gap', px(p['regular']['gap']), 'Icon to text in a pill, regular.'),
+            tok('pill-gap-small', px(p['small']['gap']), 'Icon to text in a pill, small.')]},
+        'radius': {'tokens': [
+            tok('radius-card', px(t['radius']['card']), 'Cards and panels (Theme card()).'),
+            tok('radius-capsule', '999px', 'Buttons and pills (SwiftUI Capsule).')]},
+        'size': {'tokens': [
+            tok('button-height', px(b['regular']['height']), 'Regular button height.'),
+            tok('button-height-small', px(b['small']['height']), 'Small button height.'),
+            tok('button-height-mini', px(b['mini']['height']), 'Mini button height.'),
+            tok('button-icon', px(b['regular']['iconSize']), 'Button icon, regular.'),
+            tok('button-icon-small', px(b['small']['iconSize']), 'Button icon, small and mini.'),
+            tok('pill-height', px(p['regular']['height']), 'Regular pill height.'),
+            tok('pill-height-small', px(p['small']['height']), 'Small pill height.'),
+            tok('icon-button', px(t['iconButton']['size']), 'IconButton, default size.'),
+            tok('tile', px(t['size']['tile']), 'Tile, default size.')]},
+    }
+
+
+def ds_css(d):
+    """tokens.css: one `--name` per token; an alias reads its target; type styles as --<style>-size and -weight."""
+    def value(v):
+        return f'var(--{v[1:-1]})' if v.startswith('{') else v
+    colors = ' '.join(f'--{x["name"]}: {value(x["value"])};' for x in d['color']['tokens'])
+    rest = ' '.join(f'--{x["name"]}: {x["value"]};' for fam in ('spacing', 'radius', 'size') for x in d[fam]['tokens'])
+    fonts = ' '.join(f'--font-{k}: {v};' for k, v in d['type']['families'].items())
+    styles = ' '.join(f'--{s["name"]}-size: {s["fontSize"]}; --{s["name"]}-weight: {s["fontWeight"]};'
+                      for g in d['type']['groups'] for s in g['styles'])
+    return (f'/* {d["name"]} — generated from tokens.json by apps/distill/design/tokens.py (Theme.swift); never edit by hand */\n'
+            f':root, [data-theme="light"] {{{colors}}}\n:root {{{rest} {fonts} {styles}}}\n')
+
+
+def outputs():
+    t = theme()
+    d = ds_tokens(t)
+    return {OUT: json.dumps(t, indent=2) + '\n', DS_JSON: json.dumps(d, indent=2, ensure_ascii=False) + '\n', DS_CSS: ds_css(d)}
 
 
 def main(argv):
-    text = render()
+    files = outputs()
     if '--check' in argv:
-        cur = open(OUT, encoding='utf-8').read() if os.path.exists(OUT) else ''
-        if cur != text:
-            print('tokens.json is out of date with Theme.swift: run python3 apps/distill/design/tokens.py', file=sys.stderr)
+        stale = [p for p, text in files.items() if (open(p, encoding='utf-8').read() if os.path.exists(p) else '') != text]
+        if stale:
+            print('out of date with Theme.swift: ' + ', '.join(os.path.relpath(p) for p in stale)
+                  + ': run python3 apps/distill/design/tokens.py', file=sys.stderr)
             return 1
         return 0
-    with open(OUT, 'w', encoding='utf-8') as f:
-        f.write(text)
-    print('wrote', os.path.relpath(OUT))
+    for p, text in files.items():
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, 'w', encoding='utf-8') as f:
+            f.write(text)
+        print('wrote', os.path.relpath(p))
     return 0
 
 
