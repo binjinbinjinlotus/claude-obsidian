@@ -847,7 +847,8 @@ struct TodoDetail: View {
 
     private var editor: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TextField("Title", text: Binding(get: { item.title }, set: { store.update(item.id, ActionPatch(title: $0)) }), axis: .vertical)
+            DraftTextField(placeholder: "Title", key: item.id, value: item.title, axis: .vertical, normalize: FieldText.nonEmpty,
+                           save: { store.update($0, ActionPatch(title: $1)) })
                 .textFieldStyle(.plain).font(.system(size: 18, weight: .semibold, design: .rounded))
                 .padding(8).background(RoundedRectangle(cornerRadius: 10).strokeBorder(ActionsTheme.selectedStroke, lineWidth: 1.5))
             fieldRow("Due") {
@@ -868,23 +869,27 @@ struct TodoDetail: View {
                     .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
             }
             fieldRow("People") {
-                TextField("Who it involves", text: Binding(get: { item.field("person") ?? "" },
-                                                           set: { store.update(item.id, ActionPatch(fields: ["person": $0.isEmpty ? nil : $0])) }))
+                DraftTextField(placeholder: "Who it involves", key: item.id, value: item.field("person") ?? "", normalize: FieldText.trimmed,
+                               save: { Self.savePerson(store, $0, $1) })
                     .textFieldStyle(.plain).font(Theme.body(13))
                     .padding(.horizontal, 8).frame(height: 26).background(RoundedRectangle(cornerRadius: 8).fill(Theme.panel))
             }
             fieldRow("Labels") {
-                TextField("tea-club, project-x", text: Binding(get: { item.labels.joined(separator: ", ") },
-                                                              set: { store.update(item.id, ActionPatch(labels: Self.labels($0))) }))
+                DraftTextField(placeholder: "tea-club, project-x", key: item.id, value: item.labels.joined(separator: ", "),
+                               normalize: FieldText.labelText, save: { Self.saveLabels(store, $0, $1) })
                     .textFieldStyle(.plain).font(Theme.body(13))
                     .padding(.horizontal, 8).frame(height: 26).background(RoundedRectangle(cornerRadius: 8).fill(Theme.panel))
             }
         }
     }
 
-    static func labels(_ text: String) -> [String] {
-        text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "#")) }
-            .filter { !$0.isEmpty }
+    /// The People field's saved value: trimmed, and empty clears it.
+    static func savePerson(_ store: ActionsStore, _ id: String, _ text: String) {
+        store.update(id, ActionPatch(fields: ["person": text.isEmpty ? nil : text]))
+    }
+
+    static func saveLabels(_ store: ActionsStore, _ id: String, _ text: String) {
+        store.update(id, ActionPatch(labels: FieldText.labels(text)))
     }
 
     private func editValue(_ text: String) -> some View {

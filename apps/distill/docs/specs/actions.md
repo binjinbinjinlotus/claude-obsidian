@@ -704,7 +704,11 @@ Status per part; `built` parts ship in `clients/macos`.
   due badge; the detail (fields, FROM context with quote, Why and "Found by",
   "Also from this note"; footer: remove on the left, then Complete, then Send
   to ▾ with the suggested type first and Email disabled); edit in place
-  (title, due, priority, people, labels; saved as you type); Add to-do row (↩
+  (title, due, priority, people, labels; saved as you type: the text fields
+  (title, people, labels, and a name in Settings → People) keep what you type
+  as typed and save it trimmed after a 0.7 s pause, on Return, on focus loss,
+  on switching items and when a window closes, `FieldDraft`; an empty title
+  or name is not saved); Add to-do row (↩
   adds, Esc cancels, labels you filter by pre-filled); ⌘/⇧-click selects for
   the bulk bar (Complete, Due date, Priority, Label, Send to, Remove, Clear);
   "To confirm" group with Add / Create draft, ×, Add all, Dismiss all (the

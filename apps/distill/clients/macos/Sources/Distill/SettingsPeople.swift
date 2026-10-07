@@ -43,6 +43,8 @@ struct PeopleSettingsPage: View {
     var fixturePreview: RoutingPreview? = nil
     @State private var adding: [String: String] = [:]
     @State private var editingName: String?
+    /// Just added and not named yet: shown here, saved with its first name.
+    @State private var newPerson: ActionPerson?
 
     private var prefs: ActionPreferences { SettingsEdits.actions(engine.settings) }
     private var types: [SettingsActionType] { ui.actionTypes.filter { !$0.reserved && SettingsEdits.typeEnabled($0, engine.settings) } }
@@ -61,7 +63,7 @@ struct PeopleSettingsPage: View {
                 .font(Theme.body(13)).foregroundStyle(Theme.softInk).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: 820, alignment: .leading)
             caps("People").padding(.top, 4)
-            ForEach(prefs.people) { person in personRow(person) }
+            ForEach(prefs.people + (newPerson.map { [$0] } ?? [])) { person in personRow(person) }
             Button { addPerson() } label: { Text("＋ Add a person").font(Theme.body(12.5, .semibold)).foregroundStyle(Theme.primary) }
                 .buttonStyle(.plain).padding(.top, 2).padding(.bottom, 6)
             caps("Each type")
@@ -87,7 +89,9 @@ struct PeopleSettingsPage: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     if editingName == p.id || p.name.isEmpty {
-                        TextField(p.isYou ? "Your name, as the notes write it" : "Their name", text: nameBinding(p))
+                        DraftTextField(placeholder: p.isYou ? "Your name, as the notes write it" : "Their name", key: p.id, value: p.name,
+                                       normalize: p.isYou ? FieldText.trimmed : FieldText.nonEmpty,
+                                       save: { _, name in saveName(p, name) })
                             .textFieldStyle(.plain).font(Theme.body(13.5, .semibold)).frame(maxWidth: 260)
                             .onSubmit { editingName = nil }
                     } else {
@@ -122,7 +126,10 @@ struct PeopleSettingsPage: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if !p.isYou {
-                Button("Remove") { SettingsEdits.setActions(&engine.settings) { $0.removePerson(p.id, types: ui.actionTypes.map(\.id)) } }
+                Button("Remove") {
+                    if newPerson?.id == p.id { newPerson = nil; return }
+                    SettingsEdits.setActions(&engine.settings) { $0.removePerson(p.id, types: ui.actionTypes.map(\.id)) }
+                }
                     .buttonStyle(.plain).font(Theme.body(12)).foregroundStyle(Theme.muted)
             }
         }
@@ -130,15 +137,14 @@ struct PeopleSettingsPage: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Color(hex: 0xF0EEEA)).frame(height: 1) }
     }
 
-    private func nameBinding(_ p: ActionPerson) -> Binding<String> {
-        Binding(get: { prefs.people.first { $0.id == p.id }?.name ?? "" }, set: { v in
-            SettingsEdits.setActions(&engine.settings) { pr in
-                pr.people = pr.people.map { $0.id == p.id ? ActionPerson(id: $0.id, name: v, aliases: $0.aliases) : $0 }
-            }
-        })
+    private func saveName(_ p: ActionPerson, _ name: String) {
+        let person = newPerson?.id == p.id ? newPerson ?? p : p
+        if newPerson?.id == p.id { newPerson = nil }
+        SettingsEdits.setActions(&engine.settings) { $0.setName(person, name) }
     }
 
     private func setAliases(_ p: ActionPerson, _ aliases: [String]) {
+        if newPerson?.id == p.id { newPerson?.aliases = aliases; return }
         SettingsEdits.setActions(&engine.settings) { pr in
             pr.people = pr.people.map { $0.id == p.id ? ActionPerson(id: $0.id, name: $0.name, aliases: aliases) : $0 }
         }
@@ -153,7 +159,7 @@ struct PeopleSettingsPage: View {
 
     private func addPerson() {
         let id = "p-" + UUID().uuidString.prefix(8).lowercased()
-        SettingsEdits.setActions(&engine.settings) { $0.people = $0.people + [ActionPerson(id: id, name: "")] }
+        newPerson = ActionPerson(id: id, name: "")
         editingName = id
     }
 
