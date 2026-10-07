@@ -17,6 +17,22 @@ supersede it with a new entry.
 
 ## 2026-10-06
 
+**Jira required fields are filled by type, by name (2026-10-06).** Built from the
+ActionsJiraFields frames K–N (spec [actions.md](actions.md#jira-required-fields-2026-10-06-owner-request)).
+Choices made while building:
+- The screen is always read before Create (cached an hour), so a required field is refused
+  before any POST in plain words ("Fill in Team first"), never Jira's 400.
+- Values are stored on the item as `jira.<fieldId>` in text form; the core maps them to Jira's
+  shapes at Create. The UI never shows the id.
+- A kind the Mac doesn't know reads as one Distill can't fill: Create stays off and Open in Jira
+  passes everything else along. Better than sending a guess.
+- "From the note" for several choices records the names the note gave, so a chip you add later
+  isn't tagged.
+- "Use for future TLS Tasks" shows after you pick a value on this ticket (as on the canvas, it
+  isn't shown on values that were already there); Settings lists and removes the saved values.
+- Settings keeps one Jira page: the section sits under Defaults rather than on its own
+  "Jira ticket defaults" page as on the canvas, so Defaults stay in one place.
+
 **Whose items Distill handles is built (2026-10-06).** The ActionsRouting design is now in
 the core and the Mac app (spec [actions-routing.md](actions-routing.md)). Choices made while
 building:

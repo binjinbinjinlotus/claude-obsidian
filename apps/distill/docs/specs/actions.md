@@ -208,6 +208,74 @@ Jira allows, and the banner said "didn't create" twice.
   spelling, no Priority on the screen, unreachable blocks nothing, the
   drafted priority), `http-actions.test.ts` (routes).
 
+## Jira required fields (2026-10-06, owner request)
+
+The owner's TLS · Task requires `customfield_11063`. Distill showed it as
+"Customfield _11063 · Choose a customfield_11063" with no control, so the
+ticket couldn't be created. Canvas: board ActionsJiraFields, frames
+`jira-required-picker`, `jira-required-filled`, `jira-required-types`,
+`jira-required-unsupported`, `settings-jira-defaults-required` and the note
+card `jira-card-required`.
+
+- **Core (built):** `actions/jira-required.ts` (pure) and `jira-meta.ts`.
+  The create screen now carries each field's name, required, schema (type,
+  items, custom) and allowed values with their ids; `JiraFields.extra` lists
+  the fields Distill asks about besides its own (not project, type, summary,
+  description, priority, assignee, labels, reporter, attachment, links,
+  parent), required ones without a Jira default first. Each has a `kind`:
+  `option` (one choice), `options` (several: components, versions, multi
+  select), `text`, `textarea`, `number`, `date`, `user`, `cascading`, or
+  `unsupported`. The UI shows the display name, never the id.
+- **Values** live in the item's fields under `jira.<fieldId>`: the text for
+  option, text, text area, number and date (YYYY-MM-DD); a JSON array of
+  names for several choices; JSON `{accountId, name}` for a person; JSON
+  `[parent, child]` for a cascading field. Create maps them by type: option
+  `{id}`, several `[{id}]`, text as is, text area as a document, number as a
+  number, date as the day, person `{accountId}`, cascading
+  `{id, child: {id}}`. A value outside Jira's choices refuses ("Juggling isn't
+  a choice for Team. Pick one.").
+- **Check before Create:** an empty required field refuses with "Fill in
+  <Name> first" before any POST (`field: jira.<id>`). A required field of a
+  type Distill can't fill refuses with "<Name> can only be filled in Jira".
+  An optional field goes along only when it has a value.
+- **Use for future <PROJECT> <Type>s** saves the value in
+  `actionPreferences.types.jira.requiredDefaults["TLS|Task"][fieldId] =
+  {name, value}`. A saved value fills the field on new drafts and at Create.
+  Optional fields stay hidden unless a value is saved for them.
+- **From the note:** after a draft, an empty asked field takes a choice the
+  note names exactly (whole words, ignoring case), tagged
+  `jira.<id>:from` = "note" (for several choices, the JSON list of the names
+  the note gave). Two names for one choice prefill nothing. A saved value wins.
+- **Open in Jira:** `GET /v1/actions/:id/jira-create-url` gives Jira's create
+  page (`/secure/CreateIssueDetails!init.jspa`) with the project and type ids,
+  summary, description, priority id and every field Distill can fill.
+  `GET /v1/jira/projects/:key/users?q=` searches the people Jira can assign
+  in the project (inactive ones left out), for a person field.
+- **Mac (built):** `JiraRequiredViews.swift` and `DistillKit/JiraRequired.swift`.
+  Each field shows under Assignee by name, with "Required by TLS". One choice
+  is a picker (TEAMS IN TLS); several are chips with × and a ＋ menu, "from
+  the note" after the names the note gave; text, text area and number are text
+  boxes; a date is a picker ("Oct 16, 2026"); a person is a pill with initials
+  and a search of Jira's people; cascading is two pickers ("Staging ›
+  us-east-1"). An empty required control has a peach border, and the footer
+  says "Fill in Team first" beside a disabled Create in Jira. After you pick a
+  value, "Use for future TLS Tasks" saves it (ticked when it is the saved
+  value; unticking removes it). A field Distill can't fill reads "Distill
+  can't fill Rollout plan here" with Open in Jira and Copy the ticket text;
+  the footer says "Rollout plan can only be filled in Jira" and Create stays
+  off. The Jira label column is 104 pt so "Target release date" fits.
+  Settings → Jira ticket, under Defaults: REQUIRED FIELDS, PER PROJECT AND
+  TYPE lists each saved value (a picker for choices) with Remove, and a
+  required field with none as "not set: asked on each ticket" (the default
+  project + type first, then saved ones, then other loaded screens).
+- Tests: `actions.test.ts` ("Jira required fields", a fake Jira: the owner's
+  Team case, every kind's payload, each kind's refusal with zero POSTs, the
+  unsupported field and Open in Jira's URL, saved values and their decoding,
+  note prefill), `http-actions.test.ts` (routes), `JiraRequiredTests`,
+  `JiraRequiredAppTests`. Snapshot states `jira-required-picker`,
+  `jira-required-filled`, `jira-required-types`, `jira-required-unsupported`,
+  `settings-jira-defaults-required`.
+
 ## Settings
 
 Built in the macOS app (`SettingsActions.swift`, `SettingsConnections.swift`;
@@ -505,6 +573,8 @@ All routes need the bearer token, like every other route.
 | GET | `/v1/jira/projects` | `?refresh=1` | `JiraProjects` (Jira pickers; 409 with `error.jira` when Jira can't be asked) |
 | GET | `/v1/jira/projects/:key/types` | `?refresh=1` | `JiraIssueTypes` |
 | GET | `/v1/jira/projects/:key/types/:id/fields` | `?refresh=1` | `JiraFields` (`priorities` null: no Priority on the create screen) |
+| GET | `/v1/jira/projects/:key/users` | `?q=` | `JiraUsers {users: {accountId, name}[]}` (a person field's search) |
+| GET | `/v1/actions/:id/jira-create-url` | | `{url}` (Jira's create page with what Distill can fill) |
 | GET | `/v1/connections` | | `{connections: ConnectionInfo[]}` |
 | POST | `/v1/connections/:id/connect` | `{site, email, token}` (scrubbed from errors) | `ConnectionInfo` |
 | GET | `/v1/connections/:id/sign-in-url` | `?site=` | `{url}` |
