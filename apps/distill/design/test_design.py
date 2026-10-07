@@ -10,7 +10,10 @@ Fails when:
     `swift` name) nor marked `"swift": false` with a `why` (design-only: the view derives it) or
     `"swiftPending"` (designed, not built yet; fails once Swift has it, so the mark gets dropped);
   - a template, a state's prop or a board reference doesn't match components.json;
-  - the schema doesn't render.
+  - the schema doesn't render;
+  - a golden board (testdata/golden/) renders differently. After an intended change to render.py's board
+    chrome or to those boards, regenerate them and review the diff:
+        UPDATE_GOLDEN=1 python3 apps/distill/design/test_design.py
 Reports (never fails): components with no Swift view yet, swiftPending props, and screen states with no snapshot
 state of the same id in clients/macos/Sources/Distill/Snapshot*.swift.
 """
@@ -425,6 +428,10 @@ class TokenTools(unittest.TestCase):
         self.assertEqual(render.TOKENS_CSS, 'ds/distill/tokens.css')
         self.assertEqual(render.TOKENS_LINK, '<link rel="stylesheet" href="./ds/distill/tokens.css">')
 
+    def test_card_without_caption(self):
+        # Every card on today's boards has a caption, so the goldens never show the empty one.
+        self.assertTrue(render.card(1, {'card': {}, 'label': 'L'}, '').endswith('<span style="font-size: 12px; color: var(--muted); line-height: 1.5"></span></section>'))
+
     def test_state_cell_caption(self):
         self.assertNotIn('<span style="font-size: 11px', render.state_cell('L', '<i></i>', ''))
         self.assertIn('color: var(--muted); line-height: 1.45; max-width: 260px">Cap</span></div>', render.state_cell('L', '<i></i>', 'Cap'))
@@ -470,6 +477,37 @@ class TokenTools(unittest.TestCase):
                 self.assertEqual(read(os.path.join(d, render.TOKENS_CSS)), read(tokens.DS_CSS))
                 self.assertTrue(os.path.exists(os.path.join(d, 'support.js')))
                 self.assertTrue(os.path.exists(os.path.join(d, 'Pill.dc.html')))
+
+
+GOLDEN_DIR = os.path.join(ROOT, 'testdata', 'golden')
+# One board per kind and per piece of board chrome: a component, a states board (captions), a screen board
+# with numbered cards, one with plain list heads, one with counted list heads, one with section subtitles, a page board
+# (window, sidebar, main) and a legacy board (the tokens link put in).
+GOLDEN_BOARDS = ['Pill.dc.html', 'QuickSourceButtonStates.dc.html', 'QueueLabelGate.dc.html', 'ActionsHistory.dc.html',
+                 'ActionsSlack.dc.html', 'Activity.dc.html', 'MainEmpty.dc.html', 'AppIcon.dc.html']
+
+
+class Golden(unittest.TestCase):
+    """render.py's output for a fixed set of boards, byte for byte. In memory, no canvas, no network."""
+
+    def test_boards_match_goldens(self):
+        built = render.build_all()
+        update = os.environ.get('UPDATE_GOLDEN') == '1'
+        if update:
+            os.makedirs(GOLDEN_DIR, exist_ok=True)
+        for f in GOLDEN_BOARDS:
+            self.assertIn(f, built, f'{f}: no longer built; pick another board for GOLDEN_BOARDS')
+            html, width, title, kind = built[f]
+            got = f'<!-- golden: {kind}, width {width}, title {title} -->\n{html}'
+            path = os.path.join(GOLDEN_DIR, f)
+            if update:
+                with open(path, 'w', encoding='utf-8') as fh:
+                    fh.write(got)
+                continue
+            self.assertTrue(os.path.exists(path), f'{f}: no golden; run UPDATE_GOLDEN=1 python3 apps/distill/design/test_design.py')
+            self.assertEqual(got, read(path), f'{f} renders differently from testdata/golden/{f}; if intended, run '
+                                              'UPDATE_GOLDEN=1 python3 apps/distill/design/test_design.py and review the diff')
+        self.assertEqual(sorted(os.listdir(GOLDEN_DIR)), sorted(GOLDEN_BOARDS), 'golden files no board is checked against')
 
 
 def report():
