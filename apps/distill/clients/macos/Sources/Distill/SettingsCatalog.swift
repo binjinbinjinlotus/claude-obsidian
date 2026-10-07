@@ -198,6 +198,8 @@ enum SettingsIndex {
                 // Jira pickers: one Defaults row (project, type, priority from the account).
                 list.append(SettingsEntry(target: target, title: "Defaults", note: "Project, type and priority for new \(t.pluralLabel)",
                                           keywords: "default project issue type priority", crumb: crumb))
+                list.append(SettingsEntry(target: target, title: "Required fields, per project and type", note: "Values filled into every new ticket for a project and type",
+                                          keywords: "required custom field team default", crumb: crumb))
             }
             for field in t.defaultFields where !(t.id == "jira" && JiraFieldPickers.keys.contains(field.key)) {
                 list.append(SettingsEntry(target: target, title: field.title, note: "Used for new \(t.pluralLabel)", crumb: crumb))

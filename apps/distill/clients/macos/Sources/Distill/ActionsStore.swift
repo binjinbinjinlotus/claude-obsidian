@@ -89,6 +89,9 @@ final class ActionsStore: ObservableObject {
     @Published var jiraTypes: [String: [JiraIssueType]] = [:]
     /// By "KEY|typeId".
     @Published var jiraScreens: [String: JiraCreateScreen] = [:]
+    /// Jira required fields: "itemID|fieldID" picked here (shows "Use for future …"), and the open menu.
+    @Published var jiraPicked: Set<String> = []
+    @Published var jiraOpenField: String?
     /// actions-routing.md: Pending (`waiting`) and Others' actions, live; your lists never show them.
     @Published var routed: [String: ActionItem] = [:]
     @Published var highlights: [HighlightNote] = []

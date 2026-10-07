@@ -290,6 +290,7 @@ struct ActionTypeSettingsPage: View {
                                          labelWidth: 60)
                             .frame(maxWidth: 360)
                     }
+                    JiraRequiredDefaultsSection(store: engine.actions)
                 }
                 ForEach(type.defaultFields.filter { !(type.id == "jira" && JiraFieldPickers.keys.contains($0.key)) }, id: \.key) { field in
                     row(field.title, "New \(type.pluralLabel) start with this; a draft can pick another") {

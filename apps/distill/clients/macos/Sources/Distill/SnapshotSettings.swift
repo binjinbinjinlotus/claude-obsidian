@@ -74,6 +74,31 @@ extension StatesSnapshot {
         settingsWindow("jira-fields-settings", "Actions › Jira ticket · defaults from your Jira",
                        "Default project, type and priority picked from the account, with From your Jira · Refresh.",
                        e, target: SettingsTarget(.actions, actionType: "jira"), size: CGSize(width: 1140, height: 1080))
+        // Jira required fields: each project and type's, with the values saved from tickets.
+        e = engine { s in
+            SettingsEdits.setActions(&s) { p in
+                p.setFieldDefault("jira", "project", "TLS")
+                p.setFieldDefault("jira", "issueType", "Task")
+                p.setFieldDefault("jira", "priority", "Medium")
+                p.setJiraRequiredDefault("TLS|Task", field: "customfield_11063", JiraRequiredDefault(name: "Team", value: "Platform"))
+                p.setJiraRequiredDefault("TLS|Task", field: "components", JiraRequiredDefault(name: "Components", value: #"["API"]"#))
+                p.setJiraRequiredDefault("PAY|Story", field: "customfield_11063", JiraRequiredDefault(name: "Team", value: "Payments"))
+            }
+        }
+        let teams = ["Platform", "Payments", "Mobile", "Data", "Developer Experience"].enumerated().map { JiraOption(id: "2010\($0.offset)", name: $0.element) }
+        let teamField = JiraField(id: "customfield_11063", name: "Team", kind: .option, options: teams)
+        e.actions.jiraProjects = JiraProjectList(site: "https://acme.atlassian.net", account: "jin@lotusflare.com", fetchedAt: Date().addingTimeInterval(-120),
+                                                 projects: [JiraProject(key: "PAY", name: "Payments"), JiraProject(key: "TLS", name: "Telus API Marketplace")])
+        e.actions.jiraTypes = ["TLS": [JiraIssueType(id: "10001", name: "Task"), JiraIssueType(id: "10002", name: "Bug")], "PAY": [JiraIssueType(id: "10011", name: "Story")]]
+        e.actions.jiraScreens = [
+            "TLS|10001": JiraCreateScreen(project: "TLS", typeId: "10001", priorities: ["Critical", "High", "Medium", "Low"],
+                                          extra: [teamField, JiraField(id: "components", name: "Components", kind: .options, options: [JiraOption(id: "31", name: "API"), JiraOption(id: "32", name: "Gateway")])]),
+            "TLS|10002": JiraCreateScreen(project: "TLS", typeId: "10002", priorities: ["Critical", "High", "Medium", "Low"], extra: [teamField]),
+            "PAY|10011": JiraCreateScreen(project: "PAY", typeId: "10011", priorities: ["High", "Medium"], extra: [teamField]),
+        ]
+        settingsWindow("settings-jira-defaults-required", "Actions › Jira ticket · required fields",
+                       "REQUIRED FIELDS, PER PROJECT AND TYPE: TLS · Task → Team Platform and Components API, TLS · Bug not set (asked on each ticket), PAY · Story → Team Payments; each with Remove.",
+                       e, target: SettingsTarget(.actions, actionType: "jira"), size: CGSize(width: 1140, height: 1080))
         e = engine(jiraEdited)
         e.settingsUI.fixtureConfirmReset = "draft"
         settingsWindow("settings-type-jira-reset-confirm", "Actions › Jira ticket · reset confirmation",

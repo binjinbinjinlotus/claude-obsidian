@@ -10,6 +10,8 @@ import { CoreError, type ActionError, type ActionItem, type ConnectionInfo } fro
 import type { FetchLike } from '../runners/model-api.js';
 import type { SecretStore } from '../runners/secrets.js';
 import { encodeJSON, isObject, isoDate, preserveUnreadable, readJSON, str, writeFileAtomic, type JSONObject } from '../store/json.js';
+import { defaultsKey, checkRequired } from './jira-required.js';
+import { actionPreferences } from '../store/settings.js';
 import { checkJiraDraft, projectKey } from './jira-meta.js';
 import { markdownToADF, markdownToStorage } from './markdown.js';
 import { registerHandler, type HandlerContext, type HandlerResult } from './registry.js';
@@ -313,6 +315,15 @@ async function jiraCreate(ctx: HandlerContext): Promise<HandlerResult> {
   // spelling replaces a case-only difference. If Jira can't be asked, nothing is blocked: it checks on create.
   const check = ctx.services.jiraMeta ? await checkJiraDraft(ctx.services.jiraMeta, f) : {};
   if (check.problem) fail('refused', check.problem.message, check.problem.field);
+  // actions.md, Jira required fields: every field the project requires has a value (the item's, else the
+  // project + type's saved one) before any write; each value goes in Jira's shape for its schema.
+  let extra: Record<string, unknown> = {};
+  if (check.fields && check.project && check.issueType) {
+    const saved = actionPreferences(ctx.settings).types.jira?.requiredDefaults?.[defaultsKey(check.project, check.issueType)];
+    const req = checkRequired(check.fields, f, saved);
+    if (req.problem) fail('refused', req.problem.message, req.problem.field);
+    extra = req.payload;
+  }
   const fields: JSONObject = {
     project: { key: check.project ?? projectKey(project!) },
     summary: item.title.trim().slice(0, 254),
@@ -324,6 +335,7 @@ async function jiraCreate(ctx: HandlerContext): Promise<HandlerResult> {
   if (labels.length > 0) fields.labels = labels;
   const assignee = await jiraAssignee(client, f.assignee);
   if (assignee) fields.assignee = { accountId: assignee };
+  for (const [id, value] of Object.entries(extra)) fields[id] = value as JSONObject;
   const res = await client.call('POST', '/rest/api/3/issue', { fields });
   if (res.status === 400) {
     const r = refusal(res.json);
