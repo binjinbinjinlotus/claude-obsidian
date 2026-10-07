@@ -17,6 +17,26 @@ supersede it with a new entry.
 
 ## 2026-10-07
 
+**Track as Pending from To confirm, and Move to Pending for an added to-do (2026-10-07).**
+The owner reviewed the board "Actions · Track as Pending", said "build it" and accepted every
+answer the frames assumed:
+(a) To confirm offers Track as Pending… for any found type, in Add as… after a divider; an added
+item gets Move to Pending… only when it is a to-do (a message, ticket or page you added is
+something you send; dismiss or remove it instead).
+(b) By is optional: filled from the due date, × clears it; with no date the Pending row never goes
+Overdue.
+(c) Undo in the toast restores the item where it was (To confirm, or the to-do list) with the same
+status and fields; the core keeps that in `trackedFrom` and Undo works while nothing has happened
+to it in Pending.
+(d) The key is ⇧⌥Return; Return and ⌥Return are unchanged, and it never fires in a text field.
+(e) Move to Pending… sits at the end of the to-do's Send to, after a divider (not the ⋯ menu).
+(f) It stays the same item (id, note, line, Why, labels); Activity records "Tracked “…” as Pending
+· waiting on <name> (found as <type>)".
+Two choices made while building: the CLI gets no command for it, since the CLI deliberately has
+no confirm command and this confirms a To confirm item; and Activity is append-only, so Undo adds
+a "Restored" entry rather than removing the "Tracked" one (the card said "Undo removes the
+entry"). Spec: [actions-routing.md](actions-routing.md), Track as Pending.
+
 **Free-text fields keep what you type and save after a pause (2026-10-07).**
 The to-do Title, People and Labels fields and a name in Settings → People read
 the stored value back on every key, so a trimmed save removed the space or
