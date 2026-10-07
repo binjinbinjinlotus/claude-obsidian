@@ -704,7 +704,8 @@ Status per part; `built` parts ship in `clients/macos`.
   due badge; the detail (fields, FROM context with quote, Why and "Found by",
   "Also from this note"; footer: remove on the left, then Complete, then Send
   to ▾ with the suggested type first and Email disabled); edit in place
-  (title, due, priority, people, labels; saved as you type); Add to-do row (↩
+  (title, due, priority, people, labels; saved as you type, see When field
+  edits save); Add to-do row (↩
   adds, Esc cancels, labels you filter by pre-filled); ⌘/⇧-click selects for
   the bulk bar (Complete, Due date, Priority, Label, Send to, Remove, Clear);
   "To confirm" group with Add / Create draft, ×, Add all, Dismiss all (the
@@ -778,3 +779,15 @@ Status per part; `built` parts ship in `clients/macos`.
   renders the real screens offscreen at 900 and 1110 pt, with filters set on
   every tab (`DISTILL_LIVE_OUT` keeps the PNGs; they are looked at, not
   measured).
+
+### When field edits save
+
+The free-text fields that save as you type (the to-do title, people and labels,
+and a name in Settings → People) keep what you type exactly as typed
+(`FieldDraft`, `DraftTextField`). They save the trimmed, normalised value after a
+0.7 s pause, on Return, on focus loss, on switching items (to the item you were
+editing), when the field goes away (Done), when a window closes and on ⌘Q. An
+empty title or name is not saved; the old one comes back when you leave the
+field. On ⌘Q the app flushes every draft and the pending Settings save
+(`PendingSaves`), then waits for those saves to reach the core, at most 2 s,
+before it quits.

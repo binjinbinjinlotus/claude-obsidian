@@ -357,7 +357,9 @@ final class ActionsStore: ObservableObject {
 
     func call(_ id: String? = nil, _ work: @escaping (CoreClient) async throws -> ActionItem?) {
         guard let client else { engine?.lastError = "The Distill core is not connected."; return }
+        PendingSaves.shared.began() // ⌘Q waits for it
         Task {
+            defer { PendingSaves.shared.ended() }
             do {
                 if let item = try await work(client) { self.put(item) }
             } catch is CancellationError {

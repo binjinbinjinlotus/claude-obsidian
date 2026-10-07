@@ -93,6 +93,16 @@ isn't.
 ## Friction log (newest first)
 
 ### 2026-10-07
+- **"Can't type a space" was a read-side trim, not a save-side one.** The
+  brief guessed the core or the store trimmed the People value; the core
+  stored it untouched. The field's getter read it back through
+  `ActionItem.field()`, which trims, so the space vanished on the same key.
+  The fix (a draft that saves on pause, Return, focus loss, item switch and
+  window close) then reopened an old hole: a Remove click doesn't take focus,
+  so the removed person's pending name saved after Remove and could append
+  them back. The core also silently drops people with an empty name.
+  - *Lesson:* for a "the field eats my input" bug, read the binding's getter
+    first; and any deferred save must not recreate what was deleted.
 - **Tests merged red because main moved under them.** The unit-test branch's
   jira-meta tests were written before the Jira required fields landed on main;
   after the merge, 6 failed. They were stale expectations, not bugs (the spec

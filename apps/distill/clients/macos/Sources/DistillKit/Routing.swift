@@ -33,8 +33,24 @@ public struct RoutingPreview: Codable, Equatable, Sendable {
     public var lists: Int
     public var waiting: Int
     public var others: Int
-    public init(days: Int = 7, lists: Int, waiting: Int, others: Int) {
-        self.days = days; self.lists = lists; self.waiting = waiting; self.others = others
+    /// Found from notes in those days before routing was on: no owner, so not counted (an older core sends none).
+    public var beforeRouting: Int
+    public init(days: Int = 7, lists: Int, waiting: Int, others: Int, beforeRouting: Int = 0) {
+        self.days = days; self.lists = lists; self.waiting = waiting; self.others = others; self.beforeRouting = beforeRouting
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(days: try c.decode(Int.self, forKey: .days), lists: try c.decode(Int.self, forKey: .lists),
+                  waiting: try c.decode(Int.self, forKey: .waiting), others: try c.decode(Int.self, forKey: .others),
+                  beforeRouting: try c.decodeIfPresent(Int.self, forKey: .beforeRouting) ?? 0)
+    }
+
+    /// The Settings line: "In the last 7 days this would have sent 0 to your lists, 0 to Pending and 0 to
+    /// Highlights. 15 items found before routing aren't counted: they have no owner."
+    public var beforeRoutingNote: String? {
+        guard beforeRouting > 0 else { return nil }
+        return "\(beforeRouting) \(beforeRouting == 1 ? "item" : "items") found before routing \(beforeRouting == 1 ? "isn’t" : "aren’t") counted: \(beforeRouting == 1 ? "it has" : "they have") no owner."
     }
 }
 
@@ -187,6 +203,12 @@ extension ActionPreferences {
     public var routingOn: Bool {
         let you = people[0]
         return !you.name.trimmingCharacters(in: .whitespaces).isEmpty || you.aliases.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
+    /// Saves a person's name as the People field saves it (trimmed; never empty for anyone but you).
+    /// Rename only: a person removed while their name was being typed stays removed.
+    public mutating func setName(_ id: String, _ name: String) {
+        people = people.map { $0.id == id ? ActionPerson(id: $0.id, name: name, aliases: $0.aliases) : $0 }
     }
 
     /// Removes a person, and them from every type's Handles items for.
@@ -448,5 +470,69 @@ extension CoreClient {
 
     private func routeCall(_ id: String, _ action: String) async throws -> ActionItem {
         try await sendPlain("POST", "/v1/actions/\(Self.segment(id))/\(action)", body: JSONValue.object([:]))
+    }
+}
+
+/// Settings → Whose items Distill handles: People edits that span a save (actions-routing.md).
+/// A person just added is kept here, not in Settings, until they have a name: the core drops a
+/// person with an empty name, so saving them blank made the new row vanish half a second later.
+public struct PeopleEdit: Equatable, Sendable {
+    public private(set) var newPerson: ActionPerson?
+    /// Added from this type's "Handles items for" ＋: they handle it from their first name.
+    public private(set) var newPersonType: String?
+
+    public init() {}
+
+    /// The rows the page shows: Settings' people, then the one being added.
+    public func rows(_ p: ActionPreferences) -> [ActionPerson] { p.people + (newPerson.map { [$0] } ?? []) }
+
+    /// The id of the row to name. A person already being added keeps their row (a name typed in it
+    /// may not be saved yet: replacing the row dropped it); a type's ＋ makes them handle that type.
+    @discardableResult
+    public mutating func add(id: String, forType type: String? = nil) -> String {
+        if let n = newPerson {
+            if let type { newPersonType = type }
+            return n.id
+        }
+        newPerson = ActionPerson(id: id, name: "")
+        newPersonType = type
+        return id
+    }
+
+    /// The name field's save (trimmed, never empty for anyone but you): the new person joins Settings
+    /// with it; anyone else is renamed, and a person removed meanwhile stays removed.
+    public mutating func saveName(_ id: String, _ name: String, in p: inout ActionPreferences) {
+        if let n = newPerson, n.id == id {
+            newPerson = nil
+            p.people.append(ActionPerson(id: id, name: name, aliases: n.aliases))
+            if let type = newPersonType { p.setHandlesFor(type, p.handlesFor(type) + [id]) }
+            newPersonType = nil
+        } else {
+            p.setName(id, name)
+        }
+    }
+
+    public mutating func setAliases(_ id: String, _ aliases: [String], in p: inout ActionPreferences) {
+        if newPerson?.id == id { newPerson?.aliases = aliases; return }
+        p.people = p.people.map { $0.id == id ? ActionPerson(id: $0.id, name: $0.name, aliases: aliases) : $0 }
+    }
+
+    public mutating func remove(_ id: String, types: [String], in p: inout ActionPreferences) {
+        if newPerson?.id == id { newPerson = nil; newPersonType = nil; return }
+        p.removePerson(id, types: types)
+    }
+
+    /// "The notes call them" ＋: the typed name, trimmed (inner spaces kept), added unless it is
+    /// empty or already there in any case. Nil: nothing to add.
+    public static func alias(_ text: String, to aliases: [String]) -> [String]? {
+        let v = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !v.isEmpty, !aliases.contains(where: { $0.caseInsensitiveCompare(v) == .orderedSame }) else { return nil }
+        return aliases + [v]
+    }
+
+    /// Who a type's "Handles items for" ＋ can add: named people not there yet.
+    public static func addable(_ p: ActionPreferences, type: String) -> [ActionPerson] {
+        let handles = p.handlesFor(type)
+        return p.people.filter { !handles.contains($0.id) && !$0.name.isEmpty }
     }
 }

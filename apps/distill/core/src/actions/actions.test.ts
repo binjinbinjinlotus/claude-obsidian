@@ -2039,15 +2039,30 @@ describe('whose items: routing found items (actions-routing.md)', () => {
     writeSync(h);
     h.runner.find = () => ({ structured: SYNC_FOUND });
     await h.service.findInJob(job(h, 'job-v', ['inbox/sync.md'], ['wiki/sources/sync.md']));
-    assert.deepEqual(await h.service.routingPreview(), { days: 7, lists: 3, waiting: 1, others: 1 });
+    assert.deepEqual(await h.service.routingPreview(), { days: 7, lists: 3, waiting: 1, others: 1, beforeRouting: 0 });
     // Handling Vladan's to-dos too would send his benchmark to your lists.
     const people = [...PEOPLE, { id: 'p-vladan', name: 'Vladan Dimitrijevic', aliases: ['Vladan'] }];
-    assert.deepEqual(await h.service.routingPreview({ people, types: { todo: { handlesFor: ['you', 'p-aditya', 'p-vladan'] } } }), { days: 7, lists: 4, waiting: 1, others: 0 });
+    assert.deepEqual(await h.service.routingPreview({ people, types: { todo: { handlesFor: ['you', 'p-aditya', 'p-vladan'] } } }), { days: 7, lists: 4, waiting: 1, others: 0, beforeRouting: 0 });
     // The People being edited come over HTTP as plain JSON: read like Settings reads them (no aliases = none), never a crash.
     const loose = JSON.parse('[{"id":"you","name":"Jin Bin Liu"},{"id":"p-aditya","name":"Aditya Pradhan","aliases":["Aditya","A"]},{"id":"p-x","name":7}]');
-    assert.deepEqual(await h.service.routingPreview({ people: loose }), { days: 7, lists: 3, waiting: 1, others: 1 });
+    assert.deepEqual(await h.service.routingPreview({ people: loose }), { days: 7, lists: 3, waiting: 1, others: 1, beforeRouting: 0 });
     h.clock.t = new Date('2026-10-12T15:00:00Z');
-    assert.deepEqual(await h.service.routingPreview(), { days: 7, lists: 0, waiting: 0, others: 0 });
+    assert.deepEqual(await h.service.routingPreview(), { days: 7, lists: 0, waiting: 0, others: 0, beforeRouting: 0 });
+  });
+
+  test('the preview names items found before routing instead of counting them as zeros', async () => {
+    const h = harness(); // routing off: the find step reads no owner
+    writeSync(h);
+    h.runner.find = () => ({ structured: SYNC_FOUND });
+    await h.service.findInJob(job(h, 'job-v', ['inbox/sync.md'], ['wiki/sources/sync.md']));
+    const found = (await h.service.listActions({ route: 'all' })).filter((i) => i.source.kind === 'note');
+    assert.ok(found.length > 0);
+    assert.ok(found.every((i) => i.route === undefined));
+    assert.deepEqual(await h.service.routingPreview({ people: PEOPLE }), { days: 7, lists: 0, waiting: 0, others: 0, beforeRouting: found.length });
+    await h.service.createAction({ type: 'todo', title: 'mine' });
+    assert.equal((await h.service.routingPreview()).beforeRouting, found.length, 'items you add are not finds');
+    h.clock.t = new Date('2026-10-12T15:00:00Z');
+    assert.equal((await h.service.routingPreview()).beforeRouting, 0, 'only finds from the last 7 days');
   });
 });
 

@@ -2633,10 +2633,14 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       const d = draft ? decodeActionPreferences({ ...(draft.people ? { people: draft.people } : {}), ...(draft.types ? { types: draft.types } : {}) }) : undefined;
       const p = { people: d?.people ?? saved.people ?? [], types: { ...saved.types, ...(d?.types ?? {}) } } as Pick<ActionPreferences, 'people' | 'types'>;
       const since = now().getTime() - PREVIEW_DAYS * DAY_MS;
-      const out: RoutingPreview = { days: PREVIEW_DAYS, lists: 0, waiting: 0, others: 0 };
+      const out: RoutingPreview = { days: PREVIEW_DAYS, lists: 0, waiting: 0, others: 0, beforeRouting: 0 };
       for (const i of items) {
-        // Only items the find step read an owner for (found while routing was on).
-        if (i.route === undefined || i.source.kind !== 'note' || new Date(i.createdAt).getTime() < since) continue;
+        if (i.source.kind !== 'note' || new Date(i.createdAt).getTime() < since) continue;
+        // Only items the find step read an owner for (found while routing was on); the rest are named, not counted.
+        if (i.route === undefined) {
+          out.beforeRouting += 1;
+          continue;
+        }
         const r = routeItem({ type: i.type, owner: i.owner ?? null, owedTo: i.owedTo ?? null }, p);
         if (r.route === 'waiting') out.waiting += 1;
         else if (r.route === 'others') out.others += 1;

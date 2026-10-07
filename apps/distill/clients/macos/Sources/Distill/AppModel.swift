@@ -283,8 +283,17 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// ⌘Q: the settings save waiting out its pause goes now (AppDelegate waits for it).
+    func saveSettingsNow() {
+        guard settingsSaveTask != nil else { return }
+        settingsSaveTask?.cancel()
+        settingsSaveTask = Task { [weak self] in await self?.flushSettings() }
+    }
+
     /// Sends the keys that differ from what the core last reported.
     func flushSettings() async {
+        PendingSaves.shared.began()
+        defer { PendingSaves.shared.ended() }
         guard let client else { settingsSaveTask = nil; return }
         let sent = settings
         let patch = Settings.patch(from: syncedSettings, to: sent)
