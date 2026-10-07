@@ -247,4 +247,29 @@ final class SettingsEditsTests: XCTestCase {
         let none: RunnerInfo? = DTO.make(.object(["displayName": .string("No id")]))
         XCTAssertNil(none)
     }
+
+    // MARK: App helpers
+
+    func testConnectionMessagesNeverGuess() {
+        XCTAssertEqual(AppModel.connectionMessage(CoreClientError.api(status: 501, code: "not_implemented", message: "x"), "Couldn’t connect"),
+                       "Update the Distill core to connect accounts.")
+        XCTAssertEqual(AppModel.connectionMessage(CoreClientError.api(status: 400, code: "bad", message: "Site is required."), "Couldn’t connect"),
+                       "Couldn’t connect: Site is required.")
+        XCTAssertEqual(AppModel.connectionMessage(CoreClientError.unreachable("refused"), "Couldn’t disconnect"),
+                       "Couldn’t disconnect: the Distill core isn’t running.")
+        XCTAssertEqual(AppModel.connectionMessage(CoreClientError.badResponse("x"), "Couldn’t connect"), "Couldn’t connect.")
+        XCTAssertEqual(AppModel.connectionMessage(CocoaError(.fileNoSuchFile), "Couldn’t connect"), "Couldn’t connect.")
+        // A refused-looking message under another code is shown in its own words.
+        XCTAssertEqual(ConnectionProblem.connectFailed(CoreClientError.api(status: 400, code: "other", message: "Didn't accept it")),
+                       ConnectionProblem(title: "Didn't accept it", detail: "Nothing was saved."))
+        XCTAssertEqual(ConnectionProblem.connectFailed(CoreClientError.api(status: 501, code: "not_implemented", message: "accept")),
+                       ConnectionProblem(title: "Update the Distill core to connect accounts.", detail: "Nothing was saved."))
+    }
+
+    @MainActor func testIntakeNamesSortByTime() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = .current
+        let date = cal.date(from: DateComponents(year: 2026, month: 10, day: 6, hour: 9, minute: 5, second: 7))!
+        XCTAssertEqual(AppModel.intakeName(prefix: "Pasted", ext: "md", date: date), "Pasted 2026-10-06 090507.md")
+    }
 }
