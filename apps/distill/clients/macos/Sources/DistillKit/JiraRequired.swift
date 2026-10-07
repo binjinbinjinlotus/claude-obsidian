@@ -184,6 +184,13 @@ public enum JiraRequired {
         }
     }
 
+    /// Copy the ticket text: the title and description, then each filled field by name ("Team: Platform").
+    public static func ticketText(title: String, body: String?, fields: [JiraField], values: [String: String],
+                                  defaults: [String: JiraRequiredDefault]) -> String {
+        let lines = fields.compactMap { f in display(f, value(f, values: values, defaults: defaults)).map { "\(f.name): \($0)" } }
+        return ([title, body ?? ""] + (lines.isEmpty ? [] : [lines.joined(separator: "\n")])).filter { !$0.isEmpty }.joined(separator: "\n\n")
+    }
+
     /// "AP" for Aditya Pradhan.
     public static func initials(_ name: String) -> String {
         String(name.split(separator: " ").prefix(2).compactMap(\.first)).uppercased()
