@@ -1,5 +1,5 @@
 {
-  "$doc": "Track as Pending from To confirm, and Move to Pending for an added to-do (proposal 2026-10-07, design only, not built; waits for the owner’s review). Pending is drawn in routing’s static sidebar copy (trackpending/side*.html) laid over the shared Sidebar. Fragments were generated from actionsummary/addas-* and actions/todo-f0/f1-*.",
+  "$doc": "Track as Pending from To confirm, and Move to Pending for an added to-do (2026-10-07; the owner accepted the assumed answers and it is built: snapshot states tp-*). Pending is drawn in routing’s static sidebar copy (trackpending/side*.html) laid over the shared Sidebar. Fragments were generated from actionsummary/addas-* and actions/todo-f0/f1-*.",
   "templates": {
     "header": "<header style=\"display: flex; align-items: flex-start; gap: 12px; padding: 28px 32px 0\">\n<div style=\"display: flex; flex-direction: column; gap: 5px; flex-grow: 1\"><span style=\"font-size: 11px; font-weight: 800; letter-spacing: .06em; color: var(--faint)\">ACTIONS</span><h1 style=\"margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 30px; letter-spacing: -0.03em; line-height: 1.05\">{title}</h1>\n<span style=\"font-size: 13px; color: var(--muted)\">{sub}</span></div>{right}</header>"
   },
@@ -209,8 +209,8 @@
     {
       "file": "ActionsTrackPending.dc.html",
       "title": "Actions · Track as Pending",
-      "heading": "Track as Pending: when someone else will do it (proposal)",
-      "intro": "Design only: nothing is built until you review it. Some items in To confirm, and some to-dos you already added, are really someone else’s promise. Track as Pending moves the item to Pending (“from Aditya · promised in Testing sync · by Fri”) instead of adding it: from Add as… or the row’s menu in To confirm, and from Send to on an added to-do. Pending and its Nudge / Mark received are unchanged (Actions: whose items, Pending and Highlights).",
+      "heading": "Track as Pending: when someone else will do it",
+      "intro": "Built 2026-10-07 with the answers below. Some items in To confirm, and some to-dos you already added, are really someone else’s promise. Track as Pending moves the item to Pending (“from Aditya · promised in Testing sync · by Fri”) instead of adding it: from Add as… or the row’s menu in To confirm, and from Send to on an added to-do. Pending and its Nudge / Mark received are unchanged (Actions: whose items, Pending and Highlights).",
       "width": 2520,
       "sections": [
         {

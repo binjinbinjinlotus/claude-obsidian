@@ -44,6 +44,7 @@ import {
   type HighlightItem,
   type HighlightNote,
   type RoutingPreview,
+  type TrackPendingRequest,
 } from '../contracts.js';
 import type { ActionsOwned, ReviewReadyInfo } from '../engine/index.js';
 import { makeReadingCopy } from '../coverage/copy.js';
@@ -2387,6 +2388,9 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
           item.events.every(
             (e, n, all) =>
               ['found', 'drafted', 'interrupted', 'confirmed'].includes(e.event) ||
+              // Track as Pending, undone at once
+              (e.event === 'pending' && all[n + 1]?.event === 'restored') ||
+              (e.event === 'restored' && all[n - 1]?.event === 'pending') ||
               // confirm's to-do fallback for a type turned off since it was found
               (e.event === 'type' && all[n + 1]?.event === 'confirmed'),
           );
@@ -2556,14 +2560,66 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
       });
     },
 
-    async trackAsPending(id: string): Promise<ActionItem> {
-      requireRoute(id, 'others', 'Only another person’s action can be tracked as Pending.');
+    async trackAsPending(id: string, req?: TrackPendingRequest): Promise<ActionItem> {
+      const item = require(id);
+      const by = req?.by == null ? null : String(req.by).trim() || null;
+      if (by !== null && !/^\d{4}-\d{2}-\d{2}$/.test(by)) throw new CoreError('invalid_request', `“${by}” isn’t a date; use YYYY-MM-DD.`);
+      const written = typeof req?.waitingOn === 'string' ? req.waitingOn.trim() : '';
+      // Who: a People id, else a People name or alias, else the name as written.
+      const people = peopleNow();
+      const personID = people.find((p) => p.id === written)?.id ?? matchPerson(written, people) ?? null;
+      if (written && personID === YOU_ID) throw new CoreError('invalid_request', 'You can’t wait on yourself; add it to your list instead.');
+      const name = written ? displayName(personID, written, people) : '';
+      if (item.route === 'others') {
+        // Highlights: an Others' action already has its person.
+        requireRoute(id, 'others', 'Only another person’s action can be tracked as Pending.');
+        return mutate(id, (i) => {
+          i.route = 'waiting';
+          i.owedTo = 'me';
+          i.owedToID = YOU_ID;
+          i.what = i.what ?? null;
+          if (written) {
+            i.owner = name;
+            i.ownerID = personID;
+          }
+          if (req?.by !== undefined) i.due = by;
+          i.events.push(event(now(), 'routed', 'tracked as Pending'));
+        });
+      }
+      // To confirm (any type) or an open to-do: the same item, now something you wait for.
+      if (item.route === 'waiting') throw new CoreError('invalid_state', 'It is already in Pending.');
+      // Before the type check: a found message being drafted is To confirm, not "a message you added".
+      if (item.status === 'drafting' || item.status === 'creating') throw new CoreError('busy', 'Wait until it finishes.');
+      const fromConfirm = item.status === 'pending';
+      if (!fromConfirm && !LIVE_STATUSES.includes(item.status)) {
+        throw new CoreError('invalid_state', `Only an item to confirm or an open to-do can go to Pending; this one is ${item.status}.`);
+      }
+      if (!fromConfirm && item.type !== TODO_TYPE) {
+        const label = actionTypeDef(item.type)?.label ?? item.type;
+        throw new CoreError('invalid_request', `Only a to-do can move to Pending; a ${label.toLowerCase()} you added is something you do.`);
+      }
+      if (!written) throw new CoreError('invalid_request', 'Fill in who you’re waiting on.', { missing: ['Waiting on'] });
+      const how = fromConfirm ? `found as ${item.type === TODO_TYPE ? 'to-do' : (actionTypeDef(item.type)?.label ?? item.type)}` : 'moved from To do';
       return mutate(id, (i) => {
+        i.trackedFrom = {
+          route: i.route ?? null,
+          status: i.status,
+          owner: i.owner ?? null,
+          ownerID: i.ownerID ?? null,
+          owedTo: i.owedTo ?? null,
+          owedToID: i.owedToID ?? null,
+          due: i.due ?? null,
+          ownerUnclear: i.ownerUnclear === true,
+        };
         i.route = 'waiting';
+        i.status = 'open';
+        i.owner = name;
+        i.ownerID = personID;
         i.owedTo = 'me';
         i.owedToID = YOU_ID;
-        i.what = i.what ?? null;
-        i.events.push(event(now(), 'routed', 'tracked as Pending'));
+        i.due = by;
+        delete i.ownerUnclear;
+        i.events.push(event(now(), 'pending', `waiting on ${name} (${how})`));
       });
     },
 
@@ -2674,6 +2730,25 @@ export function createActionsService(opts: ActionsServiceOptions): ActionsServic
 
     async restoreAction(id: string): Promise<ActionItem> {
       const item = require(id);
+      if (item.route === 'waiting' && item.trackedFrom && LIVE_STATUSES.includes(item.status)) {
+        // Undo of Track as Pending: back where it was, with the same status and fields, while nothing has
+        // happened to it in Pending since.
+        if (item.events.at(-1)?.event !== 'pending') throw new CoreError('invalid_state', 'It has changed in Pending since; it stays there.');
+        const from = item.trackedFrom;
+        return mutate(id, (i) => {
+          if (from.route) i.route = from.route;
+          else delete i.route;
+          i.status = from.status;
+          // Absent stays absent, so the item reads exactly as before.
+          for (const k of ['owner', 'ownerID', 'owedTo', 'owedToID', 'due'] as const) {
+            if (from[k] === null) delete i[k];
+            else i[k] = from[k];
+          }
+          if (from.ownerUnclear) i.ownerUnclear = true;
+          delete i.trackedFrom;
+          i.events.push(event(now(), 'restored', 'from Pending'));
+        });
+      }
       const back = (x: string | null | undefined, fallback: ActionStatus): ActionStatus =>
         (['pending', 'open', 'ready', 'created'] as ActionStatus[]).includes(x as ActionStatus) ? (x as ActionStatus) : fallback;
       const lastEvent = (pred: (name: string) => boolean) => [...item.events].reverse().find((e) => pred(e.event));

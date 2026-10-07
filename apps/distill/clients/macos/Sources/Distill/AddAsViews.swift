@@ -9,6 +9,7 @@ extension ActionsStore {
     /// The found type adds at once; another type opens the panel, prefilled.
     func addAs(_ item: ActionItem, _ typeID: String) {
         addAsMenu = nil
+        tracking[item.id] = nil
         if typeID == item.type { confirm([item.id]); return }
         guard let type = type(typeID) else { return }
         addingAs[item.id] = AddAs.prefill(item, as: type)
@@ -93,9 +94,19 @@ struct AddAsMenu: View {
                     store.addAs(item, o.id)
                 }
             }
+            // actions-routing.md: someone else will do it; the item goes to Pending instead.
             Divider().padding(.vertical, 2)
-            Text(AddAs.keysHint(item, types: store.types)).font(Theme.body(11)).foregroundStyle(Theme.faint)
-                .padding(.horizontal, 10).padding(.bottom, 4)
+            ActionMenuRow(title: TrackPending.menuTitle, detail: TrackPending.menuDetail, icon: "clock",
+                          iconStyle: (Theme.panel, Theme.muted), trailing: TrackPending.shortcut) {
+                store.startTrack(item)
+            }
+            Divider().padding(.vertical, 2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(AddAs.keysHint(item, types: store.types))
+                Text(TrackPending.keyHint)
+            }
+            .font(Theme.body(11)).foregroundStyle(Theme.faint)
+            .padding(.horizontal, 10).padding(.bottom, 4)
         }
         .alignmentGuide(.bottom) { $0[.bottom] }
         .frame(alignment: .bottom)
@@ -251,7 +262,7 @@ extension AddAs {
     /// A Return key press as Add as reads it (the list and the To-confirm detail share it).
     static func addAsKey(_ press: KeyPress) -> Key? {
         let m = press.modifiers
-        return key(option: m.contains(.option), command: m.contains(.command), other: m.contains(.shift) || m.contains(.control))
+        return key(option: m.contains(.option), command: m.contains(.command), shift: m.contains(.shift), other: m.contains(.control))
     }
 }
 
@@ -267,14 +278,17 @@ struct AddAsDetailKeys: ViewModifier {
             .focusable()
             .focusEffectDisabled()
             .onKeyPress(keys: [.return]) { press in
-                // A text field being typed in (the panel's, or any other) keeps its Return.
-                guard store.addingAs[item.id] == nil, !(NSApp.keyWindow?.firstResponder is NSTextView) else { return .ignored }
+                // A text field being typed in (the panel's, or any other) keeps its Return; an open panel's own
+                // footer decides.
+                guard store.addingAs[item.id] == nil, store.tracking[item.id] == nil,
+                      !(NSApp.keyWindow?.firstResponder is NSTextView) else { return .ignored }
                 switch AddAs.addAsKey(press) {
                 case nil: return .ignored
                 case .add?:
                     store.confirm([item.id])
                     onDone?()
                 case .openMenu?: store.addAsMenu = item.id
+                case .trackPending?: store.startTrack(item)
                 }
                 return .handled
             }

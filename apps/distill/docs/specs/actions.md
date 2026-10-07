@@ -66,7 +66,9 @@ SettingsNav). Contract: `core/src/contracts.ts` → "Actions (actions.json)",
 - To-do: filters (status, due, person, note, label, priority, created, added
   by, vault, search), group and sort, add by hand, edit, complete with Undo,
   bulk select, **Send to ▾** (the item moves to that type's list and keeps
-  `fromActionID`).
+  `fromActionID`). One to-do's Send to ends with **Move to Pending…** after a
+  divider (someone else will do it; [actions-routing.md](actions-routing.md),
+  Track as Pending); the bulk bar's Send to doesn't have it.
 - Drafts are written on finding (`draftWhen: onFind`, default for Slack, Jira,
   Confluence) or only on **Create message / Write draft** (`onRequest`).
 - Editing uses the shared Markdown editor; **Done** runs the type's improve
@@ -112,8 +114,12 @@ time.
   and labels (the same item, in place), and Activity records "Added … as
   Slack message (found as to-do)" (`action.confirmed`, `details.foundAs`).
 - **Row:** the list row has the same choice in its context menu
-  (right-click › Add as ▸ …). Keyboard: Return = Add as the found type;
-  ⌥Return opens Add as….
+  (right-click › Add as ▸ …, Track as Pending… ⇧⌥↩, Dismiss ⌫). Keyboard:
+  Return = Add as the found type; ⌥Return opens Add as…; ⇧⌥Return opens
+  Track as Pending….
+- **Track as Pending… (2026-10-07):** Add as…'s last entry, after a divider:
+  someone else will do it, so it goes to Pending instead of your lists. See
+  [Whose items, Pending and Highlights](actions-routing.md), Track as Pending.
 - Add all and Dismiss all are unchanged (each item as its found type). Send
   to (after the fact) stays.
 - **Core:** `confirmActions(ids, {as})` with `as = {type, title?, body?,

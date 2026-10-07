@@ -3,7 +3,7 @@ type: spec
 title: Whose items Distill handles, Pending and Highlights
 status: built
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-07
 tags:
   - distill
   - actions
@@ -116,25 +116,72 @@ Actions → Pending, a sidebar sub-item with its count.
   applies. The row then reads "Looks received in 2026-10-06 Standup. Mark received?".
   - It is only a suggestion. Nothing closes on its own.
 
-### Track as Pending from To confirm and To do (proposal 2026-10-07, design only, not built)
+### Track as Pending from To confirm and To do (2026-10-07, built)
 
-Owner request: an item in To confirm, or a to-do already added, that someone else will do should go
-to Pending. Canvas: board "Actions · Track as Pending" (`ActionsTrackPending.dc.html`, page
-4 Actions). Waits for the owner's answers on that board's questions card.
+Owner request: an item in To confirm, or a to-do already added, that someone else will do goes to
+Pending instead. Canvas: board "Actions · Track as Pending" (`ActionsTrackPending.dc.html`, page
+4 Actions; `design/screens/trackpending.json`), frames A–G plus the Keyboard and What changes
+cards. The owner's answers to the board's questions are in [Decisions](decisions.md) (2026-10-07).
 
-- To confirm: Add as… gets a divider and "Track as Pending…" after the action types; the row's
-  context menu reads Add as ▸, Track as Pending…, Dismiss. Proposed key: ⇧⌥Return.
-- The panel (in the detail, like Add as): Waiting on (a People picker, filled with the item's
-  owner when it isn't you; a name not in People is kept as written) and By (optional, filled from
-  the due date), then Cancel · Track as Pending. When the owner is you, Waiting on is empty and
-  required ("Fill in who you're waiting on").
-- An added to-do: "Move to Pending…" at the end of Send to, with the same panel.
-- After: the item leaves its list, Pending's count goes up, and a toast reads "Tracked as Pending ·
-  waiting on Aditya · Undo" (Undo puts it back where it was).
-- Core (proposed): `POST /v1/actions/:id/track-pending` gains `{waitingOn, by?}`; the item keeps
-  its id, note, line, Why and labels.
-- Open: to-dos only or every type; By optional; Undo back to To confirm; the key; Send to or the
-  ⋯ menu; what Activity records.
+- To confirm (any found type): Add as… gets a divider and "Track as Pending…" ("Someone else will
+  do it; you wait", ⇧⌥↩) after the types; the keys line adds "⇧⌥Return tracks as Pending…". The
+  row's context menu reads Add as ▸, Track as Pending… (⇧⌥↩), Dismiss (⌫).
+- An added to-do (open): "Move to Pending…" at the end of Send to, after a divider; Send to's last
+  line then reads "A type makes it a draft you check first; Move to Pending makes it something you
+  wait for." Slack messages, Jira tickets and Confluence pages you added don't get it.
+- The panel (in the detail, where Add as's panel goes; What it's about and What Add does are hidden
+  while it is open):
+  - Waiting on: a People picker filled with the item's owner when it isn't you ("Aditya Pradhan
+    @aditya · the item's owner"); for a to-do, its person when People knows them. Open, it lists
+    IN THIS NOTE (whose items, who they're for and who a message goes to in the item's note,
+    People order first; never you), then PEOPLE (everyone else), and "Or type any name; someone
+    not in People is kept as written." The typed name goes straight into the panel's draft (nothing
+    trimmed or saved to the core), so it keeps its spaces and ⌘Return or the button sends it at once.
+  - By: optional, filled from the due date (the to-do's, else the promise's); × clears it. With no
+    date the Pending row reads "no date" (`Routing.pendingDate`) and never turns Overdue.
+  - "Filled from its owner and due date. It leaves To confirm; nothing is sent to Aditya." (To
+    confirm, once someone is filled in), and "IN PENDING IT WILL READ" with the row as Pending
+    shows it ("from Aditya Pradhan · promised in Testing sync · by Fri", the same words).
+  - Footer: Cancel · Track as Pending (To confirm), or Cancel · Move to Pending on the right (a
+    to-do). ⌘Return tracks; Esc cancels.
+- When the owner is you, the panel reads "the owner is you", a peach note quotes the note's line
+  ("The note says you would do this (“me: migrate all existing tests”), so there is no one to fill
+  in. Pick who you are waiting on."), the Waiting on list opens, and the button is off with "Fill in
+  who you're waiting on". Picking you is refused ("Pick someone other than you").
+- Keys: ⇧⌥Return opens the panel for the selected To confirm row (list or detail) or the selected
+  to-do; Return and ⌥Return are unchanged; none fire inside a text field.
+- After: the item leaves its list, the next row is selected (the next To confirm row, or the next
+  to-do as the list shows it), Pending's count goes up,
+  and the toast reads "Tracked as Pending · waiting on Aditya · Undo". Undo puts it back where it
+  was (To confirm or the to-do list), with the same status and fields, and selects it.
+- Core: `POST /v1/actions/:id/track-pending {waitingOn, by?}` (`trackAsPending(id, req?)`).
+  - `waitingOn` is a People id, else a name matched on People names and aliases, else kept as
+    written; `by` is YYYY-MM-DD or null.
+  - The item keeps its id, note, line, Why and labels. It gets route `waiting`, status `open`,
+    owner and ownerID = the person, owedTo you, `due` = by, and loses "owner unclear". Where it was
+    (route, status, owner, owedTo and due) is kept in `trackedFrom` for Undo.
+  - Event `pending` "waiting on Aditya Pradhan (found as to-do)", or "(moved from To do)".
+  - Activity (`action.routed`): "Tracked “…” as Pending · waiting on Aditya Pradhan (found as
+    to-do)", with details from (to confirm | to do), the type, the People id (or "named") and by.
+  - Undo is `restoreAction`: while `pending` is still the item's last event, it puts the route,
+    status and fields back (event `restored` "from Pending"); after a Nudge or a receive it is
+    refused ("It has changed in Pending since; it stays there."). An item tracked and undone can
+    still be dismissed.
+  - Refused: an empty Waiting on ("Fill in who you’re waiting on.", `missing: ["Waiting on"]`),
+    you, a By that isn't YYYY-MM-DD, an item already in Pending, one done, removed, dismissed or
+    sent, an added item that isn't a to-do, and a busy one.
+  - Highlights' Track as Pending (an Others' action) still sends no body and works as before.
+- Code: core `actions/index.ts trackAsPending`, `restoreAction`; `server/http.ts`;
+  `activity/instrument.ts`. Mac: `DistillKit/TrackPending.swift` (prefill, choices, words,
+  `CoreClient.trackAsPending(_:waitingOn:by:)`), `TrackPendingViews.swift` (panel, Waiting on,
+  footer), `AddAsViews.swift` (menu row, keys), `ActionPreview.swift` (row menu, detail),
+  `ActionsScreen.swift` (Send to, the to-do detail, list keys). Tests: `actions.test.ts` ("Track
+  as Pending from To confirm…", "Move to Pending…"), `http-actions.test.ts`, `activity.test.ts`,
+  `TrackPendingTests`, `TrackPendingAppTests`. Snapshot states `tp-menu`, `tp-panel`,
+  `tp-rowmenu` (the context menu drawn as the board draws it; a native menu isn't captured),
+  `tp-after`, `tp-mine`, `tp-list-sendto`, `tp-list-panel`.
+- Not built: the CLI has no command for it (the CLI has no confirm command by design). Activity
+  is append-only, so Undo adds a "Restored" entry instead of removing the "Tracked" one.
 
 ## Highlights
 
@@ -191,7 +238,7 @@ notes | Meetings.
 |---|---|
 | `GET /v1/actions?route=list\|waiting\|others\|all` | `listActions` (default `list`) |
 | `POST /v1/actions/:id/owner {owner: "you" \| id \| name \| null}` | `assignActionOwner` (Whose is this?; null = Not mine) |
-| `POST /v1/actions/:id/track-pending` | `trackAsPending` |
+| `POST /v1/actions/:id/track-pending {waitingOn?, by?}` | `trackAsPending` (no body: Highlights; To confirm and To do send `waitingOn`) |
 | `POST /v1/actions/:id/claim` | `claimAction` (It's mine) |
 | `POST /v1/actions/:id/received` | `markReceived` |
 | `POST /v1/actions/:id/stop-waiting` | `stopWaiting` |
@@ -204,7 +251,8 @@ notes | Meetings.
 - Each batch gets one `action.routed` entry, from the `actions.routed` event, for example
   "Sorted the actions found in job-…: 3 to your lists, 1 to ask whose, 2 to Pending, 6 to
   Highlights".
-- Whose is this and Track as Pending log `action.routed`. It's mine logs `action.claimed`.
+- Whose is this and Track as Pending log `action.routed` (from To confirm or To do: "Tracked “…” as
+  Pending · waiting on Aditya Pradhan (found as to-do)"). It's mine logs `action.claimed`.
 - Mark received logs `action.received`, and Not waiting anymore logs `action.not_waiting`.
 - Nudge logs `action.nudged` with who it goes to, never the text.
 - People changes read "Whose items Distill handles: changed". Names and aliases are not logged.

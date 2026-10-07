@@ -71,6 +71,9 @@ final class RoutingTests: XCTestCase {
 
         XCTAssertEqual(Routing.by("2026-10-09", now: now), "Fri")
         XCTAssertEqual(Routing.by("2026-10-20", now: now), "Oct 20")
+        XCTAssertEqual(Routing.pendingDate("2026-10-09", now: now), "by Fri")
+        XCTAssertEqual(Routing.pendingDate(nil, now: now), "no date", "answer (b): a row with no date reads no date")
+        XCTAssertFalse(Routing.overdue(nil, now: now), "and never turns Overdue")
         XCTAssertTrue(Routing.overdue("2026-10-02", now: now))
         XCTAssertFalse(Routing.overdue("2026-10-06", now: now), "today isn't overdue")
         XCTAssertEqual(Routing.receivedLine(ActionReceived(notePath: "wiki/sources/2026-10-06 Standup.md")), "Looks received in 2026-10-06 Standup. Mark received?")

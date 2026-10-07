@@ -80,6 +80,11 @@ final class ActionsStore: ObservableObject {
     /// Add as (actions.md): the open panel's draft per found item, and the item whose Add as… menu is open.
     @Published var addingAs: [String: AddAs.Draft] = [:]
     @Published var addAsMenu: String?
+    /// Track as Pending (actions-routing.md): the open panel's draft per item, and the item whose Waiting on list is open.
+    @Published var tracking: [String: TrackPending.Draft] = [:]
+    @Published var trackPicker: String?
+    /// Items whose Track as Pending is on its way to the core (a second click or ⌘Return waits for it).
+    var trackSending: Set<String> = []
     /// Jira pickers (actions.md): what the connected account allows, and why it couldn't be loaded.
     @Published var jiraProjects: JiraProjectList?
     /// Project names from the last list (key → name), kept so the picker reads "TLS · Telus Platform" offline.

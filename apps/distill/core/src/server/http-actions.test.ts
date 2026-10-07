@@ -105,6 +105,20 @@ describe('HTTP API: actions and connections', () => {
       assert.equal((await request(port, 'POST', `/v1/actions/act-1/${route}`)).status, 200, route);
       assert.deepEqual(last(method)!.args, ['act-1']);
     }
+    // Track as Pending from To confirm / To do: who and, optionally, by when.
+    const tracked = await request(port, 'POST', '/v1/actions/act-1/track-pending', { waitingOn: 'p-aditya', by: '2026-10-09' });
+    assert.equal(tracked.status, 200);
+    assert.deepEqual(last('trackAsPending')!.args, ['act-1', { waitingOn: 'p-aditya', by: '2026-10-09' }]);
+    await request(port, 'POST', '/v1/actions/act-1/track-pending', { waitingOn: 'Mei', by: null });
+    assert.deepEqual(last('trackAsPending')!.args, ['act-1', { waitingOn: 'Mei', by: null }]);
+    await request(port, 'POST', '/v1/actions/act-1/track-pending', {});
+    assert.deepEqual(last('trackAsPending')!.args, ['act-1'], 'an empty body is Highlights’ call');
+    const empty = await request(port, 'POST', '/v1/actions/act-1/track-pending', { waitingOn: '  ' });
+    assert.equal(empty.status, 400);
+    assert.match(JSON.stringify(empty.body), /Fill in who you’re waiting on/);
+    assert.equal((await request(port, 'POST', '/v1/actions/act-1/track-pending', { waitingOn: 3 })).status, 400);
+    assert.equal((await request(port, 'POST', '/v1/actions/act-1/track-pending', { waitingOn: 'Mei', by: 5 })).status, 400);
+    assert.equal((await request(port, 'POST', '/v1/actions/act-1/track-pending', [])).status, 400);
     const nudge = await request(port, 'POST', '/v1/actions/act-1/nudge', { to: '@aditya', text: 'Hi Aditya, any update?' });
     assert.equal(nudge.body.message.type, 'slack');
     assert.deepEqual(last('nudgeAction')!.args, ['act-1', { to: '@aditya', text: 'Hi Aditya, any update?' }]);

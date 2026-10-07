@@ -173,6 +173,20 @@ export function decodeAction(v: unknown, now = new Date()): ActionItem | undefin
   }
   if (v.route === 'list' || v.route === 'waiting' || v.route === 'others') item.route = v.route;
   if (v.ownerUnclear === true) item.ownerUnclear = true;
+  if (isObject(v.trackedFrom) && ACTION_STATUSES.includes(v.trackedFrom.status as ActionStatus)) {
+    const t = v.trackedFrom;
+    const s = (k: string) => (typeof t[k] === 'string' ? (t[k] as string) : null);
+    item.trackedFrom = {
+      route: t.route === 'list' || t.route === 'waiting' || t.route === 'others' ? t.route : null,
+      status: t.status as ActionStatus,
+      owner: s('owner'),
+      ownerID: s('ownerID'),
+      owedTo: s('owedTo'),
+      owedToID: s('owedToID'),
+      due: s('due'),
+      ownerUnclear: t.ownerUnclear === true,
+    };
+  }
   if (isObject(v.received)) {
     const notePath = str(v.received.notePath);
     if (notePath) {
@@ -192,7 +206,7 @@ const SOURCE_KEYS = ['kind', 'jobID', 'notePath', 'pageTitle', 'quote', 'convers
 const ITEM_KEYS = [
   'id', 'type', 'status', 'title', 'body', 'fields', 'why', 'summary', 'source', 'vaultPath', 'labels', 'createdAt', 'updatedAt',
   'draftModel', 'previousBody', 'external', 'error', 'fromActionID', 'events',
-  'owner', 'owedTo', 'ownerID', 'owedToID', 'route', 'ownerUnclear', 'what', 'due', 'received',
+  'owner', 'owedTo', 'ownerID', 'owedToID', 'route', 'ownerUnclear', 'what', 'due', 'received', 'trackedFrom',
 ];
 
 /** Strip undefined (JSON drops it anyway) and copy, so stored objects never alias live ones. */

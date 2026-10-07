@@ -2034,6 +2034,92 @@ describe('whose items: routing found items (actions-routing.md)', () => {
     assert.equal(item.status, 'open', 'still waiting');
   });
 
+  test('Track as Pending from To confirm: the same item, waiting on someone, and Undo puts it back', async () => {
+    const h = harness({ prefs: routedPrefs() });
+    writeSync(h);
+    h.runner.find = () => ({ structured: SYNC_FOUND });
+    await h.service.findInJob(job(h, 'job-t', ['inbox/sync.md'], ['wiki/sources/sync.md']));
+    const toConfirm = await h.service.listActions();
+    const storybook = toConfirm.find((i) => i.title.startsWith('Set up'))!;
+    assert.deepEqual([storybook.status, storybook.route, storybook.ownerID], ['pending', 'list', 'p-aditya']);
+    await h.service.updateAction(storybook.id, { labels: ['fe-platform'] });
+    const was = (await h.service.getAction(storybook.id))!;
+
+    const tracked = await h.service.trackAsPending(storybook.id, { waitingOn: 'p-aditya', by: '2026-10-09' });
+    assert.deepEqual(
+      [tracked.id, tracked.title, tracked.why, tracked.labels, tracked.source, tracked.type],
+      [was.id, was.title, was.why, was.labels, was.source, was.type],
+      'the same item: id, note, line, Why and labels',
+    );
+    assert.deepEqual([tracked.route, tracked.status, tracked.owner, tracked.ownerID, tracked.owedToID, tracked.due], ['waiting', 'open', 'Aditya Pradhan', 'p-aditya', 'you', '2026-10-09']);
+    assert.deepEqual(tracked.events.at(-1)!, { at: tracked.events.at(-1)!.at, event: 'pending', detail: 'waiting on Aditya Pradhan (found as to-do)' });
+    assert.ok(!(await h.service.listActions()).some((i) => i.id === storybook.id), 'it leaves To confirm');
+    assert.ok((await h.service.listActions({ route: 'waiting' })).some((i) => i.id === storybook.id), 'it is in Pending');
+    assert.equal((await h.make().getAction(storybook.id))!.trackedFrom?.status, 'pending', 'where it was survives a restart');
+
+    const back = await h.service.restoreAction(storybook.id);
+    assert.deepEqual([back.route, back.status, back.owner, back.ownerID, back.owedTo, back.owedToID, back.due, back.trackedFrom],
+      [was.route, 'pending', was.owner, was.ownerID, was.owedTo, was.owedToID, was.due, undefined]);
+    assert.ok((await h.service.listActions()).some((i) => i.id === storybook.id), 'back in To confirm');
+    const added = await h.service.confirmActions([storybook.id]);
+    assert.equal(added[0]!.status, 'open', 'Add still works after Undo');
+
+    // Any found type; a name not in People is kept as written; no date.
+    const anant = toConfirm.find((i) => i.type === 'slack')!;
+    const slack = await h.service.trackAsPending(anant.id, { waitingOn: '  Mei Tanaka ' });
+    assert.deepEqual([slack.owner, slack.ownerID, slack.due, slack.events.at(-1)!.detail], ['Mei Tanaka', null, null, 'waiting on Mei Tanaka (found as Slack message)']);
+    await h.service.restoreAction(anant.id);
+    // A found message being drafted is busy, not "a message you added" (verifier, 2026-10-07).
+    const controller = new AbortController();
+    const drafting = h.service.draftAction(anant.id, { signal: controller.signal });
+    assert.equal((await h.service.getAction(anant.id))!.status, 'drafting');
+    await assert.rejects(h.service.trackAsPending(anant.id, { waitingOn: 'Mei' }), { code: 'busy' });
+    controller.abort();
+    assert.equal((await drafting).status, 'pending', 'still to confirm, untouched');
+    await h.service.dismissActions([anant.id]);
+    assert.equal((await h.service.getAction(anant.id))!.status, 'dismissed', 'Dismiss still works after Undo');
+
+    // "Whose is this?": an alias picks the person; Undo asks again.
+    const unclear = toConfirm.find((i) => i.ownerUnclear)!;
+    const named = await h.service.trackAsPending(unclear.id, { waitingOn: 'aditya' });
+    assert.deepEqual([named.ownerID, named.owner, named.ownerUnclear], ['p-aditya', 'Aditya Pradhan', undefined]);
+    assert.equal((await h.service.restoreAction(unclear.id)).ownerUnclear, true);
+  });
+
+  test('Move to Pending for an open to-do, and what Track as Pending refuses', async () => {
+    const h = harness({ prefs: routedPrefs() });
+    const todo = await h.service.createAction({ type: 'todo', title: 'Book the tasting room for Saturday', fields: { due: '2026-10-02', person: 'Mei' } });
+    assert.equal(todo.status, 'open');
+    const refuse = (p: Promise<unknown>, re: RegExp) => assert.rejects(p, re);
+    await refuse(h.service.trackAsPending(todo.id), /Fill in who you’re waiting on/);
+    await refuse(h.service.trackAsPending(todo.id, { waitingOn: '   ' }), /Fill in who you’re waiting on/);
+    await refuse(h.service.trackAsPending(todo.id, { waitingOn: 'you' }), /can’t wait on yourself/);
+    await refuse(h.service.trackAsPending(todo.id, { waitingOn: 'Jin' }), /can’t wait on yourself/);
+    await refuse(h.service.trackAsPending(todo.id, { waitingOn: 'Mei', by: 'Saturday' }), /isn’t a date/);
+
+    const moved = await h.service.trackAsPending(todo.id, { waitingOn: 'Mei', by: '2026-10-02' });
+    assert.deepEqual([moved.route, moved.status, moved.owner, moved.due, moved.fields.due], ['waiting', 'open', 'Mei', '2026-10-02', '2026-10-02']);
+    assert.equal(moved.events.at(-1)!.detail, 'waiting on Mei (moved from To do)');
+    await refuse(h.service.trackAsPending(todo.id, { waitingOn: 'Mei' }), /already in Pending/);
+    const back = await h.service.restoreAction(todo.id);
+    assert.deepEqual([back.route, back.status, back.owner, back.due], [undefined, 'open', undefined, undefined], 'back in To do as it was');
+
+    // Undo is only for the move itself: once nudged, it stays in Pending.
+    await h.service.trackAsPending(todo.id, { waitingOn: 'Mei' });
+    await h.service.nudgeAction(todo.id, { to: 'Mei', text: 'Hi Mei, any update?' });
+    await refuse(h.service.restoreAction(todo.id), /changed in Pending/);
+
+    const done = await h.service.createAction({ type: 'todo', title: 'Done already' });
+    await h.service.performAction(done.id, 'complete');
+    await refuse(h.service.trackAsPending(done.id, { waitingOn: 'Mei' }), /this one is done/);
+    const removed = await h.service.createAction({ type: 'todo', title: 'Gone' });
+    await h.service.removeAction(removed.id);
+    await refuse(h.service.trackAsPending(removed.id, { waitingOn: 'Mei' }), /this one is removed/);
+    const message = await h.service.createAction({ type: 'slack', title: 'Tell Mei', fields: { to: 'Mei' } });
+    await h.service.whenIdle(); // its draft written: busy is checked first
+    await refuse(h.service.trackAsPending(message.id, { waitingOn: 'Mei' }), /Only a to-do can move to Pending/);
+  });
+
   test('the preview counts the last 7 days with the People being edited', async () => {
     const h = harness({ prefs: routedPrefs() });
     writeSync(h);

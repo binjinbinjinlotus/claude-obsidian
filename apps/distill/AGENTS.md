@@ -47,7 +47,7 @@ release. The repository-wide rules in `../../AGENTS.md` still apply.
 | [Live log](docs/specs/live-log.md) | built (core, API, macOS UI; no CLI) |
 | [Clean up inbox](docs/specs/inbox-cleanup.md) | built (core, API, macOS UI; no CLI) |
 | [Full reads](docs/specs/full-read.md) | built (core, API, CLI, Mac UI; the wiki-ingest skill wording) |
-| [Whose items, Pending and Highlights](docs/specs/actions-routing.md) | built (core, API, macOS; Ask finds not routed) |
+| [Whose items, Pending and Highlights](docs/specs/actions-routing.md) | built (core, API, macOS; Track as Pending from To confirm and To do; Ask finds not routed) |
 | [Action summary](docs/specs/action-summary.md) | built (core, API, macOS; Ask rows show the summary, no click-to-open yet) |
 | [Action buttons and script commands](docs/specs/action-buttons.md) | built (canvas row 15, board ScriptActions; `sa-` snapshot states; Add's What it does step; Ready to send for a Send-slot button) |
 | [Resizable panes](docs/specs/resizable-panes.md) | built (macOS: every split screen, `PaneSplit.swift`) |

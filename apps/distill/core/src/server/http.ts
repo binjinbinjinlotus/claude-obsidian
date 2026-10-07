@@ -1359,7 +1359,18 @@ function buildRoutes(core: ServerCore, opts: { keepAliveMs: number; trackStream:
         return core.assignActionOwner(params[0]!, o.owner as string | null);
       },
     },
-    { method: 'POST', pattern: /^\/v1\/actions\/([^/]+)\/track-pending$/, handler: async ({ params }) => core.trackAsPending(params[0]!) },
+    {
+      method: 'POST',
+      pattern: /^\/v1\/actions\/([^/]+)\/track-pending$/,
+      handler: async ({ params, body }) => {
+        // No body: Highlights' Track as Pending. To confirm and To do send {waitingOn, by?}.
+        const o = asObject(await body());
+        const waitingOn = optString(o, 'waitingOn');
+        if (o.by !== undefined && o.by !== null && typeof o.by !== 'string') throw bad('"by" must be a date (YYYY-MM-DD), or null for no date');
+        const req = { ...(waitingOn !== undefined ? { waitingOn } : {}), ...(o.by !== undefined ? { by: o.by as string | null } : {}) };
+        return Object.keys(req).length ? core.trackAsPending(params[0]!, req) : core.trackAsPending(params[0]!);
+      },
+    },
     { method: 'POST', pattern: /^\/v1\/actions\/([^/]+)\/claim$/, handler: async ({ params }) => core.claimAction(params[0]!) },
     { method: 'POST', pattern: /^\/v1\/actions\/([^/]+)\/received$/, handler: async ({ params }) => core.markReceived(params[0]!) },
     { method: 'POST', pattern: /^\/v1\/actions\/([^/]+)\/stop-waiting$/, handler: async ({ params }) => core.stopWaiting(params[0]!) },
