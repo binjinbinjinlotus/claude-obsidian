@@ -97,7 +97,7 @@ describe('JiraMeta lists', () => {
     assert.ok(calls[0]!.startsWith('/rest/api/3/issue/createmeta/A%2FB/issuetypes?'));
   });
 
-  test('fields: id from fieldId or key, allowed values by name or value, required only when true; the priority scheme', async () => {
+  test('fields: id from fieldId or key, allowed values by name or value, required only when true, a kind for each; the priority scheme and the extra fields', async () => {
     const { client, calls } = fakeClient([[`${TYPES('TLS')}/10001`, { status: 200, json: { values: [
       null,
       { fieldId: 'summary', name: 'Summary', required: true },
@@ -108,11 +108,12 @@ describe('JiraMeta lists', () => {
     assert.equal(r.project, 'TLS');
     assert.equal(r.typeId, '10001');
     assert.deepEqual(r.fields, [
-      { id: 'summary', name: 'Summary', required: true },
-      { id: 'priority', name: 'Priority', required: false, allowed: ['High', 'Low'] },
-      { id: '', name: '', required: true },
+      { id: 'summary', name: 'Summary', required: true, kind: 'unsupported' },
+      { id: 'priority', name: 'Priority', required: false, allowed: ['High', 'Low'], kind: 'unsupported' },
+      { id: '', name: '', required: true, kind: 'unsupported' },
     ]);
     assert.deepEqual(r.priorities, ['High', 'Low']);
+    assert.deepEqual(r.extra, [], 'standard fields and a field without an id are not extra');
     assert.ok(calls[0]!.startsWith(`${TYPES('TLS')}/10001?startAt=0`));
   });
 
@@ -198,10 +199,14 @@ describe('JiraMeta errors', () => {
     await assert.rejects(new JiraMeta(f.client, clock().now).projects(), (e: unknown) => e === boom);
   });
 
-  test('a non-2xx status or a body that is not an object is a Jira error with the status', async () => {
-    for (const [status, json] of [[500, {}], [199, {}], [300, {}], [200, []], [200, null]] as [number, unknown][]) {
+  test('a non-2xx status or no body is a Jira error with the status; a list where an object belongs is a Jira error', async () => {
+    for (const [status, json] of [[500, {}], [199, {}], [300, {}], [200, null], [200, undefined]] as [number, unknown][]) {
       const f = fakeClient([[PROJECTS, { status, json }]]);
       await assert.rejects(new JiraMeta(f.client, clock().now).projects(), (e: unknown) => e instanceof CoreError && e.code === 'invalid_state' && jiraKind(e) === 'error' && e.details?.status === status && e.message === `Jira answered ${status} for the list of choices.`, `${status}`);
+    }
+    for (const json of [[], 'text', 3]) {
+      const f = fakeClient([[PROJECTS, { status: 200, json }]]);
+      await assert.rejects(new JiraMeta(f.client, clock().now).projects(), (e: unknown) => e instanceof CoreError && e.code === 'invalid_state' && jiraKind(e) === 'error' && e.details?.status === undefined && e.message === 'Jira answered with something other than a list of choices.', JSON.stringify(json));
     }
     const ok = fakeClient([[PROJECTS, { status: 299, json: { values: [] } }]]);
     assert.deepEqual((await new JiraMeta(ok.client, clock().now).projects()).projects, [], '299 is success');
@@ -236,10 +241,11 @@ describe('checkJiraDraft', () => {
     new JiraMeta(
       fakeClient([
         ...routes,
-        [PROJECTS, { status: 200, json: { isLast: true, values: [{ key: 'TLS', name: 'Telus Platform' }, { key: 'OPS', name: 'Operations' }] } }],
+        [PROJECTS, { status: 200, json: { isLast: true, values: [{ key: 'TLS', name: 'Telus Platform' }, { key: 'OPS', name: 'Operations', id: '200' }] } }],
         [`${TYPES('TLS')}/10`, { status: 200, json: { fields: [{ fieldId: 'priority', name: 'Priority', allowedValues: [{ name: 'High' }, { name: 'Low' }] }] } }],
         [`${TYPES('TLS')}/20`, { status: 200, json: { fields: [{ fieldId: 'summary', name: 'Summary' }] } }],
         [TYPES('TLS'), { status: 200, json: { values: [{ id: '10', name: 'Task' }, { id: '20', name: 'Bug' }] } }],
+        [`${TYPES('OPS')}/30`, { status: 200, json: { fields: [] } }],
         [TYPES('OPS'), { status: 200, json: { values: [{ id: '30', name: 'Story' }] } }],
       ]).client,
       clock().now,
@@ -251,27 +257,29 @@ describe('checkJiraDraft', () => {
   });
 
   test("a project by key or by name, a type (Task by default) and a priority get Jira's spelling", async () => {
-    assert.deepEqual(await checkJiraDraft(meta(), { project: 'tls · whatever', priority: ' high ' }), { project: 'TLS', issueType: 'Task', priority: 'High' });
-    assert.deepEqual(await checkJiraDraft(meta(), { project: 'operations', issueType: 'story' }), { project: 'OPS', issueType: 'Story' });
-    assert.deepEqual(await checkJiraDraft(meta(), { project: 'TLS', issueType: '  ', priority: '   ' }), { project: 'TLS', issueType: 'Task' }, 'a blank priority is no priority');
+    const taskFields = [{ id: 'priority', name: 'Priority', required: false, allowed: ['High', 'Low'], kind: 'unsupported' }];
+    assert.deepEqual(await checkJiraDraft(meta(), { project: 'tls · whatever', priority: ' high ' }), { project: 'TLS', issueType: 'Task', typeId: '10', fields: taskFields, priority: 'High' });
+    assert.deepEqual(await checkJiraDraft(meta(), { project: 'operations', issueType: 'story' }), { project: 'OPS', projectId: '200', issueType: 'Story', typeId: '30', fields: [] }, 'the screen is read even without a priority');
+    assert.deepEqual(await checkJiraDraft(meta(), { project: 'TLS', issueType: '  ', priority: '   ' }), { project: 'TLS', issueType: 'Task', typeId: '10', fields: taskFields }, 'a blank priority is no priority');
   });
 
   test('a type whose screen has no Priority drops the priority', async () => {
-    assert.deepEqual(await checkJiraDraft(meta(), { project: 'TLS', issueType: 'bug', priority: 'High' }), { project: 'TLS', issueType: 'Bug', dropPriority: true });
+    assert.deepEqual(await checkJiraDraft(meta(), { project: 'TLS', issueType: 'bug', priority: 'High' }), { project: 'TLS', issueType: 'Bug', typeId: '20', fields: [{ id: 'summary', name: 'Summary', required: false, kind: 'unsupported' }], dropPriority: true });
   });
 
   test('a value outside the lists is a problem on that field, in plain words', async () => {
     assert.deepEqual(await checkJiraDraft(meta(), { project: 'NOPE' }), { problem: { field: 'project', message: 'NOPE isn’t a Jira project you can create tickets in. Pick one.' } });
     assert.deepEqual(await checkJiraDraft(meta(), { project: 'TLS', issueType: 'Epic' }), { project: 'TLS', problem: { field: 'issueType', message: 'Epic isn’t an issue type in TLS. Pick one.' } });
-    assert.deepEqual(await checkJiraDraft(meta(), { project: 'OPS' }), { project: 'OPS', problem: { field: 'issueType', message: 'Task isn’t an issue type in OPS. Pick one.' } });
-    assert.deepEqual(await checkJiraDraft(meta(), { project: 'TLS', priority: '  Urgent ' }), { project: 'TLS', issueType: 'Task', problem: { field: 'priority', message: 'Urgent isn’t a priority in TLS. Pick one.' } });
+    assert.deepEqual(await checkJiraDraft(meta(), { project: 'OPS' }), { project: 'OPS', projectId: '200', problem: { field: 'issueType', message: 'Task isn’t an issue type in OPS. Pick one.' } });
+    assert.deepEqual(await checkJiraDraft(meta(), { project: 'TLS', priority: '  Urgent ' }), { project: 'TLS', issueType: 'Task', typeId: '10', fields: [{ id: 'priority', name: 'Priority', required: false, allowed: ['High', 'Low'], kind: 'unsupported' }], problem: { field: 'priority', message: 'Urgent isn’t a priority in TLS. Pick one.' } });
   });
 
   test("Jira can't be asked: nothing is blocked, what was checked is kept", async () => {
     const down = new ActionHandlerError({ code: 'unreachable', message: 'offline' });
     assert.deepEqual(await checkJiraDraft(meta([[PROJECTS, down]]), { project: 'TLS' }), { unchecked: true });
     assert.deepEqual(await checkJiraDraft(meta([[TYPES('TLS'), down]]), { project: 'TLS' }), { project: 'TLS', unchecked: true });
-    assert.deepEqual(await checkJiraDraft(meta([[`${TYPES('TLS')}/10`, { status: 503, json: {} }]]), { project: 'TLS', priority: 'High' }), { project: 'TLS', issueType: 'Task', unchecked: true });
+    assert.deepEqual(await checkJiraDraft(meta([[`${TYPES('TLS')}/10`, { status: 503, json: {} }]]), { project: 'TLS', priority: 'High' }), { project: 'TLS', issueType: 'Task', typeId: '10', unchecked: true });
+    assert.deepEqual(await checkJiraDraft(meta([[`${TYPES('TLS')}/10`, { status: 503, json: {} }]]), { project: 'TLS' }), { project: 'TLS', issueType: 'Task', typeId: '10', unchecked: true }, 'the screen is read without a priority too');
   });
 
   test('any other error is thrown', async () => {
