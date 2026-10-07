@@ -716,20 +716,23 @@ struct ExternalCard: View {
     /// Jira: Project, Type and Priority are pickers from the account (actions.md, Jira pickers).
     private var jiraPicks: Bool { type.id == "jira" && item.status != .created }
 
+    /// Jira's label column fits a required field's name ("Target release date"); others keep 70.
+    private var labelWidth: CGFloat { jiraPicks ? 104 : 70 }
+
     /// Type fields (Project, Type, Priority, Assignee, Labels / Space, Parent page), the refused one marked.
     private var fieldsBlock: some View {
         VStack(alignment: .leading, spacing: 2) {
             if jiraPicks {
                 JiraFieldPickers(store: store, values: item.fields.compactMapValues { $0 },
                                  set: { k, v in store.update(item.id, ActionPatch(fields: [k: v.isEmpty ? nil : v])) },
-                                 marked: item.error?.code == "refused" ? item.error?.field : nil,
+                                 labelWidth: labelWidth, marked: item.error?.code == "refused" ? item.error?.field : nil,
                                  showCaption: false, menuOpen: store.fixtureJiraMenu)
                     .zIndex(1)
             }
             ForEach(shownFields.filter { !jiraPicks || !JiraFieldPickers.keys.contains($0.key) }, id: \.key) { spec in
                 let refused = item.error?.code == "refused" && item.error?.field == spec.key
                 HStack(spacing: 10) {
-                    Text(spec.label).font(Theme.body(12)).foregroundStyle(refused ? Theme.peachInk : Theme.muted).frame(width: 70, alignment: .leading)
+                    Text(spec.label).font(Theme.body(12)).foregroundStyle(refused ? Theme.peachInk : Theme.muted).frame(width: labelWidth, alignment: .leading)
                     if let v = item.field(spec.key) {
                         Text(v).font(Theme.body(13))
                     } else {
@@ -743,9 +746,10 @@ struct ExternalCard: View {
                 .background(RoundedRectangle(cornerRadius: 8).strokeBorder(refused ? Theme.peachInk : .clear, lineWidth: 1.5))
                 .onTapGesture { if refused { store.beginEdit(item) } }
             }
+            if jiraPicks { JiraRequiredFields(store: store, item: item, labelWidth: labelWidth).zIndex(1) }
             if !item.labels.isEmpty {
                 HStack(spacing: 10) {
-                    Text("Labels").font(Theme.body(12)).foregroundStyle(Theme.muted).frame(width: 70, alignment: .leading)
+                    Text("Labels").font(Theme.body(12)).foregroundStyle(Theme.muted).frame(width: labelWidth, alignment: .leading)
                     Text(item.labels.joined(separator: ", ")).font(Theme.body(13))
                 }
                 .frame(minHeight: 26)
@@ -756,7 +760,8 @@ struct ExternalCard: View {
 
     private var shownFields: [ActionFieldSpec] {
         var specs = type.fields.filter { $0.kind != "markdown" && $0.key != "title" && $0.key != "summary" }
-        if let refused = item.error?.field, item.error?.code == "refused", !specs.contains(where: { $0.key == refused }) {
+        // A required Jira field (`jira.<id>`) is marked in its own row, by name.
+        if let refused = item.error?.field, item.error?.code == "refused", !refused.hasPrefix("jira."), !specs.contains(where: { $0.key == refused }) {
             specs.append(ActionFieldSpec(key: refused, label: refused.prefix(1).uppercased() + refused.dropFirst()))
         }
         return specs.filter { item.field($0.key) != nil || $0.required || item.error?.field == $0.key }

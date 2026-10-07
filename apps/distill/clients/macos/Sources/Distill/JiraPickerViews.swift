@@ -44,9 +44,9 @@ extension ActionsStore {
 }
 
 extension ActionsStore {
-    /// The first Jira value outside the account's lists, for the field mark and the footer.
+    /// The first Jira value outside the account's lists, or a required field without a value, for the field mark and the footer.
     func jiraCheck(_ values: [String: String]) -> (field: String, message: String, footer: String)? {
-        JiraPick.check(values, projects: jiraProjects?.projects, types: jiraTypes, screens: jiraScreens)
+        JiraPick.check(values, projects: jiraProjects?.projects, types: jiraTypes, screens: jiraScreens, defaults: jiraRequiredDefaults)
     }
 
     /// Projects used on Jira tickets, newest first (RECENT in the project menu).

@@ -54,8 +54,19 @@ public struct JiraCreateScreen: Codable, Hashable, Sendable {
     public var typeId: String
     /// nil: the create screen has no Priority field.
     public var priorities: [String]?
-    public init(project: String, typeId: String, priorities: [String]?) {
-        self.project = project; self.typeId = typeId; self.priorities = priorities
+    /// The fields Distill asks about besides its own (Jira required fields): required ones first.
+    public var extra: [JiraField]
+    public init(project: String, typeId: String, priorities: [String]?, extra: [JiraField] = []) {
+        self.project = project; self.typeId = typeId; self.priorities = priorities; self.extra = extra
+    }
+
+    enum Keys: String, CodingKey { case project, typeId, priorities, extra }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        project = c.lossy(String.self, .project) ?? ""
+        typeId = c.lossy(String.self, .typeId) ?? ""
+        priorities = c.lossy([String].self, .priorities)
+        extra = c.lossyArray(JiraField.self, .extra)
     }
 }
 
@@ -137,16 +148,21 @@ public enum JiraPick {
         return project(value, in: projects) == nil ? "\(value) isn’t a Jira project you can create tickets in. Pick one:" : nil
     }
 
-    /// The first value outside the lists (project, then type, then priority), and the footer's words
-    /// beside a disabled Create in Jira ("Pick a priority TLS uses"). Nil when all are allowed or unknown.
+    /// The first value outside the lists (project, then type, then priority), then the first required field
+    /// without a value, and the footer's words beside a disabled Create in Jira ("Pick a priority TLS uses",
+    /// "Fill in Team first"). Nil when all are allowed or unknown.
     public static func check(_ values: [String: String], projects: [JiraProject]?, types: [String: [JiraIssueType]],
-                             screens: [String: JiraCreateScreen]) -> (field: String, message: String, footer: String)? {
+                             screens: [String: JiraCreateScreen],
+                             defaults: [String: [String: JiraRequiredDefault]] = [:]) -> (field: String, message: String, footer: String)? {
         guard let projects else { return nil }
         if let m = projectProblem(values["project"], projects: projects) { return ("project", m, "Pick a project you can create in") }
         guard let p = project(values["project"], in: projects), let list = types[p.key] else { return nil }
         if let m = typeProblem(values["issueType"], project: p.key, types: list) { return ("issueType", m, "Pick a type \(p.key) has") }
         guard let t = type(values["issueType"], in: list), let screen = screens[p.key + "|" + t.id] else { return nil }
         if let m = priorityProblem(values["priority"], project: p.key, priorities: screen.priorities) { return ("priority", m, "Pick a priority \(p.key) uses") }
+        if let m = JiraRequired.missing(screen.extra, values: values, defaults: defaults[JiraRequired.defaultsKey(p.key, t.name)] ?? [:]) {
+            return (m.field, m.message, m.message)
+        }
         return nil
     }
 
@@ -205,6 +221,17 @@ extension CoreClient {
 
     public func jiraIssueTypes(_ project: String, refresh: Bool = false) async throws -> JiraTypeList {
         try await jiraGet("/v1/jira/projects/\(Self.segment(project))/types" + (refresh ? "?refresh=1" : ""), as: JiraTypeList.self)
+    }
+
+    /// People Jira can assign in the project, matching `query` (a person field's search).
+    public func jiraUsers(_ project: String, query: String) async throws -> [JiraUser] {
+        let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&=+?#"))) ?? ""
+        return try await jiraGet("/v1/jira/projects/\(Self.segment(project))/users?q=\(q)", as: JiraUserList.self).users
+    }
+
+    /// Jira's create page with what Distill can fill passed along (a field Distill can't fill).
+    public func jiraCreateURL(_ id: String) async throws -> URL? {
+        URL(string: try await jiraGet("/v1/actions/\(Self.segment(id))/jira-create-url", as: JiraCreatePage.self).url)
     }
 
     public func jiraCreateScreen(_ project: String, typeId: String, refresh: Bool = false) async throws -> JiraCreateScreen {

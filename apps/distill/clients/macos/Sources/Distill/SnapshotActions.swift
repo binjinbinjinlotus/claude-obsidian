@@ -521,6 +521,45 @@ extension StatesSnapshot {
         }
         ext("jira-fields-error", "jira", "Jira refused it", "Jira didn’t create the ticket: The priority selected is invalid. once, with Nothing was created and your draft is unchanged.", e)
 
+        // Jira required fields (actions.md; canvas ActionsJiraFields K–N): TLS · Task asks for Team (customfield_11063).
+        let team = JiraField(id: "customfield_11063", name: "Team", kind: .option,
+                             options: ["Platform", "Payments", "Mobile", "Data", "Developer Experience"].enumerated().map { JiraOption(id: "2010\($0.offset)", name: $0.element) })
+        func required(_ extra: [JiraField], _ fields: [String: String], _ edit: (AppModel) -> Void = { _ in }) -> AppModel {
+            jira(["Critical", "High", "Medium", "Low"]) { e in
+                e.actions.jiraProjects?.projects = e.actions.jiraProjects?.projects.map { $0.key == "TLS" ? JiraProject(key: "TLS", name: "Telus API Marketplace") : $0 } ?? []
+                e.actions.jiraProjectNames["TLS"] = "Telus API Marketplace"
+                e.actions.jiraScreens["TLS|10001"]?.extra = extra
+                e.actions.items["j1"]?.fields = ["project": "TLS", "issueType": "Task", "priority": "Critical", "assignee": "Jin Bin Liu"].merging(fields) { $1 }
+                e.actions.items["j1"]?.labels = []
+                edit(e)
+            }
+        }
+        e = required([team], [:]) { $0.actions.jiraOpenField = "j1|customfield_11063" }
+        ext("jira-required-picker", "jira", "A field TLS requires", "Team by its name from Jira with Jira’s values open (TEAMS IN TLS); Required by TLS; the footer says Fill in Team first and Create in Jira is off.", e)
+        e = required([team], ["jira.customfield_11063": "Platform"]) { e in
+            e.actions.jiraPicked = ["j1|customfield_11063"]
+            SettingsEdits.setActions(&e.settings) { $0.setJiraRequiredDefault("TLS|Task", field: "customfield_11063", JiraRequiredDefault(name: "Team", value: "Platform")) }
+        }
+        ext("jira-required-filled", "jira", "Team filled", "Platform; Use for future TLS Tasks ticked saves it as the TLS · Task default; Create in Jira is on.", e)
+        let typed: [JiraField] = [
+            team,
+            JiraField(id: "components", name: "Components", kind: .options, options: [JiraOption(id: "31", name: "API"), JiraOption(id: "32", name: "Gateway"), JiraOption(id: "33", name: "Billing")]),
+            JiraField(id: "customfield_203", name: "Target release date", kind: .date),
+            JiraField(id: "customfield_204", name: "Reviewer", kind: .user),
+            JiraField(id: "customfield_205", name: "Environment", kind: .cascading,
+                      options: [JiraOption(id: "41", name: "Staging", children: [JiraOption(id: "411", name: "us-east-1"), JiraOption(id: "412", name: "eu-west-1")]),
+                                JiraOption(id: "42", name: "Production", children: [])]),
+        ]
+        e = required(typed, ["jira.customfield_11063": "Platform", "jira.components": #"["API","Gateway"]"#, "jira.components:from": #"["API"]"#,
+                             "jira.customfield_203": "2026-10-16", "jira.customfield_204": #"{"accountId":"acc-aditya","name":"Aditya Pradhan"}"#,
+                             "jira.customfield_205": #"["Staging","us-east-1"]"#])
+        ext("jira-required-types", "jira", "Controls by field type", "Chips for several choices (API from the note), a date, a person, a cascading pair; each Required by TLS; Create in Jira is on.", e)
+        e = required([team, JiraField(id: "customfield_300", name: "Rollout plan", kind: .unsupported)], ["jira.customfield_11063": "Platform"]) { e in
+            e.actions.jiraPicked = ["j1|customfield_11063"]
+            SettingsEdits.setActions(&e.settings) { $0.setJiraRequiredDefault("TLS|Task", field: "customfield_11063", JiraRequiredDefault(name: "Team", value: "Platform")) }
+        }
+        ext("jira-required-unsupported", "jira", "A field Distill can’t fill", "Distill can’t fill Rollout plan here, with Open in Jira (the rest passed along) and Copy the ticket text; the footer says Rollout plan can only be filled in Jira and Create stays off.", e)
+
         e = actionsEngine(tab: "jira", select: "j1", disconnected: true)
         e.actions.items["j1"]?.error = ActionError(code: "not_connected", message: "Not connected")
         ext("actions-jira-not-connected", "jira", "Not connected", "The draft waits; Set up connection opens Settings → Connections to paste an API token.", e)
