@@ -1433,8 +1433,15 @@ describe('Jira required fields: edges (actions.md, fake Jira)', () => {
         : undefined,
     );
     await connected(h, routes);
-    const t = await h.service.createAction({ type: 'jira', title: 'T', fields: { project: 'TLS' } });
+    const t = await h.service.createAction({ type: 'jira', title: 'T', fields: { project: 'TLS', priority: 'High' } });
     assert.deepEqual(Object.fromEntries(new URL((await h.service.jiraCreateURL(t.id)).url).searchParams), { pid: '10000', issuetype: '10001', summary: 'T' });
+    // A screen with no Priority field at all.
+    routes[0] = (m, url) =>
+      m === 'GET' && url.startsWith(`${SITE}/rest/api/3/issue/createmeta/TLS/issuetypes/10001?`) ? { status: 200, json: { isLast: true, fields: [TEAM] } } : undefined;
+    const h2 = harness();
+    await connected(h2, routes);
+    const t2 = await h2.service.createAction({ type: 'jira', title: 'T', fields: { project: 'TLS', priority: 'High', 'jira.customfield_11063': 'Data' } });
+    assert.deepEqual(Object.fromEntries(new URL((await h2.service.jiraCreateURL(t2.id)).url).searchParams), { pid: '10000', issuetype: '10001', summary: 'T', customfield_11063: '20103' });
   });
 
   test('Create when the create screen can’t be read: nothing is blocked, Jira checks', async () => {
@@ -1486,6 +1493,20 @@ describe('Jira required fields: edges (actions.md, fake Jira)', () => {
       assert.equal(d.fields['jira.customfield_11063'] ?? null, null, project);
       assert.notEqual(d.error?.code, 'failed', project);
     }
+    const errors = h.events.filter((e) => e.type === 'progress' && 'error' in e.progress && e.progress.error);
+    assert.deepEqual(errors, [], 'the prefill gives up quietly: the draft reports no error');
+  });
+
+  test('a drafted ticket with no project yet: drafted, nothing asked of Jira', async () => {
+    const h = harness();
+    await connected(h, requiredRoutes());
+    h.runner.draft = () => ({ structured: { title: 'Cap retries', body: 'The Payments team owns it.', fields: [] } });
+    const before = h.http.calls.length;
+    const a = await h.service.createAction({ type: 'jira', title: 'Cap retries', fields: { issueType: 'Task' } });
+    await h.service.whenIdle();
+    assert.equal((await h.service.getAction(a.id))!.body, 'The Payments team owns it.');
+    assert.equal(h.http.calls.length, before, 'no Jira calls');
+    assert.deepEqual(h.events.filter((e) => e.type === 'progress' && 'error' in e.progress && e.progress.error), []);
   });
 });
 
