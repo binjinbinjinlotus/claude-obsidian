@@ -17,10 +17,10 @@ final class DetailScrollTests: XCTestCase {
     }
 
     /// Lays out the detail at `size` in an offscreen window and returns the window's content view.
-    private func host(_ item: ActionItem, size: CGSize) -> NSView {
+    private func host(_ item: ActionItem, size: CGSize, menu: String? = nil) -> NSView {
         let e = StatesSnapshot.engine()
         ActionFixtures.load(e, items: [item], select: item.id)
-        let root = TodoDetail(store: e.actions, item: item, editing: .constant(false), menu: .constant(nil))
+        let root = TodoDetail(store: e.actions, item: item, editing: .constant(false), menu: .constant(menu))
             .environmentObject(e)
             .frame(width: size.width, height: size.height)
         let view = NSHostingView(rootView: root)
@@ -48,6 +48,19 @@ final class DetailScrollTests: XCTestCase {
         XCTAssertGreaterThan(document.frame.height, scroll.contentView.bounds.height + 50, "the long context runs past the viewport, so it scrolls")
     }
 
+    /// Send to's panel opens upward from the pinned footer over the scrolling content: a click there
+    /// reaches the panel, not the scroll view under it.
+    func testSendToPanelOverTheScrollTakesTheClick() throws {
+        let size = CGSize(width: 440, height: 420)
+        let point = CGPoint(x: size.width - 80, y: 110)
+        let closed = host(longTodo(), size: size)
+        let under = try XCTUnwrap(closed.hitTest(point))
+        XCTAssertNotNil(under.enclosingScrollView, "without the panel, this point is in the scrolling content")
+        let open = host(longTodo(), size: size, menu: "sendto")
+        let hit = try XCTUnwrap(open.hitTest(point))
+        XCTAssertNil(hit.enclosingScrollView, "the panel, drawn over the scroll, gets the click: \(hit)")
+    }
+
     func testShortContentFillsThePaneWithTheFooterAtTheBottom() throws {
         let size = CGSize(width: 440, height: 900)
         let item = ActionFixtures.live().first { $0.id == "t2" }!
@@ -56,6 +69,8 @@ final class DetailScrollTests: XCTestCase {
         let frame = scroll.convert(scroll.bounds, to: nil)
         XCTAssertGreaterThan(frame.height, size.height - 120, "the scroll area takes the spare height, so the footer stays at the bottom: \(frame)")
         XCTAssertLessThan(frame.minY, 120)
+        let document = try XCTUnwrap(scroll.documentView)
+        XCTAssertLessThanOrEqual(document.frame.height, scroll.contentView.bounds.height + 1, "short content leaves nothing to scroll")
     }
 
     private final class Shown: ObservableObject { @Published var item: ActionItem; init(_ i: ActionItem) { item = i } }
