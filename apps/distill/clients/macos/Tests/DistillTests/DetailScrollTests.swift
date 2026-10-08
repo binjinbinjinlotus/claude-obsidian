@@ -59,35 +59,54 @@ final class DetailScrollTests: XCTestCase {
     }
 
     private final class Shown: ObservableObject { @Published var item: ActionItem; init(_ i: ActionItem) { item = i } }
-    private struct PendingHost: View {
-        @ObservedObject var store: ActionsStore
+    private struct DetailHost<D: View>: View {
         @ObservedObject var shown: Shown
-        var body: some View { PendingDetail(store: store, item: shown.item) }
+        let detail: (ActionItem) -> D
+        var body: some View { detail(shown.item) }
+    }
+
+    /// Scrolls the first item's detail down, selects `second`, and checks the next detail opens at the top.
+    private func assertOpensAtTheTop<D: View>(_ first: ActionItem, _ second: ActionItem, file: StaticString = #filePath, line: UInt = #line,
+                                              _ detail: @escaping (ActionsStore, ActionItem) -> D) throws {
+        let e = StatesSnapshot.engine()
+        ActionFixtures.load(e, items: [first, second], select: first.id)
+        let shown = Shown(first)
+        let size = CGSize(width: 440, height: 420)
+        let store = e.actions
+        let view = NSHostingView(rootView: DetailHost(shown: shown) { detail(store, $0) }.environmentObject(e).frame(width: size.width, height: size.height))
+        let window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = view
+        func settle() { view.layoutSubtreeIfNeeded(); RunLoop.main.run(until: Date().addingTimeInterval(0.2)); view.layoutSubtreeIfNeeded() }
+        settle()
+        let scroll = try XCTUnwrap(scrollViews(in: view).first, file: file, line: line)
+        let flipped = scroll.documentView?.isFlipped ?? true
+        let top = flipped ? 0 : max(0, (scroll.documentView?.frame.height ?? 0) - scroll.contentView.bounds.height)
+        scroll.contentView.scroll(to: CGPoint(x: 0, y: flipped ? 200 : top - 200))
+        XCTAssertNotEqual(scroll.contentView.bounds.origin.y, top, accuracy: 1, "scrolled down the first item", file: file, line: line)
+
+        shown.item = second
+        settle()
+        let next = try XCTUnwrap(scrollViews(in: view).first, file: file, line: line)
+        let nextTop = flipped ? 0 : max(0, (next.documentView?.frame.height ?? 0) - next.contentView.bounds.height)
+        XCTAssertEqual(next.contentView.bounds.origin.y, nextTop, accuracy: 1, "the next item opens at the top", file: file, line: line)
     }
 
     func testPendingDetailOpensAtTheTopWhenAnotherItemIsSelected() throws {
         var first = longTodo(); first.id = "w1"; first.status = .open; first.route = .waiting; first.owner = "Mei"
         var second = first; second.id = "w2"
-        let e = StatesSnapshot.engine()
-        ActionFixtures.load(e, items: [first, second], select: first.id)
-        let shown = Shown(first)
-        let size = CGSize(width: 440, height: 420)
-        let view = NSHostingView(rootView: PendingHost(store: e.actions, shown: shown).environmentObject(e).frame(width: size.width, height: size.height))
-        let window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
-        window.contentView = view
-        func settle() { view.layoutSubtreeIfNeeded(); RunLoop.main.run(until: Date().addingTimeInterval(0.2)); view.layoutSubtreeIfNeeded() }
-        settle()
-        let scroll = try XCTUnwrap(scrollViews(in: view).first)
-        let flipped = scroll.documentView?.isFlipped ?? true
-        let top = flipped ? 0 : max(0, (scroll.documentView?.frame.height ?? 0) - scroll.contentView.bounds.height)
-        scroll.contentView.scroll(to: CGPoint(x: 0, y: flipped ? 200 : top - 200))
-        XCTAssertNotEqual(scroll.contentView.bounds.origin.y, top, accuracy: 1, "scrolled down the first item")
+        try assertOpensAtTheTop(first, second) { PendingDetail(store: $0, item: $1) }
+    }
 
-        shown.item = second
-        settle()
-        let next = try XCTUnwrap(scrollViews(in: view).first)
-        let nextTop = flipped ? 0 : max(0, (next.documentView?.frame.height ?? 0) - next.contentView.bounds.height)
-        XCTAssertEqual(next.contentView.bounds.origin.y, nextTop, accuracy: 1, "the next item opens at the top")
+    func testTodoDetailOpensAtTheTopWhenAnotherItemIsSelected() throws {
+        let first = longTodo()
+        var second = first; second.id = "t2-other"
+        try assertOpensAtTheTop(first, second) { TodoDetail(store: $0, item: $1, editing: .constant(false), menu: .constant(nil)) }
+    }
+
+    func testConfirmDetailOpensAtTheTopWhenAnotherItemIsSelected() throws {
+        var first = longTodo(); first.id = "c1"; first.status = .pending; first.summary = "A long one."
+        var second = first; second.id = "c2"
+        try assertOpensAtTheTop(first, second) { ConfirmDetail(store: $0, item: $1) }
     }
 
     func testOverflowNeedsMoreThanRounding() {

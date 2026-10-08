@@ -22,7 +22,8 @@ scrolling": a to-do with a long original pushed Remove, Complete and Send to out
 The detail's content now scrolls above a footer that never moves (`PinnedFooterScroll`,
 `ScrollChrome.swift`), back at the top when another item is selected. No divider above the footer
 and the fade only when the content overflows, so a detail that fits looks exactly as before. To
-confirm, Pending and Highlights already scrolled with a pinned footer and are unchanged.
+confirm, Pending and Highlights already scrolled with a pinned footer; they now also open at the top
+when another item is selected (`.id` on their scroll view).
 
 ## 2026-10-07
 
