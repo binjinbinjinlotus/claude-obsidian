@@ -141,6 +141,7 @@ final class DetailScrollTests: XCTestCase {
     func testOverflowNeedsMoreThanRounding() {
         XCTAssertFalse(PinnedFooterLayout.overflows(content: 400, viewport: 400))
         XCTAssertFalse(PinnedFooterLayout.overflows(content: 400.4, viewport: 400))
+        XCTAssertFalse(PinnedFooterLayout.overflows(content: 400.5, viewport: 400), "half a point is still rounding")
         XCTAssertTrue(PinnedFooterLayout.overflows(content: 401, viewport: 400))
     }
 }
