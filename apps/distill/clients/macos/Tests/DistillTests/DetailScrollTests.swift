@@ -73,10 +73,10 @@ final class DetailScrollTests: XCTestCase {
         XCTAssertLessThanOrEqual(document.frame.height, scroll.contentView.bounds.height + 1, "short content leaves nothing to scroll")
     }
 
-    private final class Shown: ObservableObject { @Published var item: ActionItem; init(_ i: ActionItem) { item = i } }
-    private struct DetailHost<D: View>: View {
-        @ObservedObject var shown: Shown
-        let detail: (ActionItem) -> D
+    private final class Shown<T>: ObservableObject { @Published var item: T; init(_ i: T) { item = i } }
+    private struct DetailHost<T, D: View>: View {
+        @ObservedObject var shown: Shown<T>
+        let detail: (T) -> D
         var body: some View { detail(shown.item) }
     }
 
@@ -85,6 +85,11 @@ final class DetailScrollTests: XCTestCase {
                                               _ detail: @escaping (ActionsStore, ActionItem) -> D) throws {
         let e = StatesSnapshot.engine()
         ActionFixtures.load(e, items: [first, second], select: first.id)
+        try assertOpensAtTheTop(first, second, engine: e, file: file, line: line, detail)
+    }
+
+    private func assertOpensAtTheTop<T, D: View>(_ first: T, _ second: T, engine e: AppModel, file: StaticString = #filePath, line: UInt = #line,
+                                                 _ detail: @escaping (ActionsStore, T) -> D) throws {
         let shown = Shown(first)
         let size = CGSize(width: 440, height: 420)
         let store = e.actions
@@ -122,6 +127,15 @@ final class DetailScrollTests: XCTestCase {
         var first = longTodo(); first.id = "c1"; first.status = .pending; first.summary = "A long one."
         var second = first; second.id = "c2"
         try assertOpensAtTheTop(first, second) { ConfirmDetail(store: $0, item: $1) }
+    }
+
+    /// Highlights' detail is keyed by the note, not an action item (HighlightsViews.swift's `.id(note.notePath)`).
+    func testHighlightDetailOpensAtTheTopWhenAnotherNoteIsSelected() throws {
+        let notes = RoutingFixtures.highlights()
+        var first = notes[0]
+        first.wiki?.summary = (1...12).map { "Point \($0): the shared Storybook, the mock server and the deploy migration." }.joined(separator: " ")
+        var second = first; second.notePath = "wiki/sources/another.md"
+        try assertOpensAtTheTop(first, second, engine: StatesSnapshot.engine()) { HighlightDetail(store: $0, note: $1) }
     }
 
     func testOverflowNeedsMoreThanRounding() {
