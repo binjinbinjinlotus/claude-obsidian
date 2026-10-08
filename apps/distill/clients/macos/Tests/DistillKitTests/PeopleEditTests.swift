@@ -81,6 +81,9 @@ final class PeopleEditTests: XCTestCase {
         edit.add(id: "p-4")
         edit.saveName("p-4", "Ana", in: &p)
         XCTAssertEqual(p.handlesFor("todo"), ["you", "p-1"], "a removed draft's type doesn't carry over")
+        edit.remove("p-1", types: ["todo", "slack"], in: &p)
+        XCTAssertEqual(p.people.map(\.id), ["you", "p-2", "p-4"], "a saved person is removed from Settings")
+        XCTAssertEqual(p.handlesFor("todo"), ["you"], "and from every type they handled")
     }
 
     /// (c) The alias keeps inner spaces; it's trimmed, and a repeat in any case adds nothing.

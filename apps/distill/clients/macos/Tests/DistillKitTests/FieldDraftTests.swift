@@ -72,6 +72,18 @@ final class FieldDraftTests: XCTestCase {
         XCTAssertEqual(d.text, "Mei", "not typing: another change shows")
     }
 
+    /// The store changed under the field (another window saved "Mei"): typing "Mei" is then no
+    /// change to save, and finishing shows the store's value, not the one loaded first.
+    func testAStoreChangeWhileTypingIsWhatTheDraftComparesAgainst() {
+        var d = FieldDraft(key: "a", value: "Linu")
+        _ = d.load(key: "a", value: "Mei", editing: true, FieldText.trimmed)
+        XCTAssertEqual(d.saved, "Mei")
+        d.text = "Mei "
+        XCTAssertNil(d.save(FieldText.trimmed), "already stored")
+        d.text = "Linu"
+        XCTAssertEqual(d.finish(FieldText.trimmed), "Linu", "back to the old name is a change now")
+    }
+
     func testNormalisers() {
         XCTAssertEqual(FieldText.trimmed(" a b \n"), "a b")
         XCTAssertEqual(FieldText.trimmed("   "), "")
