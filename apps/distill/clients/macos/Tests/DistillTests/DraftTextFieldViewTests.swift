@@ -140,6 +140,23 @@ final class DraftTextFieldViewTests: XCTestCase {
         XCTAssertEqual(saves, ["a=Ana"])
     }
 
+    /// Taken out of its window and put back (a kept window closed and reopened) the field keeps its state;
+    /// it registers again, so ⌘Q still saves what is typed after.
+    func testBackInItsWindowQuitStillSavesIt() throws {
+        host()
+        try type("Ana")
+        let view = try XCTUnwrap(window.contentView)
+        window.contentView = NSView()
+        settle()
+        XCTAssertEqual(saves, ["a=Ana"], "going away saved it")
+        window.contentView = view
+        settle()
+        try type("Mei") // focusing selects all: it replaces "Ana"
+        PendingSaves.shared.flushAll()
+        settle()
+        XCTAssertEqual(saves, ["a=Ana", "a=Mei"], "⌘Q after it came back")
+    }
+
     func testFocusesOnlyWhenAsked() throws {
         host()
         XCTAssertFalse(window.firstResponder === field.currentEditor() && field.currentEditor() != nil, "not focused by default")

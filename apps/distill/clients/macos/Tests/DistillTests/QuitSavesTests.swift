@@ -39,4 +39,17 @@ final class QuitSavesTests: XCTestCase {
         XCTAssertEqual(replies, [true], "quits once the save landed")
         XCTAssertTrue(stored)
     }
+
+    /// A save that never finishes doesn't hold quitting: after the timeout it quits anyway, once.
+    func testASaveThatNeverEndsQuitsAfterTheTimeout() async throws {
+        let saves = PendingSaves()
+        let replied = expectation(description: "reply")
+        var replies: [Bool] = []
+        let reply = AppDelegate.terminate(saves: saves, saveSettingsNow: { saves.began() }, timeout: 0.2) { replies.append($0); replied.fulfill() }
+        XCTAssertEqual(reply, .terminateLater)
+        await fulfillment(of: [replied], timeout: 2)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(replies, [true])
+        XCTAssertEqual(saves.running, 1, "still saving: it didn't wait for it")
+    }
 }
