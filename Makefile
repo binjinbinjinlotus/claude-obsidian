@@ -3,7 +3,7 @@
 PYTHON ?= python3
 export PYTHONDONTWRITEBYTECODE := 1
 
-.PHONY: help test test-python test-shell test-contracts test-package validate \
+.PHONY: help test test-python test-shell test-contracts test-package test-distill-design validate \
 	setup-dragonscale setup-retrieve setup-mode clean-test-state
 
 help:
@@ -13,11 +13,19 @@ help:
 	@echo "  make test-shell       Run each tests/test_*.sh file in isolation"
 	@echo "  make test-contracts   Execute canonical product/capability verification"
 	@echo "  make test-package     Validate portable skill, hook, and manifest metadata"
+	@echo "  make test-distill-design  Check the Distill design schema against the Swift app"
 	@echo "  make validate         Run package and contract validators without the test suite"
 	@echo "  make setup-*          Run an opt-in legacy extension setup helper"
 
-test: test-python test-shell test-contracts test-package
+test: test-python test-shell test-contracts test-package test-distill-design
 	@echo "All hermetic tests and executable contracts passed."
+
+# Distill design schema drift check (contributor tooling; apps/ is absent from release artifacts).
+test-distill-design:
+	@set -eu; if [ -d apps/distill/design ]; then \
+		echo "=== apps/distill/design/test_design.py ==="; \
+		$(PYTHON) apps/distill/design/test_design.py; \
+	fi
 
 test-python:
 	@set -eu; for test_file in tests/test_*.py; do \

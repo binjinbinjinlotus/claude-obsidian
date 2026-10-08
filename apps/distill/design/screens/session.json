@@ -1,0 +1,49 @@
+{
+  "$doc": "Session continuity (designed 2026-10-05): the system-wide rule that Distill never silently replaces an AI session. Wherever it would resume one that no longer exists, SessionReplaceConfirm appears where you acted. Fragments in screens/session/ are the Review, Ask and Terminal contexts and the CLI card. Spec: docs/specs/session-continuity.md.",
+  "templates": {},
+  "layouts": {
+    "pane": "{detail}"
+  },
+  "lists": {},
+  "bases": {
+    "review": {
+      "window": {"width": 1200, "height": 760},
+      "sidebar": {"section": "review", "reviewCount": "1", "status": "Sonnet · waiting on you", "height": 720},
+      "layout": "pane",
+      "regions": {"detail": {"frag": "review-approve"}}
+    },
+    "ask": {
+      "window": {"width": 1200, "height": 760},
+      "sidebar": {"section": "ask", "recentOpen": "Green tea water temperature", "height": 720},
+      "layout": "pane",
+      "regions": {"detail": {"frag": "ask-followup"}}
+    }
+  },
+  "states": [
+    {"id": "session-review-approve", "base": "review", "label": "A · Review → Approve & apply: the batch’s session is gone"},
+    {"id": "session-review-reply", "base": "review", "label": "B · Review → Send reply (or Allow): the runner says it can’t find the session", "set": {"detail": {"frag": "review-reply"}}},
+    {"id": "session-ask", "base": "ask", "label": "C · Ask → a follow-up in an older conversation"},
+    {"id": "session-terminal", "base": "review", "label": "D · Review → Open this session in Terminal", "set": {"detail": {"frag": "review-terminal"}}},
+    {
+      "id": "session-cli",
+      "label": "CLI · distill ask --conversation",
+      "caption": "The CLI can’t show a dialog: it prints the same plain sentence, asks nothing, exits 1, and names the flag that continues in a new session. --json returns the typed error. The distill-ask skill passes the message on and asks you before adding --new-session.",
+      "card": {"height": 380, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"},
+      "body": {"frag": "cli"}
+    }
+  ],
+  "boards": [
+    {
+      "file": "SessionContinuity.dc.html",
+      "title": "Session continuity · a new AI session, only with your OK",
+      "heading": "Session continuity · when an AI session is gone",
+      "intro": "The owner’s rule, for every place that reuses an AI session: if the session was deleted, for whatever reason, Distill <b>tells you a new session will be used and waits for your OK</b>. One shared confirmation, <b>SessionReplaceConfirm</b>, appears right where you acted, with a plain reason, <b>Continue</b> and <b>Cancel</b>, and a quiet technical line. Continue starts a new session seeded with what that place needs: a <b>batch</b> gets its sources, labels, your decisions and the plan or bundle you are reviewing (an approved apply keeps the same plan and approval hash); a <b>conversation</b> gets the questions and answers so far. Cancel changes nothing: the batch stays where it was, your reply or question stays in its box. Places that reuse a session: Review (Approve &amp; apply, Send reply, Allow, a reply that resumes a stopped batch), Ask follow-ups (main window and Quick Ask), Open in Terminal, and <code>distill ask --conversation</code>. Not places: actions (draft, improve), label suggestions and image text start a fresh session every time, so they never need this. Distill shows it only on positive evidence: the runner said the session is not found, its transcript file is gone, the batch never started one, or the batch’s runner is gone. Any other runner error stays an ordinary error.",
+      "width": 2520,
+      "sections": [
+        {"row": ["session-review-approve", "session-review-reply"], "style": "display: flex; gap: 40px; align-items: flex-start"},
+        {"row": ["session-ask", "session-terminal"], "style": "display: flex; gap: 40px; align-items: flex-start"},
+        {"grid": ["session-cli"], "cols": 2}
+      ]
+    }
+  ]
+}

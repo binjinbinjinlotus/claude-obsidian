@@ -1,0 +1,9 @@
+<!-- QuickSourceButton: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<span style="max-width: 130px; height: 24px; display: inline-flex; align-items: center; gap: 4px; padding: 0 9px; border-radius: 12px; background: {{bg}}; color: {{fg}}; font-size: 11px; font-weight: 700; white-space: nowrap; box-sizing: border-box"><span style="overflow: hidden; text-overflow: ellipsis">{{text}}</span><sc-if value="{{chosen}}" hint-placeholder-val="{{ false }}"><span style="font-size: 10px">▾</span></sc-if></span>
+</x-dc>
+<script type="text/x-dc-logic">
+const chosen = !!p.source;
+return { chosen, text: chosen ? p.source : '+ Source', bg: chosen ? 'var(--limeTint)' : 'var(--panel)', fg: chosen ? 'var(--limeInk)' : '#48463F' };
+</script>

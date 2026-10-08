@@ -1,0 +1,41 @@
+<!-- ScriptConsent: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<div style="width: {{w}}; box-sizing: border-box">
+<sc-if value="{{isAllowed}}" hint-placeholder-val="{{ false }}"><div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; background: #F3FDE4">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; stroke: var(--limeInk)"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z M8.5 12l2.5 2.5 4.5-5"></path></svg>
+<span style="font-size: 12px; color: var(--limeInk); flex-grow: 1; min-width: 0">{{allowedText}}</span>
+<span role="button" style="font-size: 12px; font-weight: 600; color: var(--primary); white-space: nowrap">Revoke</span></div></sc-if>
+<sc-if value="{{isCard}}" hint-placeholder-val="{{ true }}"><div style="display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 14px; background: #FFF8E6; box-shadow: inset 0 0 0 1px #F5D98B">
+<div style="display: flex; align-items: flex-start; gap: 10px">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8A5A00" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 1px"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z M12 8v4M12 15.5h.01"></path></svg>
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+<span style="font-size: 14px; font-weight: 700; color: var(--ink)">{{heading}}</span>
+<span style="font-size: 12.5px; color: #48463F; line-height: 1.5">{{body}}</span>
+</div></div>
+<div style="display: flex; align-items: center; gap: 8px; margin-left: 28px; padding: 7px 10px; border-radius: 8px; background: var(--window); box-shadow: inset 0 0 0 1px #F0E3BD; min-width: 0">
+<span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; min-width: 0">{{command}}</span>
+<span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10.5px; color: var(--faint); white-space: nowrap; flex-shrink: 0">{{hash}}</span></div>
+<div style="display: flex; align-items: center; gap: 8px; margin-left: 28px">
+<dc-import name="PrimaryButton" title="{{allowTitle}}" system-image="checkmark" size="small" hint-size="160px,30px"></dc-import>
+<dc-import name="SoftButton" title="{{secondTitle}}" size="small" tint="var(--ink)" fill="var(--window)" stroke="var(--border)" hint-size="110px,30px"></dc-import>
+</div></div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc-logic">
+const px = (v, d) => (v === undefined || v === null || v === '') ? d : (/^[0-9.]+$/.test(String(v)) ? v + 'px' : String(v));
+const st = p.state || 'ask', changed = st === 'changed';
+const interp = p.interpreter || 'python3', src = p.source || '~/Scripts/pocket-export.py';
+// changes: what differs from the allowed version ("package.json", "the script and requirements.txt"); empty = the script.
+const what = p.changes || '', manifestOnly = /^(package\.json|requirements\.txt)$/.test(what);
+return { w: px(p.width, '100%'), isAllowed: st === 'allowed', isCard: st !== 'allowed',
+  allowedText: p.allowedText || 'You allowed this exact script on Oct 2 at 9:14 AM. Distill asks again if it changes.',
+  heading: changed ? (what ? (/^the /.test(what) ? 'T' + what.slice(1) : what) : 'The script') + ' changed since you allowed it' : 'Allow Distill to run this script?',
+  body: changed ? (manifestOnly ? 'Its packages changed, and installing them runs code from their authors. Distill paused this collector; check the change, then allow this version: it installs them at once. Nothing installs or runs until then.'
+      : 'Distill paused this collector. Check the change, then allow this version. Until then it does not run, on schedule or with Run now.')
+    : 'Distill will run this code on your Mac as you. It can read and change anything you can and use the network. It runs only on this schedule or with Run now, never while your notes are processed.'
+      + (p.packages ? ' Allowing also installs its packages (' + p.packages + ') right away; installing runs code from their authors.' : ''),
+  command: interp + ' ' + src, hash: p.hash || (changed ? 'sha256 81bc…0e4f (was 3f9a…c217)' : 'sha256 3f9a…c217'),
+  allowTitle: changed ? 'Allow this version' : 'Allow and turn on',
+  secondTitle: changed ? (what ? 'Show changes' : 'Show script') : 'Not now' };
+</script>

@@ -1,0 +1,61 @@
+[
+ [
+  "GENERAL",
+  [
+   [
+    "Vaults",
+    "globe"
+   ],
+   [
+    "Batching",
+    "clock"
+   ],
+   [
+    "Sources",
+    "note.text"
+   ],
+   [
+    "Labels",
+    "tag"
+   ],
+   [
+    "Ask history",
+    "bubble.left"
+   ],
+   [
+    "Keyboard shortcuts",
+    "circle.grid.2x2"
+   ]
+  ]
+ ],
+ [
+  "AI",
+  [
+   [
+    "AI runners",
+    "bolt"
+   ],
+   [
+    "Models for tasks",
+    "gearshape"
+   ]
+  ]
+ ],
+ [
+  "ACTIONS",
+  [
+   [
+    "Actions",
+    "checklist"
+   ],
+   [
+    "To-do defaults",
+    "checkmark.circle"
+   ],
+   [
+    "Connections",
+    "link"
+   ]
+  ]
+ ]
+]

@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Distill — Quick actions from the floating flask</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&amp;family=DM+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0;font-family:"DM Sans",-apple-system,sans-serif;color:#1D1C1A;-webkit-font-smoothing:antialiased}
+a{color:#1F6FEB}a:hover{color:#1858C4}
+button,input,textarea{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 1600px; height: 2140px; box-sizing: border-box; padding: 30px 36px; background: #F6F5F2; display: flex; flex-direction: column; gap: 22px">
+<div style="display: flex; align-items: baseline; gap: 12px">
+<span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -0.02em">Quick actions from the flask</span>
+<span style="font-size: 13px; color: #6B6862">Hover the flask, pick an action, and a small window opens in the center of the screen, like Spotlight. The main app stays closed. Windows open at 560 × 214, grow with their content and start fresh after you close them (see Quick windows: size, growth, scrolling).</span>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: auto; gap: 32px 24px; flex-grow: 1">
+
+<section style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: center; gap: 8px">
+<span style="width: 22px; height: 22px; border-radius: 11px; background: #1F6FEB; color: #FFFFFF; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center">1</span>
+<span style="font-size: 14px; font-weight: 700">Hover → menu fans out</span>
+</div>
+<div style="flex-grow: 1; min-height: 470px; position: relative; border-radius: 20px; background: #DCD9D2; overflow: hidden">
+<div style="position: absolute; left: 22px; top: 22px; width: 250px; height: 160px; border-radius: 12px; background: #EEECE7"></div>
+<div style="position: absolute; left: 60px; top: 210px; width: 200px; height: 120px; border-radius: 12px; background: #E6E3DD"></div>
+
+<div style="position: absolute; right: 108px; bottom: 34px; display: flex; flex-direction: column; gap: 8px; width: 200px">
+<sc-for list="{{menu}}" as="m" hint-placeholder-count="4">
+<button type="button" style="display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 8px 0 10px; border: none; border-radius: 21px; background: {{m.bg}}; color: {{m.fg}}; box-shadow: 0 6px 16px rgba(29,28,26,0.14); font-size: 14px; font-weight: 600; text-align: left">
+<span style="width: 28px; height: 28px; border-radius: 14px; display: flex; align-items: center; justify-content: center; background: {{m.iconBg}}">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{m.iconFg}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{m.icon}}"></path></svg>
+</span>
+<span style="flex-grow: 1">{{m.label}}</span>
+<span style="font-size: 11px; font-weight: 600; opacity: 0.7; padding-right: 6px">{{m.key}}</span>
+</button>
+</sc-for>
+</div>
+
+<div style="position: absolute; right: 24px; bottom: 30px; width: 68px; height: 68px; border-radius: 34px; background: #FFFFFF; box-shadow: 0 0 0 3px #1F6FEB, 0 10px 22px rgba(29,28,26,0.2); display: flex; align-items: center; justify-content: center">
+<svg width="36" height="40" viewBox="0 0 40 44" aria-hidden="true">
+<defs><clipPath id="qa1"><path d="M15 3h10v12l11 19a5 5 0 0 1-4.3 7.5H8.3A5 5 0 0 1 4 34l11-19z"></path></clipPath></defs>
+<path d="M15 3h10v12l11 19a5 5 0 0 1-4.3 7.5H8.3A5 5 0 0 1 4 34l11-19z" fill="#FFFFFF"></path>
+<g clip-path="url(#qa1)"><rect x="0" y="28" width="40" height="20" fill="#B9F06A"></rect></g>
+<path d="M15 3h10v12l11 19a5 5 0 0 1-4.3 7.5H8.3A5 5 0 0 1 4 34l11-19z" fill="none" stroke="#6B7785" stroke-width="2.4" stroke-linejoin="round"></path>
+<rect x="12.5" y="1" width="15" height="4" rx="2" fill="#6B7785"></rect>
+</svg>
+</div>
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">Opens after a short hover (about 0.3 s) and closes when the pointer leaves. It fans toward the screen center, so it works on any edge. A click still opens the full app. Actions opens the main window on Actions; the number is what’s waiting on you there.</span>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: center; gap: 8px">
+<span style="width: 22px; height: 22px; border-radius: 11px; background: #1F6FEB; color: #FFFFFF; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center">2</span>
+<span style="font-size: 14px; font-weight: 700">Ask → quick answer window</span>
+</div>
+<div style="flex-grow: 1; min-height: 470px; position: relative; border-radius: 20px; background: #DCD9D2; overflow: hidden; display: flex; align-items: flex-start; justify-content: center; padding: 48px 24px 24px">
+<div style="position: absolute; right: 24px; bottom: 24px; width: 44px; height: 44px; border-radius: 22px; background: #FFFFFF; box-shadow: 0 6px 14px rgba(29,28,26,0.18)"></div>
+<div style="width: 560px; display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 16px; position: relative; isolation: isolate; min-height: 214px; box-sizing: border-box"><div style="position: absolute; inset: 0; z-index: -1"><dc-import name="QuickShell" part="frame" width="100%" height="100%" hint-size="100%,100%"></dc-import></div>
+<dc-import name="QuickShell" part="bar" title="Quick ask" hint-size="100%,22px"></dc-import>
+
+
+<label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: #F6F5F2">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F6FEB" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path></svg>
+<input type="text" aria-label="Ask Research" value="What do I still owe the tea club?" style="flex-grow: 1; border: none; outline: none; background: transparent; font-size: 14px; color: #1D1C1A; cursor: text">
+<dc-import name="MarkdownBarToggle"  hint-size="38px,24px"></dc-import>
+<span style="font-size: 11px; color: #9B978F">↩</span>
+</label>
+
+<p style="margin: 0; font-size: 14px; line-height: 1.55; color: #2A2925">Book the tasting room for Saturday and tell Mei so she can bring the new tin [1].</p>
+<div style="display: flex; gap: 8px">
+<a href="#" style="display: flex; align-items: center; gap: 6px; padding: 5px 10px 5px 5px; border-radius: 12px; background: #F6F5F2; text-decoration: none; color: #1D1C1A; font-size: 12px; font-weight: 600">
+<span style="width: 20px; height: 20px; border-radius: 6px; background: #E9FBC9; color: #3D6110; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center">1</span>
+Tea club planning
+</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 16px; background: #FFFFFF; box-shadow: 0 0 0 1.5px #D6E4FB"><div style="display: flex; align-items: center; gap: 8px; padding: 2px 4px 4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1F6FEB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; color: #1F6FEB"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/></svg><span style="font-size: 12px; font-weight: 800; white-space: nowrap">Found in this answer</span><span style="font-size: 11px; color: #6B6862; white-space: nowrap">2 · Sonnet</span><span style="flex-grow: 1"></span><dc-import name="PrimaryButton" title="Add all" size="mini" hint-size="68px,26px"></dc-import></div><div style="display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 12px; "><span style="width: 26px; height: 26px; border-radius: 8px; background: #E3EEFF; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1F6FEB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; color: #1F6FEB"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg></span><div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="display: flex; align-items: center; gap: 8px"><span style="display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 800; letter-spacing: .05em; color: #1F6FEB">TO DO<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#1F6FEB" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; color: #1F6FEB"><path d="M6 9l6 6 6-6"/></svg></span></span><span style="font-size: 12px; font-weight: 600; line-height: 1.35">Book the tasting room for Saturday</span></div><div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0"><dc-import name="SoftButton" title="Add" tint="#1D1C1A" fill="#FFFFFF" stroke="#ECEAE5" system-image="plus" size="mini" hint-size="60px,26px"></dc-import><dc-import name="IconButton" system-image="xmark" tint="#9B978F" help="Dismiss" hint-size="26px,26px"></dc-import></div></div><div style="display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 12px; "><span style="width: 26px; height: 26px; border-radius: 8px; background: #FFE0EC; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#A3245A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; color: #A3245A"><path d="M4 5h16v11H9l-5 4z"/><path d="M10 8.5l-1 5M14 8.5l-1 5M8.3 10h7M8 12h7"/></svg></span><div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="display: flex; align-items: center; gap: 8px"><span style="display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 800; letter-spacing: .05em; color: #A3245A">SLACK MESSAGE<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#A3245A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; color: #A3245A"><path d="M6 9l6 6 6-6"/></svg></span></span><span style="font-size: 12px; font-weight: 600; line-height: 1.35">Tell Mei the room is booked and ask her to bring the tin</span></div><div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0"><dc-import name="SoftButton" title="Create draft" tint="#1D1C1A" fill="#FFFFFF" stroke="#ECEAE5" system-image="plus" size="mini" hint-size="119px,26px"></dc-import><dc-import name="IconButton" system-image="xmark" tint="#9B978F" help="Dismiss" hint-size="26px,26px"></dc-import></div></div></div><div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; gap: 6px; flex-wrap: wrap">
+<dc-import name="ModelChip" model="Sonnet" effort="Medium" show-runner="false" show-effort="true" compact="true" hint-size="139px,26px"></dc-import>
+<span style="height: 24px; display: flex; align-items: center; padding: 0 9px; border-radius: 12px; background: #F6F5F2; font-size: 11px; font-weight: 700">All notes</span>
+<dc-import name="LinkButton" title="+ Limit" hint-size="65px,28px"></dc-import>
+</div>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; padding-top: 4px; border-top: 1px solid #ECEAE5">
+<span style="font-size: 11px; color: #9B978F; flex-grow: 1">Research · Sonnet · Esc to close</span>
+<a href="Ask.dc.html" style="font-size: 12px; font-weight: 600">Continue in Distill</a>
+</div>
+</div>
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">Type and press Return. The model and filter row stays at the bottom, just above the footer, however big the window gets; the answer fills the space between. When the answer holds actions, a compact “Found in this answer” block lists them to confirm: Add, Create draft, × or Add all (see Actions · from Ask answers). × or Esc closes and the next window opens fresh; a size you drag is remembered. Follow-ups stay in the same chat; “Continue in Distill” opens it in the full Ask screen.</span>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: center; gap: 8px">
+<span style="width: 22px; height: 22px; border-radius: 11px; background: #1F6FEB; color: #FFFFFF; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center">3</span>
+<span style="font-size: 14px; font-weight: 700">Add note → quick note window</span>
+</div>
+<div style="flex-grow: 1; min-height: 470px; position: relative; border-radius: 20px; background: #DCD9D2; overflow: hidden; display: flex; align-items: flex-start; justify-content: center; padding: 48px 24px 24px">
+<div style="position: absolute; right: 24px; bottom: 24px; width: 44px; height: 44px; border-radius: 22px; background: #FFFFFF; box-shadow: 0 6px 14px rgba(29,28,26,0.18)"></div>
+<div style="width: 560px; display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 16px; position: relative; isolation: isolate; min-height: 214px; box-sizing: border-box"><div style="position: absolute; inset: 0; z-index: -1"><dc-import name="QuickShell" part="frame" width="100%" height="100%" hint-size="100%,100%"></dc-import></div>
+<dc-import name="QuickShell" part="bar" title="Quick note" hint-size="100%,22px"></dc-import>
+
+
+<label for="qnTitle" style="position: absolute; width: 1px; height: 1px; overflow: hidden">Title</label>
+<input id="qnTitle" type="text" value="Gyokuro at 60 °C" style="border: none; outline: none; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600; font-size: 17px; color: #1D1C1A; padding: 0; cursor: text">
+<label for="qnBody" style="position: absolute; width: 1px; height: 1px; overflow: hidden">Note</label>
+<textarea id="qnBody" rows="2" style="border: none; outline: none; resize: none; overflow: hidden; field-sizing: content; font-size: 13px; line-height: 1.5; color: #2A2925; padding: 0; cursor: text">Shop recommended 60 °C, 2 min first steep. Card attached.</textarea>
+<div style="position: relative; width: 100%; height: 110px; border-radius: 10px; overflow: hidden; background: #E3EEFF; box-shadow: 0 0 0 1px rgba(29,28,26,.06)"><div style="position: absolute; left: 16px; top: 14px; right: 16px; display: flex; flex-direction: column; gap: 6px"><span style="font: 800 13px 'Bricolage Grotesque', sans-serif; color: #1F3B6E">Gyokuro brewing card</span><span style="height: 7px; width: 88%; border-radius: 4px; background: rgba(31,59,110,.18)"></span><span style="height: 7px; width: 70%; border-radius: 4px; background: rgba(31,59,110,.18)"></span><span style="height: 7px; width: 80%; border-radius: 4px; background: rgba(31,59,110,.18)"></span><span style="height: 7px; width: 55%; border-radius: 4px; background: rgba(31,59,110,.18)"></span><span style="height: 7px; width: 64%; border-radius: 4px; background: rgba(31,59,110,.18)"></span></div><div style="position: absolute; right: 8px; top: 8px; display: flex; gap: 6px"><dc-import name="PrimaryButton" title="Extract content" system-image="sparkles" size="mini" hint-size="137px,26px"></dc-import><span title="Remove image" style="width: 26px; height: 26px; border-radius: 13px; background: rgba(255,255,255,.95); display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(29,28,26,.15)"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#6B6862" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></span></div><span style="position: absolute; left: 8px; bottom: 8px; height: 20px; display: flex; align-items: center; padding: 0 8px; border-radius: 10px; background: rgba(255,255,255,.92); font-size: 10px; font-weight: 700; color: #48463F">brewing-card.png · 412 KB</span></div>
+<div style="display: flex; align-items: center; gap: 10px">
+<dc-import name="MarkdownBarToggle" height="26" hint-size="38px,26px"></dc-import>
+<dc-import name="QuickSourceButton" source="In person" hint-size="90px,24px"></dc-import><span style="font-size: 11px; color: #9B978F; flex-grow: 1">⌘↩ saves</span>
+<dc-import name="PrimaryButton" title="Add to queue" size="small" hint-size="114px,30px"></dc-import>
+</div>
+</div>
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">Opens at 560 × 214 and grows as you type. The source is picked in the footer (+ Source, here In person ▾). × or Esc closes (counts as Skip once queued) and the next window opens fresh; drag the corner to resize. Same rules as the full composer: a pasted image stays inside the text; hover it and click Extract content to replace it with its text right away (⌘Z restores it). Labels are suggested after it is queued. The window closes after saving and the flask's count goes up by one.</span>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: center; gap: 8px"><span style="width: 22px; height: 22px; border-radius: 11px; background: #1F6FEB; color: #FFFFFF; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center">4</span><span style="font-size: 14px; font-weight: 700">Ask, limited by labels</span></div>
+<div style="flex-grow: 1; min-height: 470px; position: relative; border-radius: 20px; background: #DCD9D2; overflow: hidden; display: flex; align-items: flex-start; justify-content: center; padding: 48px 24px 24px">
+<div style="position: absolute; right: 24px; bottom: 24px; width: 44px; height: 44px; border-radius: 22px; background: #FFFFFF; box-shadow: 0 6px 14px rgba(29,28,26,0.18)"></div>
+<div style="width: 560px; display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 16px; position: relative; isolation: isolate; min-height: 214px; box-sizing: border-box"><div style="position: absolute; inset: 0; z-index: -1"><dc-import name="QuickShell" part="frame" width="100%" height="100%" hint-size="100%,100%"></dc-import></div>
+<dc-import name="QuickShell" part="bar" title="Quick ask" hint-size="100%,22px"></dc-import>
+
+
+<label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: #F6F5F2">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F6FEB" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path></svg>
+<input type="text" aria-label="Ask Research" value="What did we decide about retries?" style="flex-grow: 1; border: none; outline: none; background: transparent; font-size: 14px; color: #1D1C1A; cursor: text">
+<dc-import name="MarkdownBarToggle"  hint-size="38px,24px"></dc-import>
+<span style="font-size: 11px; color: #9B978F">↩</span>
+</label>
+
+<p style="margin: 0; font-size: 14px; line-height: 1.55; color: #2A2925">Cap retries at 3 with jittered backoff; stop on 503 [1].</p>
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 16px; background: #FFFFFF; box-shadow: 0 0 0 1.5px #D6E4FB"><div style="display: flex; align-items: center; gap: 8px; padding: 2px 4px 4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1F6FEB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; color: #1F6FEB"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/></svg><span style="font-size: 12px; font-weight: 800; white-space: nowrap">Found in this answer</span><span style="font-size: 11px; color: #6B6862; white-space: nowrap">2 · Sonnet</span><span style="flex-grow: 1"></span><dc-import name="PrimaryButton" title="Add all" size="mini" hint-size="68px,26px"></dc-import></div><div style="display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 12px; "><span style="width: 26px; height: 26px; border-radius: 8px; background: #DDF2FF; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0B5C86" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; color: #0B5C86"><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z"/><path d="M10 9h4M10 13h4"/></svg></span><div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="display: flex; align-items: center; gap: 8px"><span style="display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 800; letter-spacing: .05em; color: #0B5C86">JIRA TICKET<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#0B5C86" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; color: #0B5C86"><path d="M6 9l6 6 6-6"/></svg></span></span><span style="font-size: 12px; font-weight: 600; line-height: 1.35">Cap payment client retries at 3 with backoff</span></div><div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0"><dc-import name="Pill" text="Already in Jira tickets" fill="#F6F5F2" ink="#6B6862" hint-size="181px,24px"></dc-import><span style="font-size: 12px; font-weight: 700; color: #1F6FEB">Open</span></div></div><div style="display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 12px; "><span style="width: 26px; height: 26px; border-radius: 8px; background: #E3EEFF; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1F6FEB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; color: #1F6FEB"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg></span><div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="display: flex; align-items: center; gap: 8px"><span style="display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 800; letter-spacing: .05em; color: #1F6FEB">TO DO<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#1F6FEB" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; color: #1F6FEB"><path d="M6 9l6 6 6-6"/></svg></span></span><span style="font-size: 12px; font-weight: 600; line-height: 1.35">Stop retrying on 503 in the auth client</span></div><div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0"><dc-import name="SoftButton" title="Add" tint="#1D1C1A" fill="#FFFFFF" stroke="#ECEAE5" system-image="plus" size="mini" hint-size="60px,26px"></dc-import><dc-import name="IconButton" system-image="xmark" tint="#9B978F" help="Dismiss" hint-size="26px,26px"></dc-import></div></div></div><div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center">
+<dc-import name="DropdownButton" title="Haiku · Low" height="24" radius="12" hint-size="117px,24px"></dc-import>
+<dc-import name="LabelChip" label-name="project-x" removable="true" height="24" hint-size="108px,24px"></dc-import>
+<dc-import name="LabelChip" label-name="incidents" removable="true" height="24" hint-size="108px,24px"></dc-import>
+<span style="height: 24px; display: flex; align-items: center; gap: 4px; padding: 0 4px 0 9px; border-radius: 12px; background: #E9FBC9; color: #3D6110; font-size: 11px; font-weight: 700">Slack<button type="button" aria-label="Remove Slack" style="width: 16px; height: 16px; border: none; background: transparent; color: inherit; font-size: 12px; padding: 0">×</button></span>
+<button type="button" style="height: 24px; padding: 0 6px; border: none; background: transparent; color: #1F6FEB; font-size: 11px; font-weight: 700">+ Limit</button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 12px; background: #F6F5F2">
+<div style="display: flex; align-items: center; gap: 10px">
+<div role="group" aria-label="Match labels" style="flex-shrink: 0; display: flex; padding: 2px; border-radius: 11px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5">
+<button type="button" aria-pressed="true" style="height: 22px; padding: 0 10px; border: none; border-radius: 9px; background: #1F6FEB; color: #FFFFFF; font-size: 11px; font-weight: 700; white-space: nowrap">Any label</button>
+<button type="button" aria-pressed="false" style="height: 22px; padding: 0 10px; border: none; border-radius: 9px; background: transparent; color: #6B6862; font-size: 11px; font-weight: 700; white-space: nowrap">All labels</button>
+</div>
+<span style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: #48463F; white-space: nowrap"><dc-import name="PillSwitch" is-on="true" width="30" height="18" hint-size="30px,18px"></dc-import>Include unconfirmed</span>
+</div>
+<span style="font-size: 11px; color: #6B6862">Using 6 pages · 2 with unconfirmed labels</span>
+</div>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; padding-top: 4px; border-top: 1px solid #ECEAE5">
+<span style="font-size: 11px; color: #9B978F; flex-grow: 1">Defaults from Settings · Esc to close</span>
+<a href="Ask.dc.html" style="font-size: 12px; font-weight: 600">Continue in Distill</a>
+</div>
+</div>
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">The filter chips and the Any / All panel sit at the bottom above the footer and wrap upward. + Limit adds labels or sources. With 2+ labels the Any / All switch appears; Include unconfirmed counts AI labels you haven't confirmed. Both start from your Settings defaults and apply to this chat only. In the Found block, an item already in Actions says “Already in Jira tickets” instead of being added twice. The chat is kept in History for your retention days.</span>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: center; gap: 8px"><span style="width: 22px; height: 22px; border-radius: 11px; background: #1F6FEB; color: #FFFFFF; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center">5</span><span style="font-size: 14px; font-weight: 700">Add note → labels after queueing</span></div>
+<div style="flex-grow: 1; min-height: 470px; position: relative; border-radius: 20px; background: #DCD9D2; overflow: hidden; display: flex; align-items: flex-start; justify-content: center; padding: 48px 24px 24px">
+<div style="position: absolute; right: 24px; bottom: 24px; width: 44px; height: 44px; border-radius: 22px; background: #FFFFFF; box-shadow: 0 6px 14px rgba(29,28,26,0.18)"></div>
+<div style="width: 560px; display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 16px; position: relative; isolation: isolate; min-height: 214px; box-sizing: border-box"><div style="position: absolute; inset: 0; z-index: -1"><dc-import name="QuickShell" part="frame" width="100%" height="100%" hint-size="100%,100%"></dc-import></div>
+<dc-import name="QuickShell" part="bar" title="Quick note" hint-size="100%,22px"></dc-import>
+
+
+<div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: #F3FDE4">
+<span style="width: 24px; height: 24px; border-radius: 12px; background: #3D6110; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800">✓</span>
+<span style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1">
+<span style="font-size: 13px; font-weight: 700">Queued “Gyokuro at 60 °C”</span>
+<span style="font-size: 11px; color: #6B6862">Goes into Research with the next batch</span>
+</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="#B03A0A" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg>
+<span style="font-size: 12px; font-weight: 700; flex-grow: 1">Suggested labels</span>
+<dc-import name="DropdownButton" title="Haiku" height="22" radius="11" hint-size="75px,22px"></dc-import>
+</div>
+<div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center">
+<dc-import name="LabelChip" label-name="tea" style="suggestedExisting" sparkle="true" removable="true" hint-size="80px,26px"></dc-import>
+<dc-import name="LabelChip" label-name="gyokuro" style="suggestedExisting" sparkle="true" removable="true" hint-size="108px,26px"></dc-import>
+<dc-import name="LabelChip" label-name="tea-shops" style="suggestedNew" sparkle="true" removable="true" hint-size="150px,26px"></dc-import>
+<input type="text" aria-label="Add a label" placeholder="+ label" style="width: 70px; height: 26px; border: none; border-radius: 13px; background: #F6F5F2; padding: 0 10px; font-size: 12px; cursor: text">
+</div>
+<div style="display: flex; align-items: center; gap: 10px; padding-top: 4px; border-top: 1px solid #ECEAE5">
+<span style="font-size: 11px; color: #9B978F; flex-grow: 1">Skip leaves it unlabeled → Labels</span>
+<dc-import name="SoftButton" title="Skip" size="small" tint="#1D1C1A" fill="#F6F5F2" hint-size="57px,30px"></dc-import>
+<dc-import name="PrimaryButton" title="Apply 3 labels" size="small" hint-size="129px,30px"></dc-import>
+</div>
+</div>
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">After Add to queue the same window turns into the label step: existing labels first (green), new ones marked (peach). Apply confirms them; nothing is applied on its own. Skip or Esc keeps the note unlabeled so it shows in Labels → Unlabeled.</span>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":2140}}'>
+class Component extends DCLogic {
+renderVals() {
+const plain = { bg: '#FFFFFF', fg: '#1D1C1A', iconBg: '#F6F5F2', iconFg: '#48463F' };
+return {
+menu: [
+{ label: 'Ask', key: '', icon: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z', bg: '#1F6FEB', fg: '#FFFFFF', iconBg: 'rgba(255,255,255,0.2)', iconFg: '#FFFFFF' },
+{ label: 'Add note', key: '', icon: 'M12 5v14M5 12h14', ...plain, iconBg: '#E9FBC9', iconFg: '#3D6110' },
+{ label: 'Paste clipboard', key: '', icon: 'M9 4h6v3H9zM7 6H5v14h14V6h-2', ...plain },
+{ label: 'Actions', key: '9', icon: 'M9 6h11M9 12h11M9 18h11M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17', ...plain },
+{ label: 'Open Distill', key: '', icon: 'M5 12h14M13 6l6 6-6 6', ...plain }
+]
+};
+}
+}
+</script>
+</body>
+</html>

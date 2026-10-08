@@ -1,0 +1,182 @@
+import XCTest
+@testable import DistillKit
+
+/// Add as at confirm time (actions.md): the menu, the prefill, what blocks Add, the keys and the request.
+final class AddAsTests: XCTestCase {
+    static let todo = ActionTypeInfo(id: "todo", label: "To-do", pluralLabel: "To do",
+                                     fields: [ActionFieldSpec(key: "due", label: "Due", kind: "date"), ActionFieldSpec(key: "person", label: "People", kind: "person")],
+                                     handlers: [ActionHandlerInfo(id: "complete", label: "Complete")])
+    static var slack: ActionTypeInfo {
+        var t = ActionTypeInfo(id: "slack", label: "Slack message", fields: [ActionFieldSpec(key: "to", label: "To", kind: "person", required: true),
+                                                                             ActionFieldSpec(key: "thread", label: "Thread")],
+                               handlers: [ActionHandlerInfo(id: "copy", label: "Copy"), ActionHandlerInfo(id: "complete", label: "Complete")])
+        t.buttons = [ActionButtonInfo(button: AutomationButton(id: "send", label: "Send in Slack", bindings: ["target": "{fields.to}"], slot: .send))]
+        return t
+    }
+    static let jira = ActionTypeInfo(id: "jira", label: "Jira ticket", fields: [
+        ActionFieldSpec(key: "project", label: "Project", required: true),
+        ActionFieldSpec(key: "issueType", label: "Type", kind: "choice", choices: ["Task", "Bug"], required: true),
+        ActionFieldSpec(key: "assignee", label: "Assignee", kind: "person")],
+        handlers: [ActionHandlerInfo(id: "create", label: "Create in Jira"), ActionHandlerInfo(id: "complete", label: "Complete")])
+    static let email = ActionTypeInfo(id: "email", label: "Email", reserved: true, handlers: [ActionHandlerInfo(id: "copy", label: "Copy", available: false)])
+    static let off = ActionTypeInfo(id: "confluence", label: "Confluence page", enabled: false, handlers: [ActionHandlerInfo(id: "create", label: "Create in Confluence")])
+    static let bare = ActionTypeInfo(id: "note", label: "Note", handlers: [ActionHandlerInfo(id: "complete", label: "Complete")])
+
+    static let found = ActionItem(id: "p1", type: "todo", status: .pending, title: "Tell Mei the room is booked",
+                                  fields: ["person": "Mei Tanaka", "due": "2026-10-10"], why: "You said you would.")
+
+    func testMenuListsToDoFirstThenTypesWithAHandlerOrButton() {
+        let types = [Self.slack, Self.email, Self.todo, Self.jira, Self.off, Self.bare]
+        let options = AddAs.options(types)
+        XCTAssertEqual(options.map(\.id), ["todo", "slack", "jira"], "reserved, off and handler-less types are left out")
+        XCTAssertEqual(options.map(\.detail), ["Added to your to-dos", "Ready to send with Send in Slack", "Written as a draft, then Create in Jira"])
+        XCTAssertEqual(AddAs.mainTitle(Self.found, types: types), "Add as to-do")
+        var foundSlack = Self.found
+        foundSlack.type = "slack"
+        XCTAssertEqual(AddAs.mainTitle(foundSlack, types: types), "Add as Slack message")
+        // The found type's row says so; the menu ends with the keys.
+        XCTAssertEqual(AddAs.foundLine("todo", types: types), "Found as a to-do")
+        XCTAssertEqual(AddAs.foundLine("slack", types: types), "Found as a Slack message")
+        XCTAssertEqual(AddAs.keysHint(Self.found, types: types), "Return adds as to-do · ⌥Return opens Add as…")
+        var copyOnly = Self.slack
+        copyOnly.buttons = []
+        XCTAssertEqual(AddAs.detail(copyOnly), "Written for you to copy and paste")
+    }
+
+    func testPrefillMapsTitleSummaryAndPeople() {
+        var item = Self.found
+        item.summary = "Mei brings the tea."
+        let slack = AddAs.prefill(item, as: Self.slack)
+        XCTAssertEqual(slack, AddAs.Draft(type: "slack", title: "Tell Mei the room is booked", body: "Mei brings the tea.", fields: ["to": "Mei Tanaka"]))
+        item.body = "Bring the tin."
+        XCTAssertEqual(AddAs.prefill(item, as: Self.slack).body, "Bring the tin.", "a body wins over the summary")
+        XCTAssertEqual(AddAs.prefill(item, as: Self.jira).fields, ["assignee": "Mei Tanaka"])
+        var message = item
+        message.type = "slack"; message.fields = ["to": "#tea-club"]
+        XCTAssertEqual(AddAs.prefill(message, as: Self.todo).fields, ["person": "#tea-club"], "and back")
+    }
+
+    func testRequiredFieldsBlockAddWithTheFieldNamed() {
+        var d = AddAs.prefill(Self.found, as: Self.jira)
+        XCTAssertEqual(AddAs.blockReason(d, type: Self.jira), "Fill in Project and Type")
+        d.fields["project"] = "PX"
+        XCTAssertEqual(AddAs.blockReason(d, type: Self.jira), "Fill in Type")
+        d.fields["issueType"] = "Bug"
+        XCTAssertNil(AddAs.blockReason(d, type: Self.jira))
+        d.title = "  "
+        XCTAssertEqual(AddAs.blockReason(d, type: Self.jira), "Give it a title")
+        var s = AddAs.prefill(Self.found, as: Self.slack)
+        XCTAssertNil(AddAs.blockReason(s, type: Self.slack))
+        s.fields["to"] = " "
+        XCTAssertEqual(AddAs.blockReason(s, type: Self.slack), "Fill in who it goes to")
+        // A name nobody has said who it is in Slack, while a button sends to To, isn't filled in yet.
+        s.fields["to"] = "Vladan Dimitrijevic"
+        XCTAssertNil(AddAs.blockReason(s, type: Self.slack))
+        XCTAssertEqual(AddAs.blockReason(s, type: Self.slack, unknownName: true), "Fill in who it goes to")
+        XCTAssertEqual(AddAs.bodyLabel(Self.slack), "Text")
+        XCTAssertEqual(AddAs.titleLines, 1...3, "a long title wraps instead of being cut off")
+    }
+
+    func testReturnAddsAndOptionReturnOpensTheMenu() {
+        XCTAssertEqual(AddAs.key(returnWithOption: false), .add)
+        XCTAssertEqual(AddAs.key(returnWithOption: true), .openMenu)
+        // The same keys in the list and in the detail: Return, with ⌘Return as an alias; ⌥Return opens the menu.
+        XCTAssertEqual(AddAs.key(option: false, command: false), .add)
+        XCTAssertEqual(AddAs.key(option: false, command: true), .add)
+        XCTAssertEqual(AddAs.key(option: true, command: false), .openMenu)
+        XCTAssertNil(AddAs.key(option: false, command: false, other: true), "⇧ or ⌃Return isn't Add")
+    }
+
+    func testRequestSendsTheEditsAndClearsEmptyFields() async throws {
+        var d = AddAs.prefill(Self.found, as: Self.slack)
+        d.fields["thread"] = "  "
+        StubProtocol.recorded = []
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [StubProtocol.self]
+        let client = CoreClient(endpoint: CoreEndpoint(port: 5555, token: "t"), session: URLSession(configuration: config))
+        defer { StubProtocol.handler = nil }
+        StubProtocol.handler = { _ in (200, Data(#"{"actions":[{"id":"p1","type":"slack","status":"ready","title":"Tell Mei","fields":{"to":"Mei Tanaka"},"source":{"kind":"manual"}}]}"#.utf8)) }
+        let added = try await client.confirmAction("p1", as: ConfirmAs(d))
+        XCTAssertEqual(added?.type, "slack")
+        XCTAssertEqual(StubProtocol.recorded.last?.path, "/v1/actions/confirm")
+        let body = try JSONDecoder.core.decode(JSONValue.self, from: StubProtocol.recorded.last?.body ?? Data())
+        XCTAssertEqual(body["ids"], .array([.string("p1")]))
+        XCTAssertEqual(body["as"]?["type"], .string("slack"))
+        XCTAssertEqual(body["as"]?["fields"]?["to"], .string("Mei Tanaka"))
+        XCTAssertEqual(body["as"]?["fields"]?["thread"], .null, "an emptied field is sent as null")
+    }
+
+    func testEveryDetailLine() {
+        var sender = ActionTypeInfo(id: "teams", label: "Teams message", handlers: [ActionHandlerInfo(id: "send", label: "Send in Teams", available: true)])
+        XCTAssertEqual(AddAs.detail(sender), "Ready to send with Send in Teams")
+        sender.handlers = [ActionHandlerInfo(id: "send", label: "Send in Teams", available: false), ActionHandlerInfo(id: "copy", label: "Copy")]
+        XCTAssertEqual(AddAs.detail(sender), "Written for you to copy and paste", "a send that isn't available yet isn't promised")
+        var runs = ActionTypeInfo(id: "hook", label: "Webhook")
+        runs.buttons = [ActionButtonInfo(button: AutomationButton(id: "post", label: "Post it"))]
+        XCTAssertEqual(AddAs.detail(runs), "Runs Post it")
+        // A send-slot button that is off doesn't make it ready to send.
+        var off = Self.slack
+        off.buttons[0].button.enabled = false
+        off.handlers = []
+        XCTAssertEqual(AddAs.detail(off), "Runs Send in Slack")
+        XCTAssertEqual(AddAs.detail(ActionTypeInfo(id: "x", label: "Thing", pluralLabel: "Things")), "Added to Things")
+        XCTAssertEqual(AddAs.detail(Self.todo), "Added to your to-dos")
+    }
+
+    func testMenuWithoutToDoAndWithButtonOnlyTypes() {
+        var hook = ActionTypeInfo(id: "hook", label: "Webhook")
+        hook.buttons = [ActionButtonInfo(button: AutomationButton(id: "post", label: "Post it"))]
+        let bookkeeping = ActionTypeInfo(id: "x", label: "X", handlers: [ActionHandlerInfo(id: "markSent", label: "Mark sent"),
+                                                                       ActionHandlerInfo(id: "refresh", label: "Refresh")])
+        let options = AddAs.options([Self.jira, hook, bookkeeping])
+        XCTAssertEqual(options.map(\.id), ["jira", "hook"], "no to-do type: none first; bookkeeping handlers don't count")
+        XCTAssertEqual(options.map(\.label), ["Jira ticket", "Webhook"])
+        XCTAssertEqual(AddAs.options([Self.todo]).map(\.label), ["To-do"])
+    }
+
+    func testTypeWordsAndArticles() {
+        let types = [Self.slack, Self.email, ActionTypeInfo(id: "issue", label: "issue")]
+        XCTAssertEqual(AddAs.typeWords("unknown", types: types), "unknown")
+        XCTAssertEqual(AddAs.foundLine("email", types: types), "Found as an Email")
+        XCTAssertEqual(AddAs.foundLine("issue", types: types), "Found as an issue")
+        XCTAssertEqual(AddAs.foundLine("", types: []), "Found as a ")
+        XCTAssertEqual(["todo", "jira", "confluence"].map { AddAs.bodyLabel(ActionTypeInfo(id: $0, label: $0)) }, ["Note", "Description", "Body"])
+        XCTAssertNil(AddAs.key(option: true, command: true), "⌥⌘Return isn't ours")
+    }
+
+    func testPrefillMapsPeopleEachWay() {
+        let item = ActionItem(id: "a", type: "slack", title: "T", body: "  \n", fields: ["to": "@mei", "project": "OPS", "extra": "x"], summary: "Summary")
+        let jira = AddAs.prefill(item, as: Self.jira)
+        XCTAssertEqual(jira.fields, ["assignee": "@mei", "project": "OPS"], "only the type's keys; To becomes the assignee")
+        XCTAssertEqual(jira.body, "Summary", "a blank body falls back to the summary")
+        let ticket = ActionItem(id: "b", type: "jira", title: "T", fields: ["assignee": "Tom"])
+        XCTAssertEqual(AddAs.prefill(ticket, as: Self.todo).fields, ["person": "Tom"])
+        XCTAssertEqual(AddAs.prefill(ticket, as: Self.slack).fields, ["to": "Tom"])
+        // A value the item already has for the key wins.
+        let both = ActionItem(id: "c", type: "todo", title: "T", fields: ["person": "Mei", "to": "#eng"])
+        XCTAssertEqual(AddAs.prefill(both, as: Self.slack).fields["to"], "#eng")
+        XCTAssertEqual(AddAs.prefill(ActionItem(id: "d", title: "T"), as: Self.slack), AddAs.Draft(type: "slack", title: "T", body: "", fields: [:]))
+    }
+
+    func testMissingListsRequiredFieldsInOrder() {
+        var d = AddAs.Draft(type: "jira", title: "T", body: "", fields: ["issueType": " "])
+        XCTAssertEqual(AddAs.missing(d, type: Self.jira), ["Project", "Type"])
+        d.fields["project"] = "OPS"
+        XCTAssertEqual(AddAs.missing(d, type: Self.jira), ["Type"])
+        d.fields["issueType"] = "Bug"
+        XCTAssertEqual(AddAs.missing(d, type: Self.jira), [])
+        XCTAssertEqual(AddAs.missing(d, type: Self.todo), [], "nothing required")
+    }
+
+    func testConfirmTrimsTheTitleAndFields() throws {
+        let c = ConfirmAs(AddAs.Draft(type: "jira", title: "  Fix it  ", body: " b ", fields: ["project": " OPS ", "assignee": ""]))
+        XCTAssertEqual(c.title, "Fix it")
+        XCTAssertEqual(c.body, " b ", "the body is sent as written")
+        XCTAssertEqual(c.fields?["project"], "OPS")
+        XCTAssertEqual(c.fields?["assignee"], .some(nil))
+        let json = try JSONDecoder.core.decode(JSONValue.self, from: JSONEncoder.core.encode(c))
+        XCTAssertEqual(json["fields"]?["project"], .string("OPS"))
+        XCTAssertEqual(json["fields"]?["assignee"], .null)
+        XCTAssertEqual(json["type"], .string("jira"))
+    }
+}

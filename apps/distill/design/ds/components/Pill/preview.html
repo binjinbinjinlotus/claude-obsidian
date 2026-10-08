@@ -1,0 +1,17 @@
+<!-- @dsCard group="Status" height=72 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Pill</title></head>
+<body>
+<div id="root" class="ds-row"></div>
+<script>
+  var D = window.Distill, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+    h(D.Pill, { text: '3' }),
+    h(D.Pill, { text: 'Ready', fill: 'limeTint', ink: 'limeInk', systemImage: 'checkmark' }),
+    h(D.Pill, { text: 'Writing', fill: 'primaryTint', ink: 'primary', busy: true }),
+    h(D.Pill, { text: 'Draft', fill: 'panel', ink: 'muted', size: 'small', stroke: true }),
+    h(D.Pill, { text: 'Not set', ink: 'muted', dashed: true })));
+</script>
+</body>
+</html>

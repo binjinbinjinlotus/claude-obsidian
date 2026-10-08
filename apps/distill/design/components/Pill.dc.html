@@ -1,0 +1,15 @@
+<!-- Pill: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<span style="height: {{h}}; display: inline-flex; align-items: center; gap: 5px; padding: 0 {{pad}}; border-radius: {{r}}; background: {{fill}}; color: {{ink}}; box-shadow: {{ring}}; border: {{border}}; font-size: {{fs}}; font-weight: 700; white-space: nowrap; box-sizing: border-box">
+<sc-if value="{{busy}}" hint-placeholder-val="{{ false }}"><span style="width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: var(--primary); flex-shrink: 0"></span></sc-if><sc-if value="{{hasIcon}}" hint-placeholder-val="{{ false }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; stroke: {{ink}}"><path d="{{d}}"></path></svg></sc-if>{{text}}</span>
+</x-dc>
+<script type="text/x-dc-logic">
+const ICONS = @@ICONS@@;
+const d = ICONS[p.systemImage || ''] || '';
+const small = p.size === 'small';
+const dashed = on(p.dashed, false);
+return { text: p.text || '1', fill: p.fill || 'var(--peachTint)', ink: p.ink || 'var(--peachInk)', d, hasIcon: !!d, busy: on(p.busy, false),
+  h: small ? '20px' : '24px', pad: small ? '8px' : '10px', r: small ? '10px' : '12px', fs: small ? '10.5px' : '12px',
+  ring: p.stroke && !dashed ? 'inset 0 0 0 1.5px ' + p.stroke : 'none', border: dashed ? '1.5px dashed ' + (p.stroke || '#D6D3CC') : 'none' };
+</script>

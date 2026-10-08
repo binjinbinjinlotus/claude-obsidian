@@ -1,0 +1,37 @@
+<!-- ActionsToolbar: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<div style="width: {{w}}; display: flex; align-items: center; gap: 6px; white-space: nowrap; box-sizing: border-box">
+<span style="width: {{sw}}; height: 30px; display: inline-flex; align-items: center; gap: 7px; padding: 0 10px; border-radius: 15px; background: {{sBg}}; box-shadow: {{sRing}}; font-size: 12px; box-sizing: border-box; flex-shrink: 0">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="stroke: var(--faint)"><path d="M4 11a7 7 0 1 0 14 0a7 7 0 1 0 -14 0M20 20l-4-4"></path></svg>
+<span style="flex-grow: 1; overflow: hidden; color: {{sInk}}">{{sText}}<sc-if value="{{focus}}" hint-placeholder-val="{{ false }}"><span style="display: inline-block; width: 1.5px; height: 14px; background: var(--primary); vertical-align: -2px; margin-left: 1px"></span></sc-if></span></span>
+<dc-import name="DropdownButton" title="{{filterTitle}}" system-image="line.3.horizontal.decrease" height="30" radius="15" active="{{active}}" hint-size="96px,30px"></dc-import>
+<sc-for list="{{chips}}" as="c" hint-placeholder-count="2"><dc-import name="FilterChip" text="{{c.text}}" hint-size="{{c.hint}}"></dc-import></sc-for>
+<sc-if value="{{more}}" hint-placeholder-val="{{ false }}"><dc-import name="FilterChip" text="{{moreText}}" removable="false" fill="var(--border)" ink="#48463F" hint-size="40px,28px"></dc-import></sc-if>
+<span style="flex-grow: 1; min-width: 8px"></span>
+<sc-if value="{{isSort}}" hint-placeholder-val="{{ true }}"><dc-import name="DropdownButton" title="{{sortTitle}}" system-image="arrow.up.arrow.down" height="30" radius="15" hint-size="110px,30px"></dc-import></sc-if>
+<sc-if value="{{isConn}}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0">
+<span style="display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="stroke: {{connInk}}"><path d="{{connIcon}}"></path></svg><span>{{connSite}} · <b style="font-weight: 700; color: {{connInk}}">{{connState}}</b></span></span>
+<sc-if value="{{disconnected}}" hint-placeholder-val="{{ false }}"><dc-import name="PrimaryButton" title="Set up connection" system-image="link" size="mini" hint-size="110px,26px"></dc-import></sc-if>
+</span></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc-logic">
+const px = (v, d) => (v === undefined || v === null || v === '') ? d : (/^[0-9.]+$/.test(String(v)) ? v + 'px' : String(v));
+const num = (v, d) => (v === undefined || v === null || v === '' || isNaN(Number(v))) ? d : Number(v);
+const chipsAll = String(p.chips || '').split('|').map(x => x.trim()).filter(Boolean);
+const vis = p.visibleChips === undefined || p.visibleChips === '' ? chipsAll.length : num(p.visibleChips, chipsAll.length);
+const shown = chipsAll.slice(0, vis), hidden = chipsAll.length - shown.length;
+const focus = on(p.focus, false), q = p.search || '';
+const conn = p.connection || 'connected';
+const ICON = { connected: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18', disconnected: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M9 9l6 6M15 9l-6 6' };
+return { w: px(p.width, '100%'), sw: num(p.searchWidth, 190) + 'px', focus, sText: q || p.placeholder || 'Search', sInk: q ? 'var(--ink)' : 'var(--faint)',
+  sBg: focus ? 'var(--window)' : 'var(--panel)', sRing: focus ? '0 0 0 2px var(--primary)' : 'none',
+  filterTitle: chipsAll.length ? 'Filter · ' + chipsAll.length : 'Filter', active: chipsAll.length ? 'true' : 'false',
+  chips: shown.map(t => ({ text: t, hint: (t.length * 7 + 40) + 'px,28px' })), more: hidden > 0, moreText: '+' + hidden,
+  isSort: (p.right || 'sort') === 'sort', sortTitle: p.sortTitle || 'Due date', isConn: p.right === 'connection',
+  connSite: conn === 'connected' ? (p.site || 'acme.atlassian.net') : (p.service || 'Atlassian'),
+  connState: conn === 'connected' ? 'connected' : 'not connected',
+  connInk: conn === 'connected' ? 'var(--limeInk)' : 'var(--peachInk)', connIcon: conn === 'connected' ? ICON.connected : ICON.disconnected,
+  disconnected: conn === 'disconnected' };
+</script>

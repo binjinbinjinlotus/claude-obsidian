@@ -34,6 +34,20 @@ cp = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cp)
 
 
+
+def nested_vault(tmpdir):
+    """Create and return a vault one level below a fresh temp directory.
+
+    Product code audits every entry of a vault's parent directory for
+    portable-name aliases and fails closed with VAULT_DIRECTORY_LIMIT above a
+    fixed bound.  The shared system temp root (macOS ``/var/folders/.../T``)
+    can hold more entries than that on a busy machine, so a test vault must
+    never sit directly in it: its parent is always a directory the test owns.
+    """
+    vault = Path(tmpdir) / "vault"
+    vault.mkdir()
+    return vault
+
 class Fail(SystemExit):
     pass
 
@@ -330,7 +344,7 @@ def test_long_single_paragraph_is_hard_split_with_bounded_prefixes():
         )
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        root = Path(tmpdir)
+        root = nested_vault(tmpdir)
         page = root / "wiki" / "long.md"
         page.parent.mkdir(parents=True)
         page.write_text(
@@ -395,7 +409,7 @@ def test_long_single_paragraph_is_hard_split_with_bounded_prefixes():
 
 def test_process_page_prunes_surplus_chunks_and_invalidates_index():
     with tempfile.TemporaryDirectory() as tmpdir:
-        root = Path(tmpdir)
+        root = nested_vault(tmpdir)
         page = root / "wiki" / "topic.md"
         page.parent.mkdir(parents=True)
         page.write_text(
@@ -455,7 +469,7 @@ def test_process_page_prunes_surplus_chunks_and_invalidates_index():
 
 def test_full_reconcile_removes_deleted_page_chunks():
     with tempfile.TemporaryDirectory() as tmpdir:
-        root = Path(tmpdir)
+        root = nested_vault(tmpdir)
         chunks = root / ".vault-meta" / "chunks"
         orphan_dir = chunks / "c-000099"
         orphan_dir.mkdir(parents=True)
@@ -481,7 +495,7 @@ def test_full_reconcile_removes_deleted_page_chunks():
 
 def test_historical_synthetic_collision_paths_remain_distinct() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
-        root = Path(tmpdir)
+        root = nested_vault(tmpdir)
         wiki = root / "wiki"
         wiki.mkdir()
         (root / ".obsidian").mkdir()
@@ -526,7 +540,7 @@ def test_historical_synthetic_collision_paths_remain_distinct() -> None:
 
 def test_duplicate_explicit_address_fails_before_any_write() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
-        root = Path(tmpdir)
+        root = nested_vault(tmpdir)
         wiki = root / "wiki"
         wiki.mkdir()
         (root / ".obsidian").mkdir()
@@ -612,7 +626,7 @@ def test_symlinked_chunk_address_never_writes_or_deletes_outside() -> None:
 
 def test_explicit_page_symlink_is_rejected_without_replacing_real_chunks() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
-        root = Path(tmpdir)
+        root = nested_vault(tmpdir)
         wiki = root / "wiki"
         wiki.mkdir()
         (root / ".obsidian").mkdir()
@@ -649,7 +663,7 @@ def test_explicit_page_symlink_is_rejected_without_replacing_real_chunks() -> No
 
 def test_prefix_generation_refuses_shared_vault_writer_lock() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
-        root = Path(tmpdir)
+        root = nested_vault(tmpdir)
         wiki = root / "wiki"
         wiki.mkdir()
         (root / ".obsidian").mkdir()

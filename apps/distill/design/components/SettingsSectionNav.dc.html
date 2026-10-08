@@ -1,0 +1,45 @@
+<!-- SettingsSectionNav: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<aside style="width: 236px; height: {{height}}; flex-shrink: 0; background: var(--panel); padding: 16px 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px">
+<div style="height: 26px"></div>
+<span style="width: 196px; height: 30px; display: inline-flex; align-items: center; gap: 7px; padding: 0 10px; border-radius: 15px; background: {{searchBg}}; box-shadow: {{searchRing}}; font-size: 12px; box-sizing: border-box; flex-shrink: 0">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="stroke: var(--faint)"><path d="M4 11a7 7 0 1 0 14 0a7 7 0 1 0 -14 0M20 20l-4-4"></path></svg>
+<span style="flex-grow: 1; white-space: nowrap; overflow: hidden; color: {{queryFg}}">{{queryText}}<sc-if value="{{hasQuery}}" hint-placeholder-val="{{ false }}"><span style="display: inline-block; width: 1.5px; height: 14px; background: var(--primary); vertical-align: -2px; margin-left: 1px"></span></sc-if></span>
+<sc-if value="{{hasQuery}}" hint-placeholder-val="{{ false }}"><span style="width: 16px; height: 16px; border-radius: 8px; background: #DAD7D0; display: inline-flex; align-items: center; justify-content: center"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke-width="3.4" stroke-linecap="round" aria-hidden="true" style="stroke: var(--window)"><path d="M6 6l12 12M18 6L6 18"></path></svg></span></sc-if>
+</span>
+<nav style="display: flex; flex-direction: column; gap: 2px" aria-label="Settings sections">
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="14">
+<sc-if value="{{r.isGroup}}" hint-placeholder-val="{{ false }}"><div style="padding: 14px 10px 4px; font-size: 10px; font-weight: 800; letter-spacing: .06em; color: var(--faint)">{{r.label}}</div></sc-if>
+<sc-if value="{{r.isItem}}" hint-placeholder-val="{{ true }}"><div style="display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 9px; font-size: 13px; background: {{r.bg}}; box-shadow: {{r.shadow}}; font-weight: {{r.weight}}; opacity: {{r.op}}">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; stroke: {{r.stroke}}"><path d="{{r.d}}"></path></svg>
+<span style="flex-grow: 1">{{r.label}}</span>
+<sc-if value="{{r.hasCount}}" hint-placeholder-val="{{ false }}"><span style="font-size: 11px; font-weight: 700; color: var(--primary); background: var(--primaryTint); border-radius: 9px; padding: 1px 7px">{{r.count}}</span></sc-if>
+</div></sc-if>
+</sc-for>
+</nav>
+</aside>
+</x-dc>
+<script type="text/x-dc-logic">
+const ICONS = @@ICONS@@;
+const GROUPS = @@SETTINGS_NAV@@;
+const selected = p.selected || '';
+const query = p.query || '';
+const matches = {};
+String(p.matches || '').split(',').forEach(m => { const i = m.lastIndexOf(':'); if (i > 0) matches[m.slice(0, i).trim()] = m.slice(i + 1).trim(); });
+const rows = [];
+GROUPS.forEach(([g, items]) => {
+  rows.push({ isGroup: true, isItem: false, label: g });
+  items.forEach(([label, sym]) => {
+    const on = label === selected;
+    const count = matches[label] || '';
+    rows.push({ isGroup: false, isItem: true, label, d: ICONS[sym] || '', stroke: on ? 'var(--primary)' : 'var(--muted)',
+      bg: on ? 'var(--window)' : 'transparent', shadow: on ? '0 1px 3px rgba(29,28,26,.08)' : 'none', weight: on ? 600 : 400,
+      op: query && !count ? 0.4 : 1, count, hasCount: !!count });
+  });
+});
+const h = p.height;
+return { rows, hasQuery: !!query, queryText: query || 'Search settings', queryFg: query ? 'var(--ink)' : 'var(--faint)',
+  searchBg: query ? 'var(--window)' : 'var(--panel)', searchRing: query ? '0 0 0 2px var(--primary)' : 'none',
+  height: h === undefined || h === null || h === '' ? 'auto' : (/^[0-9.]+$/.test(String(h)) ? h + 'px' : String(h)) };
+</script>

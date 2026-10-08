@@ -1,0 +1,27 @@
+{
+  "name": "@distill/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "distill": "dist/main.js" },
+  "scripts": {
+    "build:core": "tsc -p ../core/tsconfig.json",
+    "prebuild": "npm run build:core",
+    "build": "tsc -p tsconfig.json",
+    "pretypecheck": "npm run build:core",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "npm run build:core",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test:mutation": "stryker run"
+  },
+  "dependencies": {
+    "@distill/core": "0.1.0"
+  },
+  "devDependencies": {
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/tap-runner": "^9.6.1",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

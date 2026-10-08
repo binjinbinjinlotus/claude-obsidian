@@ -1,0 +1,10 @@
+<!-- CapsuleSwitch: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<span role="switch" aria-checked="{{on}}" style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: {{fs}}; font-weight: 600; color: #48463F">
+<span style="width: 34px; height: 20px; border-radius: 10px; background: {{bg}}; display: inline-flex; align-items: center; justify-content: {{justify}}; padding: 0 2px; box-sizing: border-box; flex-shrink: 0"><span style="width: 16px; height: 16px; border-radius: 50%; background: var(--window)"></span></span>{{title}}</span>
+</x-dc>
+<script type="text/x-dc-logic">
+const isOn = on(p.isOn, true);
+return { on: isOn ? 'true' : 'false', title: p.title || 'Include unconfirmed', fs: (p.fontSize || 12) + 'px', bg: isOn ? 'var(--primary)' : '#D6D3CC', justify: isOn ? 'flex-end' : 'flex-start' };
+</script>

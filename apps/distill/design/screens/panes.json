@@ -1,0 +1,202 @@
+{
+ "$doc": "Resizable panes (designed 2026-10-05): drag the divider between two columns on every split screen; min and max per column, double-click for the automatic width, widths remembered per screen in Distill's UI preferences. Spec: docs/specs/resizable-panes.md.",
+ "templates": {},
+ "layouts": {
+  "pane": "<div style=\"flex-grow: 1; min-height: 0; overflow: hidden; position: relative\">{detail}</div>"
+ },
+ "bases": {
+  "review": {
+   "window": {
+    "width": 1200,
+    "height": 720
+   },
+   "sidebar": {
+    "section": "review",
+    "queueCount": "0",
+    "status": "Sonnet · waiting on you",
+    "height": 680,
+    "reviewCount": "1"
+   },
+   "layout": "pane",
+   "regions": {
+    "detail": {
+     "frag": "review-hover"
+    }
+   }
+  },
+  "history": {
+   "window": {
+    "width": 1480,
+    "height": 720
+   },
+   "sidebar": {
+    "section": "history",
+    "sub": "jobs",
+    "queueCount": "0",
+    "reviewCount": "",
+    "height": 680
+   },
+   "layout": "pane",
+   "regions": {
+    "detail": {
+     "frag": "history-jobs"
+    }
+   }
+  },
+  "todo": {
+   "window": {
+    "width": 1200,
+    "height": 720
+   },
+   "sidebar": {
+    "section": "actions",
+    "sub": "todo",
+    "queueCount": "0",
+    "reviewCount": "",
+    "height": 680
+   },
+   "layout": "pane",
+   "regions": {
+    "detail": {
+     "frag": "todo-dragging"
+    }
+   }
+  }
+ },
+ "states": [
+  {
+   "id": "panes-review-hover",
+   "base": "review",
+   "label": "A · Review, 1200 pt window: the pointer is on the gap between the details and the Conversation (automatic width, 300 pt)"
+  },
+  {
+   "id": "panes-review-dragged",
+   "base": "review",
+   "label": "B · Dragging left: the Conversation is 440 pt and the details give way; saved when you let go",
+   "set": {
+    "detail": {
+     "frag": "review-dragged"
+    }
+   }
+  },
+  {
+   "id": "panes-review-limit",
+   "base": "review",
+   "label": "C · A smaller window (1060 pt): the details keep 360 pt, so the Conversation stops at 352 pt; the handle turns peach",
+   "set": {
+    "window": {
+     "width": 1060,
+     "height": 720
+    },
+    "detail": {
+     "frag": "review-limit"
+    }
+   }
+  },
+  {
+   "id": "panes-review-narrow",
+   "base": "review",
+   "label": "D · Below 780 pt of content (a 980 pt window): today’s rule, the Conversation sits behind a button and there is nothing to drag",
+   "set": {
+    "window": {
+     "width": 980,
+     "height": 720
+    },
+    "detail": {
+     "frag": "review-narrow"
+    }
+   }
+  },
+  {
+   "id": "panes-history-jobs",
+   "base": "history",
+   "label": "E · History → Jobs, three columns, two handles: hover on the list’s edge (a 1 pt line today); the Conversation has its own"
+  },
+  {
+   "id": "panes-todo",
+   "base": "todo",
+   "label": "F · Actions → To do: dragging the detail wider (420 pt) from the list’s edge"
+  },
+  {
+   "id": "panes-card-table",
+   "label": "Every split screen: what you drag, its limits, and what stays",
+   "caption": "One key per row in Distill’s UI preferences (distill.pane.…). A missing key is the automatic width, so nothing looks different until you drag.",
+   "card": {
+    "height": 470,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "stretch"
+   },
+   "body": {
+    "frag": "card-table"
+   }
+  },
+  {
+   "id": "panes-card-rules",
+   "label": "How it behaves",
+   "caption": "Same on every screen. The mechanism is one SwiftUI modifier, so the narrow-window rules and the snapshots keep working.",
+   "card": {
+    "height": 470,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "stretch"
+   },
+   "body": {
+    "frag": "card-rules"
+   }
+  }
+ ],
+ "boards": [
+  {
+   "file": "Panes.dc.html",
+   "title": "Resizable panes · drag the divider between two columns",
+   "heading": "Resizable panes: drag the line between two columns",
+   "intro": "“For any UI with the open left section, I am able to change the size.” Every screen with two or three columns gets a handle on the boundary between them: Review and its Conversation, History, Actions, Activity, Collectors, the Settings nav and the sidebar. Hover shows the resize cursor and a grip; drag to resize; double-click for the automatic width. Each column has a min and a max, and the other column always keeps room. Widths are remembered per screen across restarts. Nothing changes until you drag: the automatic widths are today’s widths, and today’s narrow-window rules stay.",
+   "width": 2520,
+   "sections": [
+    {
+     "row": [
+      "panes-review-hover",
+      "panes-review-dragged"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "title": "Smaller windows: limits first, then today’s narrow rule"
+    },
+    {
+     "row": [
+      "panes-review-limit",
+      "panes-review-narrow"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "title": "The same handle on lists and details"
+    },
+    {
+     "row": [
+      "panes-history-jobs"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "row": [
+      "panes-todo"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "title": "Every screen, and the rules"
+    },
+    {
+     "grid": [
+      "panes-card-table",
+      "panes-card-rules"
+     ],
+     "cols": 2
+    }
+   ]
+  }
+ ]
+}

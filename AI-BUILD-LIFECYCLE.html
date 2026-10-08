@@ -1,0 +1,510 @@
+<title>Distill Build Lifecycle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column (max 72rem) — a lifecycle loop up top, then one block per practice area, each split into practice / evidence / what broke */
+:root {
+  --bg: #f3f5f4;
+  --surface: #ffffff;
+  --ink: #16201c;
+  --muted: #56635d;
+  --line: #d6ddd9;
+  --accent: #1f5f8b;
+  --accent-soft: #e2edf5;
+  --good: #23784a;
+  --good-soft: #e3f2e9;
+  --warn: #9a5b00;
+  --warn-soft: #fbefd9;
+  --bad: #a3322a;
+  --bad-soft: #f8e4e1;
+  --code-bg: #e9eeeb;
+  --font-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111715; --surface: #18201d; --ink: #e4ebe7; --muted: #9aa8a1; --line: #2c3833;
+    --accent: #7fb6dd; --accent-soft: #1b2c38;
+    --good: #6fca95; --good-soft: #17291f; --warn: #e3b05e; --warn-soft: #2e2414; --bad: #ee8b80; --bad-soft: #321b18;
+    --code-bg: #222c28; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111715; --surface: #18201d; --ink: #e4ebe7; --muted: #9aa8a1; --line: #2c3833;
+  --accent: #7fb6dd; --accent-soft: #1b2c38;
+  --good: #6fca95; --good-soft: #17291f; --warn: #e3b05e; --warn-soft: #2e2414; --bad: #ee8b80; --bad-soft: #321b18;
+  --code-bg: #222c28; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 400 15px/1.6 var(--font-body); }
+.wrap { max-width: 72rem; margin: 0 auto; padding-inline: 20px; padding-block: 40px 80px; display: grid; gap: 56px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(2rem, 5vw, 3.1rem); line-height: 1.08; font-weight: 700; }
+h2 { font-size: clamp(1.45rem, 3vw, 1.9rem); line-height: 1.2; font-weight: 700; }
+h3 { font-size: 1.05rem; font-weight: 700; }
+p { margin: 0; }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code, .hash { font-family: var(--font-mono); font-size: 0.86em; background: var(--code-bg); padding: 0.05em 0.35em; border-radius: 4px; overflow-wrap: anywhere; }
+.eyebrow { font: 600 0.72rem/1 var(--font-body); text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }
+.lede { font-size: 1.08rem; color: var(--muted); max-width: 62ch; }
+.prose { max-width: 66ch; display: grid; gap: 12px; }
+q, .quote { font-style: italic; }
+.quote::before { content: "“"; } .quote::after { content: "”"; }
+
+/* Hero */
+header { display: grid; gap: 18px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-top: 8px; }
+.stat { background: var(--surface); padding: 14px 16px; display: grid; gap: 2px; }
+.stat b { font: 700 1.7rem/1.1 var(--font-display); font-variant-numeric: tabular-nums; }
+.stat span { font-size: 0.82rem; color: var(--muted); }
+
+/* Commit chart */
+.chart { display: grid; gap: 8px; max-width: 46rem; }
+.bar-row { display: grid; grid-template-columns: 4.2rem 1fr 3rem; gap: 10px; align-items: center; font-size: 0.85rem; }
+.bar-row .day { font-family: var(--font-mono); color: var(--muted); }
+.bar-track { height: 14px; background: var(--code-bg); border-radius: 3px; position: relative; }
+.bar { height: 100%; background: var(--accent); border-radius: 3px; }
+.bar-row .n { font-variant-numeric: tabular-nums; text-align: right; font-weight: 600; }
+.bar-row .what { grid-column: 2 / 4; color: var(--muted); font-size: 0.8rem; margin-top: -4px; }
+
+/* Loop */
+.loop { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; counter-reset: step; }
+.loop li { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px 16px; display: grid; gap: 6px; align-content: start; counter-increment: step; min-width: 0; }
+.loop li .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.loop li .top::before { content: counter(step); font: 700 1.5rem/1 var(--font-display); color: var(--accent); }
+.loop li p { font-size: 0.88rem; color: var(--muted); }
+.loop li.gate { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.actor { font: 600 0.7rem/1 var(--font-body); text-transform: uppercase; letter-spacing: 0.08em; padding: 4px 7px; border-radius: 999px; background: var(--code-bg); color: var(--muted); white-space: nowrap; }
+.actor.owner { background: var(--warn-soft); color: var(--warn); }
+.actor.lead { background: var(--accent-soft); color: var(--accent); }
+.actor.verifier { background: var(--good-soft); color: var(--good); }
+.backloops { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.backloop { border-left: 3px solid var(--warn); padding: 4px 0 4px 14px; font-size: 0.9rem; min-width: 0; }
+.backloop b { display: block; }
+
+/* Roles */
+.roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.role { background: var(--surface); padding: 14px 16px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+.role p { font-size: 0.88rem; color: var(--muted); }
+
+/* Index */
+.index { display: flex; flex-wrap: wrap; gap: 8px; }
+.index a { text-decoration: none; color: var(--ink); border: 1px solid var(--line); background: var(--surface); padding: 6px 12px; border-radius: 999px; font-size: 0.85rem; }
+.index a:hover { border-color: var(--accent); color: var(--accent); }
+.index a span { font-family: var(--font-mono); color: var(--muted); margin-right: 6px; font-size: 0.8em; }
+
+/* Areas */
+.area { display: grid; gap: 16px; padding-top: 28px; border-top: 1px solid var(--line); scroll-margin-top: 16px; }
+.area-head { display: grid; gap: 6px; }
+.area-head .eyebrow { color: var(--accent); }
+.area-head p { color: var(--muted); max-width: 66ch; }
+.cols { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 14px; }
+@media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.col h3 { font-size: 0.78rem; font-family: var(--font-body); font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; display: flex; align-items: center; gap: 8px; }
+.col h3::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.col.do h3 { color: var(--accent); }
+.col.proof h3 { color: var(--good); }
+.col.broke { background: var(--bad-soft); border-color: transparent; }
+.col.broke h3 { color: var(--bad); }
+.col ul { margin: 0; padding-left: 1.1em; display: grid; gap: 7px; font-size: 0.9rem; }
+.col li::marker { color: var(--muted); }
+.rule { font-size: 0.88rem; border-top: 1px dashed var(--line); padding-top: 8px; }
+.col.broke .rule { border-color: color-mix(in srgb, var(--bad) 30%, transparent); }
+.rule b { color: var(--ink); }
+
+/* Tables */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; min-width: 560px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+tr:last-child td { border-bottom: 0; }
+td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+/* Status + next */
+.status { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.pill { display: inline-block; font: 600 0.7rem/1 var(--font-body); text-transform: uppercase; letter-spacing: 0.08em; padding: 4px 8px; border-radius: 999px; }
+.pill.open { background: var(--warn-soft); color: var(--warn); }
+.pill.done { background: var(--good-soft); color: var(--good); }
+.pill.revert { background: var(--bad-soft); color: var(--bad); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; min-width: 0; font-size: 0.9rem; }
+.card p { color: var(--muted); }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.measure { font-size: 0.8rem; color: var(--muted); }
+.measure b { color: var(--ink); font-weight: 600; }
+footer { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); padding-top: 20px; max-width: 66ch; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+html { scroll-behavior: smooth; }
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">How we build Distill with AI agents · 2026-10-01 to 2026-10-07</div>
+  <h1>One owner, one lead session, and a team of agents that design, build and check each other</h1>
+  <p class="lede">This page lays out the development cycle we ended up with while building the Distill macOS app with Claude Code agents. It covers who does what, the loop every feature goes through, and the practices for each area, from product decisions to install. Every claim comes from <code>AI-BUILD-PLAYBOOK.md</code>, with commit hashes and the owner's own words as evidence.</p>
+  <div class="stats" role="list">
+    <div class="stat" role="listitem"><b>487</b><span>commits in 6 days, 436 under <code>apps/distill/</code></span></div>
+    <div class="stat" role="listitem"><b>144 : 139</b><span>fix to feat commits: about one fix per feature</span></div>
+    <div class="stat" role="listitem"><b>65</b><span>named subagents started by one lead session</span></div>
+    <div class="stat" role="listitem"><b>1,212</b><span>tests at the final gate (708 core, 58 CLI, 446 Swift)</span></div>
+  </div>
+</header>
+
+<section class="prose" aria-labelledby="days">
+  <h2 id="days">Six days, commit by commit</h2>
+  <div class="chart" role="img" aria-label="Commits per day: 49, 130, 12, 122, 92, 82">
+    <div class="bar-row"><span class="day">10-01</span><div class="bar-track"><div class="bar" style="width:37.7%"></div></div><span class="n">49</span><span class="what">Mac client, specs, TypeScript core scaffold and port. Owner: <span class="quote">start the build with agent temas, this seesion will be the lead</span></span></div>
+    <div class="bar-row"><span class="day">10-02</span><div class="bar-track"><div class="bar" style="width:100%"></div></div><span class="n">130</span><span class="what">Ask, Write a note, labels, five AI runners, CLI and plugin, the Actions core, Settings</span></div>
+    <div class="bar-row"><span class="day">10-03</span><div class="bar-track"><div class="bar" style="width:9.2%"></div></div><span class="n">12</span><span class="what">"Design as a schema": tokens, components, screens, renderer, drift test</span></div>
+    <div class="bar-row"><span class="day">10-04</span><div class="bar-track"><div class="bar" style="width:93.8%"></div></div><span class="n">122</span><span class="what">Actions redesign, Collectors, activity log and trash, the e2e skill and the PM agent</span></div>
+    <div class="bar-row"><span class="day">10-05</span><div class="bar-track"><div class="bar" style="width:70.8%"></div></div><span class="n">92</span><span class="what">Approval gate enforced in the core, live log, full reads with computed coverage</span></div>
+    <div class="bar-row"><span class="day">10-06</span><div class="bar-track"><div class="bar" style="width:63.1%"></div></div><span class="n">82</span><span class="what">Review-queue self-recovery, Jira pickers, routing, canvas pages, the Distill Design System</span></div>
+  </div>
+</section>
+
+<section aria-labelledby="loop" style="display:grid;gap:18px">
+  <div class="prose">
+    <div class="eyebrow">The cycle</div>
+    <h2 id="loop">The feature loop</h2>
+    <p>This is how the whose-items routing feature ran on 2026-10-06, the cleanest run of the loop. The owner acts at three points: the request, the answers, and using the installed app. Everything between is agents, with the lead holding the thread. The two outlined steps are the gates.</p>
+  </div>
+  <ol class="loop">
+    <li><div class="top"><span class="actor owner">Owner</span></div><h3>Request, in their words</h3><p>Short and often dictated. <span class="quote">let desgin first</span> (19:20).</p></li>
+    <li class="gate"><div class="top"><span class="actor">Canvas designer</span></div><h3>Design on the canvas</h3><p>Every state of every screen, with the open questions drawn on the board (<span class="hash">7b6d309</span>).</p></li>
+    <li><div class="top"><span class="actor owner">Owner</span></div><h3>Answers the questions</h3><p>Answers go onto the board, quoted, and into <code>decisions.md</code> (<span class="hash">d7ab7f8</span>, <span class="hash">07d8603</span>).</p></li>
+    <li><div class="top"><span class="actor lead">Lead</span></div><h3>Spec and decisions</h3><p>One spec per feature; every choice a dated decision (<span class="hash">bef855b</span>, <code>actions-routing.md</code>).</p></li>
+    <li><div class="top"><span class="actor">Builder</span></div><h3>Build in its own worktree</h3><p>Core first (<span class="hash">88b9b66</span>), then the Mac app (<span class="hash">13b1964</span>), then a pass to match the canvas (<span class="hash">0c1e9d8</span>).</p></li>
+    <li class="gate"><div class="top"><span class="actor verifier">Verifier</span></div><h3>Independent verification</h3><p>A different agent, on the builder's branch. Found 4 bugs, each fixed with a test that failed first.</p></li>
+    <li><div class="top"><span class="actor lead">Lead</span></div><h3>Merge with the verified hash</h3><p><span class="quote">merge(distill): whose-items routing, Pending and Highlights (verified at b5f7c1d)</span></p></li>
+    <li><div class="top"><span class="actor lead">Lead</span></div><h3>Install</h3><p><code>distill.sh update</code> backs up data, runs the tests, installs and compares data counts.</p></li>
+    <li><div class="top"><span class="actor lead">Lead</span></div><h3>Report</h3><p>Outcome, evidence, then a numbered list of what's running, what waits on the owner, and follow-ups.</p></li>
+  </ol>
+  <div class="backloops">
+    <div class="backloop"><b>Verifier finds a bug → back to step 5</b>Fixed on the same branch, one commit per bug, before any merge.</div>
+    <div class="backloop"><b>Owner finds a problem in the real app → back to step 2</b>A fix that only restores what the canvas shows goes straight to code. Anything else is drawn first.</div>
+    <div class="backloop"><b>"Build directly after the design" → skip the wait at step 3</b>Pre-approval removes the second wait. It never removes the design step.</div>
+  </div>
+</section>
+
+<section aria-labelledby="roles" style="display:grid;gap:18px">
+  <div class="prose">
+    <div class="eyebrow">Who does what</div>
+    <h2 id="roles">Roles</h2>
+    <p>Nobody designed these roles up front. Each one came out of an owner correction and is now a memory note and a practice in <code>BUILDING-WITH-AI.md</code>.</p>
+  </div>
+  <div class="roles">
+    <div class="role"><h3>Owner</h3><p>Sets direction, answers numbered decision lists, and reviews only the canvas and the real app: <span class="quote">I will only check the real app and [the canvas]</span>.</p></div>
+    <div class="role"><h3>Lead session</h3><p>Writes contracts and briefs, starts workers, merges, runs gates, commits, installs and reports. Keeps specs, decisions and memory current.</p></div>
+    <div class="role"><h3>Builder</h3><p>Implements one item per commit, in its own worktree when another agent is active.</p></div>
+    <div class="role"><h3>Verifier</h3><p>Never builds features. Runs every gate, reviews the diff against the spec, proves each bug with a failing test, fixes clear bugs.</p></div>
+    <div class="role"><h3>Canvas designer</h3><p>Draws every visible change on the Claude Design canvas, generated from the schema in <code>apps/distill/design/</code>.</p></div>
+    <div class="role"><h3>Design architect</h3><p>Audits structure against the tool's own guidance and proves options on throwaway artifacts before proposing.</p></div>
+    <div class="role"><h3>Reviewers</h3><p>Review a design or a new skill before the build. The full-read reviewer found 10 blockers over 3 rounds.</p></div>
+    <div class="role"><h3>PM agent</h3><p>Product and UX judgement: reviews the app, scans the market, says what to build next (<code>.claude/agents/distill-pm.md</code>).</p></div>
+  </div>
+</section>
+
+<section aria-labelledby="areas" style="display:grid;gap:14px">
+  <div class="prose">
+    <div class="eyebrow">Practices by area</div>
+    <h2 id="areas">Eleven areas of the cycle</h2>
+    <p>Each area has three parts: what we do, the evidence that it works, and what broke along with the rule that came out of it.</p>
+  </div>
+  <nav class="index" aria-label="Areas">
+    <a href="#pm"><span>01</span>Product and requirements</a>
+    <a href="#design"><span>02</span>Design</a>
+    <a href="#build"><span>03</span>Build: core, then app</a>
+    <a href="#review"><span>04</span>Review and verification</a>
+    <a href="#testing"><span>05</span>Testing</a>
+    <a href="#release"><span>06</span>Install and release</a>
+    <a href="#feedback"><span>07</span>Feedback and iteration</a>
+    <a href="#safety"><span>08</span>Safety</a>
+    <a href="#memory"><span>09</span>Specs, decisions and memory</a>
+    <a href="#coord"><span>10</span>Coordination and status</a>
+    <a href="#debug"><span>11</span>Debugging unreliable systems</a>
+  </nav>
+</section>
+
+<section class="area" id="pm" aria-labelledby="pm-h">
+  <div class="area-head"><div class="eyebrow">01 · PM</div><h2 id="pm-h">Product and requirements</h2><p>The owner speaks in short, dictated messages. The job is to turn each one into an exact, tracked request without asking more than needed.</p></div>
+  <div class="cols">
+    <div class="col do"><h3>Practice</h3><ul>
+      <li>Restate a dictated message in one line before acting. Ask only what blocks progress, with a recommendation.</li>
+      <li>Put open questions on the design board as a numbered list, so the owner can answer by number.</li>
+      <li>Keep a written checklist of <b>every</b> request, including ones that arrive mid-task.</li>
+      <li>Use the PM agent for product and UX reviews. Give it the open decisions so it doesn't reopen settled questions.</li>
+    </ul></div>
+    <div class="col proof"><h3>Evidence</h3><ul>
+      <li>The numbered list works: <span class="quote">2, not need to restored, i deleted them 3. let buid it … do 7, 8, 9 ,10</span> (2026-10-04).</li>
+      <li>The lead caught a missed request only by checking <code>git log</code> against the full list.</li>
+    </ul></div>
+    <div class="col broke"><h3>What broke</h3><ul>
+      <li>A builder reported "all six items done". The urgent "Recovering" fix, sent mid-task as a message, wasn't built. HEAD <span class="hash">d0a7041</span> had none of it.</li>
+      <li>Cost: cause found 04:08, omission noticed 04:42, fix at 04:50 (<span class="hash">7e4698a</span>). The owner's batch stayed stuck the whole time.</li>
+      <li>Labels were invisible until after approval: <span class="quote">I will never see the label suggestion</span>.</li>
+    </ul><p class="rule"><b>Rule:</b> a "done" counts only against the checklist of every request, matched to commits. Trace data through every screen the user passes.</p></div>
+  </div>
+</section>
+
+<section class="area" id="design" aria-labelledby="design-h">
+  <div class="area-head"><div class="eyebrow">02 · Design</div><h2 id="design-h">Design: canvas first, generated from a schema</h2><p>The canvas is where the owner disagrees cheaply. It is the only design surface they review.</p></div>
+  <div class="cols">
+    <div class="col do"><h3>Practice</h3><ul>
+      <li>Anything the owner can see or feel goes on the canvas first. Build after the OK.</li>
+      <li>The design is a schema in the repo: tokens read from <code>Theme.swift</code>, components named after Swift views, screen states as overrides.</li>
+      <li><code>render.py</code> is the only writer of the canvas. It re-reads the live canvas first and keeps the boards the owner moved.</li>
+      <li>One page per area, at most 30 boards a page, each with a <code>#page-&lt;id&gt;</code> link.</li>
+      <li>Owner answers go in a large card at the top, quoted, with numbered badges on the frames they change.</li>
+    </ul></div>
+    <div class="col proof"><h3>Evidence</h3><ul>
+      <li>Origin: <span class="quote">please first update the desgin inthe artifact first, once I confirm then updat eth ui</span> (2026-10-02).</li>
+      <li>The schema (<span class="hash">26391da</span>) replaced full-screen copies per state, unversioned generators and a serial designer.</li>
+      <li><code>test_design.py</code> fails when design and code disagree. Since <span class="hash">7565517</span> it compares values and caught a Pill at 10.5 px against Swift's 11.</li>
+    </ul></div>
+    <div class="col broke"><h3>What broke</h3><ul>
+      <li>Settings was built as long pages, not one page per section as drawn. Routing needed a "matches the canvas" commit (<span class="hash">0c1e9d8</span>).</li>
+      <li>Owner answers sat in a small card: <span class="quote">missing this in the desgin</span>. The board was at x ≈ 23,400 on a 141-board canvas.</li>
+      <li>A layout fix shipped before the canvas: <span class="quote">you should update the cavas first</span>.</li>
+    </ul><p class="rule"><b>Rule:</b> snapshot state ids equal canvas frame ids. Point to designs with a link that opens on the right page.</p></div>
+  </div>
+</section>
+
+<section class="area" id="build" aria-labelledby="build-h">
+  <div class="area-head"><div class="eyebrow">03 · Build</div><h2 id="build-h">Build: core first, then the app, one worktree per worker</h2><p>The TypeScript core and its routes land before the Mac app, so the app is built against a tested API. Each concurrent writer gets its own copy of the repo.</p></div>
+  <div class="cols">
+    <div class="col do"><h3>Practice</h3><ul>
+      <li>One worktree and branch per concurrent worker, named for the feature (<code>wiki-setup-routing</code>, <code>distill-routing</code>).</li>
+      <li>Core first, then the app, then a pass to match the canvas.</li>
+      <li>One item per commit. Commit after every build or merge; never push.</li>
+      <li>Probe the real system before designing against it.</li>
+      <li>Stage only paths you own, and check <code>git diff --cached --stat</code> before each commit.</li>
+    </ul></div>
+    <div class="col proof"><h3>Evidence</h3><ul>
+      <li>The canvas designer and the routing builder ran at the same time without touching each other's files.</li>
+      <li>Probes that beat reasoning: <code>claude -p --resume &lt;random id&gt;</code> for the real refusal line; <code>which -a node</code> showed the owner's real Node was v14, not nvm's v22.</li>
+    </ul></div>
+    <div class="col broke"><h3>What broke</h3><ul>
+      <li>Builder and verifier shared one worktree. The verifier's <span class="hash">596e0bf</span> <span class="quote">also swept in the builder's uncommitted … edits … because I staged whole files</span>.</li>
+      <li>Teammates overwrote each other's helper scripts in a shared scratchpad.</li>
+    </ul><p class="rule"><b>Rule:</b> every writer gets its own worktree, branch and scratchpad folder. The lead is the only merger.</p></div>
+  </div>
+</section>
+
+<section class="area" id="review" aria-labelledby="review-h">
+  <div class="area-head"><div class="eyebrow">04 · Review</div><h2 id="review-h">Review twice: on paper before the build, adversarially after it</h2><p>The builder never verifies its own work. A separate verifier runs after the builder stops, and a design reviewer looks for holes before any code exists.</p></div>
+  <div class="cols">
+    <div class="col do"><h3>Practice</h3><ul>
+      <li>Before the build, a reviewer checks the proposed solution against the current code. The owner: <span class="quote">directly build if the if subagent doesn't find issues</span>.</li>
+      <li>The verifier's brief names the spec, the commit range and failure classes to hunt: unbounded retries, state left "running", the approval gate skipped.</li>
+      <li>Each suspicion gets a test that fails first, then the fix, in one commit.</li>
+      <li>The report quotes gate lines and gives file:line evidence. "No bugs" is a valid result when shown with evidence.</li>
+    </ul></div>
+    <div class="col proof"><h3>Evidence</h3><ul>
+      <li>The design review found 10 blockers over 3 rounds, each fixed on paper. One example: ledger IDs changing on archive.</li>
+      <li>Verifier round 1: an unbounded recovery loop, 42 session turns with a fake runner (<span class="hash">c8a5706</span>).</li>
+      <li>Round 7: the Jira project's display label stored instead of its key (<span class="hash">4f45ca7</span>).</li>
+      <li>Round 8: prompt injection through a note-derived title (<span class="hash">996130c</span>).</li>
+    </ul></div>
+    <div class="col broke"><h3>What broke</h3><ul>
+      <li>Round 2's bug got past a passing core test, because that test called the service directly instead of the route (<span class="hash">964d851</span>).</li>
+      <li>When the verifier shared a tree with an active builder, it had to pause and ask who owned the files.</li>
+    </ul><p class="rule"><b>Rule:</b> merge subjects carry "verified at &lt;hash&gt;". The verifier gets its own worktree, or the builder is stopped first.</p></div>
+  </div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Round</th><th>Scope</th><th>What the verifier found</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1</td><td>Review-queue recovery</td><td>Unbounded loop past <code>maxAttempts</code>; a stale timer restarting a reset recovery; a slow answer acting on a replaced recovery</td></tr>
+      <tr><td class="num">2</td><td>Automations</td><td><code>collects: false</code> dropped by the route, so a button script would run hourly</td></tr>
+      <tr><td class="num">3</td><td>Lock retries, wording</td><td>None</td></tr>
+      <tr><td class="num">4</td><td>Slack buttons</td><td>"@Name" counted as a resolved target; an unreadable thread link would post at the top level</td></tr>
+      <tr><td class="num">5</td><td>Follow-ups</td><td>None</td></tr>
+      <tr><td class="num">6</td><td>Add as</td><td>A Jira priority survived conversion to a to-do; snapshot fixture didn't match the canvas</td></tr>
+      <tr><td class="num">7</td><td>Jira pickers</td><td>Project label stored instead of key, read wrong in nine places</td></tr>
+      <tr><td class="num">8</td><td>Routing</td><td>Prompt injection; unfenced titles; stale People in a preview; a heading crashed Highlights</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="area" id="testing" aria-labelledby="testing-h">
+  <div class="area-head"><div class="eyebrow">05 · Testing</div><h2 id="testing-h">Testing: fakes only, every layer gated</h2><p>Tests never drive real runners, real sessions or real external services. Each layer has its own gate, and someone has to look at the screenshots.</p></div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Layer</th><th>Tool</th><th>What it proves</th></tr></thead>
+    <tbody>
+      <tr><td>Core (TS)</td><td><code>npm test --workspaces</code>, 708 + 58</td><td>Engine state machine, recovery bounds, routes, prompts, with fake runners</td></tr>
+      <tr><td>Swift</td><td><code>distill.sh test</code>, 446</td><td>Decoding, view models, UI tests on throwaway state</td></tr>
+      <tr><td>Snapshots</td><td><code>Distill --snapshot</code></td><td>Every screen state as a PNG named by its canvas frame id</td></tr>
+      <tr><td>Design drift</td><td><code>test_design.py</code></td><td>Tokens, components, props and boards match Swift</td></tr>
+      <tr><td>Repository</td><td><code>make test</code></td><td>Python and shell suites plus product, package, hook and manifest contracts</td></tr>
+      <tr><td>End to end</td><td><code>distill-macos-e2e</code> skill</td><td>Throwaway vault, a renamed app copy driven by PID, the owner's real window size</td></tr>
+    </tbody>
+  </table></div>
+  <div class="cols">
+    <div class="col do"><h3>Practice</h3><ul>
+      <li>Write the failing test first for every fix.</li>
+      <li>Shared case files (<code>slack-target.cases.json</code>) run in both TypeScript and Swift so the two can't drift.</li>
+      <li>Test the single and empty cases. "Not now" failed with only one collector.</li>
+      <li>Run async suites more than once. Reproduce races by injecting a delay.</li>
+      <li>Look at every new snapshot PNG. A button-row overflow was visible only there.</li>
+    </ul></div>
+    <div class="col proof"><h3>Evidence</h3><ul>
+      <li>Two install-blocking flaky tests were reproduced by injecting 50 ms and 0.5 s delays, not by loading the CPU (<span class="hash">c0a9081</span>, <span class="hash">6320eae</span>).</li>
+      <li>Mutation testing has started on branch <code>distill-unit-tests</code>: 11 commits of unit tests and StrykerJS setup (<span class="hash">a5ca758</span>). It is not merged, and no scores are recorded yet.</li>
+    </ul></div>
+    <div class="col broke"><h3>What broke</h3><ul>
+      <li>UI tests waited a fixed time (<code>settle(0.4)</code>) and failed on a busy machine.</li>
+      <li>Jira fixtures were shaped like our assumptions. A real project's required custom field was found by the owner from a screenshot, not by a test.</li>
+    </ul><p class="rule"><b>Rule:</b> no fixed sleeps; wait on the condition with a bound. Record scrubbed real API responses as fixtures.</p></div>
+  </div>
+</section>
+
+<section class="area" id="release" aria-labelledby="release-h">
+  <div class="area-head"><div class="eyebrow">06 · Release</div><h2 id="release-h">Install and release: gated on tests, with a data check</h2><p>User data is permanent. An install must never lose it, and must never interrupt the owner mid-batch.</p></div>
+  <div class="cols">
+    <div class="col do"><h3>Practice</h3><ul>
+      <li><code>distill.sh update</code>: back up the state directory, run the tests, install, restart the core, compare data counts.</li>
+      <li>It refuses while a job is running.</li>
+      <li>Check for an owner hold before anything else. When blocked, say so; don't wait silently and don't force.</li>
+      <li>After an install, explain in plain words what the owner's in-flight items will do on next launch.</li>
+    </ul></div>
+    <div class="col proof"><h3>Evidence</h3><ul>
+      <li>It refused bad installs twice. Both times the flaky test was root-caused and fixed, not retried until green.</li>
+      <li>The owner can hold installs: <span class="quote">I am batching the file, so please don't restart and reinstall the app untile I say yes</span>.</li>
+    </ul></div>
+    <div class="col broke"><h3>What broke</h3><ul>
+      <li>"Pre-existing environmental failures" hid <code>make test</code> for days because nobody owned the root cause.</li>
+      <li>The data-count check only sees losses during the install itself.</li>
+    </ul><p class="rule"><b>Rule:</b> a failure isn't environmental until proved. A failed install goes to the verifier for a root cause.</p></div>
+  </div>
+</section>
+
+<section class="area" id="feedback" aria-labelledby="feedback-h">
+  <div class="area-head"><div class="eyebrow">07 · Iteration</div><h2 id="feedback-h">Feedback and iteration</h2><p>Fixes are part of the cycle, not a failure of it: 144 fix commits against 139 features. The question is who finds the problem. A check should find it before the owner does.</p></div>
+  <div class="cols">
+    <div class="col do"><h3>Practice</h3><ul>
+      <li>The owner checks only the real app and the canvas, never local previews.</li>
+      <li>Owner reports go back through the loop: canvas first unless the fix restores what's already drawn.</li>
+      <li>Prefer automatic checks over human ones. Partial reads, a stuck recovery or a given-up batch must show as "Needs you", not as a badge someone has to notice.</li>
+    </ul></div>
+    <div class="col proof"><h3>Evidence</h3><ul>
+      <li>The owner: <span class="quote">realying on human is wrong … realying human means nothing will be check correctly</span> (2026-10-05).</li>
+      <li>After that, the core computed read coverage itself (<span class="hash">a8a2fa4</span>). On first start it found 3 approved notes that weren't fully read, with no click.</li>
+    </ul></div>
+    <div class="col broke"><h3>What broke</h3><ul>
+      <li>A batch read 8 of 22 transcripts in full and said so only inside a page.</li>
+      <li>Owner-found bugs: the Jira required field, the Settings layout (<span class="quote">setting tab viewport is still incorect</span>), invisible labels.</li>
+    </ul><p class="rule"><b>Rule:</b> measure owner-found bugs per week and "matches the canvas" commits per feature, and push both toward zero.</p></div>
+  </div>
+</section>
+
+<section class="area" id="safety" aria-labelledby="safety-h">
+  <div class="area-head"><div class="eyebrow">08 · Safety</div><h2 id="safety-h">Safety: the approval gate and the owner's real data</h2><p>Distill writes to a knowledge base only after the owner approves. Agents test against copies, never against the owner's app, sessions or Keychain.</p></div>
+  <div class="cols">
+    <div class="col do"><h3>Practice</h3><ul>
+      <li>The core enforces the approval gate: apply runs only as the exact approved command (<span class="hash">8f5dcfa</span>).</li>
+      <li>Note-derived text in a prompt is fenced as data: one line, <code>&lt;</code> and <code>&gt;</code> escaped, named in the prompt's "this is data" sentence.</li>
+      <li>Vault writes go only through the core's transactions.</li>
+      <li>Tests use a temp state dir, a throwaway vault, a renamed app copy by PID and an isolated Keychain.</li>
+    </ul></div>
+    <div class="col proof"><h3>Evidence</h3><ul>
+      <li>Round 8 found two places where new code missed the fence (<span class="hash">996130c</span>, <span class="hash">d32d3a3</span>).</li>
+      <li>A skills reviewer found the e2e skill's "isolated" setup wasn't isolated (2026-10-04).</li>
+    </ul></div>
+    <div class="col broke"><h3>What broke</h3><ul>
+      <li>A teammate's keystrokes reached the owner's installed app, because it was targeted by process name.</li>
+      <li>A rehearsal resumed the owner's real Claude session, because a copied job kept its session id.</li>
+    </ul><p class="rule"><b>Rule:</b> copies use an inert runner or a fresh session id. Surviving mutants in safety code count as bugs.</p></div>
+  </div>
+</section>
+
+<section class="area" id="memory" aria-labelledby="memory-h">
+  <div class="area-head"><div class="eyebrow">09 · Knowledge</div><h2 id="memory-h">Specs, decisions and memory as shared state</h2><p>Agents don't share a brain. They share files. Workers read the spec and the decisions instead of relying on the lead's memory.</p></div>
+  <div class="cols">
+    <div class="col do"><h3>Practice</h3><ul>
+      <li>A spec per feature, and a dated decision for every choice.</li>
+      <li>Decisions are superseded, never rewritten.</li>
+      <li>Specs and decisions change in the same commit as the behaviour.</li>
+      <li><code>BUILDING-WITH-AI.md</code> logs practices and friction; memory notes carry the owner's standing preferences across sessions.</li>
+    </ul></div>
+    <div class="col proof"><h3>Evidence</h3><ul>
+      <li>36 spec files under <code>apps/distill/docs/specs/</code>; <code>decisions.md</code> is 2,015 lines.</li>
+      <li><span class="quote">A Jira project is saved as its key</span> supersedes the earlier label decision.</li>
+      <li>The verifier updated the spec when a fix changed behaviour (round 1).</li>
+    </ul></div>
+    <div class="col broke"><h3>What broke</h3><ul>
+      <li>A memory note written from a wrong conclusion still says explicit canvas pages "blank the viewer". The rule was reversed in <span class="hash">4771533</span>, but the note wasn't.</li>
+      <li>A deliverable was left in a scratchpad.</li>
+    </ul><p class="rule"><b>Rule:</b> when a decision is superseded, update every memory note that cites it. Keep kept work where it will live, with a README.</p></div>
+  </div>
+</section>
+
+<section class="area" id="coord" aria-labelledby="coord-h">
+  <div class="area-head"><div class="eyebrow">10 · Coordination</div><h2 id="coord-h">Coordination and status: the unsolved cost</h2><p>Running many agents moves the bottleneck to the owner's attention. This area works least well today.</p></div>
+  <div class="cols">
+    <div class="col do"><h3>Practice</h3><ul>
+      <li>Status leads with the outcome, then evidence, then a numbered list: running, waiting on the owner, follow-ups.</li>
+      <li>Approvals given to the lead don't transfer to teammates. The lead runs approved build and install steps itself.</li>
+      <li>The lead removes a worker's worktree after its merge.</li>
+    </ul></div>
+    <div class="col proof"><h3>Evidence</h3><ul>
+      <li>The owner asked "where are we?" 13 times in the lead transcript.</li>
+      <li>229 agent messages (hand-backs and idle notes) were relayed into the lead's context.</li>
+      <li>"Build directly" relayed as an agent message didn't reach teammates as consent.</li>
+    </ul></div>
+    <div class="col broke"><h3>What broke</h3><ul>
+      <li>55 agent worktrees were left behind under <code>.claude/worktrees/</code>.</li>
+      <li>The lead transcript passed 100 MB in one session.</li>
+    </ul><p class="rule"><b>Next experiment:</b> one status page the lead rewrites, with running, waiting and done, each with a hash. Idle notes update it silently.</p></div>
+  </div>
+</section>
+
+<section class="area" id="debug" aria-labelledby="debug-h">
+  <div class="area-head"><div class="eyebrow">11 · Debugging</div><h2 id="debug-h">Debugging an unreliable system: the blank canvas</h2><p>The longest detour of the project, about 90 minutes of owner-visible debugging on 2026-10-06. It shows what happens when one lucky result becomes a rule.</p></div>
+  <div class="cols">
+    <div class="col do"><h3>Practice</h3><ul>
+      <li>Treat each observation as one sample. Allow 30–90 s to draw.</li>
+      <li>Repeat every run at least 3 times, and re-run a known-good control each time.</li>
+      <li>Bisect on a fresh copy, never on the live canvas.</li>
+      <li>Write findings as hypotheses with counts. Only replicated findings become a test or a rule.</li>
+      <li>Look for gradual causes such as size and count, not only the last change.</li>
+    </ul></div>
+    <div class="col proof"><h3>Evidence</h3><ul>
+      <li>The design architect was briefed to treat the question as open: <span class="quote">pages may be buggy, or we used them wrong. Find out which</span>.</li>
+      <li>With controls: one page of 141 boards was blank 4 of 4 times; the same boards on 7 pages drew 3 of 3 times. The cause was one page of about 75,000 px.</li>
+    </ul></div>
+    <div class="col broke"><h3>What broke</h3><ul>
+      <li>The bisect concluded "explicit pages blank the viewer" from one lucky load. <span class="hash">8a766c7</span> stripped pages with a test enforcing it.</li>
+      <li>The canvas moved to a new artifact, so every link in the repo and memory had to be rewritten.</li>
+    </ul><p class="rule"><b>Rule:</b> when a step "fixes" it, re-run the original failing setup unchanged. If that passes too, the result is noise.</p></div>
+  </div>
+</section>
+
+<section aria-labelledby="now" style="display:grid;gap:16px;border-top:1px solid var(--line);padding-top:28px">
+  <div class="prose"><div class="eyebrow">Where things stand</div><h2 id="now">Open work, checked against the repository</h2><p>From the branches in this repository, after the playbook was written.</p></div>
+  <div class="status">
+    <div class="card"><span class="pill open">Built, not merged</span><h3>Jira required fields</h3><p>Branch <code>distill-jira-required</code> is 6 commits ahead, ending at <span class="hash">971887a</span>: required fields by type, Settings defaults, and two verifier-style fixes.</p></div>
+    <div class="card"><span class="pill open">Started, not merged</span><h3>Unit tests and mutation testing</h3><p>Branch <code>distill-unit-tests</code> is 11 commits ahead, ending at <span class="hash">a5ca758</span>, which adds StrykerJS for the core and CLI. No mutation scores recorded yet.</p></div>
+    <div class="card"><span class="pill revert">Reverted</span><h3>Design tokens in templates</h3><p>Canvas migration step 3, batch 1 (<span class="hash">aa96eb5</span>) was reverted in <span class="hash">61efe3e</span> until a canvas hang is understood.</p></div>
+  </div>
+</section>
+
+<section aria-labelledby="next" style="display:grid;gap:16px;border-top:1px solid var(--line);padding-top:28px">
+  <div class="prose"><div class="eyebrow">Turning lessons into tools</div><h2 id="next">What to build next</h2><p>The playbook proposes reusable skills, agents and rule files so the next feature starts with these practices built in. Each comes with what to measure.</p></div>
+  <div class="grid2">
+    <div class="card"><h3>Skill: feature-delivery</h3><p>Runs one feature from request to install. Carries the loop above, the request checklist, worktree-per-worker and "verified at" merges.</p><p class="measure"><b>Measure:</b> items sent back after a "done".</p></div>
+    <div class="card"><h3>Agent: verifier</h3><p>The adversarial checklist: gates quoted, failure classes hunted, failing test first, stage by path, look at every PNG, flaky tests are test bugs.</p><p class="measure"><b>Measure:</b> bugs found per round, and owner-found bugs that slipped past.</p></div>
+    <div class="card"><h3>Agent: canvas-designer and design-architect</h3><p><code>render.py</code> as the only writer, a 30-board page budget, canvas size reported after each render, structural questions proved on throwaway artifacts.</p><p class="measure"><b>Measure:</b> "matches the canvas" commits per feature.</p></div>
+    <div class="card"><h3>Skill: safe-install</h3><p>Check jobs and owner holds, back up, test, install, compare, explain in-flight items. A failed test goes to a root cause, never a retry.</p><p class="measure"><b>Measure:</b> installs refused, and how many were root-caused.</p></div>
+    <div class="card"><h3>Rule files: worktrees and owner interaction</h3><p>One worktree per writer, owned paths only, WIP commits instead of a shared stash. Status in a fixed numbered format, links that open on the right page.</p><p class="measure"><b>Measure:</b> owner status questions per day.</p></div>
+    <div class="card"><h3>Real-shape fixtures</h3><p>A one-time, owner-approved capture of real Jira, Slack and Confluence responses, scrubbed, stored as fixtures with a test that each still decodes.</p><p class="measure"><b>Measure:</b> owner-found integration bugs per week.</p></div>
+  </div>
+</section>
+
+<footer>
+  Source: <code>AI-BUILD-PLAYBOOK.md</code> on branch <code>binjinbinjinlotus/wiki-setup</code>. Owner quotes are verbatim, typos included, because many messages are dictated. Hashes are commits on that branch or the named worker branch. Branch status in "Where things stand" comes from <code>git log</code> on 2026-10-06.
+</footer>
+
+</div>

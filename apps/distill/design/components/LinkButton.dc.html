@@ -1,0 +1,9 @@
+<!-- LinkButton: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<span role="button" style="height: 28px; display: inline-flex; align-items: center; padding: 0 8px; color: var(--primary); font-size: {{fs}}; font-weight: 600; white-space: nowrap; box-sizing: border-box">{{title}}</span>
+</x-dc>
+<script type="text/x-dc-logic">
+const num = (v, d) => (v === undefined || v === null || v === '' || isNaN(Number(v))) ? d : Number(v);
+return { title: p.title || '+ Label', fs: num(p.size, 12) + 'px' };
+</script>

@@ -1,0 +1,42 @@
+---
+title: "Intake: paste and drop"
+status: built
+updated: 2026-10-05
+---
+
+# Intake: paste and drop
+
+Code: `clients/macos/Sources/Distill/Intake.swift` (`PasteboardIntake`, `DropTargetView`),
+`clients/macos/Sources/Distill/AppModel.swift` (`enqueue`). The core copies files
+(`POST /v1/queue/files` → `addQueueFiles`, `core/src/engine/queue.ts`).
+
+- **Drop** files on the Queue drop panel or the floating icon. The app sends
+  their paths to the core, which copies them into the active vault's queue with
+  collision-safe names (an exclusive copy, so a file already there is never
+  replaced). Originals stay where they were. Dropped folders are skipped; a
+  folder put into the queue folder another way (Finder, a collector) becomes
+  a folder item ([Queue and batching](queue-and-batching.md)). A drop is
+  refused (`invalid_state`) while the queue folder is inside the vault
+  anywhere but exactly `<vault>/inbox` (decision 2026-10-04).
+- **Paste**: ⌘V in the main window (when no text field is editing), ⇧⌘V from the
+  Queue menu, or right-click on the floating icon → Paste into Queue.
+  - File URLs on the clipboard are handled like a drop.
+  - Images become `Screenshot <yyyy-MM-dd HHmmss>.png` and text becomes
+    `Clipping <yyyy-MM-dd HHmmss>.md`, in local time. The app writes the pasted
+    data to a temp file with that name, sends it to the core like a drop, then
+    deletes the temp file. The core keeps the basename.
+- **Choose files** on the Queue screen opens a file picker (handled like a drop).
+- **Remove** (× on a queue row) moves that file from the queue folder to the
+  Trash. The file belongs to the user, and the core rescans the folder.
+- Queue rows say how a file arrived, as a clock time: **Pasted at 3:04 AM**
+  for the `Screenshot …`/`Clipping …` names above, **Dropped at …** for
+  everything else (the core's copy gets a fresh modification time, so this is
+  the drop time). See [Queue and batching](queue-and-batching.md).
+
+Images inside a note (placed at the cursor, kept as attachments or read with
+Extract content) are part of [Write a note](notes-composer.md#images)
+(`POST /v1/notes`, `POST /v1/images/extract`). While the composer is on
+screen and its window is key, ⌘V adds images at the editor's cursor (and text)
+to the note instead of the queue (`PasteboardIntake.composeTarget`, or the
+text view's own paste when it has focus); a drop on the composer card does
+the same. Drops on the Queue panel or the flask always queue files.

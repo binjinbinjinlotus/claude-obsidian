@@ -1,0 +1,13 @@
+/* Distill components. Every value is a token from tokens.css (generated from Theme.swift by design/tokens.py). */
+.ds-primary { display: inline-flex; align-items: center; gap: var(--button-gap); height: var(--button-height); padding: 0 var(--button-pad); border: 0; border-radius: var(--radius-capsule); background: var(--primary); color: var(--window); font: var(--button-weight) var(--button-size)/1 var(--font-body); white-space: nowrap; cursor: pointer; box-shadow: 0 4px 8px color-mix(in srgb, var(--primary) 28%, transparent); box-sizing: border-box; }
+.ds-primary-small { height: var(--button-height-small); padding: 0 var(--button-pad-small); font-size: var(--button-small-size); box-shadow: none; }
+.ds-primary-mini { height: var(--button-height-mini); padding: 0 var(--button-pad-mini); font-size: var(--button-mini-size); box-shadow: none; }
+.ds-primary:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
+.ds-primary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.ds-pill { display: inline-flex; align-items: center; gap: var(--pill-gap); height: var(--pill-height); padding: 0 var(--pill-pad); border-radius: var(--radius-capsule); background: var(--pill-fill); color: var(--pill-ink); font: var(--pill-weight) var(--pill-size)/1 var(--font-body); white-space: nowrap; box-sizing: border-box; }
+.ds-pill-small { gap: var(--pill-gap-small); height: var(--pill-height-small); padding: 0 var(--pill-pad-small); font-size: var(--pill-small-size); }
+.ds-pill-stroke { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pill-ink) 30%, transparent); }
+.ds-pill-dashed { background: transparent; border: 1.2px dashed color-mix(in srgb, var(--pill-ink) 45%, transparent); }
+.ds-icon { flex-shrink: 0; }
+.ds-spinner { width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--pill-ink) 25%, transparent); border-top-color: var(--pill-ink); flex-shrink: 0; }
+.ds-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 16px; font-family: var(--font-body); background: var(--window); }

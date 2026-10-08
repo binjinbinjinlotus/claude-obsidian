@@ -1,0 +1,58 @@
+<!-- FilterPanel: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<div style="width: {{w}}; border-radius: 14px; background: var(--window); box-shadow: 0 0 0 1px rgba(29,28,26,.08), 0 14px 32px rgba(29,28,26,.18); display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden">
+<div style="max-height: {{maxH}}; overflow: hidden; padding: 6px 6px 4px">
+<sc-if value="{{scrolled}}" hint-placeholder-val="{{ false }}"><div style="height: 3px; margin: 0 40% 4px; border-radius: 2px; background: var(--border)"></div></sc-if>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="12">
+<sc-if value="{{r.isHead}}" hint-placeholder-val="{{ false }}"><div style="display: flex; align-items: center; padding: 10px 10px 4px; font-size: 10px; font-weight: 800; letter-spacing: .06em; color: {{r.headInk}}"><span style="flex-grow: 1">{{r.label}}</span><span style="font-weight: 700; letter-spacing: 0; color: var(--primary)">{{r.note}}</span></div></sc-if>
+<sc-if value="{{r.isSub}}" hint-placeholder-val="{{ false }}"><div style="padding: 6px 10px 2px; font-size: 10px; font-weight: 700; color: var(--faint)">{{r.label}}</div></sc-if>
+<sc-if value="{{r.isSearch}}" hint-placeholder-val="{{ false }}"><div style="margin: 2px 6px 4px; height: 28px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border-radius: 14px; background: {{r.bg}}; box-shadow: {{r.ring}}; font-size: 12px; color: {{r.ink}}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="stroke: var(--faint)"><path d="M4 11a7 7 0 1 0 14 0a7 7 0 1 0 -14 0M20 20l-4-4"></path></svg>{{r.label}}</div></sc-if>
+<sc-if value="{{r.isRow}}" hint-placeholder-val="{{ true }}"><div style="display: flex; align-items: center; gap: 9px; padding: 6px 10px; border-radius: 8px; background: {{r.bg}}">
+<span style="width: 14px; height: 14px; border-radius: {{r.box}}; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; background: {{r.boxBg}}; box-shadow: inset 0 0 0 1.5px {{r.boxRing}}; flex-shrink: 0"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity: {{r.tick}}; stroke: var(--window)"><path d="M5 12l5 5 9-10"></path></svg></span>
+<span style="flex-grow: 1; font-size: 13px; font-weight: {{r.weight}}; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.label}}</span><span style="font-size: 11px; color: var(--faint)">{{r.count}}</span></div></sc-if>
+<sc-if value="{{r.isMore}}" hint-placeholder-val="{{ false }}"><div style="padding: 4px 10px 6px 33px; font-size: 12px; font-weight: 600; color: var(--primary)">{{r.label}}</div></sc-if>
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px 10px; border-top: 1px solid var(--border)">
+<dc-import name="LinkButton" title="Clear all" hint-size="70px,28px"></dc-import><span style="flex-grow: 1; font-size: 11px; color: var(--faint); text-align: right">{{summary}}</span>
+<dc-import name="PrimaryButton" title="Done" size="small" hint-size="64px,30px"></dc-import>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc-logic">
+const num = (v, d) => (v === undefined || v === null || v === '' || isNaN(Number(v))) ? d : Number(v);
+const DATA = {"todo": [["status", "STATUS", true, false, ["Open", "Completed", "All"]], ["due", "DUE", false, false, ["Overdue", "Today", "This week", "Next 7 days", "No due date", "Pick dates…"]], ["person", "PERSON", false, true, [["You (Jin Liu)", 3], ["Mei Tanaka", 2], ["Priya Shah", 1], ["Tom Kim", 1], ["Ken Ito", 1], ["Sara Lee", 0]]], ["label", "LABEL", false, false, [["#project-x", 3], ["#tea", 2], ["#tea-club", 2], ["#incidents", 1], ["#hiring", 1], ["#brewing", 1], ["#personal", 0]]], ["note", "SOURCE NOTE", false, false, [["Tea club planning", 2], ["Gyokuro at 60 °C", 2], ["Auth retry bug", 1], ["Incident review prep", 1], ["Q3 architecture sync", 1], ["Hiring loop feedback", 0]]], ["priority", "PRIORITY", false, false, ["High", "Medium", "Low", "None"]], ["more", "MORE", false, false, [["ADDED BY", ["Distill", "You"]], ["VAULT", ["Research", "Work notes"]], ["", ["Only from the last batch"]]]]], "slack": [["status", "STATUS", false, false, ["Not written", "Draft", "Ready to paste", "Copied"]], ["recipient", "RECIPIENT", false, true, [["Mei Tanaka", 1], ["#project-x", 1], ["#tea-club", 0], ["Tom Kim", 0], ["Priya Shah", 0], ["#incidents", 0]]], ["note", "SOURCE NOTE", false, false, [["Tea club planning", 2], ["Gyokuro at 60 °C", 2], ["Auth retry bug", 1], ["Incident review prep", 1], ["Q3 architecture sync", 1], ["Hiring loop feedback", 0]]], ["label", "LABEL", false, false, [["#tea-club", 1], ["#project-x", 1], ["#tea", 0], ["#incidents", 0]]]], "jira": [["status", "STATUS", false, false, ["Not written", "Draft", "Created"]], ["project", "PROJECT", false, false, ["PX · Project X", "OPS · Operations"]], ["type", "TYPE", false, false, ["Task", "Bug", "Story"]], ["priority", "PRIORITY", false, false, ["High", "Medium", "Low"]], ["assignee", "ASSIGNEE", false, true, [["You (Jin Liu)", 1], ["Priya Shah", 1], ["Unassigned", 0]]], ["note", "SOURCE NOTE", false, false, [["Tea club planning", 2], ["Gyokuro at 60 °C", 2], ["Auth retry bug", 1], ["Incident review prep", 1], ["Q3 architecture sync", 1], ["Hiring loop feedback", 0]]]], "confluence": [["status", "STATUS", false, false, ["Not written", "Draft", "Created"]], ["space", "SPACE", false, false, ["Project X", "Operations", "Team handbook"]], ["note", "SOURCE NOTE", false, false, [["Tea club planning", 2], ["Gyokuro at 60 °C", 2], ["Auth retry bug", 1], ["Incident review prep", 1], ["Q3 architecture sync", 1], ["Hiring loop feedback", 0]]]], "history": [["type", "TYPE", false, false, ["To do", "Slack message", "Jira ticket", "Confluence page"]], ["outcome", "OUTCOME", false, false, ["Completed", "Sent", "Created", "Removed", "Dismissed"]], ["date", "DATE", false, false, ["Today", "This week", "Last 30 days", "Pick dates…"]], ["source", "SOURCE", false, false, ["Notes", "Ask answers", "Added by you"]]]};
+const kind = DATA[p.kind] ? p.kind : 'todo';
+const list = v => String(v || '').split('|').map(x => x.trim()).filter(Boolean);
+const chosen = new Set([].concat(list(p.selected), list(p.due), list(p.person), list(p.label), list(p.note), list(p.priority), list(p.more)));
+const status = p.status || 'Open', query = p.personQuery || '', expanded = p.expanded || '';
+const rows = [];
+const head = (label, key, n) => rows.push({ isHead: true, label, note: n ? n + ' selected' : '', headInk: p.focus === key ? 'var(--primary)' : 'var(--faint)' });
+const row = (label, on, count, single) => rows.push({ isRow: true, label, count: count === undefined ? '' : String(count), weight: on ? 600 : 400,
+  bg: on ? '#F2F7FF' : 'transparent', box: single ? '50%' : '4px', boxBg: on ? 'var(--primary)' : 'var(--window)', boxRing: on ? 'var(--primary)' : '#D6D3CC', tick: on ? 1 : 0 });
+const name = it => Array.isArray(it) ? it[0] : it;
+const sections = DATA[kind].map(([key, label, single, search, items]) => [key, () => {
+  if (key === 'more') {
+    const n = items.reduce((a, [, xs]) => a + xs.filter(x => chosen.has(x)).length, 0);
+    head(label, key, n);
+    items.forEach(([sub, xs]) => { if (sub) rows.push({ isSub: true, label: sub }); xs.forEach(x => row(x, chosen.has(x))); });
+    return;
+  }
+  if (single) { head(label, key, 0); items.forEach(x => row(name(x), name(x) === status, undefined, true)); return; }
+  head(label, key, items.filter(x => chosen.has(name(x))).length);
+  const q = search ? query : '';
+  const ph = { person: 'Find a person', recipient: 'Find a person or channel', assignee: 'Find a person' }[key] || 'Find…';
+  if (search) rows.push({ isSearch: true, label: q || ph, ink: q ? 'var(--ink)' : 'var(--faint)', bg: q ? 'var(--window)' : 'var(--panel)', ring: q ? '0 0 0 2px var(--primary)' : 'none' });
+  let shown = items.filter(x => !q || name(x).toLowerCase().includes(q.toLowerCase()));
+  const all = shown.length;
+  if (expanded !== key && !q && all > 6) shown = shown.slice(0, 5);
+  shown.forEach(x => row(name(x), chosen.has(name(x)), Array.isArray(x) ? x[1] : undefined));
+  if (shown.length < all) rows.push({ isMore: true, label: 'Show all ' + all });
+}]);
+const start = Math.max(0, sections.findIndex(([k]) => k === (p.scrollTo || sections[0][0])));
+sections.slice(start).forEach(([, f]) => f());
+const singleStatus = DATA[kind][0][2];
+const n = chosen.size + (singleStatus && status !== 'Open' ? 1 : 0);
+return { rows, w: num(p.width, 300) + 'px', maxH: num(p.height, 560) + 'px', scrolled: start > 0, summary: n ? n + (n === 1 ? ' filter' : ' filters') : (singleStatus ? 'Status: Open' : 'No filters') };
+</script>

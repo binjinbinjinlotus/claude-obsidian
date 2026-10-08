@@ -1,0 +1,664 @@
+{
+ "$doc": "Page boards (one app window each) imported by tools/import_board.py --page, then edited by hand. The document wrapper (title, CSS, data-props, script with the sc-for data) is kept verbatim in each base's doc.",
+ "templates": {
+  "page-header": "<header style=\"display: flex; align-items: flex-start; gap: 16px\">\n<div style=\"display: flex; flex-direction: column; gap: 6px; flex-grow: 1\">\n<h1 style=\"margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 34px; letter-spacing: -0.03em; line-height: 1.05\">{title}</h1>\n<span style=\"font-size: 15px; color: var(--muted)\">{sub}</span>{path}\n</div>\n{right}\n</header>"
+ },
+ "layouts": {
+  "queue-page": "<div style=\"position: relative; width: 1200px; height: 760px; isolation: isolate\"><div style=\"position: absolute; inset: 0; z-index: -1\"><dc-import name=\"WindowShell\" layer=\"frame\" width=\"1200\" height=\"760\" hint-size=\"1200px,760px\"></dc-import></div><div style=\"position: absolute; left: 38px; top: 36px; z-index: 2\"><dc-import name=\"WindowShell\" layer=\"controls\" hint-size=\"52px,12px\"></dc-import></div>\n<div style=\"position: absolute; left: 20px; top: 20px; right: 20px; bottom: 20px; display: flex; border-radius: 16px; overflow: hidden; background: var(--window)\">\n\n<div style=\"width: 220px; height: 720px; flex-shrink: 0\">{sidebar}</div>\n\n<main style=\"flex-grow: 1; display: flex; flex-direction: column; gap: 26px; padding: 34px 44px; min-width: 0; box-sizing: border-box\">\n{header}\n\n<div style=\"display: flex; align-items: center; gap: 30px; padding: 28px 34px; border-radius: 24px; background: var(--panel)\">\n<svg width=\"104\" height=\"124\" viewBox=\"0 0 104 124\" aria-hidden=\"true\" style=\"flex-shrink: 0\">\n<defs><clipPath id=\"heroFlask\"><path d=\"M38 8h28v34l30 56a12 12 0 0 1-10.6 17.6H18.6A12 12 0 0 1 8 98l30-56z\"></path></clipPath></defs>\n<path d=\"M38 8h28v34l30 56a12 12 0 0 1-10.6 17.6H18.6A12 12 0 0 1 8 98l30-56z\" style=\"fill: var(--window)\"></path>\n<g clip-path=\"url(#heroFlask)\">\n<rect x=\"0\" y=\"72\" width=\"104\" height=\"60\" style=\"fill: var(--lime)\"></rect>\n<path d=\"M0 74c10-6 21 6 32 0s21-6 32 0 21 6 40 0v-6H0z\" fill=\"#D9FFA3\"></path>\n</g>\n<circle cx=\"44\" cy=\"58\" r=\"4\" style=\"fill: var(--primary)\"></circle>\n<circle cx=\"58\" cy=\"46\" r=\"3\" fill=\"#FF9A6B\"></circle>\n<circle cx=\"50\" cy=\"32\" r=\"2.2\" fill=\"#5FC8F5\"></circle>\n<path d=\"M38 8h28v34l30 56a12 12 0 0 1-10.6 17.6H18.6A12 12 0 0 1 8 98l30-56z\" fill=\"none\" stroke-width=\"2.6\" stroke-linejoin=\"round\" style=\"stroke: var(--flaskLine)\"></path>\n<rect x=\"33\" y=\"3\" width=\"38\" height=\"8\" rx=\"4\" style=\"fill: var(--flaskLine)\"></rect>\n</svg>\n<div style=\"display: flex; flex-direction: column; gap: 8px; flex-grow: 1\">\n<span style=\"font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600; font-size: 22px; letter-spacing: -0.01em\">Drop anything here</span>\n<span style=\"font-size: 14px; color: var(--muted); line-height: 1.5\">Files, PDFs and screenshots. Paste with <kbd style=\"font-family: inherit; font-weight: 600; font-size: 12px; padding: 2px 7px; border-radius: 6px; background: var(--window); box-shadow: 0 0 0 1px var(--border)\">⌘V</kbd>. They wait here and go into your vault together.</span>\n</div>\n<dc-import name=\"SoftButton\" title=\"Choose files\" size=\"regular\" tint=\"var(--ink)\" fill=\"var(--window)\" stroke=\"var(--border)\" hint-size=\"136px,40px\"></dc-import>\n</div>\n\n<div style=\"display: flex; flex-direction: column; gap: 4px\">\n<sc-for list=\"{{{{files}}}}\" as=\"f\" hint-placeholder-count=\"3\">\n<div style=\"display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 14px\">\n<dc-import name=\"Tile\" text=\"{{{{f.ext}}}}\" fill=\"{{{{f.tint}}}}\" ink=\"{{{{f.ink}}}}\" hint-size=\"40px,40px\"></dc-import>\n<span style=\"display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0\">\n<span style=\"font-size: 14px; font-weight: 600\">{{{{f.name}}}}</span>\n<span style=\"font-size: 12px; color: var(--muted)\">{{{{f.meta}}}}</span>\n<sc-if value=\"{{{{f.hasLabels}}}}\" hint-placeholder-val=\"{{{{ false }}}}\">\n<span style=\"display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap\">\n<svg width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" style=\"fill: var(--limeInk)\"><path d=\"M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z\"></path></svg>\n<span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Suggested by Haiku</span>\n<sc-for list=\"{{{{f.labels}}}}\" as=\"l\" hint-placeholder-count=\"3\">\n<dc-import name=\"LabelChip\" label-name=\"{{{{l.name}}}}\" style=\"{{{{l.style}}}}\" removable=\"true\" hint-size=\"199px,26px\"></dc-import>\n</sc-for>\n<button type=\"button\" style=\"height: 26px; padding: 0 8px; border: none; background: transparent; color: var(--primary); font-size: 12px; font-weight: 600\">Accept all</button>\n</span>\n</sc-if>\n</span>\n<span title=\"{{{{f.tip}}}}\" style=\"display: inline-flex; flex-shrink: 0\"><dc-import name=\"Pill\" text=\"{{{{f.state}}}}\" fill=\"{{{{f.stateBg}}}}\" ink=\"{{{{f.stateFg}}}}\" hint-size=\"110px,24px\"></dc-import></span>\n<dc-import name=\"IconButton\" system-image=\"xmark\" size=\"30\" tint=\"var(--faint)\" help=\"Remove from queue\" hint-size=\"30px,30px\"></dc-import>\n</div>\n</sc-for>\n{rows}</div>\n</main>\n</div>\n</div>",
+  "queue-running-page": "<div style=\"position: relative; width: 1200px; height: 860px; isolation: isolate\"><div style=\"position: absolute; inset: 0; z-index: -1\"><dc-import name=\"WindowShell\" layer=\"frame\" width=\"1200\" height=\"860\" hint-size=\"1200px,860px\"></dc-import></div><div style=\"position: absolute; left: 38px; top: 36px; z-index: 2\"><dc-import name=\"WindowShell\" layer=\"controls\" hint-size=\"52px,12px\"></dc-import></div>\n<div style=\"position: absolute; left: 20px; top: 20px; right: 20px; bottom: 20px; display: flex; border-radius: 16px; overflow: hidden; background: var(--window)\">\n\n<div style=\"width: 220px; height: 820px; flex-shrink: 0\">{sidebar}</div>\n\n<main style=\"flex-grow: 1; display: flex; flex-direction: column; gap: 26px; padding: 34px 44px; min-width: 0; box-sizing: border-box\">\n{header}\n<div style=\"display: flex; flex-direction: column; gap: 10px; padding: 16px 20px; border-radius: 20px; background: var(--primaryTint)\">\n<div style=\"display: flex; align-items: center; gap: 12px\">\n<svg class=\"spin\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"2.6\" stroke-linecap=\"round\" aria-hidden=\"true\" style=\"stroke: var(--primary)\"><path d=\"M12 3a9 9 0 1 1-9 9\"></path></svg>\n<span style=\"display: flex; flex-direction: column; gap: 2px; flex-grow: 1\">\n<span style=\"font-size: 15px; font-weight: 700\">Reading 3 sources into Research</span>\n<span style=\"font-size: 12px; color: #48463F\">Claude Code · Sonnet · started at 3:41 AM · nothing is written until you approve</span>\n</span>\n<dc-import name=\"SoftButton\" title=\"Cancel\" size=\"small\" tint=\"#1C1B19\" fill=\"var(--window)\" hint-size=\"71px,30px\"></dc-import>\n</div>\n<div style=\"display: flex; gap: 18px; font-size: 12px; color: #48463F\">\n<span><b style=\"color: var(--limeInk)\">✓</b> Moved to inbox</span><span><b style=\"color: var(--limeInk)\">✓</b> Read sources</span><span class=\"pulse\"><b style=\"color: var(--primary)\">…</b> Drafting page changes</span><span style=\"color: var(--faint)\">Ready for review</span><span style=\"color: var(--faint)\">Finding actions (after you apply)</span>\n</div>\n<div style=\"display: flex; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px solid #D6E4FB; min-width: 0\"><span style=\"font-size: 12px; color: #48463F; flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis\"><span style=\"color: var(--faint)\">Now</span>  Writing a draft for “Gyokuro at 60 °C”</span><span role=\"button\" style=\"font-size: 12px; font-weight: 600; color: var(--primary); white-space: nowrap; flex-shrink: 0\">Show steps</span></div>\n</div>\n\n<div style=\"display: flex; align-items: center; gap: 30px; padding: 14px 24px; border-radius: 24px; background: var(--panel)\">\n<svg width=\"52\" height=\"62\" viewBox=\"0 0 104 124\" aria-hidden=\"true\" style=\"flex-shrink: 0\">\n<defs><clipPath id=\"heroFlask\"><path d=\"M38 8h28v34l30 56a12 12 0 0 1-10.6 17.6H18.6A12 12 0 0 1 8 98l30-56z\"></path></clipPath></defs>\n<path d=\"M38 8h28v34l30 56a12 12 0 0 1-10.6 17.6H18.6A12 12 0 0 1 8 98l30-56z\" style=\"fill: var(--window)\"></path>\n<g clip-path=\"url(#heroFlask)\">\n<rect x=\"0\" y=\"72\" width=\"104\" height=\"60\" style=\"fill: var(--lime)\"></rect>\n<path d=\"M0 74c10-6 21 6 32 0s21-6 32 0 21 6 40 0v-6H0z\" fill=\"#D9FFA3\"></path>\n</g>\n<circle cx=\"44\" cy=\"58\" r=\"4\" style=\"fill: var(--primary)\"></circle>\n<circle cx=\"58\" cy=\"46\" r=\"3\" fill=\"#FF9A6B\"></circle>\n<circle cx=\"50\" cy=\"32\" r=\"2.2\" fill=\"#5FC8F5\"></circle>\n<path d=\"M38 8h28v34l30 56a12 12 0 0 1-10.6 17.6H18.6A12 12 0 0 1 8 98l30-56z\" fill=\"none\" stroke-width=\"2.6\" stroke-linejoin=\"round\" style=\"stroke: var(--flaskLine)\"></path>\n<rect x=\"33\" y=\"3\" width=\"38\" height=\"8\" rx=\"4\" style=\"fill: var(--flaskLine)\"></rect>\n</svg>\n<div style=\"display: flex; flex-direction: column; gap: 8px; flex-grow: 1\">\n<span style=\"font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600; font-size: 22px; letter-spacing: -0.01em\">Drop anything here</span>\n<span style=\"font-size: 14px; color: var(--muted); line-height: 1.5\">Files, PDFs and screenshots. Paste with <kbd style=\"font-family: inherit; font-weight: 600; font-size: 12px; padding: 2px 7px; border-radius: 6px; background: var(--window); box-shadow: 0 0 0 1px var(--border)\">⌘V</kbd>. They wait here and go into your vault together.</span>\n</div>\n<dc-import name=\"SoftButton\" title=\"Choose files\" size=\"regular\" tint=\"var(--ink)\" fill=\"var(--window)\" stroke=\"var(--border)\" hint-size=\"136px,40px\"></dc-import>\n</div>\n\n<div style=\"display: flex; flex-direction: column; gap: 4px\">\n<sc-for list=\"{{{{files}}}}\" as=\"f\" hint-placeholder-count=\"3\">\n<div style=\"display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 14px\">\n<dc-import name=\"Tile\" text=\"{{{{f.ext}}}}\" fill=\"{{{{f.tint}}}}\" ink=\"{{{{f.ink}}}}\" hint-size=\"40px,40px\"></dc-import>\n<span style=\"display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0\">\n<span style=\"font-size: 14px; font-weight: 600\">{{{{f.name}}}}</span>\n<span style=\"font-size: 12px; color: var(--muted)\">{{{{f.meta}}}}</span>\n<sc-if value=\"{{{{f.hasLabels}}}}\" hint-placeholder-val=\"{{{{ false }}}}\">\n<span style=\"display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap\">\n<svg width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" style=\"fill: var(--limeInk)\"><path d=\"M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z\"></path></svg>\n<span style=\"font-size: 11px; font-weight: 700; color: var(--muted)\">Suggested by Haiku</span>\n<sc-for list=\"{{{{f.labels}}}}\" as=\"l\" hint-placeholder-count=\"3\">\n<dc-import name=\"LabelChip\" label-name=\"{{{{l.name}}}}\" style=\"{{{{l.style}}}}\" removable=\"true\" hint-size=\"199px,26px\"></dc-import>\n</sc-for>\n<button type=\"button\" style=\"height: 26px; padding: 0 8px; border: none; background: transparent; color: var(--primary); font-size: 12px; font-weight: 600\">Accept all</button>\n</span>\n</sc-if>\n</span>\n<span style=\"font-size: 12px; color: var(--muted)\">{{{{f.state}}}}</span>\n<dc-import name=\"IconButton\" system-image=\"xmark\" size=\"30\" tint=\"var(--faint)\" help=\"Remove from queue\" hint-size=\"30px,30px\"></dc-import>\n</div>\n</sc-for>\n{rows}</div>\n</main>\n</div>\n</div>"
+ },
+ "bases": {
+  "queue": {
+   "doc": {
+    "title": "Distill — Queue",
+    "css": "\nbody{margin:0;font-family:\"DM Sans\",-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}\na{color:var(--primary)}a:hover{color:#1858C4}\nbutton{font-family:inherit;cursor:pointer}\n",
+    "props": "{\"$preview\":{\"width\":1200,\"height\":760}}",
+    "script": "class Component extends DCLogic {\nrenderVals() {\nreturn {\nfiles: [\n{ ext: 'NOTE', name: 'Gyokuro at 60 °C', meta: 'Written note · In person · 1 image kept · added 2:41 AM', tint: 'var(--limeTint)', ink: 'var(--limeInk)', state: 'Ready', stateBg: '#F3FDE4', stateFg: 'var(--limeInk)', tip: 'Goes in with the next batch', hasLabels: true, labels: [{ name: 'tea', tag: 'existing', style: 'suggestedExisting', border: 'var(--lime)', fg: 'var(--limeInk)' }, { name: 'gyokuro', tag: 'existing', style: 'suggestedExisting', border: 'var(--lime)', fg: 'var(--limeInk)' }, { name: 'kettle', tag: 'new', style: 'suggestedNew', border: 'var(--peach)', fg: 'var(--peachInk)' }] },\n{ ext: 'PNG', name: 'Screenshot 15.32.12.png', meta: 'Pasted at 3:04 AM · 1.8 MB', tint: 'var(--primaryTint)', ink: 'var(--primary)', state: 'Ready at 3:14 AM', stateBg: 'var(--panel)', stateFg: '#48463F', tip: 'Distill waits 10 min after a file last changes so half-written files are not picked up. Process now skips the wait.' }\n]\n};\n}\n}"
+   },
+   "window": {
+    "width": 1200,
+    "height": 760
+   },
+   "regions": {
+    "sidebar": {
+     "c": "Sidebar",
+     "props": {
+      "section": "queue",
+      "height": 720
+     },
+     "size": [
+      "220px",
+      "720px"
+     ]
+    },
+    "header": {
+     "t": "page-header",
+     "vars": {
+      "title": "4 items in the queue",
+      "sub": "Next batch at <strong style=\"color: var(--ink); font-weight: 600\">5:30 AM</strong> · every 2 hours",
+      "path": [
+       {
+        "html": "<div style=\"display: flex; align-items: center; gap: 2px; flex-wrap: wrap\">"
+       },
+       {
+        "c": "QueuePath",
+        "props": {
+         "path": "~/Documents/Distill Queue/Research"
+        },
+        "size": [
+         "430px",
+         "28px"
+        ]
+       },
+       {
+        "c": "QueueRefresh",
+        "props": {
+         "state": "idle"
+        },
+        "size": [
+         "300px",
+         "26px"
+        ]
+       },
+       {
+        "html": "</div>"
+       }
+      ],
+      "right": {
+       "c": "PrimaryButton",
+       "props": {
+        "title": "Process now",
+        "systemImage": "play",
+        "size": "regular"
+       },
+       "size": [
+        "144px",
+        "40px"
+       ]
+      }
+     }
+    },
+    "rows": [
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "Tea tasting trip",
+       "meta": "12 files · 3 folders · 18.4 MB · moved in at 2:40 AM",
+       "status": "ready",
+       "kind": "folder"
+      },
+      "size": [
+       "100%",
+       "64px"
+      ]
+     },
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "Q3 tea club plan",
+       "meta": "Google Doc · needs Google Drive access · added 2:55 AM",
+       "tileName": "Q3 tea club plan.gdoc",
+       "status": "waiting",
+       "kind": "gdoc",
+       "hint": "Distill can’t open Google Docs yet, so this waits here and isn’t processed. To include it now, download it as .docx or PDF and drop that."
+      },
+      "size": [
+       "100%",
+       "84px"
+      ]
+     }
+    ]
+   },
+   "layout": "queue-page"
+  },
+  "queue-running": {
+   "doc": {
+    "title": "Distill — Queue (batch running)",
+    "css": "\nbody{margin:0;font-family:\"DM Sans\",-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}\na{color:var(--primary)}a:hover{color:#1858C4}\nbutton{font-family:inherit;cursor:pointer}\n@keyframes shimmer{0%{background-position:-240px 0}100%{background-position:240px 0}}\n.sk{display:inline-block;border-radius:8px;background:linear-gradient(90deg,#EFEDE8 0px,#F8F7F4 80px,#EFEDE8 160px);background-size:480px 100%;animation:shimmer 1.4s linear infinite}\n@keyframes spin{to{transform:rotate(360deg)}}.spin{animation:spin .9s linear infinite}\n@keyframes pulse{0%,100%{opacity:.45}50%{opacity:1}}.pulse{animation:pulse 1.4s ease-in-out infinite}\n@media (prefers-reduced-motion: reduce){.sk,.spin,.pulse{animation:none}}\n",
+    "props": "{\"$preview\":{\"width\":1200,\"height\":860}}",
+    "script": "class Component extends DCLogic {\nrenderVals() {\nreturn {\nfiles: [\n{ ext: 'NOTE', name: 'Gyokuro at 60 °C', meta: 'Written note · In person · Suggesting labels…', tint: 'var(--limeTint)', ink: 'var(--limeInk)', state: 'In batch', hasLabels: false, labels: [{ name: 'tea', tag: 'existing', style: 'suggestedExisting', border: 'var(--lime)', fg: 'var(--limeInk)' }, { name: 'gyokuro', tag: 'existing', style: 'suggestedExisting', border: 'var(--lime)', fg: 'var(--limeInk)' }, { name: 'kettle', tag: 'new', style: 'suggestedNew', border: 'var(--peach)', fg: 'var(--peachInk)' }] },\n{ ext: 'PNG', name: 'Screenshot 15.32.12.png', meta: 'Pasted at 3:40 AM · 1.8 MB', tint: 'var(--primaryTint)', ink: 'var(--primary)', state: 'In batch' }\n]\n};\n}\n}"
+   },
+   "window": {
+    "width": 1200,
+    "height": 860
+   },
+   "regions": {
+    "sidebar": {
+     "c": "Sidebar",
+     "props": {
+      "section": "queue",
+      "height": 820,
+      "status": "Sonnet · working"
+     },
+     "size": [
+      "220px",
+      "820px"
+     ]
+    },
+    "header": {
+     "t": "page-header",
+     "vars": {
+      "title": "3 in this batch · 1 waiting",
+      "sub": "New drops wait for the next batch",
+      "path": [
+       {
+        "html": "<div style=\"display: flex; align-items: center; gap: 2px; flex-wrap: wrap\">"
+       },
+       {
+        "c": "QueuePath",
+        "props": {
+         "path": "~/Documents/Distill Queue/Research"
+        },
+        "size": [
+         "430px",
+         "28px"
+        ]
+       },
+       {
+        "c": "QueueRefresh",
+        "props": {
+         "state": "idle",
+         "checked": "checked at 3:40 AM"
+        },
+        "size": [
+         "300px",
+         "26px"
+        ]
+       },
+       {
+        "html": "</div>"
+       }
+      ],
+      "right": "<span disabled style=\"display: inline-flex; flex-shrink: 0; text-decoration: none; \"><dc-import name=\"SoftButton\" title=\"Processing…\" system-image=\"progress.indicator\" size=\"regular\" tint=\"var(--muted)\" fill=\"var(--panel)\" hint-size=\"144px,40px\"></dc-import></span>"
+     }
+    },
+    "rows": [
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "Tea tasting trip",
+       "meta": "12 files · 3 folders · 18.4 MB",
+       "status": "inBatch",
+       "kind": "folder"
+      },
+      "size": [
+       "100%",
+       "64px"
+      ]
+     },
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "Q3 tea club plan",
+       "meta": "Google Doc · needs Google Drive access · added 3:43 AM",
+       "tileName": "Q3 tea club plan.gdoc",
+       "status": "waiting",
+       "kind": "gdoc"
+      },
+      "size": [
+       "100%",
+       "64px"
+      ]
+     }
+    ]
+   },
+   "layout": "queue-running-page"
+  }
+ },
+ "states": [
+  {
+   "id": "queue",
+   "base": "queue",
+   "label": "Queue"
+  },
+  {
+   "id": "queue-running",
+   "base": "queue-running",
+   "label": "Queue · batch running"
+  },
+  {
+   "id": "queue-empty",
+   "base": "queue",
+   "label": "Queue · all caught up",
+   "set": {
+    "doc.title": "Distill — Queue (all caught up)",
+    "doc.script": "class Component extends DCLogic {\nrenderVals() {\nreturn {\nfiles: [\n]\n};\n}\n}",
+    "sidebar.queueCount": "0",
+    "header.vars.title": "All caught up",
+    "header.vars.path": [
+     {
+      "html": "<div style=\"display: flex; align-items: center; gap: 2px; flex-wrap: wrap\">"
+     },
+     {
+      "c": "QueuePath",
+      "props": {
+       "path": "~/Documents/Distill Queue/Research"
+      },
+      "size": [
+       "430px",
+       "28px"
+      ]
+     },
+     {
+      "c": "QueueRefresh",
+      "props": {
+       "state": "nothing"
+      },
+      "size": [
+       "300px",
+       "26px"
+      ]
+     },
+     {
+      "html": "</div>"
+     }
+    ],
+    "rows": null
+   }
+  },
+  {
+   "id": "queue-refreshed",
+   "base": "queue",
+   "label": "Queue · Refresh found a folder (expanded)",
+   "set": {
+    "doc.title": "Distill — Queue (refreshed, folder expanded)",
+    "doc.script": "class Component extends DCLogic {\nrenderVals() {\nreturn {\nfiles: [\n{ ext: 'PNG', name: 'Screenshot 15.32.12.png', meta: 'Pasted at 3:04 AM · 1.8 MB', tint: 'var(--primaryTint)', ink: 'var(--primary)', state: 'Ready at 3:14 AM', stateBg: 'var(--panel)', stateFg: '#48463F', tip: 'Distill waits 10 min after a file last changes so half-written files are not picked up. Process now skips the wait.' }\n]\n};\n}\n}",
+    "header.vars.title": "3 items in the queue",
+    "sidebar.queueCount": "3",
+    "header.vars.path": [
+     {
+      "html": "<div style=\"display: flex; align-items: center; gap: 2px; flex-wrap: wrap\">"
+     },
+     {
+      "c": "QueuePath",
+      "props": {
+       "path": "~/Documents/Distill Queue/Research"
+      },
+      "size": [
+       "430px",
+       "28px"
+      ]
+     },
+     {
+      "c": "QueueRefresh",
+      "props": {
+       "state": "found",
+       "found": "2 new items found"
+      },
+      "size": [
+       "300px",
+       "26px"
+      ]
+     },
+     {
+      "html": "</div>"
+     }
+    ],
+    "rows": [
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "Tea tasting trip",
+       "meta": "12 files · 3 folders · 18.4 MB · moved in at 2:40 AM",
+       "status": "ready",
+       "kind": "folder",
+       "expanded": true,
+       "tree": "notes/ · 3 files|  day1-uji.md · 4 KB|  day2-wazuka.md · 6 KB|  tasting-sheet.gdoc · not read|photos/ · 8 files|  IMG_2041.HEIC · 2.1 MB|  … 7 more · 14.9 MB|receipts/ · 1 file|  tea-shop.pdf · 220 KB"
+      },
+      "size": [
+       "100%",
+       "300px"
+      ]
+     },
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "Q3 tea club plan",
+       "meta": "Google Doc · needs Google Drive access · added 2:55 AM",
+       "tileName": "Q3 tea club plan.gdoc",
+       "status": "waiting",
+       "kind": "gdoc",
+       "hint": "Distill can’t open Google Docs yet, so this waits here and isn’t processed. To include it now, download it as .docx or PDF and drop that."
+      },
+      "size": [
+       "100%",
+       "84px"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "queue-labeling",
+   "base": "queue",
+   "label": "Queue · 22 notes from a collector, labels suggested 3 at a time",
+   "set": {
+    "doc.title": "Distill — Queue (labels as files arrive)",
+    "doc.script": "class Component extends DCLogic {\nrenderVals() {\nreturn {\nfiles: [\n]\n};\n}\n}",
+    "sidebar.queueCount": "22",
+    "header.vars.title": "22 items in the queue",
+    "header.vars.sub": "Next batch at <strong style=\"color: var(--ink); font-weight: 600\">5:30 AM</strong> · labels for 9 of 22 so far, 3 at a time",
+    "rows": [
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "tea-club-sync-2026-09-28.md",
+       "meta": "From Tea club notes · collected at 11:30 PM · 6 KB",
+       "status": "ready",
+       "labels": "tea-club|tasting|gyokuro",
+       "labelState": "confirmed"
+      },
+      "size": [
+       "100%",
+       "96px"
+      ]
+     },
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "tasting-circle-stand-up-2026-09-28.md",
+       "meta": "From Tea club notes · collected at 11:30 PM · 4 KB",
+       "status": "ready",
+       "labels": "tasting|sencha",
+       "labelState": "suggested"
+      },
+      "size": [
+       "100%",
+       "96px"
+      ]
+     },
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "wazuka-farm-call-2026-09-28.md",
+       "meta": "From Tea club notes · collected at 11:30 PM · 7 KB",
+       "status": "ready",
+       "labels": "wazuka|sourcing:new|shading:new",
+       "labelState": "suggested"
+      },
+      "size": [
+       "100%",
+       "96px"
+      ]
+     },
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "shading-and-umami-talk-2026-09-28.md",
+       "meta": "From Tea club notes · collected at 11:30 PM · 5 KB",
+       "status": "ready",
+       "labelState": "suggesting"
+      },
+      "size": [
+       "100%",
+       "96px"
+      ]
+     },
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "tea-club-sync-2026-09-29.md",
+       "meta": "From Tea club notes · collected at 11:30 PM · 6 KB",
+       "status": "ready",
+       "labelState": "suggesting"
+      },
+      "size": [
+       "100%",
+       "96px"
+      ]
+     },
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "tasting-circle-stand-up-2026-09-29.md",
+       "meta": "From Tea club notes · collected at 11:30 PM · 4 KB",
+       "status": "ready",
+       "help": "Haiku timed out. Retry asks again.",
+       "labelState": "failed"
+      },
+      "size": [
+       "100%",
+       "96px"
+      ]
+     },
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "kettle-care-chat-2026-09-29.md",
+       "meta": "From Tea club notes · collected at 11:30 PM · 3 KB",
+       "status": "ready",
+       "labelState": "waiting"
+      },
+      "size": [
+       "100%",
+       "96px"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "queue-label-gate",
+   "base": "queue",
+   "label": "Queue · a batch started: files still being labeled wait for the next one",
+   "set": {
+    "doc.title": "Distill — Queue (waiting for labels)",
+    "doc.script": "class Component extends DCLogic {\nrenderVals() {\nreturn {\nfiles: [\n]\n};\n}\n}",
+    "sidebar.queueCount": "3",
+    "header.vars.title": "3 items wait for labels",
+    "header.vars.sub": "The 5:30 AM batch took 19 files. These 3 go in the <strong style=\"color: var(--ink); font-weight: 600\">next batch at 7:30 AM</strong>, once their labels are in.",
+    "rows": [
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "tea-club-sync-2026-10-02.md",
+       "meta": "From Tea club notes · collected at 11:30 PM · 6 KB",
+       "status": "labeling",
+       "help": "Its labels are not in yet, so the batch that started at 5:30 AM left it here. It goes in the next batch.",
+       "labelState": "suggesting"
+      },
+      "size": [
+       "100%",
+       "96px"
+      ]
+     },
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "kettle-care-chat-2026-10-02.md",
+       "meta": "From Tea club notes · collected at 11:30 PM · 3 KB",
+       "status": "labeling",
+       "help": "Its labels are not in yet, so the batch that started at 5:30 AM left it here. It goes in the next batch.",
+       "labelState": "waiting"
+      },
+      "size": [
+       "100%",
+       "96px"
+      ]
+     },
+     {
+      "c": "QueueRowView",
+      "props": {
+       "title": "tasting-circle-stand-up-2026-10-01.md",
+       "meta": "From Tea club notes · collected at 11:30 PM · 4 KB",
+       "status": "labeling",
+       "help": "Haiku timed out 3 times.",
+       "labelState": "failed",
+       "labelNote": "tried 3 times",
+       "allowSkip": true
+      },
+      "size": [
+       "100%",
+       "96px"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "queue-card-wait",
+   "label": "Settings → Batching: wait in hours and minutes",
+   "caption": "Was minutes and seconds (up to 59:59). Now 0 (no wait) to 24 hours; the presets fill the two fields.",
+   "card": {
+    "height": 330,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "html": "<div style=\"width: 560px; display: flex; flex-direction: column; gap: 14px; padding: 20px 22px; border-radius: 16px; background: var(--window); box-sizing: border-box\"><span style=\"font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -0.02em\">Batching</span><div style=\"display: flex; align-items: center; gap: 14px\"><span style=\"display: flex; flex-direction: column; gap: 2px; flex-grow: 1\"><span style=\"font-size: 13px; font-weight: 600\">Wait before picking up a file</span><span style=\"font-size: 11px; color: var(--muted); line-height: 1.45\">A file must stay unchanged this long before a batch takes it. 0 = no wait. Up to 24 hours. Process now ignores it.</span></span><span style=\"display: inline-flex; align-items: center; gap: 6px\"><span style=\"display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 4px 0 10px; border-radius: 9px; background: var(--panel); font-size: 13px; font-weight: 600\">0<span style=\"display: inline-flex; flex-direction: column; font-size: 8px; color: var(--muted); line-height: 1\">▲<br>▼</span></span><span style=\"font-size: 12px; color: var(--muted)\">h</span><span style=\"display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 4px 0 10px; border-radius: 9px; background: var(--panel); font-size: 13px; font-weight: 600\">10<span style=\"display: inline-flex; flex-direction: column; font-size: 8px; color: var(--muted); line-height: 1\">▲<br>▼</span></span><span style=\"font-size: 12px; color: var(--muted)\">min</span></span></div><div style=\"display: flex; gap: 8px; flex-wrap: wrap\"><span style=\"height: 28px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 14px; font-size: 12px; font-weight: 600; background: var(--panel); color: var(--ink)\">No wait</span><span style=\"height: 28px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 14px; font-size: 12px; font-weight: 600; background: var(--panel); color: var(--ink)\">1 min</span><span style=\"height: 28px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 14px; font-size: 12px; font-weight: 600; background: var(--primary); color: var(--window)\">10 min</span><span style=\"height: 28px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 14px; font-size: 12px; font-weight: 600; background: var(--panel); color: var(--ink)\">1 hour</span><span style=\"height: 28px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 14px; font-size: 12px; font-weight: 600; background: var(--panel); color: var(--ink)\">4 hours</span><span style=\"height: 28px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 14px; font-size: 12px; font-weight: 600; background: var(--panel); color: var(--ink)\">24 hours</span></div><span style=\"font-size: 11px; color: var(--faint); line-height: 1.45\">Text files also wait for their labels: a batch takes a file once its labels are suggested, confirmed or come from its own tags. PDFs and images don’t wait, and neither does anything when “Suggest labels for queue files” is off.</span></div>"
+   }
+  },
+  {
+   "id": "queue-card-process-now",
+   "label": "Process now, with files still being labeled",
+   "caption": "The batch starts with the files whose labels are in; the toast says what waits.",
+   "card": {
+    "height": 140,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "html": "<div style=\"width: 460px; display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 16px; background: var(--ink); color: var(--window); box-sizing: border-box\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" style=\"flex-shrink: 0; margin-top: 2px; stroke: var(--lime)\"><path d=\"M5 12.5l4.5 4.5L19 7.5\"/></svg><span style=\"display: flex; flex-direction: column; gap: 3px\"><span style=\"font-size: 13px; font-weight: 700\">Started a batch with 19 files</span><span style=\"font-size: 12px; color: #D6D3CC; line-height: 1.45\">3 notes are still being labeled; they’ll go in the next batch.</span></span></div>"
+   }
+  },
+  {
+   "id": "queue-card-nothing-yet",
+   "label": "Process now, when every file is still being labeled",
+   "caption": "No batch starts; the queue shows each row’s label state.",
+   "card": {
+    "height": 140,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "html": "<div style=\"width: 460px; display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 16px; background: var(--ink); color: var(--window); box-sizing: border-box\"><span style=\"display: flex; flex-direction: column; gap: 3px\"><span style=\"font-size: 13px; font-weight: 700\">Nothing to batch yet</span><span style=\"font-size: 12px; color: #D6D3CC; line-height: 1.45\">All 3 files are still being labeled. Distill starts the batch when their labels are in (or at 7:30 AM).</span></span></div>"
+   }
+  },
+  {
+   "id": "queue-card-settings",
+   "label": "Settings → Batching: the queue check",
+   "caption": "New last row on the Batching page. Default every 5 minutes; Off leaves Refresh and the check when the window opens.",
+   "card": {
+    "height": 470,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "card-settings"
+   }
+  },
+  {
+   "id": "queue-card-review",
+   "label": "Review: a folder as one source",
+   "caption": "The folder is one source with its files listed under it, each with the pages it was used in. A .gdoc inside is listed as not read.",
+   "card": {
+    "height": 330,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "card-review"
+   }
+  },
+  {
+   "id": "queue-card-history",
+   "label": "History → Jobs: sources",
+   "caption": "A folder item keeps its structure in the inbox.",
+   "card": {
+    "height": 260,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "card-history"
+   }
+  },
+  {
+   "id": "queue-card-ai",
+   "label": "What the AI is given",
+   "caption": "The folder’s tree (relative paths, names, sizes) goes into the prompt as context, next to the files.",
+   "card": {
+    "height": 310,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "card-ai"
+   }
+  }
+ ],
+ "boards": [
+  {
+   "file": "Main.dc.html",
+   "title": "Queue",
+   "page": "queue"
+  },
+  {
+   "file": "MainLoading.dc.html",
+   "title": "Queue · batch running",
+   "page": "queue-running"
+  },
+  {
+   "file": "MainEmpty.dc.html",
+   "title": "Queue · all caught up (queue folder path)",
+   "page": "queue-empty"
+  },
+  {
+   "file": "MainFolder.dc.html",
+   "title": "Queue · Refresh found a folder and a Google Doc",
+   "page": "queue-refreshed"
+  },
+  {
+   "file": "MainLabels.dc.html",
+   "title": "Queue · labels suggested as files arrive (3 at a time)",
+   "page": "queue-labeling"
+  },
+  {
+   "file": "MainLabelGate.dc.html",
+   "title": "Queue · files waiting for labels stay for the next batch",
+   "page": "queue-label-gate"
+  },
+  {
+   "file": "QueueLabelGate.dc.html",
+   "title": "Queue · the wait setting and the label gate",
+   "heading": "The wait setting and the label gate",
+   "intro": "A batch takes a text file only once its labels are in: suggested, confirmed, or the file’s own tags. A file still being labeled, or whose suggestion failed, stays in the queue with a <b>Next batch</b> pill and goes in a later batch. A failed suggestion is retried by itself up to 3 times; after that the row waits for you (Retry, + Add, or Send without labels). Files the AI can’t label (PDFs, images) and every file when queue labeling is off go in as before. <b>Wait before picking up a file</b> is set in hours and minutes, 0 (no wait) to 24 hours.",
+   "width": 2520,
+   "sections": [
+    {
+     "grid": [
+      "queue-card-wait",
+      "queue-card-process-now",
+      "queue-card-nothing-yet"
+     ],
+     "cols": 3
+    }
+   ]
+  },
+  {
+   "file": "QueueItems.dc.html",
+   "title": "Queue · folders, Google Docs, Refresh and the queue check",
+   "heading": "Queue · folders, Google Docs, Refresh",
+   "intro": "The queue now lists what is really in the queue folder. <b>Refresh</b> (next to Reveal in Finder) re-syncs at once, and the core checks by itself every 5 minutes (Settings → Batching) and when the window opens. A <b>folder</b> is one queue item: folder icon, name, “12 files · 3 folders”, total size; it expands to a read-only tree; when processed, its structure goes to the AI as context next to the files. A <b>.gdoc</b> is only a pointer to a Google Doc, so its content can’t be read here: it shows as a Google Doc row, “needs Google Drive access”, with a <b>Waiting</b> pill and a short hint, and it is not processed. Fetching from Google Drive is being designed separately.",
+   "width": 2520,
+   "sections": [
+    {
+     "grid": [
+      "queue-card-settings",
+      "queue-card-review",
+      "queue-card-history",
+      "queue-card-ai"
+     ],
+     "cols": 3
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,53 @@
+{
+  "$doc": "Action context (designed 2026-10-05): actions found inside the batch before Review, from every line of the original plus the source's new wiki page; each item points at the original's lines (.raw/captured/) and the wiki section; the To confirm preview shows what Create draft will write. Spec: docs/specs/action-context.md.",
+  "templates": {},
+  "layouts": {
+    "pane": "<div style=\"flex-grow: 1; min-height: 0; overflow: hidden; position: relative\">{detail}</div>"
+  },
+  "bases": {
+    "todo": {
+      "window": {"width": 1200, "height": 1060},
+      "sidebar": {"section": "actions", "sub": "todo", "height": 1020, "queueCount": "0", "reviewCount": "0", "todoCount": "4"},
+      "layout": "pane",
+      "regions": {"detail": {"frag": "todo-preview"}}
+    },
+    "review": {
+      "window": {"width": 1200, "height": 860},
+      "sidebar": {"section": "review", "queueCount": "0", "status": "Sonnet · waiting on you", "height": 820, "reviewCount": "1"},
+      "layout": "pane",
+      "regions": {"detail": {"frag": "review-found"}}
+    }
+  },
+  "states": [
+    {"id": "actx-confirm-preview", "base": "todo", "label": "A · To confirm: the full title and where it goes; open it to see the original’s lines, the wiki, the fields and what Create draft will write"},
+    {"id": "actx-detail", "base": "todo", "label": "B · Item detail: FROM shows the original’s lines and the wiki section, each with Open", "set": {"window": {"width": 1200, "height": 760}, "sidebar.height": 720, "detail": {"frag": "todo-detail"}}},
+    {"id": "actx-review-finding", "base": "review", "label": "C · Review: looking for actions while you read the change (Approve doesn’t wait)", "set": {"detail": {"frag": "review-finding"}}},
+    {"id": "actx-review-found", "base": "review", "label": "D · Review: actions found, every line looked through; a source left out dims its actions"},
+    {"id": "actx-card-slack", "label": "Slack message preview", "caption": "Nothing is sent: Copy, then Mark as sent, as today.", "card": {"height": 520, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-slack"}},
+    {"id": "actx-card-todo", "label": "To-do preview", "caption": "Add puts it in To do as it is; to-dos get no AI draft.", "card": {"height": 520, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-todo"}},
+    {"id": "actx-card-ask-closest", "label": "From Ask: closest lines in the original", "caption": "The answer comes from the wiki; Distill follows the cited page to its archived original and shows the lines that share the most words, labelled as closest, never as a quote.", "card": {"height": 560, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-ask-closest"}},
+    {"id": "actx-card-ask-wiki", "label": "From Ask: wiki only", "caption": "No archived original (or no lines share 40% of the words): the item says so and drafts from the wiki section.", "card": {"height": 560, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-ask-wiki"}},
+    {"id": "actx-card-failed", "label": "Review: part of a source couldn’t be looked through", "caption": "Named with its lines and Try again; never dropped silently.", "card": {"height": 320, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-failed"}},
+    {"id": "actx-card-windows", "label": "How a long source is covered", "caption": "A 130 KB transcript is 2 windows; the core records each window’s lines.", "card": {"height": 520, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-windows"}},
+    {"id": "actx-card-dedupe", "label": "Re-reads and repair", "caption": "Matched by the original’s content hash, so a repair from .raw/captured/ adds nothing twice.", "card": {"height": 420, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-dedupe"}},
+    {"id": "actx-card-model", "label": "What each item keeps", "caption": "Additive fields on the item’s source; older items keep working.", "card": {"height": 420, "bg": "#E4E1DB", "pad": "22px", "align": "stretch"}, "body": {"frag": "card-model"}}
+  ],
+  "boards": [
+    {
+      "file": "ActionContext.dc.html",
+      "title": "Action context · actions from the original + the wiki",
+      "heading": "Actions come from the original and the wiki, and you see what they’ll write",
+      "intro": "“A lot of the detail is removed after it’s added to the wiki, so the item becomes hard to understand.” Actions are now found inside the batch, before Review: Distill sends every line of each original (in windows, so a 130 KB meeting is read to its end) together with the source’s new wiki page. Each item points at the exact lines of the original, archived in .raw/captured/, and at the wiki section it relates to. Drafts are written from those lines and that section, never from the first 12,000 characters of a note. Found items wait in the batch and enter Actions when their source’s pages apply; nothing outside Distill happens before you approve, and Jira and Confluence are still created only on your click.",
+      "width": 2520,
+      "sections": [
+        {"title": "To confirm: know what it will create before Create draft"},
+        {"row": ["actx-confirm-preview", "actx-detail"], "style": "display: flex; gap: 40px; align-items: flex-start"},
+        {"grid": ["actx-card-slack", "actx-card-todo", "actx-card-ask-closest", "actx-card-ask-wiki"], "cols": 4},
+        {"title": "In Review: found while the batch is read, information only"},
+        {"row": ["actx-review-finding", "actx-review-found"], "style": "display: flex; gap: 40px; align-items: flex-start"},
+        {"title": "Coverage, repeats and the data"},
+        {"grid": ["actx-card-failed", "actx-card-windows", "actx-card-dedupe", "actx-card-model"], "cols": 4}
+      ]
+    }
+  ]
+}

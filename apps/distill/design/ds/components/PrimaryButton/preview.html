@@ -1,0 +1,16 @@
+<!-- @dsCard group="Actions" height=96 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>PrimaryButton</title></head>
+<body>
+<div id="root" class="ds-row"></div>
+<script>
+  var D = window.Distill, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+    h(D.PrimaryButton, { title: 'Add to queue', systemImage: 'plus' }),
+    h(D.PrimaryButton, { title: 'Approve', size: 'small', systemImage: 'checkmark' }),
+    h(D.PrimaryButton, { title: 'Send', size: 'mini', systemImage: 'paperplane' }),
+    h(D.PrimaryButton, { title: 'Add to queue', enabled: false })));
+</script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Distill — Queue row states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&amp;family=DM+Sans:wght@400;500;600;700&amp;display=swap">
+<style>body{margin:0;font-family:"DM Sans",-apple-system,sans-serif;color:#1D1C1A;-webkit-font-smoothing:antialiased}</style>
+</helmet>
+<div style="width: 1600px; height: 900px; box-sizing: border-box; background: #F6F5F2; padding: 30px 36px; display: flex; flex-direction: column; gap: 18px">
+<span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 26px; letter-spacing: -0.02em">Queue rows: every state</span>
+<span style="font-size: 13px; color: #6B6862; max-width: 1200px; line-height: 1.5">Times are shown as clock times ("Pasted at 3:04 AM", "Ready at 3:14 AM"), never as counters that tick up every second. The header says "Next batch at 5:30 AM · every 2 hours". "Settling…" is gone.</span>
+<div style="display: grid; grid-template-columns: 150px 640px 1fr; gap: 24px; align-items: center">
+<span style="font-size: 13px; font-weight: 700">Waiting</span>
+<div style="display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5">
+<dc-import name="Tile" text="PNG" fill="#E3EEFF" ink="#1F6FEB" hint-size="40px,40px"></dc-import>
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Screenshot 2026-10-02 030432.png</span><span style="font-size: 12px; color: #6B6862">Pasted at 3:04 AM · 36 KB</span></span>
+<dc-import name="Pill" text="Ready at 3:14 AM" fill="#F6F5F2" ink="#48463F" hint-size="132px,24px"></dc-import>
+<span aria-label="Remove" style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; color: #9B978F; font-size: 14px">×</span>
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">Just added. A fixed time, not a ticking counter. Hover: "Distill waits 10 min after a file last changes so half-written files aren't picked up. Process now skips the wait."</span>
+</div><div style="display: grid; grid-template-columns: 150px 640px 1fr; gap: 24px; align-items: center">
+<span style="font-size: 13px; font-weight: 700">Changed again</span>
+<div style="display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5">
+<dc-import name="Tile" text="MD" fill="#E9FBC9" ink="#3D6110" hint-size="40px,40px"></dc-import>
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Clipping 0309.md</span><span style="font-size: 12px; color: #6B6862">Pasted at 3:09 AM · 4 KB · still changing</span></span>
+<dc-import name="Pill" text="Ready at 3:19 AM" fill="#F6F5F2" ink="#48463F" hint-size="132px,24px"></dc-import>
+<span aria-label="Remove" style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; color: #9B978F; font-size: 14px">×</span>
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">The file changed, so the ready time moves to 10 min after the last change. The text updates once per change, not every second.</span>
+</div><div style="display: grid; grid-template-columns: 150px 640px 1fr; gap: 24px; align-items: center">
+<span style="font-size: 13px; font-weight: 700">Ready</span>
+<div style="display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5">
+<dc-import name="Tile" text="PDF" fill="#FFE4D6" ink="#B03A0A" hint-size="40px,40px"></dc-import>
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">gongfu-brewing-guide.pdf</span><span style="font-size: 12px; color: #6B6862">Dropped at 2:12 AM · 2.3 MB</span></span>
+<dc-import name="Pill" text="Ready" fill="#F3FDE4" ink="#3D6110" hint-size="55px,24px"></dc-import>
+<span aria-label="Remove" style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; color: #9B978F; font-size: 14px">×</span>
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">The wait is over; it goes in with the next batch (5:30 AM) or when you press Process now.</span>
+</div><div style="display: grid; grid-template-columns: 150px 640px 1fr; gap: 24px; align-items: center">
+<span style="font-size: 13px; font-weight: 700">Written in Distill</span>
+<div style="display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5">
+<dc-import name="Tile" text="NOTE" fill="#E9FBC9" ink="#3D6110" hint-size="40px,40px"></dc-import>
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Gyokuro at 60 °C</span><span style="font-size: 12px; color: #6B6862">Written note · In person · labels confirmed</span></span>
+<dc-import name="Pill" text="Ready" fill="#F3FDE4" ink="#3D6110" hint-size="55px,24px"></dc-import>
+<span aria-label="Remove" style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; color: #9B978F; font-size: 14px">×</span>
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">Notes written in Distill skip the wait: they are complete when you press Add to queue.</span>
+</div><div style="display: grid; grid-template-columns: 150px 640px 1fr; gap: 24px; align-items: center">
+<span style="font-size: 13px; font-weight: 700">In batch</span>
+<div style="display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5">
+<dc-import name="Tile" text="PDF" fill="#FFE4D6" ink="#B03A0A" hint-size="40px,40px"></dc-import>
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">tea-club-minutes.pdf</span><span style="font-size: 12px; color: #6B6862">Dropped at 3:20 AM · 1.1 MB</span></span>
+<dc-import name="Pill" text="In batch" fill="#E3EEFF" ink="#1F6FEB" hint-size="76px,24px"></dc-import>
+
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">A batch is reading it now. Its row locks (no ×) until the batch finishes.</span>
+</div><div style="display: grid; grid-template-columns: 150px 640px 1fr; gap: 24px; align-items: center">
+<span style="font-size: 13px; font-weight: 700">Arrived during a batch</span>
+<div style="display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5">
+<dc-import name="Tile" text="PNG" fill="#E3EEFF" ink="#1F6FEB" hint-size="40px,40px"></dc-import>
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Screenshot 2026-10-02 032855.png</span><span style="font-size: 12px; color: #6B6862">Pasted at 3:28 AM · 52 KB</span></span>
+<dc-import name="Pill" text="Next batch" fill="#F6F5F2" ink="#48463F" hint-size="90px,24px"></dc-import>
+<span aria-label="Remove" style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; color: #9B978F; font-size: 14px">×</span>
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">Added while a batch runs: it waits for the next one.</span>
+</div><div style="display: grid; grid-template-columns: 150px 640px 1fr; gap: 24px; align-items: center">
+<span style="font-size: 13px; font-weight: 700">Problem</span>
+<div style="display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 0 0 1px #ECEAE5">
+<dc-import name="Tile" text="PDF" fill="#FFE4D6" ink="#B03A0A" hint-size="40px,40px"></dc-import>
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">huge-scan.pdf</span><span style="font-size: 12px; color: #6B6862">Dropped at 3:30 AM · 48 MB</span></span>
+<dc-import name="Pill" text="Couldn’t read" fill="#FFF4EE" ink="#B03A0A" hint-size="111px,24px"></dc-import>
+<span aria-label="Remove" style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; color: #9B978F; font-size: 14px">×</span>
+</div>
+<span style="font-size: 12px; color: #6B6862; line-height: 1.45">The core could not read or move it. Hover shows why; × removes it.</span>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":900}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

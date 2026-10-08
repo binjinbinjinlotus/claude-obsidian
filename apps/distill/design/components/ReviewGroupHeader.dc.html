@@ -1,0 +1,21 @@
+<!-- ReviewGroupHeader: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<div style="width: {{w}}; display: flex; align-items: center; gap: 8px; padding: 8px 10px; box-sizing: border-box">
+<button type="button" aria-expanded="{{exp}}" style="display: inline-flex; align-items: center; gap: 8px; padding: 0; border: none; background: transparent; min-width: 0; flex-grow: 1; text-align: left">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; stroke: var(--muted)"><path d="{{chev}}"></path></svg>
+<span style="font-size: 14px; font-weight: 700; color: var(--ink); white-space: nowrap">{{title}}</span>
+<span style="font-size: 12px; font-weight: 700; color: var(--muted); background: #F1EFEB; padding: 1px 8px; border-radius: 9px; white-space: nowrap">{{count}}</span>
+<sc-if value="{{busy}}" hint-placeholder-val="{{ false }}"><span style="width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 2px solid #D6E4FB; border-top-color: var(--primary); flex-shrink: 0; margin-left: 4px"></span></sc-if>
+<span style="font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; margin-left: 4px">{{summary}}</span>
+</button>
+<sc-if value="{{hasAction}}" hint-placeholder-val="{{ false }}"><button type="button" style="height: 26px; padding: 0 6px; border: none; background: transparent; color: {{aInk}}; font-size: 12px; font-weight: 600; white-space: nowrap; flex-shrink: 0">{{action}}</button></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc-logic">
+const px = (v, d) => (v === undefined || v === null || v === '') ? d : (/^[0-9.]+$/.test(String(v)) ? v + 'px' : String(v));
+const exp = on(p.expanded, true), disabled = on(p.actionDisabled, false);
+return { w: px(p.width, '100%'), title: p.title || 'New pages', count: String(p.count ?? 4), summary: p.summary || '',
+  chev: exp ? 'M6 9l6 6 6-6' : 'M9 6l6 6-6 6', exp: exp ? 'true' : 'false', busy: on(p.busy, false),
+  action: p.action || '', hasAction: !!p.action, aInk: disabled ? '#B5B1A9' : 'var(--primary)' };
+</script>

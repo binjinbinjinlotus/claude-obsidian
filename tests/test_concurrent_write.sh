@@ -26,8 +26,17 @@ LOCK_SH="$ROOT/scripts/wiki-lock.sh"
 WORKERS=10
 TARGET_FILE_REL="wiki/concepts/Stress.md"
 
-SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/concurrent-write-test.XXXXXX")
-trap 'rm -rf "$SANDBOX"' EXIT
+# The vault sits one level below a private temp root.  Product code audits
+# every entry of a vault's parent directory and fails closed above a fixed
+# bound (VAULT_DIRECTORY_LIMIT); the shared system temp root can exceed it on
+# a busy machine, so it must never be the vault's parent.
+SANDBOX_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/concurrent-write-test.XXXXXX") || SANDBOX_ROOT=""
+if [ -z "$SANDBOX_ROOT" ] || [ ! -d "$SANDBOX_ROOT" ]; then
+  echo "FAIL could not create a temp sandbox under ${TMPDIR:-/tmp}" >&2
+  exit 1
+fi
+trap 'rm -rf "$SANDBOX_ROOT"' EXIT
+SANDBOX="$SANDBOX_ROOT/vault"
 mkdir -p "$SANDBOX/.vault-meta/locks" "$SANDBOX/wiki/concepts"
 TARGET_ABS="$SANDBOX/$TARGET_FILE_REL"
 echo "seed" > "$TARGET_ABS"

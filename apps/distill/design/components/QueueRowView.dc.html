@@ -1,0 +1,54 @@
+<!-- QueueRowView: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<div style="width: {{w}}; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 14px; background: {{bg}}; box-sizing: border-box">
+<div style="display: flex; align-items: center; gap: 14px; min-width: 0">
+<sc-if value="{{isFile}}" hint-placeholder-val="{{ true }}"><dc-import name="Tile" text="{{tileText}}" fill="{{tileFill}}" ink="{{tileInk}}" hint-size="40px,40px"></dc-import></sc-if>
+<sc-if value="{{isIcon}}" hint-placeholder-val="{{ false }}"><span style="width: 40px; height: 40px; border-radius: 10px; background: {{tileFill}}; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="stroke: {{tileInk}}"><path d="{{iconD}}"></path></svg></span></sc-if>
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0">
+<span style="display: flex; align-items: center; gap: 6px; min-width: 0"><span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{title}}</span><sc-if value="{{isFolder}}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; stroke: var(--faint)"><path d="{{chev}}"></path></svg></sc-if></span>
+<span style="display: flex; align-items: center; gap: 4px; min-width: 0"><span style="font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{meta}}</span><sc-if value="{{hasLink}}" hint-placeholder-val="{{ false }}"><span role="button" style="font-size: 12px; font-weight: 600; color: var(--primary); white-space: nowrap; flex-shrink: 0">· Open in Google Docs</span></sc-if></span>
+</span>
+<span title="{{help}}" style="display: inline-flex; flex-shrink: 0"><dc-import name="Pill" text="{{statusText}}" fill="{{sBg}}" ink="{{sInk}}" hint-size="110px,24px"></dc-import></span>
+<sc-if value="{{removable}}" hint-placeholder-val="{{ true }}"><dc-import name="IconButton" system-image="xmark" size="30" tint="var(--faint)" help="Remove from queue" hint-size="30px,30px"></dc-import></sc-if>
+<sc-if value="{{locked}}" hint-placeholder-val="{{ false }}"><span style="width: 30px; height: 30px; flex-shrink: 0"></span></sc-if>
+</div>
+<sc-if value="{{hasLabels}}" hint-placeholder-val="{{ false }}"><div style="margin-left: 54px; margin-right: 44px"><dc-import name="LabelLine" labels="{{labels}}" state="{{labelState}}" note="{{labelNote}}" allow-skip="{{allowSkip}}" hint-size="100%,26px"></dc-import></div></sc-if>
+<sc-if value="{{hasHint}}" hint-placeholder-val="{{ false }}"><div style="margin-left: 54px; display: flex; align-items: flex-start; gap: 6px; font-size: 11.5px; line-height: 1.45; color: #8A5A00"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8A5A00" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8v5M12 16h.01"></path></svg><span>{{hint}}</span></div></sc-if>
+<sc-if value="{{showTree}}" hint-placeholder-val="{{ false }}"><div style="margin-left: 54px; margin-right: 44px; display: flex; flex-direction: column; padding: 8px 10px; border-radius: 10px; background: var(--panel)">
+<sc-for list="{{tree}}" as="t" hint-placeholder-count="4"><span style="display: flex; align-items: center; gap: 6px; padding: 2px 0; padding-left: {{t.pad}}; font-size: 12px; line-height: 1.5; color: var(--ink); min-width: 0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; stroke: {{t.ink}}"><path d="{{t.d}}"></path></svg><span style="font-weight: {{t.fw}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; min-width: 0">{{t.name}}</span><span style="font-size: 11.5px; color: var(--faint); white-space: nowrap; flex-shrink: 0">{{t.size}}</span></span></sc-for>
+</div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc-logic">
+const px = (v, d) => (v === undefined || v === null || v === '') ? d : (/^[0-9.]+$/.test(String(v)) ? v + 'px' : String(v));
+const FOLDER = 'M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z';
+const DOC = 'M6 3h9l5 5v13H6zM14 3v6h6M9 13h6M9 17h6';
+const FILE = 'M6 3h9l5 5v13H6zM14 3v6h6';
+const EXT = {"PDF": ["var(--peachTint)", "var(--peachInk)"], "PNG": ["var(--primaryTint)", "var(--primary)"], "JPG": ["var(--primaryTint)", "var(--primary)"], "HEIC": ["var(--primaryTint)", "var(--primary)"], "MD": ["var(--limeTint)", "var(--limeInk)"], "TXT": ["var(--limeTint)", "var(--limeInk)"], "DOCX": ["var(--skyTint)", "var(--skyInk)"]};
+const S = {"ready": ["Ready", "#F3FDE4", "var(--limeInk)"], "readyAt": ["Ready at 3:14 AM", "var(--panel)", "#48463F"], "inBatch": ["In batch", "var(--primaryTint)", "var(--primary)"], "nextBatch": ["Next batch", "var(--panel)", "#48463F"], "problem": ["Couldn’t read", "var(--peachTint)", "var(--peachInk)"], "waiting": ["Waiting", "#FFF4D6", "#8A5A00"], "labeling": ["Next batch", "#FFF4D6", "#8A5A00"]};
+const kind = p.kind || 'file', st = S[p.status] || S.ready;
+const name = p.tileName || p.title || 'notes.md';
+const ext = (name.split('.').pop() || '').toUpperCase();
+const note = on(p.noteTile, false);
+const tile = note ? ['NOTE', 'var(--limeTint)', 'var(--limeInk)'] : [ext.slice(0, 4) || 'FILE', ...(EXT[ext] || ['var(--panel)', '#48463F'])];
+const exp = on(p.expanded, false);
+const tree = String(p.tree || '').split('|').filter(Boolean).map((l) => {
+  const depth = (l.match(/^ */) || [''])[0].length / 2, body = l.trim();
+  const i = body.lastIndexOf(' · ');
+  const nm = i > 0 ? body.slice(0, i) : body, size = i > 0 ? body.slice(i + 3) : '';
+  const dir = nm.endsWith('/');
+  return { pad: (depth * 16) + 'px', name: nm, size, d: dir ? FOLDER : (/\.gdoc$/.test(nm) ? DOC : FILE), ink: dir ? '#8A5A00' : 'var(--faint)', fw: dir ? 600 : 400 };
+});
+const fileLike = kind === 'file';
+const iconKind = { folder: ['#FFF4D6', '#8A5A00', FOLDER], gdoc: ['var(--skyTint)', 'var(--skyInk)', DOC] }[kind] || ['var(--panel)', '#48463F', FILE];
+const locked = p.status === 'inBatch';
+return { w: px(p.width, '100%'), title: p.title || 'notes.md', meta: p.meta || 'Dropped at 2:12 AM · 4 KB',
+  isFile: fileLike, isIcon: !fileLike, isFolder: kind === 'folder', iconD: iconKind[2],
+  tileText: tile[0], tileFill: fileLike ? tile[1] : iconKind[0], tileInk: fileLike ? tile[2] : iconKind[1],
+  chev: exp ? 'M6 9l6 6 6-6' : 'M9 6l6 6-6 6', showTree: kind === 'folder' && exp && tree.length > 0, tree,
+  hasLink: kind === 'gdoc' && p.status !== 'problem', hasHint: !!p.hint, hint: p.hint || '',
+  statusText: p.statusText || st[0], sBg: st[1], sInk: st[2], help: p.help || '',
+  removable: !locked, locked, bg: exp ? '#FBFAF8' : 'transparent',
+  hasLabels: !!p.labelState && p.labelState !== 'none' && kind !== 'folder', labels: p.labels || '', labelState: p.labelState || 'none', labelNote: p.labelNote || '', allowSkip: on(p.allowSkip, false) ? 'true' : 'false' };
+</script>

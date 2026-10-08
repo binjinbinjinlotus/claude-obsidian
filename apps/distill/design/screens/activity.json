@@ -1,0 +1,531 @@
+{
+ "$doc": "Activity (designed 2026-10-04): History → Activity. One base (toolbar, day-grouped list, detail on the right); states override the list, the toolbar chips, the detail or the overlay. ActivityRow is the row; fragments in screens/activity/ are the detail panes, the Filter popover, the empty states and the cards. Spec: docs/specs/activity-log.md.",
+ "templates": {
+  "header": "<header style=\"display: flex; align-items: center; gap: 12px; padding: 30px 32px 0\">\n<div style=\"display: flex; flex-direction: column; gap: 6px; flex-grow: 1; min-width: 0\"><h1 style=\"margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 30px; letter-spacing: -0.03em; line-height: 1.05\">{title}</h1>\n<span style=\"font-size: 13px; color: var(--muted)\">{sub}</span></div>{right}</header>"
+ },
+ "layouts": {
+  "list-detail": "{header}<div style=\"padding: 18px 32px 0 32px\">{toolbar}</div><div style=\"flex-grow: 1; display: flex; min-height: 0; overflow: hidden; margin-top: 14px; border-top: 1px solid var(--border)\"><div style=\"flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 4px 14px 20px 22px; overflow: hidden\">{list}</div><div style=\"width: 400px; flex-shrink: 0; border-left: 1px solid var(--border); overflow: hidden; padding: 22px 26px 20px 24px; box-sizing: border-box\">{detail}</div></div>",
+  "list": "{header}<div style=\"padding: 18px 32px 0 32px\">{toolbar}</div><div style=\"flex-grow: 1; display: flex; min-height: 0; overflow: hidden; margin-top: 14px; border-top: 1px solid var(--border)\"><div style=\"flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 4px 14px 20px 22px; overflow: hidden\">{list}</div></div>",
+  "pane": "{header}<div style=\"flex-grow: 1; min-height: 0; overflow: hidden\">{detail}</div>",
+  "pushed": "<div style=\"flex-grow: 1; min-height: 0; overflow: hidden\">{detail}</div>"
+ },
+ "lists": {
+  "all": [
+   {
+    "head": "TODAY",
+    "style": "plain"
+   },
+   {
+    "family": "collector",
+    "summary": "Deleted the script collector “Meeting notes”",
+    "time": "7:04 PM",
+    "source": "Mac app",
+    "tag": "In trash"
+   },
+   {
+    "family": "chat",
+    "summary": "Deleted the chat “Q3 tea club plan”",
+    "time": "7:02 PM",
+    "source": "Mac app",
+    "tag": "In trash"
+   },
+   {
+    "family": "chat",
+    "summary": "Deleted the chat “Sencha water temperature”",
+    "time": "7:01 PM",
+    "source": "Mac app"
+   },
+   {
+    "family": "collector",
+    "summary": "Pocket export added 4 files to the queue",
+    "time": "7:00 PM",
+    "source": "Automatic"
+   },
+   {
+    "family": "batch",
+    "summary": "Batch · 4 files applied 6 page changes",
+    "time": "6:41 PM",
+    "source": "Mac app"
+   },
+   {
+    "family": "batch",
+    "summary": "Approved Batch · 4 files",
+    "time": "6:40 PM",
+    "source": "Mac app"
+   },
+   {
+    "family": "note",
+    "summary": "Added the note “Gyokuro tasting” to the queue",
+    "time": "5:12 PM",
+    "source": "Agent"
+   },
+   {
+    "family": "collector",
+    "summary": "Slack saved items failed: exit 1",
+    "time": "4:30 PM",
+    "source": "Automatic",
+    "outcome": "failed"
+   },
+   {
+    "family": "settings",
+    "summary": "Changed settings: Ask history (Keep history off)",
+    "time": "2:15 PM",
+    "source": "Mac app"
+   },
+   {
+    "head": "YESTERDAY",
+    "style": "plain"
+   },
+   {
+    "family": "queue",
+    "summary": "Removed “export.zip” from the queue",
+    "time": "9:20 PM",
+    "source": "Mac app"
+   },
+   {
+    "family": "action",
+    "summary": "Confirmed “Book the tea tasting”",
+    "time": "6:05 PM",
+    "source": "Mac app"
+   },
+   {
+    "family": "collector",
+    "summary": "Allowed the script of “Meeting notes” and turned it on",
+    "time": "10:12 AM",
+    "source": "Mac app"
+   },
+   {
+    "family": "chat",
+    "summary": "Removed the chat “Kettle comparison”: older than 10 days",
+    "time": "3:00 AM",
+    "source": "Automatic"
+   }
+  ],
+  "collectors": [
+   {
+    "head": "TODAY",
+    "style": "plain"
+   },
+   {
+    "family": "collector",
+    "summary": "Deleted the script collector “Meeting notes”",
+    "time": "7:04 PM",
+    "source": "Mac app",
+    "tag": "In trash"
+   },
+   {
+    "family": "collector",
+    "summary": "Pocket export added 4 files to the queue",
+    "time": "7:00 PM",
+    "source": "Automatic"
+   },
+   {
+    "family": "collector",
+    "summary": "Meeting notes added 2 files to the queue",
+    "time": "6:00 PM",
+    "source": "Automatic"
+   },
+   {
+    "family": "collector",
+    "summary": "Slack saved items failed: exit 1",
+    "time": "4:30 PM",
+    "source": "Automatic",
+    "outcome": "failed"
+   },
+   {
+    "head": "YESTERDAY",
+    "style": "plain"
+   },
+   {
+    "family": "collector",
+    "summary": "Turned off “Scans”",
+    "time": "8:41 PM",
+    "source": "Mac app"
+   },
+   {
+    "family": "collector",
+    "summary": "Allowed the script of “Meeting notes” and turned it on",
+    "time": "10:12 AM",
+    "source": "Mac app"
+   },
+   {
+    "family": "collector",
+    "summary": "Added the script collector “Meeting notes” (off until you allow it)",
+    "time": "10:09 AM",
+    "source": "Mac app"
+   }
+  ],
+  "restored": [
+   {
+    "head": "TODAY",
+    "style": "plain"
+   },
+   {
+    "family": "collector",
+    "summary": "Restored the collector “Meeting notes” from Distill’s trash",
+    "time": "7:12 PM",
+    "source": "Mac app"
+   },
+   {
+    "family": "collector",
+    "summary": "Deleted the script collector “Meeting notes”",
+    "time": "7:04 PM",
+    "source": "Mac app",
+    "tag": "Restored"
+   },
+   {
+    "family": "chat",
+    "summary": "Deleted the chat “Q3 tea club plan”",
+    "time": "7:02 PM",
+    "source": "Mac app",
+    "tag": "In trash"
+   },
+   {
+    "family": "chat",
+    "summary": "Deleted the chat “Sencha water temperature”",
+    "time": "7:01 PM",
+    "source": "Mac app"
+   },
+   {
+    "family": "collector",
+    "summary": "Pocket export added 4 files to the queue",
+    "time": "7:00 PM",
+    "source": "Automatic"
+   },
+   {
+    "family": "batch",
+    "summary": "Batch · 4 files applied 6 page changes",
+    "time": "6:41 PM",
+    "source": "Mac app"
+   },
+   {
+    "family": "batch",
+    "summary": "Approved Batch · 4 files",
+    "time": "6:40 PM",
+    "source": "Mac app"
+   },
+   {
+    "family": "note",
+    "summary": "Added the note “Gyokuro tasting” to the queue",
+    "time": "5:12 PM",
+    "source": "Agent"
+   },
+   {
+    "family": "collector",
+    "summary": "Slack saved items failed: exit 1",
+    "time": "4:30 PM",
+    "source": "Automatic",
+    "outcome": "failed"
+   },
+   {
+    "family": "settings",
+    "summary": "Changed settings: Ask history (Keep history off)",
+    "time": "2:15 PM",
+    "source": "Mac app"
+   },
+   {
+    "head": "YESTERDAY",
+    "style": "plain"
+   },
+   {
+    "family": "queue",
+    "summary": "Removed “export.zip” from the queue",
+    "time": "9:20 PM",
+    "source": "Mac app"
+   },
+   {
+    "family": "action",
+    "summary": "Confirmed “Book the tea tasting”",
+    "time": "6:05 PM",
+    "source": "Mac app"
+   },
+   {
+    "family": "collector",
+    "summary": "Allowed the script of “Meeting notes” and turned it on",
+    "time": "10:12 AM",
+    "source": "Mac app"
+   },
+   {
+    "family": "chat",
+    "summary": "Removed the chat “Kettle comparison”: older than 10 days",
+    "time": "3:00 AM",
+    "source": "Automatic"
+   }
+  ]
+ },
+ "bases": {
+  "activity": {
+   "window": {
+    "width": 1200,
+    "height": 820
+   },
+   "sidebar": {
+    "section": "history",
+    "sub": "activity",
+    "height": 780
+   },
+   "layout": "list-detail",
+   "regions": {
+    "header": {
+     "t": "header",
+     "vars": {
+      "title": "Activity",
+      "sub": "What changed, when, and from where. Kept on this Mac.",
+      "right": ""
+     }
+    },
+    "toolbar": {
+     "ActionsToolbar": {
+      "placeholder": "Search activity",
+      "searchWidth": 220,
+      "right": "none"
+     }
+    },
+    "list": {
+     "list": "all",
+     "row": "ActivityRow",
+     "rowHeight": "40px",
+     "selected": 0
+    },
+    "detail": {
+     "frag": "detail-collector-deleted"
+    }
+   }
+  }
+ },
+ "states": [
+  {
+   "id": "activity",
+   "base": "activity",
+   "label": "A · History → Activity: a delete kept in Distill’s trash, with Restore"
+  },
+  {
+   "id": "activity-filters",
+   "base": "activity",
+   "label": "B · Filter: What, From, When, Only failures",
+   "set": {
+    "toolbar.chips": "Collectors",
+    "overlay": {
+     "frag": "filters"
+    }
+   }
+  },
+  {
+   "id": "activity-filtered",
+   "base": "activity",
+   "label": "C · Filtered to Collectors; a failed run opened",
+   "set": {
+    "toolbar.chips": "Collectors",
+    "list": {
+     "list": "collectors",
+     "row": "ActivityRow",
+     "rowHeight": "40px",
+     "selected": 3
+    },
+    "detail": {
+     "frag": "detail-run-failed"
+    }
+   }
+  },
+  {
+   "id": "activity-restored",
+   "base": "activity",
+   "label": "D · After Restore: back in Collectors, off until you allow its script",
+   "set": {
+    "list": {
+     "list": "restored",
+     "row": "ActivityRow",
+     "rowHeight": "40px",
+     "selected": 1
+    },
+    "detail": {
+     "frag": "detail-restored"
+    }
+   }
+  },
+  {
+   "id": "activity-empty",
+   "base": "activity",
+   "label": "E · Nothing yet",
+   "set": {
+    "layout": "pane",
+    "detail": {
+     "frag": "empty"
+    },
+    "toolbar": null,
+    "list": null
+   }
+  },
+  {
+   "id": "activity-no-matches",
+   "base": "activity",
+   "label": "F · No matches for the filters",
+   "set": {
+    "layout": "list",
+    "toolbar.search": "kettle",
+    "toolbar.chips": "Chats|From: CLI",
+    "list": {
+     "frag": "no-matches"
+    }
+   }
+  },
+  {
+   "id": "activity-narrow",
+   "base": "activity",
+   "label": "G · Narrow window (890 pt): the list takes the width; chips collapse into +N",
+   "set": {
+    "window": {
+     "width": 890,
+     "height": 760
+    },
+    "sidebar": {
+     "section": "history",
+     "sub": "activity",
+     "height": 720
+    },
+    "layout": "list",
+    "toolbar.searchWidth": 160,
+    "toolbar.chips": "Collectors|From: Mac app|When: 7 days",
+    "toolbar.visibleChips": 1,
+    "list": {
+     "list": "all",
+     "row": "ActivityRow",
+     "rowHeight": "40px"
+    }
+   }
+  },
+  {
+   "id": "activity-narrow-detail",
+   "base": "activity",
+   "label": "H · Narrow: an entry opens in place (‹ Activity goes back); a delete with no copy says why",
+   "set": {
+    "window": {
+     "width": 890,
+     "height": 760
+    },
+    "sidebar": {
+     "section": "history",
+     "sub": "activity",
+     "height": 720
+    },
+    "layout": "pushed",
+    "detail": {
+     "frag": "narrow-detail"
+    },
+    "toolbar": null,
+    "list": null
+   }
+  },
+  {
+   "id": "activity-card-queue",
+   "label": "A queue file removed",
+   "caption": "Queue files go to the macOS Trash; the entry says where.",
+   "card": {
+    "height": 400,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "card-queue-removed"
+   }
+  },
+  {
+   "id": "activity-card-settings",
+   "label": "Settings changed",
+   "caption": "Each change as old → new; secrets only as “changed”.",
+   "card": {
+    "height": 400,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "card-settings"
+   }
+  },
+  {
+   "id": "activity-card-expired",
+   "label": "Removed by Ask history",
+   "caption": "Retention is Distill acting on your setting: logged as Automatic, not kept in the trash.",
+   "card": {
+    "height": 400,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "card-expired"
+   }
+  },
+  {
+   "id": "activity-card-batch",
+   "label": "A batch applied",
+   "caption": "Ingest results: the pages it changed and the vault operation.",
+   "card": {
+    "height": 400,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "card-batch-applied"
+   }
+  }
+ ],
+ "boards": [
+  {
+   "file": "Activity.dc.html",
+   "title": "Activity · what changed, when, from where",
+   "heading": "Activity · History → Activity",
+   "intro": "The owner lost track of three chats and a script collector they had deleted themselves; nothing could show it. Activity answers <b>what changed, when, and from where</b> for chats, collectors, actions, batches, the queue, connections and settings. It lives under <b>History</b> as a fourth sub-item, next to Jobs, Ask chats and Actions: History is where the app already shows what happened, and where a missing chat is looked for first. Calm by default: one line per entry, day headings, faint “time · source”, colour only for failures. The detail shows what was there and how to get it back: <b>Restore</b> from Distill’s trash (deleted chats and collectors, 30 days), <b>Show in Finder</b> for queue files in the macOS Trash, or why nothing was kept. Never secrets or content: scripts appear as their size and line count. Core, API (<code>GET /v1/activity</code>) and CLI (<code>distill activity</code>) are built; this UI is not.",
+   "width": 2520,
+   "sections": [
+    {
+     "row": [
+      "activity",
+      "activity-filters"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "row": [
+      "activity-filtered",
+      "activity-restored"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "row": [
+      "activity-empty",
+      "activity-no-matches"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "title": "Narrow window (890 pt)",
+     "sub": "No detail column: the list takes the width, and an entry opens in its place."
+    },
+    {
+     "row": [
+      "activity-narrow",
+      "activity-narrow-detail"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "title": "The detail for other kinds of entries"
+    },
+    {
+     "grid": [
+      "activity-card-queue",
+      "activity-card-settings",
+      "activity-card-expired",
+      "activity-card-batch"
+     ],
+     "cols": 4
+    }
+   ]
+  }
+ ]
+}

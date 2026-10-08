@@ -1,0 +1,13 @@
+{
+  "name": "distill",
+  "private": true,
+  "description": "Distill: core server, CLI and agent plugin for claude-obsidian",
+  "type": "module",
+  "workspaces": ["core", "cli"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm test --workspaces",
+    "typecheck": "npm run typecheck --workspaces"
+  }
+}

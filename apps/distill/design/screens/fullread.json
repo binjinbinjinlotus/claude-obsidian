@@ -1,0 +1,211 @@
+{
+ "$doc": "Full reads (designed 2026-10-05): batches sized to what one session can read, coverage counted by the core from the tool results, automatic continuations and fresh-session parts, the hard stop, the detail check, archive with the batch, automatic repair. Spec: docs/specs/full-read.md.",
+ "templates": {},
+ "layouts": {
+  "pane": "<div style=\"flex-grow: 1; min-height: 0; overflow: hidden; position: relative\">{detail}</div>"
+ },
+ "bases": {
+  "queue": {
+   "window": {
+    "width": 1200,
+    "height": 860
+   },
+   "sidebar": {
+    "section": "queue",
+    "queueCount": "23",
+    "status": "Sonnet \u00b7 working",
+    "height": 820
+   },
+   "layout": "pane",
+   "regions": {
+    "detail": {
+     "frag": "queue-sized"
+    }
+   }
+  },
+  "review": {
+   "window": {
+    "width": 1200,
+    "height": 760
+   },
+   "sidebar": {
+    "section": "review",
+    "queueCount": "0",
+    "status": "Sonnet \u00b7 waiting on you",
+    "height": 720,
+    "reviewCount": "1"
+   },
+   "layout": "pane",
+   "regions": {
+    "detail": {
+     "frag": "review-covered"
+    }
+   }
+  }
+ },
+ "states": [
+  {
+   "id": "fullread-queue",
+   "base": "queue",
+   "label": "A \u00b7 Queue: batch 1 of 3, sized to what Claude can read in full; the rest wait for the batches that start right after"
+  },
+  {
+   "id": "fullread-steps",
+   "base": "queue",
+   "label": "B \u00b7 Live log: two reads came back short; Distill asked for the exact lines, then checks each page against its source",
+   "set": {
+    "detail": {
+     "frag": "steps-continue"
+    }
+   }
+  },
+  {
+   "id": "fullread-review",
+   "base": "review",
+   "label": "C \u00b7 Review: read in full, detail check and archive are information, not a decision"
+  },
+  {
+   "id": "fullread-split",
+   "base": "review",
+   "label": "D \u00b7 Review: 2 sources didn\u2019t finish in this session; they go to a fresh session as the next part",
+   "set": {
+    "detail": {
+     "frag": "review-split"
+    }
+   }
+  },
+  {
+   "id": "fullread-stop",
+   "base": "review",
+   "label": "E \u00b7 Hard stop: a file Distill can\u2019t decode is not in the change; Approve counts only the others",
+   "set": {
+    "detail": {
+     "frag": "review-stop"
+    }
+   }
+  },
+  {
+   "id": "fullread-held",
+   "base": "queue",
+   "label": "F \u00b7 After the batch: the file waits under Held in inbox/ with Try again",
+   "set": {
+    "detail": {
+     "frag": "queue-held"
+    },
+    "sidebar.queueCount": "1",
+    "sidebar.status": "Sonnet \u00b7 ready"
+   }
+  },
+  {
+   "id": "fullread-card-settings",
+   "label": "Settings \u2192 Batching: batch size and detail level",
+   "caption": "Two new rows. Batch size is Automatic by default: 30% of the model\u2019s context, at most 100K (100K on the owner\u2019s 1M Sonnet).",
+   "card": {
+    "height": 560,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "card-settings"
+   }
+  },
+  {
+   "id": "fullread-card-clear",
+   "label": "Clean up inbox: clear what is archived and read in full",
+   "caption": "Replaces \u201cMove to the Trash\u201d. Originals are archived with each batch, so clearing loses nothing.",
+   "card": {
+    "height": 560,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "center"
+   },
+   "body": {
+    "frag": "card-clear"
+   }
+  },
+  {
+   "id": "fullread-card-repair",
+   "label": "Activity: the automatic repair",
+   "caption": "No click starts it; each re-read batch is approved in Review like any change.",
+   "card": {
+    "height": 420,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "stretch"
+   },
+   "body": {
+    "frag": "card-repair"
+   }
+  },
+  {
+   "id": "fullread-card-rules",
+   "label": "What counts as read",
+   "caption": "Coverage comes from the tool results, never from the AI\u2019s report.",
+   "card": {
+    "height": 420,
+    "bg": "#E4E1DB",
+    "pad": "22px",
+    "align": "stretch"
+   },
+   "body": {
+    "frag": "card-rules"
+   }
+  }
+ ],
+ "boards": [
+  {
+   "file": "FullRead.dc.html",
+   "title": "Full reads \u00b7 every source read to its last line, checked by Distill",
+   "heading": "Full reads: Distill checks every line was read, and fixes it itself",
+   "intro": "\u201cRelying on human is wrong.\u201d A 22-note batch was read in one session: Claude read 8 files whole and only the first 110 lines of 14, and two of the 8 \u201cwhole\u201d reads were cut off by the tool without an error. Now a batch takes only as much text as one session can read in full (the rest start right after), Distill counts the lines each Read returned, and when lines are missing it asks the same session for exactly those lines. What still doesn\u2019t finish goes to a fresh session as the next part. Each page is then checked against its source at the detail you chose, and what is missing is added before you see it. Review shows all of this as information. Only a file Distill can\u2019t decode reaches you, and it is never part of what you approve. Originals are archived in the vault with each batch, so clearing inbox/ loses nothing. Pages made before this are read again automatically.",
+   "width": 2520,
+   "sections": [
+    {
+     "row": [
+      "fullread-queue",
+      "fullread-steps"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "title": "In Review: information, never a choice"
+    },
+    {
+     "row": [
+      "fullread-review",
+      "fullread-split"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "title": "The hard stop: the only thing that reaches you"
+    },
+    {
+     "row": [
+      "fullread-stop",
+      "fullread-held"
+     ],
+     "style": "display: flex; gap: 40px; align-items: flex-start"
+    },
+    {
+     "title": "Settings, clean-up, repair and the rules"
+    },
+    {
+     "grid": [
+      "fullread-card-settings",
+      "fullread-card-clear"
+     ],
+     "cols": 2
+    },
+    {
+     "grid": [
+      "fullread-card-repair",
+      "fullread-card-rules"
+     ],
+     "cols": 2
+    }
+   ]
+  }
+ ]
+}

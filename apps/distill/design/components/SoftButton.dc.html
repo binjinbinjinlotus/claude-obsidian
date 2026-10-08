@@ -1,0 +1,14 @@
+<!-- SoftButton: source template. render.py wraps it in the page shell and writes data-props from components.json.
+     @@ICONS@@ and @@SETTINGS_NAV@@ are replaced with data/icons.json and data/settings_nav.json. -->
+<x-dc>
+<span style="height: {{h}}; display: inline-flex; align-items: center; gap: {{gap}}; padding: 0 {{pad}}; border-radius: {{r}}; opacity: {{op}}; background: {{fill}}; color: {{tint}}; box-shadow: {{ring}}; font-size: {{fs}}; font-weight: 600; white-space: nowrap; box-sizing: border-box"><sc-if value="{{hasIcon}}" hint-placeholder-val="{{ false }}"><svg width="{{ic}}" height="{{ic}}" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="stroke: {{tint}}"><path d="{{d}}"></path></svg></sc-if>{{title}}</span>
+</x-dc>
+<script type="text/x-dc-logic">
+const SIZES = { regular: [40, 20, 14, 12, 7], small: [30, 14, 13, 11, 6], mini: [26, 11, 12, 10, 5] };
+const z = SIZES[p.size] || SIZES.regular;
+const ICONS = @@ICONS@@;
+const d = ICONS[p.systemImage || ''] || '';
+const enabled = on(p.enabled, true);
+return { d, hasIcon: !!d, op: enabled ? 1 : 0.45, ic: z[3], gap: z[4] + 'px', title: p.title !== undefined ? p.title : 'Skip labels', tint: p.tint || 'var(--ink)', fill: p.fill || 'var(--panel)', ring: p.stroke ? 'inset 0 0 0 1px ' + p.stroke : 'none',
+  h: z[0] + 'px', pad: (z[1] - 2) + 'px', r: z[0] / 2 + 'px', fs: z[2] + 'px' };
+</script>

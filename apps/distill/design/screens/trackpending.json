@@ -1,0 +1,267 @@
+{
+  "$doc": "Track as Pending from To confirm, and Move to Pending for an added to-do (2026-10-07; the owner accepted the assumed answers and it is built: snapshot states tp-*). Pending is drawn in routing’s static sidebar copy (trackpending/side*.html) laid over the shared Sidebar. Fragments were generated from actionsummary/addas-* and actions/todo-f0/f1-*.",
+  "templates": {
+    "header": "<header style=\"display: flex; align-items: flex-start; gap: 12px; padding: 28px 32px 0\">\n<div style=\"display: flex; flex-direction: column; gap: 5px; flex-grow: 1\"><span style=\"font-size: 11px; font-weight: 800; letter-spacing: .06em; color: var(--faint)\">ACTIONS</span><h1 style=\"margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 30px; letter-spacing: -0.03em; line-height: 1.05\">{title}</h1>\n<span style=\"font-size: 13px; color: var(--muted)\">{sub}</span></div>{right}</header>"
+  },
+  "layouts": {
+    "pane": "<div style=\"flex-grow: 1; min-height: 0; overflow: hidden; position: relative\">{detail}</div>",
+    "todo-list-detail": "{header}<div style=\"padding: 14px 32px 8px\">{toolbar}</div><div style=\"flex-grow: 1; display: flex; gap: 8px; padding: 0 0 0 20px; min-height: 0; overflow: hidden\"><div style=\"flex-grow: 1; min-width: 0; overflow: hidden; padding-right: 8px\">{list}</div>{detail}</div>"
+  },
+  "bases": {
+    "confirm": {
+      "window": {
+        "width": 1200,
+        "height": 900
+      },
+      "sidebar": {
+        "section": "actions",
+        "sub": "todo",
+        "height": 860,
+        "queueCount": "0",
+        "reviewCount": "0",
+        "todoCount": "14"
+      },
+      "layout": "pane",
+      "regions": {
+        "detail": {
+          "frag": "confirm-menu"
+        },
+        "overlay": {
+          "frag": "side"
+        }
+      }
+    },
+    "list": {
+      "window": {
+        "width": 1200,
+        "height": 960
+      },
+      "sidebar": {
+        "section": "actions",
+        "sub": "todo",
+        "height": 920,
+        "todoCount": "14"
+      },
+      "layout": "todo-list-detail",
+      "regions": {
+        "header": {
+          "t": "header",
+          "vars": {
+            "title": "To do",
+            "sub": "Found in your notes · last found today at 3:44 PM in <b style=\"color: var(--ink); font-weight: 600\">Tea club planning</b>",
+            "right": [
+              {
+                "c": "SoftButton",
+                "props": {
+                  "title": "History",
+                  "tint": "var(--ink)",
+                  "fill": "var(--window)",
+                  "stroke": "var(--border)",
+                  "systemImage": "clock",
+                  "size": "small"
+                },
+                "size": [
+                  "96px",
+                  "30px"
+                ]
+              },
+              {
+                "c": "PrimaryButton",
+                "props": {
+                  "title": "Add to-do",
+                  "systemImage": "plus",
+                  "size": "small"
+                },
+                "size": [
+                  "111px",
+                  "30px"
+                ]
+              }
+            ]
+          }
+        },
+        "toolbar": {
+          "c": "ActionsToolbar",
+          "props": {
+            "placeholder": "Search to-dos"
+          },
+          "size": [
+            "100%",
+            "30px"
+          ]
+        },
+        "list": {
+          "frag": "list"
+        },
+        "detail": {
+          "frag": "list-detail"
+        },
+        "overlay": {
+          "frag": "side"
+        }
+      }
+    }
+  },
+  "states": [
+    {
+      "id": "tp-menu",
+      "base": "confirm",
+      "label": "A · Add as…: after the types, a divider and Track as Pending… (⇧⌥Return)",
+      "set": {
+        "detail": {
+          "frag": "confirm-menu"
+        }
+      }
+    },
+    {
+      "id": "tp-panel",
+      "base": "confirm",
+      "label": "B · Track as Pending: Waiting on filled with the item’s owner (Aditya), By from its due date; how the Pending row will read",
+      "set": {
+        "detail": {
+          "frag": "confirm-panel"
+        }
+      }
+    },
+    {
+      "id": "tp-rowmenu",
+      "base": "confirm",
+      "label": "C · Right-click a To confirm row: Add as ▸, Track as Pending…, Dismiss",
+      "set": {
+        "detail": {
+          "frag": "confirm-rowmenu"
+        }
+      }
+    },
+    {
+      "id": "tp-after",
+      "base": "confirm",
+      "label": "D · After: the item leaves To confirm (12 → 11), the next row is selected, Pending 5 → 6, and a toast with Undo",
+      "set": {
+        "detail": {
+          "frag": "confirm-after"
+        },
+        "overlay": {
+          "frag": "side-after-toast"
+        }
+      }
+    },
+    {
+      "id": "tp-mine",
+      "base": "confirm",
+      "label": "E · The owner is you (“me: migrate all existing tests”): Waiting on is empty and required; pick from the note’s people, People, or type a name",
+      "set": {
+        "detail": {
+          "frag": "confirm-mine"
+        }
+      }
+    },
+    {
+      "id": "tp-list-sendto",
+      "base": "list",
+      "label": "F · An added to-do: Send to lists the action types, then Move to Pending…",
+      "set": {
+        "overlay": {
+          "frag": "list-sendto"
+        }
+      }
+    },
+    {
+      "id": "tp-list-panel",
+      "base": "list",
+      "label": "G · Move to Pending: the same panel in the to-do’s detail, filled with Mei (the note says she will book it)",
+      "set": {
+        "detail": {
+          "frag": "list-panel"
+        }
+      }
+    },
+    {
+      "id": "tp-card-keys",
+      "label": "Keyboard",
+      "caption": "One new key, in the Return family.",
+      "card": {
+        "height": 360,
+        "bg": "var(--border)",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-keys"
+      }
+    },
+    {
+      "id": "tp-card-data",
+      "label": "What changes",
+      "caption": "Core and API; the Mac app calls the same route Highlights uses.",
+      "card": {
+        "height": 360,
+        "bg": "var(--border)",
+        "pad": "22px",
+        "align": "stretch"
+      },
+      "body": {
+        "frag": "card-data"
+      }
+    }
+  ],
+  "boards": [
+    {
+      "file": "ActionsTrackPending.dc.html",
+      "title": "Actions · Track as Pending",
+      "heading": "Track as Pending: when someone else will do it",
+      "intro": "Built 2026-10-07 with the answers below. Some items in To confirm, and some to-dos you already added, are really someone else’s promise. Track as Pending moves the item to Pending (“from Aditya · promised in Testing sync · by Fri”) instead of adding it: from Add as… or the row’s menu in To confirm, and from Send to on an added to-do. Pending and its Nudge / Mark received are unchanged (Actions: whose items, Pending and Highlights).",
+      "width": 2520,
+      "sections": [
+        {
+          "block": {
+            "frag": "card-questions"
+          }
+        },
+        {
+          "title": "To confirm: Track as Pending instead of adding it"
+        },
+        {
+          "row": [
+            "tp-menu",
+            "tp-panel"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
+          "row": [
+            "tp-rowmenu",
+            "tp-after"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
+          "title": "When the item is yours"
+        },
+        {
+          "row": [
+            "tp-mine"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
+          "title": "An added to-do: Move to Pending"
+        },
+        {
+          "row": [
+            "tp-list-sendto",
+            "tp-list-panel"
+          ],
+          "style": "display: flex; gap: 40px; align-items: flex-start"
+        },
+        {
+          "grid": [
+            "tp-card-keys",
+            "tp-card-data"
+          ],
+          "cols": 2
+        }
+      ]
+    }
+  ]
+}

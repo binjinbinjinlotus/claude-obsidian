@@ -1,0 +1,424 @@
+{
+ "$doc": "Canvas pages: every board is listed in exactly one row of one page, and render.py places it there (merge_canvas); a board not listed here fails the render. A page holds at most maxBoards boards: one page with all 141 boards never drew in the viewer, 7 area pages of 3 to 17 did (design-system-plan.md, 2026-10-06). The first page is the one the canvas opens on. Page ids never change: links use them (#page-<id>). A row's note is its title1 row title, created when missing.",
+ "maxBoards": 30,
+ "retiredNotes": ["flow0"],
+ "pages": [
+  {
+   "id": "capture",
+   "name": "1 Capture & Queue",
+   "rows": [
+    {
+     "note": {
+      "id": "flow1",
+      "text": "1 · Add sources → Queue → Review"
+     },
+     "boards": [
+      "Main.dc.html",
+      "MainLoading.dc.html",
+      "Capture.dc.html",
+      "CaptureLoading.dc.html",
+      "QueueRows.dc.html",
+      "ComposeSizing.dc.html",
+      "ImagesInline.dc.html",
+      "MainEmpty.dc.html",
+      "MainFolder.dc.html",
+      "QueueItems.dc.html",
+      "MainLabels.dc.html",
+      "MainLabelGate.dc.html",
+      "QueueLabelGate.dc.html",
+      "InboxCleanup.dc.html"
+     ]
+    },
+    {
+     "note": {
+      "id": "flow4",
+      "text": "4 · Quick access from the flask"
+     },
+     "boards": [
+      "Floating.dc.html",
+      "QuickActions.dc.html",
+      "QuickSizing.dc.html"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "review",
+   "name": "2 Review",
+   "rows": [
+    {
+     "note": {
+      "id": "flow1-review",
+      "text": "1 · Add sources → Queue → Review"
+     },
+     "boards": [
+      "Review.dc.html",
+      "ReviewLoading.dc.html",
+      "HistoryJob.dc.html",
+      "ReviewStates.dc.html",
+      "ReviewChoose.dc.html",
+      "ReviewProgress.dc.html"
+     ]
+    },
+    {
+     "note": {
+      "id": "flow3",
+      "text": "3 · Labels: where they come from, where you confirm"
+     },
+     "boards": [
+      "LabelFlows.dc.html",
+      "Notes.dc.html",
+      "NotesLoading.dc.html"
+     ]
+    },
+    {
+     "note": {
+      "id": "flow-session",
+      "text": "10 · Session continuity (when an AI session is gone, Distill asks before using a new one)"
+     },
+     "boards": [
+      "SessionContinuity.dc.html"
+     ]
+    },
+    {
+     "note": {
+      "id": "flow11",
+      "text": "11 · Full reads (every source read to its last line, checked by Distill)"
+     },
+     "boards": [
+      "FullRead.dc.html"
+     ]
+    },
+    {
+     "note": {
+      "id": "flow16",
+      "text": "16 · Review queue (approve several batches; they go in one at a time, stale plans rebuild themselves, stuck ones recover)"
+     },
+     "boards": [
+      "ReviewQueue.dc.html",
+      "ReviewQueueRules.dc.html"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ask",
+   "name": "3 Ask",
+   "rows": [
+    {
+     "note": {
+      "id": "flow2",
+      "text": "2 · Ask your vault"
+     },
+     "boards": [
+      "Ask.dc.html",
+      "AskLoading.dc.html",
+      "History.dc.html"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "actions",
+   "name": "4 Actions",
+   "rows": [
+    {
+     "note": {
+      "id": "flow6",
+      "text": "6 · Actions from your notes"
+     },
+     "boards": [
+      "ActionsOverview.dc.html",
+      "ActionsTodo.dc.html",
+      "ActionsAsk.dc.html",
+      "ActionsSlack.dc.html",
+      "ActionsJira.dc.html",
+      "ActionsConfluence.dc.html",
+      "ActionsHistory.dc.html",
+      "ActionsJiraFields.dc.html",
+      "ActionsRouting.dc.html"
+     ]
+    },
+    {
+     "note": {
+      "id": "flow12",
+      "text": "12 · Action context (actions from the original + the wiki)"
+     },
+     "boards": [
+      "ActionContext.dc.html"
+     ]
+    },
+    {
+     "note": {
+      "id": "flow14",
+      "text": "14 · Action summary (know what a found action is about before you act)"
+     },
+     "boards": [
+      "ActionSummary.dc.html"
+     ]
+    },
+    {
+     "note": {
+      "id": "flow15",
+      "text": "15 · Action buttons and script commands (an automation runs from a button, with the item's fields as arguments)"
+     },
+     "boards": [
+      "ScriptActions.dc.html"
+     ]
+    },
+    {
+     "note": {
+      "id": "flow17",
+      "text": "17 · Track as Pending (an item someone else will do goes to Pending, from To confirm or an added to-do)"
+     },
+     "boards": [
+      "ActionsTrackPending.dc.html"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "automations",
+   "name": "5 Automations",
+   "rows": [
+    {
+     "note": {
+      "id": "flow7",
+      "text": "7 · Collectors (bring material into the queue on a schedule)"
+     },
+     "boards": [
+      "Collectors.dc.html",
+      "CollectorsScript.dc.html",
+      "CollectorsScriptFiles.dc.html"
+     ]
+    },
+    {
+     "note": {
+      "id": "flow8",
+      "text": "8 · Activity (what changed, when, and from where; Restore from Distill’s trash)"
+     },
+     "boards": [
+      "Activity.dc.html"
+     ]
+    },
+    {
+     "note": {
+      "id": "flow9",
+      "text": "9 · Live log (what a batch or a collector is doing, as it happens)"
+     },
+     "boards": [
+      "LiveLog.dc.html",
+      "CollectorsLog.dc.html"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "settings",
+   "name": "6 Settings & Shell",
+   "rows": [
+    {
+     "note": {
+      "id": "flow5",
+      "text": "5 · Shared states, text editing, Settings, app icon"
+     },
+     "boards": [
+      "Loading.dc.html",
+      "Settings.dc.html",
+      "AppIcon.dc.html",
+      "Markdown.dc.html"
+     ]
+    },
+    {
+     "note": {
+      "id": "flow6-settings",
+      "text": "6 · Actions from your notes"
+     },
+     "boards": [
+      "SettingsNav.dc.html"
+     ]
+    },
+    {
+     "note": {
+      "id": "flow13",
+      "text": "13 · Resizable panes (drag the divider between two columns)"
+     },
+     "boards": [
+      "Panes.dc.html"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "components-shell",
+   "name": "7 Components: shell, buttons, chips",
+   "rows": [
+    {
+     "note": {
+      "id": "components-shell",
+      "text": "Components: shell, buttons, chips (shared by every board)"
+     },
+     "boards": [
+      "Sidebar.dc.html",
+      "SidebarStates.dc.html",
+      "WindowShell.dc.html",
+      "WindowShellStates.dc.html"
+     ]
+    },
+    {
+     "note": null,
+     "boards": [
+      "QuickShell.dc.html",
+      "QuickShellStates.dc.html",
+      "MarkdownStyleBar.dc.html",
+      "MarkdownStyleBarStates.dc.html",
+      "PrimaryButton.dc.html",
+      "SoftButton.dc.html",
+      "Pill.dc.html",
+      "ButtonsStates.dc.html"
+     ]
+    },
+    {
+     "note": null,
+     "boards": [
+      "SettingsSectionNav.dc.html",
+      "SettingsSectionNavStates.dc.html",
+      "Segmented.dc.html",
+      "SegmentedStates.dc.html",
+      "SegmentedPills.dc.html",
+      "SegmentedPillsStates.dc.html",
+      "PillSwitch.dc.html",
+      "PillSwitchStates.dc.html",
+      "CapsuleSwitch.dc.html",
+      "CapsuleSwitchStates.dc.html"
+     ]
+    },
+    {
+     "note": null,
+     "boards": [
+      "LabelChip.dc.html",
+      "LabelChipStates.dc.html",
+      "FilterChip.dc.html",
+      "FilterChipStates.dc.html",
+      "SourceChip.dc.html",
+      "SourceChipStates.dc.html",
+      "ModelChip.dc.html",
+      "ModelChipStates.dc.html"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "components-controls",
+   "name": "8 Components: menus, toolbars, collector rows",
+   "rows": [
+    {
+     "note": {
+      "id": "components-controls",
+      "text": "Components: menus, toolbars, collector rows"
+     },
+     "boards": [
+      "DropdownButton.dc.html",
+      "DropdownButtonStates.dc.html",
+      "QuickSourceButton.dc.html",
+      "QuickSourceButtonStates.dc.html",
+      "MarkdownBarToggle.dc.html",
+      "MarkdownBarToggleStates.dc.html",
+      "SendButton.dc.html",
+      "SendButtonStates.dc.html",
+      "IconButton.dc.html",
+      "IconButtonStates.dc.html",
+      "LinkButton.dc.html",
+      "LinkButtonStates.dc.html"
+     ]
+    },
+    {
+     "note": null,
+     "boards": [
+      "Tile.dc.html",
+      "TileStates.dc.html",
+      "FilterPanel.dc.html",
+      "FilterPanelStates.dc.html",
+      "ActionsToolbar.dc.html",
+      "ActionsToolbarStates.dc.html",
+      "ActionRow.dc.html",
+      "ActionRowStates.dc.html"
+     ]
+    },
+    {
+     "note": null,
+     "boards": [
+      "CollectorRow.dc.html",
+      "QueuePath.dc.html",
+      "ScheduleField.dc.html",
+      "RunLogEntry.dc.html",
+      "ScriptConsent.dc.html",
+      "CollectorRowStates.dc.html",
+      "QueuePathStates.dc.html",
+      "ScheduleFieldStates.dc.html"
+     ]
+    },
+    {
+     "note": null,
+     "boards": [
+      "RunLogEntryStates.dc.html",
+      "ScriptConsentStates.dc.html"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "components-rows",
+   "name": "9 Components: queue, review and log rows",
+   "rows": [
+    {
+     "note": {
+      "id": "components-rows",
+      "text": "Components: queue, review and log rows"
+     },
+     "boards": [
+      "QueueRowView.dc.html",
+      "QueueRefresh.dc.html",
+      "QueueRowViewStates.dc.html",
+      "QueueRefreshStates.dc.html",
+      "ActivityRow.dc.html",
+      "ActivityRowStates.dc.html"
+     ]
+    },
+    {
+     "note": null,
+     "boards": [
+      "ScriptEditor.dc.html",
+      "PackagesPanel.dc.html",
+      "ScriptEditorStates.dc.html",
+      "PackagesPanelStates.dc.html",
+      "LogLine.dc.html",
+      "LogLineStates.dc.html"
+     ]
+    },
+    {
+     "note": null,
+     "boards": [
+      "LabelLine.dc.html",
+      "ReviewGroupHeader.dc.html",
+      "ReviewChangeRow.dc.html",
+      "ReviewSourceRow.dc.html",
+      "LabelLineStates.dc.html",
+      "ReviewRowsStates.dc.html"
+     ]
+    },
+    {
+     "note": null,
+     "boards": [
+      "SessionReplaceConfirm.dc.html",
+      "SessionReplaceConfirmStates.dc.html",
+      "ApplyProgress.dc.html",
+      "ApplyProgressStates.dc.html",
+      "PaneHandle.dc.html",
+      "PaneHandleStates.dc.html"
+     ]
+    }
+   ]
+  }
+ ]
+}
