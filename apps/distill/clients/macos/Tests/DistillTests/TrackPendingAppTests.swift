@@ -124,6 +124,27 @@ final class TrackPendingAppTests: XCTestCase {
         XCTAssertEqual(SessionCoreProtocol.calls.last { $0.path.hasSuffix("/track-pending") }?.body["waitingOn"] as? String, "Linus Chui")
     }
 
+    /// One panel at a time, both ways; typing a name is no longer "filled from the item"; finishing one
+    /// item leaves another item's open list alone.
+    func testPanelsAndTheListStayWithTheirItem() async {
+        let app = model()
+        let store = app.actions
+        store.loadFixture(types: [], items: [found("c1"), found("c2")])
+        store.startTrack(found("c1"))
+        XCTAssertEqual(store.tracking["c1"]?.personFromItem, true)
+        store.typeWaitingOn("c1", "Mei")
+        XCTAssertEqual(store.tracking["c1"]?.personFromItem, false, "typed, not from its owner")
+        store.addAs(found("c1"), "slack")
+        XCTAssertNil(store.tracking["c1"], "Add as closes Track as Pending")
+
+        store.startTrack(found("c2"))
+        store.trackPicker = "c1"
+        SessionCoreProtocol.answer = { _ in (200, Self.json("c2", status: "open", route: "waiting", owner: "Aditya Pradhan")) }
+        store.finishTrack(found("c2"))
+        await waitUntil { store.routed["c2"] != nil }
+        XCTAssertEqual(store.trackPicker, "c1", "another item's list stays open")
+    }
+
     func testMoveToPendingSelectsTheNextToDoAsTheListShowsIt() {
         let day = { (n: Int) in "2026-10-0\(n)" }
         let now = Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 10, day: 1, hour: 12))!

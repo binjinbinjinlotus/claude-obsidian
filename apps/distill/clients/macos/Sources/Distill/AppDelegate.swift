@@ -71,13 +71,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// ⌘Q: edits still in their save pause go now (draft fields, then Settings), and quitting
     /// waits for those saves, at most 2 s, so the last thing typed isn't lost.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        let saves = PendingSaves.shared
+        Self.terminate(saves: PendingSaves.shared, saveSettingsNow: engine.saveSettingsNow) { sender.reply(toApplicationShouldTerminate: $0) }
+    }
+
+    /// The quit decision, apart from NSApplication so it can be tested with its own PendingSaves.
+    static func terminate(saves: PendingSaves, saveSettingsNow: () -> Void, timeout: TimeInterval = 2,
+                          reply: @escaping (Bool) -> Void) -> NSApplication.TerminateReply {
         saves.flushAll()
-        engine.saveSettingsNow()
+        saveSettingsNow()
         guard saves.running > 0 else { return .terminateNow }
         Task { @MainActor in
-            _ = await saves.waitForSaves(timeout: 2)
-            sender.reply(toApplicationShouldTerminate: true)
+            _ = await saves.waitForSaves(timeout: timeout)
+            reply(true)
         }
         return .terminateLater
     }

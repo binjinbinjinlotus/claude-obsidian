@@ -571,6 +571,10 @@ describe('instrumentCore', () => {
     before = { status: 'open' };
     after = { route: 'waiting', owner: 'Mei', events: [{ at: '', event: 'pending', detail: 'waiting on Mei (moved from To do)' }] };
     await runWithSource('app', () => core.trackAsPending('act-1', { waitingOn: 'Mei' }));
+    (fake as unknown as Record<string, unknown>).getAction = async () => undefined;
+    after = { route: 'waiting', owner: 'Ana', events: [{ at: '', event: 'pending', detail: 'waiting on Ana (moved from To do)' }] };
+    await runWithSource('app', () => core.trackAsPending('act-1', { waitingOn: 'Ana' }));
+    (fake as unknown as Record<string, unknown>).getAction = async () => item(before);
     before = { route: 'others' };
     after = { route: 'waiting', events: [{ at: '', event: 'routed', detail: 'tracked as Pending' }] };
     await runWithSource('app', () => core.trackAsPending('act-1'));
@@ -578,10 +582,13 @@ describe('instrumentCore', () => {
     assert.deepEqual(entries.map((e) => [e.type, e.summary]), [
       ['action.routed', 'Tracked “Write the migration guide” as Pending · waiting on Aditya Pradhan (found as to-do)'],
       ['action.routed', 'Tracked “Write the migration guide” as Pending · waiting on Mei (moved from To do)'],
+      ['action.routed', 'Tracked “Write the migration guide” as Pending · waiting on Ana (moved from To do)'],
       ['action.routed', 'Tracking “Write the migration guide” as Pending'],
     ]);
     assert.deepEqual(entries[0]!.details, { route: 'waiting', from: 'to confirm', actionType: 'todo', waitingOn: 'p-aditya', by: '2026-10-09' });
-    assert.equal(entries[1]!.details?.from, 'to do');
+    assert.deepEqual(entries[1]!.details, { route: 'waiting', from: 'to do', actionType: 'todo', waitingOn: 'named', by: null }, 'a name not in People');
+    assert.equal(entries[2]!.details?.from, 'to do', 'the item could not be read before: not from To confirm');
+    assert.deepEqual(entries[3]!.details, { route: 'waiting' }, 'Highlights');
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
