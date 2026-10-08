@@ -178,6 +178,8 @@ struct PendingDetail: View {
                 }
                 .padding(.horizontal, 22).padding(.top, 4).padding(.bottom, 20)
             }
+            // Back at the top when another item is selected.
+            .id(item.id)
             Divider().overlay(Theme.border)
             HStack(spacing: 8) {
                 ActionButton(title: "Not waiting anymore", kind: .plain, height: 30) { store.stopWaiting(item) }

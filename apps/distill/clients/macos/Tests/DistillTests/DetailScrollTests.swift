@@ -58,6 +58,38 @@ final class DetailScrollTests: XCTestCase {
         XCTAssertLessThan(frame.minY, 120)
     }
 
+    private final class Shown: ObservableObject { @Published var item: ActionItem; init(_ i: ActionItem) { item = i } }
+    private struct PendingHost: View {
+        @ObservedObject var store: ActionsStore
+        @ObservedObject var shown: Shown
+        var body: some View { PendingDetail(store: store, item: shown.item) }
+    }
+
+    func testPendingDetailOpensAtTheTopWhenAnotherItemIsSelected() throws {
+        var first = longTodo(); first.id = "w1"; first.status = .open; first.route = .waiting; first.owner = "Mei"
+        var second = first; second.id = "w2"
+        let e = StatesSnapshot.engine()
+        ActionFixtures.load(e, items: [first, second], select: first.id)
+        let shown = Shown(first)
+        let size = CGSize(width: 440, height: 420)
+        let view = NSHostingView(rootView: PendingHost(store: e.actions, shown: shown).environmentObject(e).frame(width: size.width, height: size.height))
+        let window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = view
+        func settle() { view.layoutSubtreeIfNeeded(); RunLoop.main.run(until: Date().addingTimeInterval(0.2)); view.layoutSubtreeIfNeeded() }
+        settle()
+        let scroll = try XCTUnwrap(scrollViews(in: view).first)
+        let flipped = scroll.documentView?.isFlipped ?? true
+        let top = flipped ? 0 : max(0, (scroll.documentView?.frame.height ?? 0) - scroll.contentView.bounds.height)
+        scroll.contentView.scroll(to: CGPoint(x: 0, y: flipped ? 200 : top - 200))
+        XCTAssertNotEqual(scroll.contentView.bounds.origin.y, top, accuracy: 1, "scrolled down the first item")
+
+        shown.item = second
+        settle()
+        let next = try XCTUnwrap(scrollViews(in: view).first)
+        let nextTop = flipped ? 0 : max(0, (next.documentView?.frame.height ?? 0) - next.contentView.bounds.height)
+        XCTAssertEqual(next.contentView.bounds.origin.y, nextTop, accuracy: 1, "the next item opens at the top")
+    }
+
     func testOverflowNeedsMoreThanRounding() {
         XCTAssertFalse(PinnedFooterLayout.overflows(content: 400, viewport: 400))
         XCTAssertFalse(PinnedFooterLayout.overflows(content: 400.4, viewport: 400))
