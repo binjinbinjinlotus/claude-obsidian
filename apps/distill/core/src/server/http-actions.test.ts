@@ -117,7 +117,13 @@ describe('HTTP API: actions and connections', () => {
     assert.equal(empty.status, 400);
     assert.match(JSON.stringify(empty.body), /Fill in who you’re waiting on/);
     assert.equal((await request(port, 'POST', '/v1/actions/act-1/track-pending', { waitingOn: 3 })).status, 400);
-    assert.equal((await request(port, 'POST', '/v1/actions/act-1/track-pending', { waitingOn: 'Mei', by: 5 })).status, 400);
+    const badBy = await request(port, 'POST', '/v1/actions/act-1/track-pending', { waitingOn: 'Mei', by: 5 });
+    assert.equal(badBy.status, 400);
+    assert.match(JSON.stringify(badBy.body), /\\"by\\" must be a date \(YYYY-MM-DD\), or null for no date/);
+    const calls = core.calls.length;
+    assert.equal((await request(port, 'POST', '/v1/actions/act-1/track-pending/now', { waitingOn: 'Mei' })).status, 404, 'nothing after track-pending');
+    assert.equal((await request(port, 'POST', '/x/v1/actions/act-1/track-pending', { waitingOn: 'Mei' })).status, 404, 'nothing before /v1');
+    assert.equal(core.calls.length, calls);
     assert.equal((await request(port, 'POST', '/v1/actions/act-1/track-pending', [])).status, 400);
     const nudge = await request(port, 'POST', '/v1/actions/act-1/nudge', { to: '@aditya', text: 'Hi Aditya, any update?' });
     assert.equal(nudge.body.message.type, 'slack');

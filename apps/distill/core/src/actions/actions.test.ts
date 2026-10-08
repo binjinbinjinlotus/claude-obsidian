@@ -26,7 +26,7 @@ import { createActionsService, describeByType, isDuplicate, type ActionsService 
 import { markdownToADF, markdownToStorage, parseBlocks } from './markdown.js';
 import { buildFindPrompt, DEFAULT_FIND_PROMPT, waitingBlock } from './prompts.js';
 import { actionTypeDef, actionTypeDefs, effectiveType, renderPrompt, resolveTypeID, typeInfo } from './registry.js';
-import { ActionStore, decodeAction } from './store.js';
+import { ActionStore, decodeAction, encodeAction } from './store.js';
 import { handlesFor, matchPerson, nudgeText, peopleOf, routeItem, routingOn } from './routing.js';
 import { othersPrompt, othersSectionLines, pageFacts, withOthersSection } from './highlights.js';
 import { buildWindowPrompt } from './batch.js';
@@ -366,6 +366,21 @@ describe('actions.json store', () => {
     assert.deepEqual(saved.items[0].futureKey, { x: 1 });
     assert.equal(saved.items[0].title, 'Buy gyokuro');
     assert.deepEqual(saved.items[1], { nonsense: true }, 'never dropped');
+  });
+
+  test('Track as Pending’s where-it-was decodes leniently and a cleared key never comes back from the raw entry', () => {
+    const base = { id: 'x', type: 'todo', title: 't', status: 'open', source: { kind: 'manual' }, events: [] };
+    const from = { route: 'waiting', status: 'pending', owner: 'Aditya', ownerID: 'p-aditya', owedTo: 'Jin', owedToID: 'you', due: '2026-10-09', ownerUnclear: true };
+    assert.deepEqual(decodeAction({ ...base, trackedFrom: from })!.trackedFrom, from);
+    assert.deepEqual(decodeAction({ ...base, trackedFrom: { ...from, route: 'others' } })!.trackedFrom!.route, 'others');
+    assert.deepEqual(decodeAction({ ...base, trackedFrom: { ...from, route: 'elsewhere' } })!.trackedFrom!.route, null);
+    const loose = decodeAction({ ...base, trackedFrom: { status: 'open', owner: 3, ownerUnclear: 'yes' } })!.trackedFrom!;
+    assert.deepEqual(loose, { route: null, status: 'open', owner: null, ownerID: null, owedTo: null, owedToID: null, due: null, ownerUnclear: false });
+    assert.equal(decodeAction({ ...base, trackedFrom: { ...from, status: 'weird' } })!.trackedFrom, undefined, 'no status it can go back to');
+    assert.equal(decodeAction({ ...base, trackedFrom: 'list' })!.trackedFrom, undefined);
+    const item = decodeAction(base)!;
+    const out = encodeAction(item, { ...base, ownerUnclear: true, received: { at: '2026-10-02' }, trackedFrom: from, extra: 1 });
+    assert.deepEqual([out.ownerUnclear, out.received, out.trackedFrom, out.extra], [undefined, undefined, undefined, 1]);
   });
 
   test('an unreadable actions.json is set aside before a save replaces it', () => {
@@ -2149,6 +2164,128 @@ describe('whose items: routing found items (actions-routing.md)', () => {
     assert.equal((await h.service.routingPreview()).beforeRouting, found.length, 'items you add are not finds');
     h.clock.t = new Date('2026-10-12T15:00:00Z');
     assert.equal((await h.service.routingPreview()).beforeRouting, 0, 'only finds from the last 7 days');
+  });
+
+  test('Track as Pending refuses with its own code and words', async () => {
+    const h = harness({ prefs: routedPrefs() });
+    const todo = await h.service.createAction({ type: 'todo', title: 'Book the tasting room' });
+    const refuse = (p: Promise<unknown>, code: string, message: string, details?: unknown) =>
+      assert.rejects(p, (e: CoreError) => {
+        assert.deepEqual([e.code, e.message], [code, message]);
+        if (details) assert.deepEqual(e.details, details);
+        return true;
+      });
+    await refuse(h.service.trackAsPending(todo.id, { waitingOn: 'Mei', by: 'Saturday' }), 'invalid_request', '“Saturday” isn’t a date; use YYYY-MM-DD.');
+    await refuse(h.service.trackAsPending(todo.id, { waitingOn: 'Mei', by: 'x2026-10-09' }), 'invalid_request', '“x2026-10-09” isn’t a date; use YYYY-MM-DD.');
+    await refuse(h.service.trackAsPending(todo.id, { waitingOn: 'Mei', by: '2026-10-09x' }), 'invalid_request', '“2026-10-09x” isn’t a date; use YYYY-MM-DD.');
+    await refuse(h.service.trackAsPending(todo.id, { waitingOn: 'Jin' }), 'invalid_request', 'You can’t wait on yourself; add it to your list instead.');
+    await refuse(h.service.trackAsPending(todo.id), 'invalid_request', 'Fill in who you’re waiting on.', { missing: ['Waiting on'] });
+    const message = await h.service.createAction({ type: 'slack', title: 'Tell Mei', fields: { to: 'Mei' } });
+    await h.service.whenIdle();
+    await refuse(h.service.trackAsPending(message.id, { waitingOn: 'Mei' }), 'invalid_request', 'Only a to-do can move to Pending; a slack message you added is something you do.');
+    await h.service.performAction(message.id, 'complete');
+    await refuse(h.service.trackAsPending(message.id, { waitingOn: 'Mei' }), 'invalid_state', 'Only an item to confirm or an open to-do can go to Pending; this one is done.');
+
+    // A date with spaces round it is the date; an empty one is no date.
+    const moved = await h.service.trackAsPending(todo.id, { waitingOn: 'Mei', by: ' 2026-10-09 ' });
+    assert.equal(moved.due, '2026-10-09');
+    await refuse(h.service.trackAsPending(todo.id, { waitingOn: 'Mei' }), 'invalid_state', 'It is already in Pending.');
+    await h.service.restoreAction(todo.id);
+    assert.equal((await h.service.trackAsPending(todo.id, { waitingOn: 'Mei', by: '  ' })).due, null);
+  });
+
+  test('Track as Pending while it is being created: busy', async () => {
+    const h = harness();
+    await connected(h);
+    const t = await h.service.createAction({ type: 'jira', title: 'x', body: 'y', fields: { project: 'PX' } });
+    let release: () => void = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    const fetch = h.http.fetch;
+    h.http.fetch = async (input, init) => {
+      await held;
+      return fetch(input, init);
+    };
+    h.make();
+    const creating = h.service.performAction(t.id, 'create').catch(() => undefined);
+    assert.equal((await h.service.getAction(t.id))!.status, 'creating');
+    await assert.rejects(h.service.trackAsPending(t.id, { waitingOn: 'Mei' }), (e: CoreError) => {
+      assert.deepEqual([e.code, e.message], ['busy', 'Wait until it finishes.']);
+      return true;
+    });
+    release();
+    await creating;
+  });
+
+  test('Track as Pending from To confirm keeps where it was, owed to you; Undo logs it back', async () => {
+    const h = harness({ prefs: routedPrefs() });
+    writeSync(h);
+    h.runner.find = () => ({ structured: SYNC_FOUND });
+    await h.service.findInJob(job(h, 'job-t', ['inbox/sync.md'], ['wiki/sources/sync.md']));
+    const all = await h.service.listActions({ route: 'all' });
+    // Aditya's ticket links: owed to you, with a due date (fields that must come back exactly).
+    const links = all.find((i) => i.title.startsWith('Aditya will'))!;
+    const file = path.join(h.stateDir, 'actions.json');
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const entry = raw.items.find((i: { id: string }) => i.id === links.id);
+    Object.assign(entry, { status: 'pending', route: 'list', owner: 'Aditya', ownerID: 'p-aditya', owedTo: 'Jin', owedToID: 'you', due: '2026-10-09' });
+    fs.writeFileSync(file, JSON.stringify(raw));
+    h.make();
+    const tracked = await h.service.trackAsPending(links.id, { waitingOn: 'Mei' });
+    assert.deepEqual(tracked.trackedFrom, { route: 'list', status: 'pending', owner: 'Aditya', ownerID: 'p-aditya', owedTo: 'Jin', owedToID: 'you', due: '2026-10-09', ownerUnclear: false });
+    assert.deepEqual([tracked.owedTo, tracked.owedToID, tracked.due], ['me', 'you', null]);
+    const back = await h.service.restoreAction(links.id);
+    assert.deepEqual([back.owner, back.ownerID, back.owedTo, back.owedToID, back.due, back.ownerUnclear], ['Aditya', 'p-aditya', 'Jin', 'you', '2026-10-09', undefined]);
+    assert.deepEqual([back.events.at(-1)!.event, back.events.at(-1)!.detail], ['restored', 'from Pending']);
+  });
+
+  test('Highlights: an Others’ action keeps its person and date unless the request names them', async () => {
+    const h = harness({ prefs: routedPrefs() });
+    writeSync(h);
+    h.runner.find = () => ({ structured: SYNC_FOUND });
+    await h.service.findInJob(job(h, 'job-w', ['inbox/sync.md'], ['wiki/sources/sync.md']));
+    const bench = (await h.service.listActions({ route: 'all' })).find((i) => i.title.startsWith('Benchmark'))!;
+    assert.deepEqual([bench.route, bench.owner, bench.due], ['others', 'Vladan', '2026-10-07']);
+    const file = path.join(h.stateDir, 'actions.json');
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    raw.items.find((i: { id: string }) => i.id === bench.id).what = 'the benchmark numbers';
+    fs.writeFileSync(file, JSON.stringify(raw));
+    h.make();
+    const tracked = await h.service.trackAsPending(bench.id);
+    assert.deepEqual([tracked.route, tracked.owner, tracked.due, tracked.owedTo, tracked.owedToID, tracked.what], ['waiting', 'Vladan', '2026-10-07', 'me', 'you', 'the benchmark numbers']);
+    assert.deepEqual([tracked.events.at(-1)!.event, tracked.events.at(-1)!.detail], ['routed', 'tracked as Pending']);
+
+    const h2 = harness({ prefs: routedPrefs() });
+    writeSync(h2);
+    h2.runner.find = () => ({ structured: SYNC_FOUND });
+    await h2.service.findInJob(job(h2, 'job-w', ['inbox/sync.md'], ['wiki/sources/sync.md']));
+    const bench2 = (await h2.service.listActions({ route: 'all' })).find((i) => i.title.startsWith('Benchmark'))!;
+    const named = await h2.service.trackAsPending(bench2.id, { waitingOn: 'aditya', by: '2026-10-20' });
+    assert.deepEqual([named.owner, named.ownerID, named.due], ['Aditya Pradhan', 'p-aditya', '2026-10-20']);
+  });
+
+  test('Dismiss after Track as Pending and Undo: still untouched; tracked and not undone: not', async () => {
+    const h = harness({ prefs: routedPrefs() });
+    writeSync(h);
+    h.runner.find = () => ({ structured: SYNC_FOUND });
+    await h.service.findInJob(job(h, 'job-d', ['inbox/sync.md'], ['wiki/sources/sync.md']));
+    const storybook = (await h.service.listActions()).find((i) => i.title.startsWith('Set up'))!;
+    const [open] = await h.service.confirmActions([storybook.id]);
+    assert.equal(open!.status, 'open');
+    await h.service.trackAsPending(open!.id, { waitingOn: 'Mei' });
+    await assert.rejects(h.service.dismissActions([open!.id]), /Only found items can be dismissed/, 'in Pending, not undone');
+    await h.service.restoreAction(open!.id);
+    await h.service.dismissActions([open!.id]);
+    assert.equal((await h.service.getAction(open!.id))!.status, 'dismissed');
+  });
+
+  test('the preview counts a find from exactly 7 days ago', async () => {
+    const h = harness();
+    writeSync(h);
+    h.runner.find = () => ({ structured: SYNC_FOUND });
+    await h.service.findInJob(job(h, 'job-v', ['inbox/sync.md'], ['wiki/sources/sync.md']));
+    const found = (await h.service.listActions({ route: 'all' })).filter((i) => i.source.kind === 'note');
+    h.clock.t = new Date(new Date(found[0]!.createdAt).getTime() + 7 * 24 * 3600 * 1000);
+    assert.equal((await h.service.routingPreview()).beforeRouting, found.length);
   });
 });
 

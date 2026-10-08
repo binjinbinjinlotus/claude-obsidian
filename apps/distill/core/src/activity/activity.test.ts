@@ -581,7 +581,8 @@ describe('instrumentCore', () => {
       ['action.routed', 'Tracking “Write the migration guide” as Pending'],
     ]);
     assert.deepEqual(entries[0]!.details, { route: 'waiting', from: 'to confirm', actionType: 'todo', waitingOn: 'p-aditya', by: '2026-10-09' });
-    assert.equal(entries[1]!.details?.from, 'to do');
+    assert.deepEqual(entries[1]!.details, { route: 'waiting', from: 'to do', actionType: 'todo', waitingOn: 'named', by: null }, 'a name not in People');
+    assert.deepEqual(entries[2]!.details, { route: 'waiting' }, 'Highlights');
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
