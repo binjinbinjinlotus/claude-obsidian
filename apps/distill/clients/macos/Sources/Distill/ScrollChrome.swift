@@ -169,3 +169,58 @@ extension View {
         if on { readHeight(height) } else { self }
     }
 }
+
+/// A detail pane whose content scrolls above a footer that never moves: short
+/// content sits at the top with the footer at the bottom (as a Spacer would
+/// put it); long content scrolls under a fade and the footer stays in view.
+/// The scroll goes back to the top when `resetKey` changes (another item).
+struct PinnedFooterScroll<Content: View, Footer: View>: View {
+    @Environment(\.snapshotMode) private var snapshot
+    let resetKey: String
+    @ViewBuilder var content: Content
+    @ViewBuilder var footer: Footer
+
+    @State private var contentHeight: CGFloat = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if snapshot { snapshotBody } else { liveBody }
+            // After the scroll area and above it, so a menu opening upward from the footer covers the content.
+            footer.zIndex(1)
+        }
+    }
+
+    private var liveBody: some View {
+        GeometryReader { geo in
+            ScrollView(.vertical) {
+                // At least the viewport's height, so a dropdown below short content isn't cut at the content's end.
+                content.frame(maxWidth: .infinity, alignment: .leading)
+                    .readHeight($contentHeight)
+                    .frame(minHeight: geo.size.height, alignment: .top)
+                    .background(OverlayScrollers())
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .overlay(alignment: .bottom) { if PinnedFooterLayout.overflows(content: contentHeight, viewport: geo.size.height) { ScrollFade() } }
+            .id(resetKey)
+        }
+    }
+
+    /// ImageRenderer can't draw a ScrollView: content that fits is drawn as is; taller content is
+    /// cut at the footer with the fade and a scroller, as the live pane looks before scrolling.
+    private var snapshotBody: some View {
+        ViewThatFits(in: .vertical) {
+            content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            content.frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minHeight: 0, maxHeight: .infinity, alignment: .top)
+                .clipped()
+                .overlay(alignment: .bottom) { ScrollFade() }
+                .overlay { SnapshotScrollerThumb(fraction: 0.5) }
+        }
+    }
+}
+
+enum PinnedFooterLayout {
+    /// Whether the content runs past the viewport (half a point of rounding allowed).
+    static func overflows(content: CGFloat, viewport: CGFloat) -> Bool { content > viewport + 0.5 }
+}

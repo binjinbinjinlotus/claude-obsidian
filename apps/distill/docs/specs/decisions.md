@@ -3,7 +3,7 @@ type: spec
 title: Decisions
 status: built
 created: 2026-10-02
-updated: 2026-10-07
+updated: 2026-10-08
 tags:
   - distill
   - decisions
@@ -14,6 +14,15 @@ tags:
 Newest first. Each entry: what was decided, why, and where it lives. Add an
 entry in the same change that makes a decision; never rewrite an old one —
 supersede it with a new entry.
+
+## 2026-10-08
+
+**The To-do detail scrolls; its footer is pinned (2026-10-08).** The owner reported "missing
+scrolling": a to-do with a long original pushed Remove, Complete and Send to out of the window.
+The detail's content now scrolls above a footer that never moves (`PinnedFooterScroll`,
+`ScrollChrome.swift`), back at the top when another item is selected. No divider above the footer
+and the fade only when the content overflows, so a detail that fits looks exactly as before. To
+confirm, Pending and Highlights already scrolled with a pinned footer and are unchanged.
 
 ## 2026-10-07
 

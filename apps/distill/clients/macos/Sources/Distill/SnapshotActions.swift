@@ -297,6 +297,13 @@ extension StatesSnapshot {
         e = actionsEngine(select: "t2")
         todo("actions-todo-edit", "Edit", "Every field editable in place; saved as you type; Done.", e, ui: TodoUI(editing: true))
 
+        // A long original in a short window: the detail scrolls, the footer stays in view.
+        let ctx = ActionContextFixtures.items()[0].context
+        e = actionsEngine(items: ActionFixtures.live().map { $0.id == "t2" ? $0.with { $0.context = ctx; $0.body = (1...6).map { "Step \($0): confirm the room, the kettle and the tasting cups with Mei." }.joined(separator: "\n\n") } : $0 },
+                          select: "t2")
+        todo("actions-todo-long", "Long context in a short window", "The fields, body and FROM / ORIGINAL / WIKI scroll under a fade; Remove, Complete and Send to stay at the bottom.", e,
+             size: CGSize(width: 1200, height: 560))
+
         e = actionsEngine(select: "t1")
         e.actions.toast = ActionToast(text: "Completed", undo: {})
         todo("actions-todo-complete", "Complete", "Struck through for 2 seconds, then to History; Undo or ⌘Z.", e, ui: TodoUI(completing: ["t2"]))
