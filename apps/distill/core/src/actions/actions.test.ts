@@ -379,8 +379,10 @@ describe('actions.json store', () => {
     assert.equal(decodeAction({ ...base, trackedFrom: { ...from, status: 'weird' } })!.trackedFrom, undefined, 'no status it can go back to');
     assert.equal(decodeAction({ ...base, trackedFrom: 'list' })!.trackedFrom, undefined);
     const item = decodeAction(base)!;
-    const out = encodeAction(item, { ...base, ownerUnclear: true, received: { at: '2026-10-02' }, trackedFrom: from, extra: 1 });
-    assert.deepEqual([out.ownerUnclear, out.received, out.trackedFrom, out.extra], [undefined, undefined, undefined, 1]);
+    const cleared = { owner: 'A', owedTo: 'Jin', ownerID: 'p-a', owedToID: 'you', route: 'waiting', ownerUnclear: true, what: 'w', due: '2026-10-09', received: { at: '2026-10-02' }, trackedFrom: from };
+    const out = encodeAction(item, { ...base, ...cleared, extra: 1 });
+    for (const k of Object.keys(cleared)) assert.equal(out[k], undefined, `${k} cleared on the item stays cleared`);
+    assert.equal(out.extra, 1, 'a key this build doesn’t know survives');
   });
 
   test('an unreadable actions.json is set aside before a save replaces it', () => {
@@ -2276,6 +2278,46 @@ describe('whose items: routing found items (actions-routing.md)', () => {
     await h.service.restoreAction(open!.id);
     await h.service.dismissActions([open!.id]);
     assert.equal((await h.service.getAction(open!.id))!.status, 'dismissed');
+  });
+
+  test('Undo of Track as Pending only for a tracked, live item in Pending; other restores are as before', async () => {
+    const h = harness({ prefs: routedPrefs() });
+    writeSync(h);
+    h.runner.find = () => ({ structured: SYNC_FOUND });
+    await h.service.findInJob(job(h, 'job-u', ['inbox/sync.md'], ['wiki/sources/sync.md']));
+    const all = await h.service.listActions({ route: 'all' });
+    const nothing = 'Only removed, completed, sent or dismissed items can be restored.';
+    const refuse = (p: Promise<unknown>, code: string, message: string) =>
+      assert.rejects(p, (e: CoreError) => (assert.deepEqual([e.code, e.message], [code, message]), true));
+    // A found promise in Pending was never tracked: nothing to undo.
+    const links = all.find((i) => i.route === 'waiting')!;
+    assert.equal(links.status, 'open');
+    await refuse(h.service.restoreAction(links.id), 'invalid_state', nothing);
+    // An open to-do with nothing to undo.
+    const todo = await h.service.createAction({ type: 'todo', title: 'Book the tasting room' });
+    await refuse(h.service.restoreAction(todo.id), 'invalid_state', nothing);
+    // Tracked, then removed in Pending: Restore brings it back to Pending, not to To do.
+    await h.service.trackAsPending(todo.id, { waitingOn: 'Mei' });
+    await h.service.removeAction(todo.id);
+    const back = await h.service.restoreAction(todo.id);
+    assert.deepEqual([back.status, back.route, back.owner], ['open', 'waiting', 'Mei']);
+    await h.service.nudgeAction(todo.id, { to: 'Mei', text: 'Any update?' });
+    await refuse(h.service.restoreAction(todo.id), 'invalid_state', 'It has changed in Pending since; it stays there.');
+  });
+
+  test('a type no longer registered is named by its id', async () => {
+    const h = harness({ prefs: routedPrefs() });
+    const t = await h.service.createAction({ type: 'todo', title: 'Ask Mei' });
+    const u = await h.service.createAction({ type: 'todo', title: 'Ask Ana' });
+    const file = path.join(h.stateDir, 'actions.json');
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    for (const i of raw.items) i.type = 'gone-type';
+    raw.items.find((i: { id: string }) => i.id === u.id).status = 'pending';
+    fs.writeFileSync(file, JSON.stringify(raw));
+    h.make();
+    await assert.rejects(h.service.trackAsPending(t.id, { waitingOn: 'Mei' }), /a gone-type you added is something you do/);
+    const found = await h.service.trackAsPending(u.id, { waitingOn: 'Ana' });
+    assert.equal(found.events.at(-1)!.detail, 'waiting on Ana (found as gone-type)');
   });
 
   test('the preview counts a find from exactly 7 days ago', async () => {
