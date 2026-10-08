@@ -785,60 +785,68 @@ struct TodoDetail: View {
     var onMoved: (() -> Void)? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 6) {
-                StatusBadge(text: item.status == .done ? "Completed" : "Open", fill: item.status == .done ? Theme.limeTint : Theme.panel,
-                            ink: item.status == .done ? Theme.limeInk : Theme.softInk)
-                Spacer()
-                IconButton(systemImage: editing ? "checkmark" : "pencil", size: 28, help: editing ? "Done" : "Edit") { editing.toggle() }
-                    .keyboardShortcut(editing ? KeyboardShortcut(.return, modifiers: .command) : nil)
-            }
-            if editing { editor } else { reading }
-            ActionContextBlock(item: item)
-                .zIndex(-1)
-            ButtonLastRun(store: store, item: item)
-            siblings
-            Spacer(minLength: 0)
-            if editing {
-                HStack {
-                    Text("Saved as you type").font(Theme.body(11)).foregroundStyle(Theme.muted)
+        // The fields and context scroll; the footer stays at the bottom of the pane, always in view.
+        PinnedFooterScroll(resetKey: item.id) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 6) {
+                    StatusBadge(text: item.status == .done ? "Completed" : "Open", fill: item.status == .done ? Theme.limeTint : Theme.panel,
+                                ink: item.status == .done ? Theme.limeInk : Theme.softInk)
                     Spacer()
-                    ActionButton(title: "Done", kind: .primary) { editing = false }
+                    IconButton(systemImage: editing ? "checkmark" : "pencil", size: 28, help: editing ? "Done" : "Edit") { editing.toggle() }
+                        .keyboardShortcut(editing ? KeyboardShortcut(.return, modifiers: .command) : nil)
                 }
-            } else if store.tracking[item.id] != nil {
-                // actions-routing.md: Move to Pending's Cancel · Move to Pending.
-                TrackPendingFooter(store: store, item: item, onDone: onMoved)
-            } else {
-                // Same order on every tab: remove on the left; Complete, then the primary action. Automation
-                // buttons move to their own row when the pane is too narrow for one.
-                ViewThatFits(in: .horizontal) {
+                if editing { editor } else { reading }
+                ActionContextBlock(item: item)
+                    .zIndex(-1)
+                ButtonLastRun(store: store, item: item)
+                siblings
+            }
+            .padding(.horizontal, 22).padding(.top, 4).padding(.bottom, 14)
+        } footer: {
+            footer
+                .padding(.horizontal, 22).padding(.top, 14).padding(.bottom, 20)
+        }
+    }
+
+    @ViewBuilder private var footer: some View {
+        if editing {
+            HStack {
+                Text("Saved as you type").font(Theme.body(11)).foregroundStyle(Theme.muted)
+                Spacer()
+                ActionButton(title: "Done", kind: .primary) { editing = false }
+            }
+        } else if store.tracking[item.id] != nil {
+            // actions-routing.md: Move to Pending's Cancel · Move to Pending.
+            TrackPendingFooter(store: store, item: item, onDone: onMoved)
+        } else {
+            // Same order on every tab: remove on the left; Complete, then the primary action. Automation
+            // buttons move to their own row when the pane is too narrow for one.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    IconButton(systemImage: "trash", size: 30, help: "Remove (Delete)") { store.remove(item) }
+                    Spacer(minLength: 4)
+                    if item.status != .done, let type = store.type("todo") { ItemAutomationButtons(store: store, type: type, item: item) }
+                    footerActions
+                }
+                VStack(alignment: .trailing, spacing: 8) {
+                    if item.status != .done, let type = store.type("todo") { ItemAutomationButtons(store: store, type: type, item: item) }
                     HStack(spacing: 8) {
                         IconButton(systemImage: "trash", size: 30, help: "Remove (Delete)") { store.remove(item) }
                         Spacer(minLength: 4)
-                        if item.status != .done, let type = store.type("todo") { ItemAutomationButtons(store: store, type: type, item: item) }
                         footerActions
                     }
-                    VStack(alignment: .trailing, spacing: 8) {
-                        if item.status != .done, let type = store.type("todo") { ItemAutomationButtons(store: store, type: type, item: item) }
-                        HStack(spacing: 8) {
-                            IconButton(systemImage: "trash", size: 30, help: "Remove (Delete)") { store.remove(item) }
-                            Spacer(minLength: 4)
-                            footerActions
-                        }
-                    }
                 }
-                .overlay(alignment: .bottomTrailing) {
-                    if menu == "sendto" {
-                        SendToPanel(store: store, item: item, pending: TrackPending.origin(item) == .todo ? { store.startTrack(item); menu = nil } : nil) {
-                            store.sendTo(item, type: $0); menu = nil
-                        }
-                            .offset(y: -42)
-                    }
-                }
-                .zIndex(10)
             }
+            .overlay(alignment: .bottomTrailing) {
+                if menu == "sendto" {
+                    SendToPanel(store: store, item: item, pending: TrackPending.origin(item) == .todo ? { store.startTrack(item); menu = nil } : nil) {
+                        store.sendTo(item, type: $0); menu = nil
+                    }
+                        .offset(y: -42)
+                }
+            }
+            .zIndex(10)
         }
-        .padding(.horizontal, 22).padding(.top, 4).padding(.bottom, 20)
     }
 
     @ViewBuilder private var footerActions: some View {

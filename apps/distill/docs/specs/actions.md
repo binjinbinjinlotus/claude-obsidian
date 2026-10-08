@@ -3,7 +3,7 @@ type: spec
 title: Actions
 status: built
 created: 2026-10-02
-updated: 2026-10-06
+updated: 2026-10-08
 tags:
   - distill
   - actions
@@ -709,7 +709,10 @@ Status per part; `built` parts ship in `clients/macos`.
   `distill.todo.sort`); grouped rows with note, person, labels, priority and a
   due badge; the detail (fields, FROM context with quote, Why and "Found by",
   "Also from this note"; footer: remove on the left, then Complete, then Send
-  to ▾ with the suggested type first and Email disabled); edit in place
+  to ▾ with the suggested type first and Email disabled; the fields and
+  context scroll and the footer stays pinned at the bottom of the pane, with
+  a fade at the cut edge when the content is taller than the window,
+  `PinnedFooterScroll`); edit in place
   (title, due, priority, people, labels; saved as you type, see When field
   edits save); Add to-do row (↩
   adds, Esc cancels, labels you filter by pre-filled); ⌘/⇧-click selects for

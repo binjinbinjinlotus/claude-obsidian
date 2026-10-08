@@ -196,6 +196,8 @@ struct HighlightDetail: View {
                 }
                 .padding(.horizontal, 22).padding(.top, 4).padding(.bottom, 20)
             }
+            // Back at the top when another item is selected.
+            .id(note.notePath)
             Divider().overlay(Theme.border)
             HStack(spacing: 8) {
                 ActionButton(title: "Copy as summary", kind: .soft, height: 30) { store.copySummary(note) }

@@ -419,6 +419,8 @@ struct ConfirmDetail: View {
                 }
                 .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 24)
             }
+            // Back at the top when another item is selected.
+            .id(item.id)
             Divider().overlay(Theme.border)
             Group {
                 if tracking {
