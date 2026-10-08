@@ -21,9 +21,12 @@ final class DraftTextFieldViewTests: XCTestCase {
         let save: (String, String) -> Void
         var body: some View {
             VStack {
-                if props.shown {
-                    DraftTextField(placeholder: "Person", key: props.key, value: props.value, autoFocus: autoFocus,
+                if props.shown && autoFocus {
+                    DraftTextField(placeholder: "Person", key: props.key, value: props.value, autoFocus: true,
                                    normalize: FieldText.trimmed, save: save)
+                } else if props.shown {
+                    // The default, as the to-do detail uses it.
+                    DraftTextField(placeholder: "Person", key: props.key, value: props.value, normalize: FieldText.trimmed, save: save)
                 }
                 TextField("Other", text: .constant(""))
             }
@@ -115,6 +118,18 @@ final class DraftTextFieldViewTests: XCTestCase {
         try type("!")
         settle(1.0)
         XCTAssertEqual(saves.last?.hasPrefix("b="), true, "typing now saves to the new item: \(saves)")
+    }
+
+    /// The store changing under the field (another window saved) keeps the pause: what was typed still saves.
+    func testAStoreChangeWhileTypingKeepsThePause() throws {
+        host()
+        try type("Linu")
+        props.value = "Mei"
+        settle()
+        XCTAssertEqual(saves, [])
+        settle(1.0)
+        XCTAssertEqual(saves, ["a=Linu"], "the typed name still saves after the pause")
+        XCTAssertEqual(field.currentEditor()?.string, "Linu", "and stays as typed")
     }
 
     func testGoingAwaySaves() throws {
