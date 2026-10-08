@@ -100,6 +100,63 @@ final class TrackPendingTests: XCTestCase {
         XCTAssertTrue(typed.people.isEmpty)
     }
 
+    /// The "Filled from…" line says only what came from the item: a name or date typed by hand is not.
+    func testNoteLineNamesOnlyWhatTheItemFilled() {
+        let typed = TrackPending.Draft(origin: .confirm, name: "Mei", by: "2026-10-09")
+        XCTAssertEqual(TrackPending.noteLine(typed, people: people), "It leaves To confirm; nothing is sent to Mei.")
+        var owner = typed; owner.personFromItem = true
+        XCTAssertEqual(TrackPending.noteLine(owner, people: people), "Filled from its owner. It leaves To confirm; nothing is sent to Mei.",
+                       "a date typed by hand isn't from the item")
+        var due = typed; due.byFromItem = true
+        XCTAssertEqual(TrackPending.noteLine(due, people: people), "By is filled from its due date. It leaves To confirm; nothing is sent to Mei.")
+        var cleared = due; cleared.by = nil
+        XCTAssertEqual(TrackPending.noteLine(cleared, people: people), "It leaves To confirm; nothing is sent to Mei.", "the date was cleared")
+    }
+
+    func testOwnerIsYouOnlyForYouOrNobody() {
+        XCTAssertFalse(TrackPending.ownerIsYou(item(owner: "Vladan", ownerID: nil)), "a name not in People")
+        XCTAssertFalse(TrackPending.ownerIsYou(item(owner: nil, ownerID: "p-aditya")), "a People id without a name")
+        XCTAssertTrue(TrackPending.ownerIsYou(item(owner: "  ", ownerID: nil)))
+    }
+
+    func testAToDosPersonIsMarkedAsFilledFromTheItem() {
+        let todo = item(status: .open, owner: nil, ownerID: nil, fields: ["person": "Vladan, Mei"])
+        let d = TrackPending.prefill(todo, people: people)
+        XCTAssertEqual([d.personID, d.name], [nil, "Vladan"])
+        XCTAssertTrue(d.personFromItem)
+        XCTAssertFalse(d.byFromItem)
+    }
+
+    /// The preview reads the person picked, not the item's owner.
+    func testPreviewLineReadsThePersonPicked() {
+        var picked = TrackPending.prefill(item(), people: people)
+        picked.personID = "p-mei"; picked.name = "Mei Tanaka"
+        XCTAssertEqual(TrackPending.previewLine(item(), picked, people: people, now: now), "from Mei Tanaka · promised in Testing sync · by Fri")
+        picked.personID = nil; picked.name = " Vladan "
+        XCTAssertEqual(TrackPending.previewLine(item(), picked, people: people, now: now), "from Vladan · promised in Testing sync · by Fri")
+    }
+
+    func testChoicesTakeWhoItIsForAndMatchAliasesOfThatPerson() {
+        let mine = item(owner: "me", ownerID: "you")
+        var promise = item("w1", status: .open, owner: "me", ownerID: "you"); promise.owedTo = "Mei"
+        let c = TrackPending.choices(for: mine, all: [promise], people: people)
+        XCTAssertEqual(c.note.map(\.name), ["Mei Tanaka"], "who it is for, in this note")
+        let byAlias = TrackPending.choices(for: mine, all: [], people: people, typed: "@adi")
+        XCTAssertEqual(byAlias.people.map(\.name), ["Aditya Pradhan"], "an alias of that person, not of someone else")
+    }
+
+    /// A note with no path is the same note by its title; another title is another note.
+    func testChoicesForANoteWithNoPathGoByTitle() {
+        func untitled(_ id: String, _ title: String, owner: String) -> ActionItem {
+            var i = item(id, owner: owner, ownerID: nil)
+            i.source = .note(jobID: "j", notePath: "", pageTitle: title, quote: nil)
+            return i
+        }
+        let mine = untitled("c1", "Sync", owner: "me")
+        let c = TrackPending.choices(for: mine, all: [untitled("c2", "Sync", owner: "Vladan"), untitled("c3", "Other", owner: "Ana")], people: people)
+        XCTAssertEqual(c.note.map(\.name), ["Vladan"])
+    }
+
     func testShiftOptionReturnTracks() {
         XCTAssertEqual(AddAs.key(option: true, command: false, shift: true), .trackPending)
         XCTAssertNil(AddAs.key(option: false, command: false, shift: true), "⇧Return isn't ours")

@@ -86,6 +86,25 @@ final class PeopleEditTests: XCTestCase {
         XCTAssertEqual(p.handlesFor("todo"), ["you"], "and from every type they handled")
     }
 
+    /// Renaming or re-aliasing a saved person touches only them; a person added from a type's ＋ and then
+    /// named does not make the next one handle that type.
+    func testRenameAndAliasesTouchOnlyThatPerson() {
+        var p = jinOnly()
+        p.people += [ActionPerson(id: "p-1", name: "Linu"), ActionPerson(id: "p-2", name: "Mei")]
+        var edit = PeopleEdit()
+        edit.saveName("p-1", "Linu Chui", in: &p)
+        XCTAssertEqual(p.people.map(\.name), ["Jin", "Linu Chui", "Mei"])
+        edit.setAliases("p-2", ["@mei"], in: &p)
+        XCTAssertEqual(p.people.map(\.aliases), [[], [], ["@mei"]])
+        p.setName("p-2", "Mei Tanaka")
+        XCTAssertEqual(p.people.map(\.name), ["Jin", "Linu Chui", "Mei Tanaka"])
+        edit.add(id: "p-3", forType: "todo")
+        edit.saveName("p-3", "Ana", in: &p)
+        XCTAssertNil(edit.newPersonType)
+        edit.add(id: "p-4")
+        XCTAssertNil(edit.newPersonType, "the next person handles no type")
+    }
+
     /// (c) The alias keeps inner spaces; it's trimmed, and a repeat in any case adds nothing.
     func testAliasKeepsTheSpace() {
         XCTAssertEqual(PeopleEdit.alias("  Linus Chui ", to: []), ["Linus Chui"])
