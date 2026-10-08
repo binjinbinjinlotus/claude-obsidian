@@ -140,8 +140,8 @@ final class DraftTextFieldViewTests: XCTestCase {
         XCTAssertEqual(saves, ["a=Ana"])
     }
 
-    /// Taken out of its window and put back (a kept window closed and reopened) the field keeps its state;
-    /// it registers again, so ⌘Q still saves what is typed after.
+    /// A hosting view taken out of its window and put back keeps the field's state; it registers again,
+    /// so ⌘Q still saves what is typed after.
     func testBackInItsWindowQuitStillSavesIt() throws {
         host()
         try type("Ana")
