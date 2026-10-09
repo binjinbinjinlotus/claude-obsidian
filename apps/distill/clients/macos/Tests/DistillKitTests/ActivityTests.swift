@@ -116,6 +116,9 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(e.type, "collector.deleted")
         // An entry this build can't read doesn't break the stream.
         XCTAssertEqual(try CoreEvent.decode(Data(#"{"type":"activity","entry":{"nope":1}}"#.utf8)), .unknown(type: "activity"))
+        // The core's settings.repaired (a healed product root) is not the settings event: this build skips it.
+        XCTAssertEqual(try CoreEvent.decode(Data(#"{"type":"settings.repaired","key":"productRoot","from":"/gone","to":"/here"}"#.utf8)),
+                       .unknown(type: "settings.repaired"))
     }
 
     // MARK: Filter

@@ -1840,6 +1840,7 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
     assert.equal(job.queuedApply?.planSha256, undefined, 'out of the queue: the owner approves again');
     assert.match(job.turns.at(-1)!.text, /couldn’t check this plan, and your vault hasn’t changed under it/);
     assert.ok(!job.turns.some((x) => /vault changed after this plan was built/.test(x.text)), 'no stale rebuild prompt');
+    assert.equal(h.inspectCalls.filter((c) => c.includes('inspect')).length, 1, 'no root healed, so no second inspect');
   });
 
   test('a queued apply whose core goes during its inspect waits under its hash: not back to the owner, no rebuild', async () => {
@@ -1909,6 +1910,29 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
     assert.equal(inspected[1]![1], path.join(other, 'scripts', 'claude-obsidian.py'));
     assert.ok(!job.turns.some((x) => /couldn’t check this plan/.test(x.text)), 'the old error never reached the owner');
     assert.equal(runner.requests.length, 1, 'the approved apply turn');
+  });
+
+  test('a healed root whose inspect also fails is inspected once more per pass, never again and again', async () => {
+    // Each heal finds another checkout, which is gone by the time it is inspected: the worst case for a loop.
+    let n = 0;
+    const fresh = () => {
+      const dir = path.join(tmp, `checkout-${++n}`);
+      fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'scripts', 'claude-obsidian.py'), '# fake core\n');
+      return dir;
+    };
+    const job = await queuedBeforeRestart({
+      detectProductRoot: fresh,
+      inspect: () => {
+        fs.rmSync(path.join(h.engine.getSettings().productRoot, 'scripts'), { recursive: true, force: true });
+        return { status: 2, stdout: Buffer.alloc(0), stderr: Buffer.from('[Errno 2] No such file or directory') };
+      },
+    });
+    assert.equal(h.inspectCalls.filter((c) => c.includes('inspect')).length, 2, 'the first inspect and one more after the heal');
+    assert.equal(h.runner.requests.length, 0);
+    // The second error isn't retried again: it goes to the owner at $0, never to a rebuild.
+    assert.match(job.turns.at(-1)!.text, /couldn’t check this plan, and your vault hasn’t changed under it/);
+    assert.ok(!job.turns.some((x) => /vault changed after this plan was built/.test(x.text)));
   });
 
   /** A batch whose recovery waits out its minute when the engine starts; the core is gone by then. */

@@ -318,6 +318,21 @@ describe('step log tool errors (2026-10-08)', () => {
   });
 });
 
+describe('step log: a result that never came (2026-10-08)', () => {
+  test('an apply or check still running when the turn ends keeps its running words: it never claims it worked', () => {
+    const dir = path.join(root, 'steps-unfinished');
+    const job = { ...newJob({ id: 'job-u', kind: 'ingest', vaultPath: root, files: ['inbox/a.md'], model: 'm', now: new Date() }), state: 'running' as const };
+    const log = createStepLog({ dir, emit: () => undefined, getJob: () => job });
+    log.onEvent({ type: 'job', job });
+    log.runnerStep('job-u', { kind: 'tool', id: 'in', tool: 'Bash', input: { command: `python3 /p/scripts/claude-obsidian.py transaction inspect /b.json --vault ${root}` } });
+    log.runnerStep('job-u', { kind: 'tool', id: 'ap', tool: 'Bash', input: { command: `python3 /p/scripts/claude-obsidian.py transaction apply /b.json --vault ${root}` } });
+    log.onEvent({ type: 'job', job: { ...job, state: 'failed' } });
+    const by = (verb: string) => log.list('job-u').steps.find((x) => x.verb === verb)!;
+    assert.deepEqual([by('check').state, by('check').text], ['done', 'Checking the plan with the vault core']);
+    assert.deepEqual([by('apply').state, by('apply').text], ['done', 'Applying the approved changes']);
+  });
+});
+
 describe('step log limits', () => {
   test('stops at MAX_STEPS with one “not kept” line', () => {
     const dir = path.join(root, 'steps');
