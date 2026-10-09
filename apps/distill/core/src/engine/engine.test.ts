@@ -1671,6 +1671,8 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
     assert.equal(h.runner.requests.length, calls, 'the wake never called the agent');
     assert.equal(job.recovery?.state, 'gaveUp');
     assert.match(job.recovery?.summary ?? '', /^Distill can't find its vault core at /);
+    assert.equal(job.recovery?.waitUntil, undefined, 'no wait left to show');
+    assert.equal(job.recovery?.proposal, undefined);
   });
 
   test('a saved root that lost its core heals to the checkout the core runs from: saved and announced', async () => {
@@ -1685,6 +1687,50 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
     const saved = JSON.parse(fs.readFileSync(path.join(tmp, 'state', 'settings.json'), 'utf8')) as { productRoot: string };
     assert.equal(saved.productRoot, other);
     assert.ok(h.events.some((e) => e.type === 'productRoot.repaired' && e.from === path.join(tmp, 'deleted-worktree') && e.to === other));
+    // Clients showing Settings get the healed root, not the stale one.
+    const lastSettings = h.events.filter((e): e is Extract<CoreEvent, { type: 'settings' }> => e.type === 'settings').at(-1);
+    assert.equal(lastSettings?.settings.productRoot, other);
+  });
+
+  test('a checkout gone mid-batch heals before recovery decides: recovery goes on as usual, not the $0 stop', async () => {
+    const other = path.join(tmp, 'other-checkout');
+    fs.mkdirSync(path.join(other, 'scripts'), { recursive: true });
+    fs.writeFileSync(path.join(other, 'scripts', 'claude-obsidian.py'), '# fake core\n');
+    h = setup([], { inspect: deleteCoreOnInspect(), detectProductRoot: () => other });
+    const created = await firstJob();
+    h.runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(h.engine.getSettings().productRoot, other);
+    assert.equal(job.recovery?.signature, 'plan-error');
+    assert.doesNotMatch(job.recovery?.summary ?? '', /can't find its vault core/);
+    assert.ok(h.runner.requests.length > 1, 'the rule turn or the agent ran');
+  });
+
+  test('session-gone while queued with the core gone: the missing-core sentence, not a new session ($0)', async () => {
+    h = setup([]);
+    const created = await firstJob();
+    h.runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    await h.engine.stop();
+    const jobsFile = path.join(tmp, 'state', 'jobs.json');
+    const saved = JSON.parse(fs.readFileSync(jobsFile, 'utf8')) as Array<Record<string, unknown>>;
+    const j = saved.find((x) => x.id === created.id)!;
+    j.queuedApply = { at: '2026-10-06T08:59:00Z', order: 1, planSha256: PLAN.approval_sha256, bundlePath: h.bundle(created), labels: 'confirm', carries: 'confirm' };
+    const runner = new FakeRunner([]);
+    runner.status = 'missing';
+    h = setup([], { runner, jobs: saved });
+    fs.rmSync(path.join(tmp, 'product'), { recursive: true, force: true });
+    await h.engine.start();
+    await h.engine.whenIdle();
+    await new Promise((r) => setTimeout(r, 20));
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(job.recovery?.signature, 'session-gone');
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.equal(job.recovery?.proposal, undefined, 'a new session can’t help without the core');
+    assert.match(job.recovery?.summary ?? '', /^Distill can't find its vault core at /);
+    assert.equal(runner.requests.length, 0);
   });
 
   test('a root healed at load is announced when the engine starts', async () => {
