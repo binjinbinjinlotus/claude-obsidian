@@ -31,17 +31,20 @@ Process now). Re-reads otherwise start on the next tick, which would make Done a
 (c) Left out: sources removed in Review, an applied part's, those already in the vault (the re-read's
 `existingSourcePages`), and those whose inbox file is gone. Sources that couldn't be read in full
 are released too: they were never added, and the full-read repair skips files a waiting re-read
-holds.
+holds. (Superseded by (f): they are not released.)
 (d) No UI change: the turn, Activity, and `released` on the job carry it; the error card and Done
 are as they were.
 (e) Only failed batches and completed ones whose change didn't fully apply release. A rejected or
 cancelled batch (Reject on a Couldn't fix card, Cancel during an apply turn) was stopped by the owner.
 (f) Supersedes (c) on stopped sources (round 4b): `Job.stopped` now persists (jobs.ts decoded and
 encoded neither, so Held in inbox/ emptied on every restart; fixed, with `reread.reason`). Sources
-that couldn't be read in full are no longer released. The core stopped them, not the owner, but
-they already have a way back that the owner controls: Held in inbox/ with Try again, one source per
-batch. A release would read them a second time in a packed batch, likely stop the same way, and pay
-twice for it.
+that couldn't be read in full (the core stopped reading them; the owner did nothing) are no longer
+released, because that is the choice that never reads one twice. Each already has its own way
+back: Held in inbox/ lists it (`listHeld`, from `job.stopped`) with Try again, a one-source re-read
+(`reason: 'retry'`). Released too, it could sit in a released plan while its Try again waits or
+runs, and be read and paid for twice. The full-read repair is not a second path for them: it reads
+only ledger sources (already ingested) and skips stopped hashes and files a waiting re-read holds.
+Tested: a held source whose Try again waits is not released, and only one waiting read of it exists.
 (g) The cap: a released re-read that didn't add its sources either is not released again. Each loop
 would be another paid run for sources that failed twice; they stay in inbox/ and the turn says so,
 so the owner decides. Only `reason: 'released'` counts: the owner's own re-reads release as usual.

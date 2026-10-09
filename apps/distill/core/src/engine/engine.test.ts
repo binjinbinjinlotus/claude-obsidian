@@ -2296,6 +2296,24 @@ describe('Done on a batch that added nothing (review-queue.md, 2026-10-09)', () 
     assert.deepEqual((await h.engine.listHeld()).map((x) => x.file), job.files);
   });
 
+  test('a held source is read once: by its own Try again, never also by the release', async () => {
+    const job = await approvedBatch(['a.md', 'b.md'], FAILED);
+    const [a, b] = [...job.files].sort();
+    await reloaded(job, (j) => { j.stopped = [{ file: a, reason: 'it isn’t valid UTF-8 text', at: '2026-10-09T10:00:00Z' }]; });
+    // The owner's Try again waits while another batch holds the vault.
+    fs.writeFileSync(path.join(h.queue, 'busy.md'), '# busy\n');
+    h.runner.steps.push({ hang: true, structured: { status: 'done', summary: 'x' } });
+    const busy = (await h.engine.processQueue({ force: true }))!;
+    const retry = await h.engine.retryHeld(a);
+    assert.equal(retry.waiting, 1);
+    const done = await h.engine.finishReview!(job.id);
+    assert.deepEqual(done.released?.files, [b], 'the held source is not released');
+    const waiting = reread().plans.flatMap((p) => p.groups.filter((g) => !g.jobId).flatMap((g) => g.files));
+    assert.deepEqual(waiting.filter((f) => f === a).length, 1, 'one waiting read of the held source: its Try again');
+    await h.engine.cancel(busy.id);
+    await h.engine.whenIdle();
+  });
+
   test('every source already in the vault: nothing to read again, and the turn says so', async () => {
     const job = await approvedBatch(['a.md'], FAILED);
     pageFor(job.files[0]!, 'A');
