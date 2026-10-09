@@ -959,6 +959,14 @@ describe('activity through the core and the API', () => {
     assert.equal((await request('POST', `/v1/collectors/${id}/consent`, { sha256: created.body.status.currentSha256 })).status, 200);
     assert.equal((await request('POST', `/v1/collectors/${id}/test`)).status, 200);
     await core.whenIdle?.();
+    // core.whenIdle waits for the engine, not for collector runs: wait for the test run to end, or the restart
+    // below stops it mid-run and logs it as interrupted (a line the restart check doesn't expect).
+    for (const deadline = Date.now() + 10_000; ; ) {
+      const c = (await request('GET', `/v1/collectors/${id}`)).body as { status: { running: boolean } };
+      if (!c.status.running) break;
+      assert.ok(Date.now() < deadline, 'the test run ends');
+      await new Promise((r) => setTimeout(r, 20));
+    }
     const outside = () => readLog(state).filter((e) => e.type === 'collector.script_changed_outside');
     assert.equal(outside().length, 0, 'nothing Distill wrote reads as an outside edit');
 
