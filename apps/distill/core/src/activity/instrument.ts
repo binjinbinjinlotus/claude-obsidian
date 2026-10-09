@@ -1046,7 +1046,7 @@ export function createEventLogger(deps: EventLoggerDeps, seedJobs: Job[]): (even
                       : r.files.length > 0
                       ? `${jobName(job)} wasn't added: ${plural(r.files.length, 'source')} ${r.files.length === 1 ? 'goes' : 'go'} to a re-read with the next batch`
                       : `${jobName(job)} wasn't added; none of its sources needs reading again`,
-                  details: { files: r.files, inVault: r.inVault, missing: r.missing, rereadId: r.rereadId ?? null, ...(r.notAgain ? { notAgain: r.notAgain } : {}) },
+                  details: { files: r.files, inVault: r.inVault, missing: r.missing, rereadId: r.rereadId ?? null, ...(r.notAgain ? { notAgain: r.notAgain } : {}), ...(r.alreadyQueued ? { alreadyQueued: r.alreadyQueued } : {}) },
                 },
                 source,
               );

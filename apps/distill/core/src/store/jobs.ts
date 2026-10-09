@@ -370,6 +370,7 @@ function decodeReleased(v: unknown): ReleasedSources | undefined {
   if (id !== undefined) out.rereadId = id;
   if (v.alreadyRereading === true) out.alreadyRereading = true;
   if (Array.isArray(v.notAgain)) out.notAgain = list(v.notAgain);
+  if (Array.isArray(v.alreadyQueued)) out.alreadyQueued = list(v.alreadyQueued);
   return out;
 }
 

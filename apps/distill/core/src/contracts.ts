@@ -464,7 +464,6 @@ export interface HeldSource extends StoppedSource {
   size?: number;
 }
 
-/** v9: which re-read a batch belongs to: group `group` of `groups` (1-based). */
 /** What Done released from a batch that added nothing (or only part): see `Job.released`. */
 export interface ReleasedSources {
   at: string;
@@ -480,8 +479,11 @@ export interface ReleasedSources {
   alreadyRereading?: boolean;
   /** Not released: this batch was itself a released re-read; these stay in inbox/ for the owner (the cap). */
   notAgain?: string[];
+  /** Not released: another re-read (waiting, running or in Review) already holds them. */
+  alreadyQueued?: string[];
 }
 
+/** v9: which re-read a batch belongs to: group `group` of `groups` (1-based). */
 export interface JobReread {
   id: string; // reread-yyyyMMdd-HHmmss-xxxx
   group: number;

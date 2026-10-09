@@ -81,7 +81,7 @@ function fullJob(): Record<string, unknown> {
     },
     approvedChange: { at: '2026-10-01T12:00:00Z', operationID: 'op-1', changes: 5, sources: 1, concepts: 2, entities: 1, otherPages: 1, updated: 3, sourcesApproved: 2 },
     reviewDoneAt: '2026-10-01T13:00:00Z',
-    released: { at: '2026-10-01T13:00:00Z', files: ['inbox/a.md'], inVault: ['inbox/b.md'], missing: ['inbox/c.md'], rereadId: 'rr-2', alreadyRereading: true, notAgain: ['inbox/d.md'] },
+    released: { at: '2026-10-01T13:00:00Z', files: ['inbox/a.md'], inVault: ['inbox/b.md'], missing: ['inbox/c.md'], rereadId: 'rr-2', alreadyRereading: true, notAgain: ['inbox/d.md'], alreadyQueued: ['inbox/g.md'] },
     stopped: [{ file: 'inbox/e.md', sha256: 'e'.repeat(64), reason: 'it isn’t valid UTF-8 text from line 4', at: '2026-10-01T12:30:00Z' }, { file: 'inbox/f.md', reason: 'too long', at: '2026-10-01T12:31:00Z' }],
     reread: { id: 'rr-1', group: 1, groups: 3, fromJob: 'job-0', instruction: 'read it all', reason: 'released' },
     queuedApply: { at: '2026-10-01T12:00:00Z', order: 4, bundlePath: '/v/b.json', labels: 'later', carries: 'later', planSha256: 'f'.repeat(64) },

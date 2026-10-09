@@ -45,6 +45,12 @@ back: Held in inbox/ lists it (`listHeld`, from `job.stopped`) with Try again, a
 runs, and be read and paid for twice. The full-read repair is not a second path for them: it reads
 only ledger sources (already ingested) and skips stopped hashes and files a waiting re-read holds.
 Tested: a held source whose Try again waits is not released, and only one waiting read of it exists.
+(h) Round 4c: no double spend between a release and any other re-read. The verifier found three:
+the owner's `batch reread --job` after Done read the source twice; Done on a batch and on the
+owner's failed re-read of it made two plans with the same file; and a hand-made re-read of a capped
+released re-read released again. Now a new re-read absorbs the files from released groups not
+started yet (the owner's read wins: it is the one they asked for); Done leaves out files another
+re-read holds; and the cap follows `reread.fromJob`, so a source is released at most once per chain.
 (g) The cap: a released re-read that didn't add its sources either is not released again. Each loop
 would be another paid run for sources that failed twice; they stay in inbox/ and the turn says so,
 so the owner decides. Only `reason: 'released'` counts: the owner's own re-reads release as usual.

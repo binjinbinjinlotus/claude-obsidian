@@ -2677,6 +2677,30 @@ export function createEngine(opts: EngineOptions): Engine {
     return clone(findJob(job.id) ?? job);
   }
 
+  /**
+   * A new re-read takes these files out of released groups not started yet (review-queue.md, 2026-10-09): the
+   * owner's own re-read reads them, the release doesn't read them again. A folder item leaves whole when one of
+   * its files does; a group left empty is dropped.
+   */
+  function absorbReleased(files: Set<string>, vaultPath: string): void {
+    for (const p of rereads.plans) {
+      if (p.reason !== 'released' || p.vaultPath !== vaultPath) continue;
+      const kept: RereadGroup[] = [];
+      for (const g of p.groups) {
+        if (g.jobId || !g.files.some((f) => files.has(f))) {
+          kept.push(g);
+          continue;
+        }
+        const gone = (g.folders ?? []).filter((d) => g.files.some((f) => files.has(f) && f.startsWith(d + '/')));
+        const left = g.files.filter((f) => !files.has(f) && !gone.some((d) => f.startsWith(d + '/')));
+        if (left.length === 0) continue;
+        const folders = (g.folders ?? []).filter((d) => !gone.includes(d));
+        kept.push({ files: left, ...(folders.length ? { folders } : {}) });
+      }
+      p.groups = kept;
+    }
+  }
+
   async function rereadSources(req: RereadRequest): Promise<RereadResult> {
     if (!req || typeof req !== 'object' || Array.isArray(req)) throw new CoreError('invalid_request', 'Expected a re-read request.');
     // v10 (decision 2026-10-05, full reads): groups are packed by tokens unless a count is asked for.
@@ -2742,6 +2766,7 @@ export function createEngine(opts: EngineOptions): Engine {
       ...(tokenBudget !== undefined ? { tokenBudget } : {}),
       ...(req.reason ? { reason: req.reason } : {}),
     };
+    absorbReleased(new Set(items.flatMap((i) => i.files)), vault.path);
     rereads.plans.push(plan);
     saveRereads();
     log('info', `Re-read ${plan.id}: ${plural(items.length, 'source')} in ${plan.groups.length} batch(es) ${perBatch !== undefined ? `of up to ${perBatch}` : `of up to about ${Math.round(tokenBudget! / 1000)}K tokens`}.`);
@@ -3382,6 +3407,41 @@ export function createEngine(opts: EngineOptions): Engine {
     return clone(findJob(id)!);
   }
 
+  /**
+   * The batches a re-read reads again, nearest first, through `reread.fromJob`. Ends at a batch that isn't a
+   * re-read, at one no longer listed (History keeps 300), or at one already seen, so it never loops.
+   */
+  function rereadChain(job: Job): Job[] {
+    const out: Job[] = [];
+    const seen = new Set([job.id]);
+    let next = job.reread?.fromJob ?? undefined;
+    while (next && !seen.has(next)) {
+      seen.add(next);
+      const j = findJob(next);
+      if (!j) break;
+      out.push(j);
+      next = j.reread?.fromJob ?? undefined;
+    }
+    return out;
+  }
+
+  /**
+   * Files another read holds in this vault: a re-read group not started yet, or a batch running or in Review (the
+   * batch being released is failed or completed, so it is never one of them).
+   */
+  function filesBeingReread(vaultPath: string): Set<string> {
+    const out = new Set<string>();
+    for (const p of rereads.plans) {
+      if (p.vaultPath !== vaultPath) continue;
+      for (const g of p.groups) if (!g.jobId) g.files.forEach((f) => out.add(f));
+    }
+    for (const j of jobs) {
+      if (j.vaultPath !== vaultPath || (j.state !== 'running' && j.state !== 'awaitingApproval')) continue;
+      j.files.forEach((f) => out.add(f));
+    }
+    return out;
+  }
+
   /** The batch's whole change is in the vault: completed under an operation, with no part left over. */
   function fullyApplied(job: Job): boolean {
     return job.state === 'completed' && !!job.operationID && !job.pendingPart && job.approval?.needsRebuild !== true;
@@ -3431,13 +3491,31 @@ export function createEngine(opts: EngineOptions): Engine {
       }
       if (files.length > 0) open.push({ files, ...(item.folder ? { folder: item.folder } : {}) });
     }
-    const files = open.flatMap((i) => i.files);
-    // The cap: a released re-read that didn't add its sources either is not released again (a paid loop). They
-    // stay in inbox/ for the owner (decision 2026-10-09).
-    if (job.reread?.reason === 'released') {
-      const n = files.length;
+    // The cap (decision 2026-10-09): a source is released once per re-read chain. A batch that is, or re-reads
+    // (through `reread.fromJob`), a released re-read releases nothing; files an earlier batch of its chain released
+    // already stay in inbox/ for the owner. Each would be another paid read of a source that failed twice.
+    const chain = rereadChain(job);
+    const releasedBefore = new Set(chain.flatMap((c) => c.released?.files ?? []));
+    // Never two reads at once: files another re-read already holds (waiting, running or in Review) stay with it.
+    const held = filesBeingReread(job.vaultPath);
+    const alreadyQueued: string[] = [];
+    const notAgain: string[] = [];
+    const toRead: RereadItem[] = [];
+    for (const item of open) {
+      const keep: string[] = [];
+      for (const f of item.files) {
+        if (releasedBefore.has(f)) notAgain.push(f);
+        else if (held.has(f)) alreadyQueued.push(f);
+        else keep.push(f);
+      }
+      if (keep.length > 0) toRead.push({ ...item, files: keep });
+    }
+    const files = toRead.flatMap((i) => i.files);
+    if ([job, ...chain].some((c) => c.reread?.reason === 'released')) {
+      notAgain.push(...files);
+      const n = notAgain.length;
       mutate(id, (j) => {
-        j.released = { at, files: [], inVault, missing, notAgain: files };
+        j.released = { at, files: [], inVault, missing, notAgain, ...(alreadyQueued.length ? { alreadyQueued } : {}) };
         const words = n > 0
           ? `Not added. ${n === 1 ? 'This source was' : `These ${n} sources were`} already read again once; ${n === 1 ? 'it stays' : 'they stay'} in inbox/ for you to re-read.`
           : 'Not added, and nothing to read again.';
@@ -3454,7 +3532,7 @@ export function createEngine(opts: EngineOptions): Engine {
         createdAt: at,
         perBatch: 0,
         tokenBudget,
-        groups: packItems(open, tokenBudget, (f: string) => estimateTokens(path.join(vault.path, f))),
+        groups: packItems(toRead, tokenBudget, (f: string) => estimateTokens(path.join(vault.path, f))),
         fromJob: id,
         reason: 'released',
       };
@@ -3465,11 +3543,18 @@ export function createEngine(opts: EngineOptions): Engine {
     const n = files.length;
     const words = [
       n > 0 ? `Not added. Its ${plural(n, 'source')} not in your vault ${n === 1 ? 'is' : 'are'} read again with the next batch.` : 'Not added, and nothing to read again.',
+      notAgain.length > 0 ? `${plural(notAgain.length, 'source')} already read again once ${notAgain.length === 1 ? 'stays' : 'stay'} in inbox/ for you to re-read.` : '',
+      alreadyQueued.length > 0 ? `${plural(alreadyQueued.length, 'source')} already ${alreadyQueued.length === 1 ? 'waits' : 'wait'} for another re-read.` : '',
       inVault.length > 0 ? `${plural(inVault.length, 'source')} already in your vault ${inVault.length === 1 ? 'stays' : 'stay'} as ${inVault.length === 1 ? 'it is' : 'they are'}.` : '',
       missing.length > 0 ? `${plural(missing.length, 'source')} can't be read again: the inbox file is gone.` : '',
     ].filter(Boolean).join(' ');
     mutate(id, (j) => {
-      j.released = { at, files, inVault, missing, ...(rereadId ? { rereadId } : {}) };
+      j.released = {
+        at, files, inVault, missing,
+        ...(rereadId ? { rereadId } : {}),
+        ...(notAgain.length ? { notAgain } : {}),
+        ...(alreadyQueued.length ? { alreadyQueued } : {}),
+      };
       j.turns.push(newTurn('app', words, now()));
     });
     if (rereadId) log('info', `Done on ${id}: ${plural(n, 'source')} not added go to re-read ${rereadId} with the next batch.`);

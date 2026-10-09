@@ -541,7 +541,9 @@ sources. In the same call, the core (`releaseUnapplied`):
   skips it). It starts from `processQueue`, the timer's batch when automatic
   processing is on, or Process now, before the queue folder, in the active
   vault only; not from the overflow continuation of a split queue. It keeps
-  its reason across a restart (`reread.json`).
+  its reason across a restart (`reread.json`). With automatic processing on,
+  released sources join the timer's next batch, so they wait one batch
+  interval (Settings → batch interval); Process now takes them at once.
 - The batch keeps `released` (`files`, `inVault`, `missing`, `rereadId`) and
   gets one turn, for example "Not added. Its 2 sources not in your vault are
   read again with the next batch. 2 sources already in your vault stay as they
@@ -553,11 +555,20 @@ sources. In the same call, the core (`releaseUnapplied`):
 - A fully applied batch (`completed` with an operation, no part left) is
   untouched: no field, no turn, no plan. So are rejected and cancelled
   batches: the owner stopped them, so sending their sources again is theirs.
-- **The cap.** A batch that was itself a released re-read (`reread.reason:
-  'released'`, kept in jobs.json) is never released again: Done records
+- **The cap.** A source is released once per re-read chain. A batch that is,
+  or re-reads through `reread.fromJob`, a released re-read (`reread.reason:
+  'released'`, kept in jobs.json) releases nothing: Done records
   `released.notAgain` and says "Not added. These 2 sources were already read
-  again once; they stay in inbox/ for you to re-read." Re-reads for other
-  reasons (the owner's, a repair, Try again) release as usual.
+  again once; they stay in inbox/ for you to re-read." Otherwise, files an
+  earlier batch of the chain released go to `notAgain` and the rest is
+  released. The chain walk stops at a batch already seen (no loop) and at one
+  no longer listed (the end of the chain).
+- **One read at a time (2026-10-09, round 4c).** Done leaves out files that
+  another re-read already holds (a group not started yet, or a re-read batch
+  running or in Review): `released.alreadyQueued`, "1 source already waits
+  for another re-read." And any new re-read (`batch reread`, Try again)
+  takes its files out of released groups not started yet; a folder item
+  leaves whole, and a plan left empty is dropped.
 
 ## 4. The batch list (Review)
 
