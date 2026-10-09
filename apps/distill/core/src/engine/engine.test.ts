@@ -2224,6 +2224,94 @@ describe('Done on a batch that added nothing (review-queue.md, 2026-10-09)', () 
     assert.deepEqual(released2.released?.files, other.files);
   });
 
+  /** The batch's apply turn fails: Done is offered on it. */
+  async function approveAndFail(id: string): Promise<void> {
+    h.runner.steps.push(FAILED);
+    await h.engine.approve(id);
+    await h.engine.whenIdle();
+  }
+
+  /** The owner's `distill batch reread --job <id>`, its batch waiting in Review. */
+  async function ownerRereadInReview(jobId: string): Promise<Job> {
+    await h.engine.rereadSources({ jobId });
+    const rr = h.engine.listJobs().find((j) => j.reread?.fromJob === jobId)!;
+    h.runner.steps.push(needsApproval(h.bundle(rr)));
+    await h.engine.whenIdle();
+    return h.engine.getJob(rr.id)!;
+  }
+
+  test('real data (job-20261008-101155-3caf): the owner re-read it by hand, then pressed Done: no second plan', async () => {
+    const job = await approvedBatch(['a.md', 'b.md'], FAILED);
+    const rr = await ownerRereadInReview(job.id);
+    assert.equal(rr.state, 'awaitingApproval', 'the owner’s re-read waits in Review');
+    const calls = h.runner.requests.length;
+    const done = await h.engine.finishReview!(job.id);
+    assert.equal(done.released?.alreadyRereading, true);
+    assert.deepEqual(done.released?.files, []);
+    assert.equal(released().length, 0, 'no second plan');
+    assert.equal(h.runner.requests.length, calls);
+    assert.equal(await h.engine.processQueue({ force: true }), null, 'nothing extra to start');
+  });
+
+  test('released names the plan it made', async () => {
+    const job = await approvedBatch(['a.md'], FAILED);
+    const done = await h.engine.finishReview!(job.id);
+    assert.equal(done.released?.rereadId, released()[0]!.id);
+  });
+
+  test('a folder item is released as one folder, and its re-read batch keeps it', async () => {
+    h = setup([]);
+    fs.mkdirSync(path.join(h.queue, 'Trip'));
+    fs.writeFileSync(path.join(h.queue, 'Trip', 'x.md'), '# x\n');
+    fs.writeFileSync(path.join(h.queue, 'Trip', 'y.md'), '# y\n');
+    const created = (await h.engine.processQueue({ force: true }))!;
+    assert.equal(created.folders?.length, 1, 'the queue folder is one item');
+    h.runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    await approveAndFail(created.id);
+    await h.engine.finishReview!(created.id);
+    assert.deepEqual(released()[0]!.groups[0]!.files.length, 2);
+    h.runner.steps.push({ structured: { status: 'nothing_to_do', summary: 'ok' } });
+    const next = (await h.engine.processQueue({ force: true }))!;
+    assert.deepEqual(next.folders, created.folders);
+  });
+
+  // Found by the round-4 verifier (2026-10-09). Not fixed yet: these pin the behavior to change.
+  test('double spend: Done, then the owner re-reads the same batch by hand: one read of the source, not two', { todo: 'rereadSources ignores a pending released plan for the same job' }, async () => {
+    const job = await approvedBatch(['a.md'], FAILED);
+    await h.engine.finishReview!(job.id);
+    await ownerRereadInReview(job.id);
+    h.runner.steps.push({ structured: { status: 'nothing_to_do', summary: 'ok' } });
+    await h.engine.processQueue({ force: true });
+    await h.engine.whenIdle();
+    const readers = h.engine.listJobs().filter((j) => j.id !== job.id && j.files.includes(job.files[0]!));
+    assert.equal(readers.length, 1, `read by ${readers.map((j) => j.reread?.reason ?? 'manual').join(' and ')}`);
+  });
+
+  test('double spend: Done on a batch and on the owner’s failed re-read of it: one plan, not two with the same source', { todo: 'releaseUnapplied checks only fromJob, not files already in another pending plan' }, async () => {
+    const job = await approvedBatch(['a.md'], FAILED);
+    const rr = await ownerRereadInReview(job.id);
+    await approveAndFail(rr.id);
+    await h.engine.finishReview!(job.id);
+    await h.engine.finishReview!(rr.id);
+    const withA = released().filter((p) => p.groups.some((g) => g.files.includes(job.files[0]!)));
+    assert.equal(withA.length, 1);
+  });
+
+  test('the cap holds through a hand-made re-read of a released re-read', { todo: 'the cap reads only reread.reason of the batch itself, not of the batch it re-reads' }, async () => {
+    const job = await approvedBatch(['a.md'], FAILED);
+    await h.engine.finishReview!(job.id);
+    const r1 = (await h.engine.processQueue({ force: true }))!;
+    h.runner.steps.push(needsApproval(h.bundle(r1)));
+    await h.engine.whenIdle();
+    await approveAndFail(r1.id);
+    assert.ok((await h.engine.finishReview!(r1.id)).released?.notAgain, 'capped');
+    const r2 = await ownerRereadInReview(r1.id);
+    await approveAndFail(r2.id);
+    const again = await h.engine.finishReview!(r2.id);
+    assert.deepEqual(again.released?.files ?? [], [], 'a third automatic read of the same source');
+  });
+
   test('released sources wait for the vault they came from, and never ride on a split queue’s next batch', async () => {
     const job = await approvedBatch(['a.md'], FAILED);
     await h.engine.finishReview!(job.id);
