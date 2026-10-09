@@ -1480,7 +1480,7 @@ describe('recovery after a spent rule (review-queue.md, 2026-10-06)', () => {
     assert.equal((await h.engine.status()).pendingApprovals, 1);
   });
 
-  test('lock: the core gone by the time the waits are spent stops at $0, the approved hash kept (2026-10-08)', async (t) => {
+  test('lock: the core gone by the time the waits are spent: it waits under the approved hash at $0 (2026-10-08)', async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.parse('2026-10-06T10:00:00Z') });
     const runner = sandboxed();
     h = setup([], { runner, apply: () => lock, now: () => new Date(Date.now()) });
@@ -1496,10 +1496,10 @@ describe('recovery after a spent rule (review-queue.md, 2026-10-06)', () => {
     await settle();
     const job = h.engine.getJob(created.id)!;
     assert.equal(runner.requests.length, 1, 'only the batch: no recovery call');
-    assert.equal(job.recovery?.signature, 'lock');
-    assert.equal(job.recovery?.state, 'gaveUp');
-    assert.match(job.recovery?.summary ?? '', /^Distill can't find its vault core at /);
-    assert.equal(job.recovery?.approvedSha256, PLAN.approval_sha256);
+    // The pump holds it before any inspect, rule or agent: still approved under its hash, the reason said once.
+    assert.equal(job.queuedApply?.planSha256, PLAN.approval_sha256);
+    assert.match(job.turns.at(-1)!.text, /^Not applied yet: Distill can't find its vault core at /);
+    assert.equal(job.recovery?.state === 'running' || job.recovery?.state === 'waiting', false, 'nothing is working on it');
   });
 
   test('the lock waits count per batch: another batch meeting a lock starts at 30 s', async (t) => {
@@ -1651,6 +1651,34 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
     assert.match(job.recovery?.summary ?? '', /^Distill can't find its vault core at /);
   });
 
+  test('approve with the core gone: no apply turn; it stays approved under its hash and applies once the core is back', async () => {
+    h = setup([]);
+    const created = await firstJob();
+    h.runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    const product = path.join(tmp, 'product');
+    fs.renameSync(product, `${product}-away`);
+    await h.engine.approve(created.id);
+    await h.engine.whenIdle();
+    let job = h.engine.getJob(created.id)!;
+    assert.equal(h.runner.requests.length, 1, 'no apply turn was sent');
+    assert.equal(job.state, 'awaitingApproval');
+    assert.equal(job.queuedApply?.planSha256, PLAN.approval_sha256, 'approved and queued under its hash');
+    assert.match(job.turns.at(-1)!.text, /^Not applied yet: Distill can't find its vault core at /);
+    // Approving again says it once more only if something else was said since, and still sends nothing.
+    await h.engine.approve(created.id);
+    await h.engine.whenIdle();
+    assert.equal(h.runner.requests.length, 1);
+    assert.equal(h.engine.getJob(created.id)!.turns.filter((x) => /vault core at/.test(x.text)).length, 1);
+    // The checkout is back: the queue applies it under the same approval.
+    fs.renameSync(`${product}-away`, product);
+    h.runner.steps.push({ structured: { status: 'done', summary: 'Applied.', operation_id: PLAN.operation_id, changed_paths: PLAN.changed_paths } });
+    await h.engine.approve(created.id);
+    await h.engine.whenIdle();
+    job = h.engine.getJob(created.id)!;
+    assert.equal(h.runner.requests.length, 2, 'the apply turn, once the core is back');
+  });
+
   test('a recovery waiting out its minute stops at $0 when the core is gone by then', async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     let clock = Date.parse('2026-10-05T10:00:00Z');
@@ -1707,7 +1735,7 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
     assert.ok(h.runner.requests.length > 1, 'the rule turn or the agent ran');
   });
 
-  test('session-gone while queued with the core gone: the missing-core sentence, not a new session ($0)', async () => {
+  test('session-gone while queued with the core gone: the missing-core sentence, not a new session, the hash kept ($0)', async () => {
     h = setup([]);
     const created = await firstJob();
     h.runner.steps.push(needsApproval(h.bundle(created)));
@@ -1726,10 +1754,55 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
     await new Promise((r) => setTimeout(r, 20));
     await h.engine.whenIdle();
     const job = h.engine.getJob(created.id)!;
+    // The pump holds it before the session check (2026-10-08, round 2): no new-session proposal, no turn.
+    assert.equal(job.recovery?.proposal, undefined, 'a new session can’t help without the core');
+    assert.equal(job.queuedApply?.planSha256, PLAN.approval_sha256, 'still approved under its hash');
+    assert.match(job.turns.at(-1)!.text, /^Not applied yet: Distill can't find its vault core at /);
+    assert.equal(runner.requests.length, 0);
+  });
+
+  /** A batch approved and queued before a restart (jobs.json), so the pump inspects it on start. */
+  async function queuedBeforeRestart(o: { runner?: FakeRunner; inspect?: (bundle: string) => ProcessOutput; removeCore?: boolean } = {}): Promise<Job> {
+    h = setup([]);
+    const created = await firstJob();
+    h.runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    await h.engine.stop();
+    const saved = JSON.parse(fs.readFileSync(path.join(tmp, 'state', 'jobs.json'), 'utf8')) as Array<Record<string, unknown>>;
+    saved.find((x) => x.id === created.id)!.queuedApply = { at: '2026-10-06T08:59:00Z', order: 1, planSha256: PLAN.approval_sha256, bundlePath: h.bundle(created), labels: 'confirm', carries: 'confirm' };
+    h = setup([], { jobs: saved, ...(o.runner ? { runner: o.runner } : {}), ...(o.inspect ? { inspect: o.inspect } : {}) });
+    if (o.removeCore) fs.rmSync(path.join(tmp, 'product'), { recursive: true, force: true });
+    await h.engine.start();
+    await h.engine.whenIdle();
+    await new Promise((r) => setTimeout(r, 20));
+    await h.engine.whenIdle();
+    return h.engine.getJob(created.id)!;
+  }
+
+  test('a queued apply whose inspect fails with the core present and nothing changed goes back to the owner at $0', async () => {
+    const job = await queuedBeforeRestart({ inspect: () => ({ status: 2, stdout: Buffer.alloc(0), stderr: Buffer.from('ERR INVALID_BUNDLE: bad\n') }) });
+    assert.equal(h.runner.requests.length, 0, 'no rebuild turn');
+    assert.equal(job.queuedApply?.planSha256, undefined, 'out of the queue: the owner approves again');
+    assert.match(job.turns.at(-1)!.text, /couldn’t check this plan, and your vault hasn’t changed under it/);
+    assert.ok(!job.turns.some((x) => /vault changed after this plan was built/.test(x.text)), 'no stale rebuild prompt');
+  });
+
+  test('a queued apply with the core gone: no rebuild, and the live log never says the vault changed', async () => {
+    const job = await queuedBeforeRestart({ removeCore: true });
+    assert.equal(h.runner.requests.length, 0);
+    assert.equal(job.queuedApply?.planSha256, PLAN.approval_sha256);
+    assert.ok(!job.turns.some((x) => /vault changed after/.test(x.text)), 'no STALE_REBUILD_PROMPT, so no “Not added: the vault changed …”');
+    assert.match(job.turns.at(-1)!.text, /^Not applied yet: Distill can't find its vault core at /);
+  });
+
+  test('session-gone at the queue head keeps the approved hash on the recovery (q aliased the job’s queuedApply)', async () => {
+    const runner = new FakeRunner([]);
+    runner.status = 'missing';
+    const job = await queuedBeforeRestart({ runner });
     assert.equal(job.recovery?.signature, 'session-gone');
     assert.equal(job.recovery?.state, 'gaveUp');
-    assert.equal(job.recovery?.proposal, undefined, 'a new session can’t help without the core');
-    assert.match(job.recovery?.summary ?? '', /^Distill can't find its vault core at /);
+    assert.equal(job.recovery?.approvedSha256, PLAN.approval_sha256);
+    assert.equal(job.queuedApply?.planSha256, undefined);
     assert.equal(runner.requests.length, 0);
   });
 

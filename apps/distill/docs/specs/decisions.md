@@ -17,6 +17,23 @@ supersede it with a new entry.
 
 ## 2026-10-08
 
+**A missing core holds approved batches; only a changed vault is rebuilt (2026-10-08, round 2).**
+The verifier found two paths that still paid with the core gone: the apply queue read a failed
+inspect as a stale plan and resumed the session with the rebuild prompt (which the live log then
+called "the vault changed after you reviewed this batch"), and Approve sent the apply turn
+unchecked. Decided:
+(a) With the core missing, Approve and the queue send nothing; the batch stays approved and queued
+under its hash and applies by itself once the core is back. Holding beats Couldn't fix here: the
+owner already approved, and the fix (restoring the checkout) needs no second decision.
+(b) The queue rebuilds only for a vault that really changed: changed paths, a plan with another
+hash, or the core's conflict (exit 75). Any other inspect error goes back to the owner at $0:
+a rebuild can't fix a bundle or tool the core rejects, and a paid turn should never be the first
+response to an error nobody has read.
+(c) A tool step whose result is an error ends failed; apply and check steps lose their past tense.
+A step whose result never arrives still ends `done` (`closeRunning`): no existing state means
+"unknown", and adding one is a contract and UI change.
+(d) A session-gone batch keeps its approved hash (the pump read it after deleting it).
+
 **A deleted checkout heals itself and never reaches AI recovery (2026-10-08).** The owner deleted
 a merged worktree; the installed app's Info.plist `ClaudeObsidianProductRoot` and settings.json
 `productRoot` both still pointed there. The core reported `missingCore`, yet a batch's plan check

@@ -639,6 +639,19 @@ export function createEngine(opts: EngineOptions): Engine {
     return missingCoreSentence(core);
   }
 
+  /**
+   * An approved batch whose apply can't run because the vault core is missing: it stays queued under its approved
+   * hash (the pump applies it once the core is back, after inspect proves the hash) and says why once. Nothing is
+   * sent to a runner.
+   */
+  function holdForMissingCore(id: string, queued: QueuedApply, summary: string): void {
+    mutate(id, (j) => {
+      j.queuedApply = queued;
+      const text = `Not applied yet: ${summary}`;
+      if (j.turns.at(-1)?.text !== text) j.turns.push(newTurn('app', text, now()));
+    });
+  }
+
   /** Stops a batch's recovery at $0 because the vault core is missing (nothing was sent to a runner). */
   function stopForMissingCore(id: string, signature: RecoverySignature, summary: string, approvedSha256?: string): void {
     mutate(id, (j) => {
@@ -1838,6 +1851,12 @@ export function createEngine(opts: EngineOptions): Engine {
           continue;
         }
         const vault = vaultProfileFor(head);
+        // review-queue.md, A missing vault core: no inspect, no rebuild, no apply turn; it waits under its hash.
+        const missingBefore = missingCoreSummary();
+        if (missingBefore) {
+          holdForMissingCore(head.id, { ...q }, missingBefore);
+          return;
+        }
         const outcome = await inspect(q.bundlePath, vault);
         const now_ = findJob(head.id);
         if (!now_ || now_.state !== 'awaitingApproval' || now_.queuedApply?.planSha256 !== q.planSha256) continue;
@@ -1846,13 +1865,15 @@ export function createEngine(opts: EngineOptions): Engine {
           const again = q.labels === 'later' ? { labels: 'later' as const } : {};
           const gone = coreApplies(now_) ? null : precheck(now_, 'approve', again);
           if (gone) {
+            // q is the job's own queuedApply: read the hash before the mutate below deletes it.
+            const approved = q.planSha256 ?? undefined;
             mutate(head.id, (j) => {
               j.sessionUnavailable = { ...gone, action: 'approve' };
               if (j.queuedApply) delete j.queuedApply.planSha256;
               j.turns.push(newTurn('app', 'Not applied yet: this batch’s AI session isn’t available anymore. Continue in a new session to apply it.', now()));
             });
             // session-gone: only the owner may start a new session (session continuity), so recovery proposes it.
-            recoverAfterRule(head.id, 'session-gone', q.planSha256 ?? undefined);
+            recoverAfterRule(head.id, 'session-gone', approved);
             return;
           }
           // The lock's count resets only when an apply lands (applyInCore), not before each try: else the
@@ -1864,7 +1885,23 @@ export function createEngine(opts: EngineOptions): Engine {
           }
           return;
         }
-        if (!refreshJob(head.id, true, staleFor(vault.path, q.bundlePath).map((s) => s.path))) {
+        if ('error' in outcome) {
+          // The core went missing during the inspect: the same wait under the approved hash.
+          const missing = missingCoreSummary();
+          if (missing) {
+            holdForMissingCore(head.id, { ...q }, missing);
+            return;
+          }
+        }
+        const stalePaths = staleFor(vault.path, q.bundlePath).map((s) => s.path);
+        // Only a vault that really changed is rebuilt (a paid turn): changed paths, a plan with another hash, or the
+        // core's own conflict (exit 75). Any other inspect error (exit 2, couldn't run) goes back to the owner at $0
+        // (decision 2026-10-08).
+        if ('error' in outcome && stalePaths.length === 0 && !/exited 75\b/.test(outcome.error)) {
+          backToOwner(head.id, 'Not applied yet: the vault core couldn’t check this plan, and your vault hasn’t changed under it. Approve again to try again, or reject.');
+          return;
+        }
+        if (!refreshJob(head.id, true, stalePaths)) {
           // Out of the queue first (as for a lock), the approved hash kept on the recovery: a recovery that gives
           // up then reads Couldn't fix / Needs you, and the pump doesn't re-inspect it every tick.
           // (The agent's facts are taken as it starts, while the batch still holds the approved hash.)
@@ -2953,7 +2990,10 @@ export function createEngine(opts: EngineOptions): Engine {
     if (opts.labels === undefined && marker?.labels !== undefined) opts.labels = marker.labels;
     if (opts.pages === undefined && marker?.pages !== undefined) opts.pages = [...marker.pages];
     const approval = job.approval;
+    // review-queue.md, A missing vault core: nothing that would send a runner request goes on without it.
+    const missing = missingCoreSummary();
     if (approval?.needsRebuild && job.pendingPart) {
+      if (missing) throw new CoreError('invalid_state', missing);
       retryPart(id, job.pendingPart, opts.newSession === true);
       return;
     }
@@ -2984,6 +3024,7 @@ export function createEngine(opts: EngineOptions): Engine {
     }
     if (sources.length > 0 && picked.length === 0) throw new CoreError('invalid_request', 'Pick at least one source to approve, or reject the batch.');
     const partial = sources.length > 0 && (picked.length < active.length || sources.some((s) => s.removed));
+    if (partial && missing) throw new CoreError('invalid_state', missing);
     if (partial) {
       // The owner acted (a pick, or confirming recovery's split): recovery starts over.
       if (!fromQueue) mutate(id, (j) => {
@@ -3005,6 +3046,11 @@ export function createEngine(opts: EngineOptions): Engine {
     // review-queue.md: one apply at a time per vault, in the order the owner approved (a re-approval keeps its place).
     const order = job.queuedApply?.order ?? now().getTime();
     const queued: QueuedApply = { at: isoDate(now()), order, bundlePath: bundle, labels: mode, carries };
+    if (missing) {
+      // Approved and queued under its hash; the pump applies it once the core is back. No turn is sent.
+      holdForMissingCore(id, { ...queued, planSha256: plan.approval_sha256 }, missing);
+      return;
+    }
     if (!fromQueue && !opts.newSession) {
       const ahead = applyAhead(job, order);
       if (ahead) {
