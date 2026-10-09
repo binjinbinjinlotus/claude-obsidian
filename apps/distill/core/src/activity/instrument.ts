@@ -1273,7 +1273,7 @@ export function createEventLogger(deps: EventLoggerDeps, seedJobs: Job[]): (even
           );
           return;
         }
-        case 'productRoot.repaired': {
+        case 'settings.repaired': {
           // The saved checkout was gone (a deleted worktree); the core healed it itself (app-shell.md).
           write(
             {

@@ -619,7 +619,7 @@ export function createEngine(opts: EngineOptions): Engine {
     settingsStore.save(settings);
     log('info', `Product root ${repair.from || '(none)'} had no vault core; using ${repair.to}.`);
     emit({ type: 'settings', settings: clone(settings) });
-    emit({ type: 'productRoot.repaired', ...repair });
+    emit({ type: 'settings.repaired', key: 'productRoot', ...repair });
   }
 
   const problems = () => {
@@ -657,9 +657,9 @@ export function createEngine(opts: EngineOptions): Engine {
     mutate(id, (j) => {
       const rec = recoveryFor(j.recovery, signature);
       const attempts = rec.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed' as const } : a));
-      // A lock's approved hash stays, so Try again retries under it once the checkout is back.
-      const approved = approvedSha256 ?? rec.approvedSha256;
-      j.recovery = { ...rec, attempts, state: 'gaveUp', summary, ...(approved ? { approvedSha256: approved } : {}) };
+      // A lock's approved hash stays (passed in, or on the same recovery via the spread), so Try again retries
+      // under it once the checkout is back.
+      j.recovery = { ...rec, attempts, state: 'gaveUp', summary, ...(approvedSha256 ? { approvedSha256 } : {}) };
       delete j.recovery.proposal;
       delete j.recovery.waitUntil;
     });
@@ -1834,6 +1834,8 @@ export function createEngine(opts: EngineOptions): Engine {
     if (pumping.has(vaultPath)) return;
     if ((lockHeldUntil.get(vaultPath) ?? 0) > Date.now()) return;
     pumping.add(vaultPath);
+    /** Batches inspected again after their root healed (at most once per pass). */
+    const reinspected = new Set<string>();
     try {
       for (let guard = 0; guard < 20; guard++) {
         if (applyingIn(vaultPath)) return;
@@ -1886,8 +1888,14 @@ export function createEngine(opts: EngineOptions): Engine {
           return;
         }
         if ('error' in outcome) {
-          // The core went missing during the inspect: the same wait under the approved hash.
+          // The core went missing during the inspect: the same wait under the approved hash. When the root heals
+          // to another checkout instead, the old error says nothing about it: inspect again, once, with that one.
+          const rootBefore = settings.productRoot;
           const missing = missingCoreSummary();
+          if (!missing && settings.productRoot !== rootBefore && !reinspected.has(head.id)) {
+            reinspected.add(head.id);
+            continue;
+          }
           if (missing) {
             holdForMissingCore(head.id, { ...q }, missing);
             return;
@@ -4231,7 +4239,7 @@ export function createEngine(opts: EngineOptions): Engine {
       // A root healed at load is logged now that the activity log listens.
       if (unannouncedRootRepair) {
         log('info', `Product root ${unannouncedRootRepair.from || '(none)'} had no vault core; using ${unannouncedRootRepair.to}.`);
-        emit({ type: 'productRoot.repaired', ...unannouncedRootRepair });
+        emit({ type: 'settings.repaired', key: 'productRoot', ...unannouncedRootRepair });
         unannouncedRootRepair = undefined;
       }
       refreshQueue();

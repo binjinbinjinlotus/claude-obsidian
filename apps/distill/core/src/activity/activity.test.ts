@@ -559,7 +559,7 @@ describe('instrumentCore', () => {
     const dir = tmp('distill-activity-root-');
     const log = new ActivityLog({ dir });
     const logEvent = createEventLogger({ log, getSettings: () => ({}) as never, collectorName: () => '' }, []);
-    logEvent({ type: 'productRoot.repaired', from: '/gone/worktree', to: '/Users/me/claude-obsidian' });
+    logEvent({ type: 'settings.repaired', key: 'productRoot', from: '/gone/worktree', to: '/Users/me/claude-obsidian' });
     const [entry] = log.list().entries;
     assert.equal(entry?.type, 'settings.product_root_repaired');
     assert.equal(entry?.source, 'core');

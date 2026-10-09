@@ -1499,7 +1499,8 @@ describe('recovery after a spent rule (review-queue.md, 2026-10-06)', () => {
     // The pump holds it before any inspect, rule or agent: still approved under its hash, the reason said once.
     assert.equal(job.queuedApply?.planSha256, PLAN.approval_sha256);
     assert.match(job.turns.at(-1)!.text, /^Not applied yet: Distill can't find its vault core at /);
-    assert.equal(job.recovery?.state === 'running' || job.recovery?.state === 'waiting', false, 'nothing is working on it');
+    assert.equal(job.recovery, undefined, 'no rule, agent or wake is working on it');
+    assert.equal(job.state, 'awaitingApproval');
   });
 
   for (const automatic of [true, false]) test(`lock: the core goes during the last locked apply: recovery stops at $0 under the approved hash (recoverAfterRule, automatic ${automatic})`, async (t) => {
@@ -1767,7 +1768,7 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
     assert.equal(h.engine.getSettings().productRoot, other);
     const saved = JSON.parse(fs.readFileSync(path.join(tmp, 'state', 'settings.json'), 'utf8')) as { productRoot: string };
     assert.equal(saved.productRoot, other);
-    assert.ok(h.events.some((e) => e.type === 'productRoot.repaired' && e.from === path.join(tmp, 'deleted-worktree') && e.to === other));
+    assert.ok(h.events.some((e) => e.type === 'settings.repaired' && e.key === 'productRoot' && e.from === path.join(tmp, 'deleted-worktree') && e.to === other));
     // Clients showing Settings get the healed root, not the stale one.
     const lastSettings = h.events.filter((e): e is Extract<CoreEvent, { type: 'settings' }> => e.type === 'settings').at(-1);
     assert.equal(lastSettings?.settings.productRoot, other);
@@ -1788,7 +1789,7 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
     assert.ok(h.runner.requests.length > 1, 'the rule turn or the agent ran');
   });
 
-  test('session-gone while queued with the core gone: the missing-core sentence, not a new session, the hash kept ($0)', async () => {
+  test('a queued apply with the core gone is held before the session check: no new-session proposal, the hash kept ($0)', async () => {
     h = setup([]);
     const created = await firstJob();
     h.runner.steps.push(needsApproval(h.bundle(created)));
@@ -1815,7 +1816,7 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
   });
 
   /** A batch approved and queued before a restart (jobs.json), so the pump inspects it on start. */
-  async function queuedBeforeRestart(o: { runner?: FakeRunner; inspect?: (bundle: string) => ProcessOutput; removeCore?: boolean; beforeStart?: (bundle: string) => void } = {}): Promise<Job> {
+  async function queuedBeforeRestart(o: { runner?: FakeRunner; inspect?: (bundle: string) => ProcessOutput; removeCore?: boolean; beforeStart?: (bundle: string) => void; detectProductRoot?: () => string } = {}): Promise<Job> {
     h = setup([]);
     const created = await firstJob();
     h.runner.steps.push(needsApproval(h.bundle(created)));
@@ -1823,7 +1824,7 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
     await h.engine.stop();
     const saved = JSON.parse(fs.readFileSync(path.join(tmp, 'state', 'jobs.json'), 'utf8')) as Array<Record<string, unknown>>;
     saved.find((x) => x.id === created.id)!.queuedApply = { at: '2026-10-06T08:59:00Z', order: 1, planSha256: PLAN.approval_sha256, bundlePath: h.bundle(created), labels: 'confirm', carries: 'confirm' };
-    h = setup([], { jobs: saved, ...(o.runner ? { runner: o.runner } : {}), ...(o.inspect ? { inspect: o.inspect } : {}) });
+    h = setup([], { jobs: saved, ...(o.runner ? { runner: o.runner } : {}), ...(o.inspect ? { inspect: o.inspect } : {}), ...(o.detectProductRoot ? { detectProductRoot: o.detectProductRoot } : {}) });
     if (o.removeCore) fs.rmSync(path.join(tmp, 'product'), { recursive: true, force: true });
     o.beforeStart?.(h.bundle(created));
     await h.engine.start();
@@ -1886,6 +1887,78 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
     assert.equal(runner.requests.length, 0);
   });
 
+  test('an inspect that failed because the root was gone runs again, once, with the healed root', async () => {
+    const other = path.join(tmp, 'other-checkout');
+    fs.mkdirSync(path.join(other, 'scripts'), { recursive: true });
+    fs.writeFileSync(path.join(other, 'scripts', 'claude-obsidian.py'), '# fake core\n');
+    let inspects = 0;
+    const runner = new FakeRunner([{ structured: { status: 'done', summary: 'Applied.', operation_id: PLAN.operation_id, changed_paths: PLAN.changed_paths } }]);
+    const job = await queuedBeforeRestart({
+      runner,
+      detectProductRoot: () => other,
+      inspect: () => {
+        if (++inspects === 1) {
+          fs.rmSync(path.join(tmp, 'product'), { recursive: true, force: true });
+          return { status: 2, stdout: Buffer.alloc(0), stderr: Buffer.from('[Errno 2] No such file or directory') };
+        }
+        return { status: 0, stdout: Buffer.from(JSON.stringify(PLAN)), stderr: Buffer.alloc(0) };
+      },
+    });
+    const inspected = h.inspectCalls.filter((c) => c.includes('inspect'));
+    assert.equal(inspected.length, 2, 'inspected again after the heal');
+    assert.equal(inspected[1]![1], path.join(other, 'scripts', 'claude-obsidian.py'));
+    assert.ok(!job.turns.some((x) => /couldn’t check this plan/.test(x.text)), 'the old error never reached the owner');
+    assert.equal(runner.requests.length, 1, 'the approved apply turn');
+  });
+
+  /** A batch whose recovery waits out its minute when the engine starts; the core is gone by then. */
+  async function waitingAtRestart(recovery: Record<string, unknown>): Promise<Job> {
+    h = setup([]);
+    const created = await firstJob();
+    h.runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    await h.engine.stop();
+    const saved = JSON.parse(fs.readFileSync(path.join(tmp, 'state', 'jobs.json'), 'utf8')) as Array<Record<string, unknown>>;
+    saved.find((x) => x.id === created.id)!.recovery = recovery;
+    h = setup([], { jobs: saved });
+    fs.rmSync(path.join(tmp, 'product'), { recursive: true, force: true });
+    await h.engine.start();
+    await new Promise((r) => setTimeout(r, 20));
+    await h.engine.whenIdle();
+    return h.engine.getJob(created.id)!;
+  }
+
+  test('a stop for the missing core drops a proposal and a wake time, and keeps the approved hash', async () => {
+    const job = await waitingAtRestart({
+      state: 'waiting', signature: 'plan-error', attempts: [{ at: '2026-10-06T09:00:00Z', by: 'agent', fix: 'split_batch', result: 'failed', costUSD: 0.02 }],
+      denialAnswers: 0, proposal: 'split_batch', groups: [['inbox/a.md']], waitUntil: '2000-01-01T00:00:00Z', approvedSha256: PLAN.approval_sha256,
+    });
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.match(job.recovery?.summary ?? '', /^Distill can't find its vault core at /);
+    assert.equal(job.recovery?.proposal, undefined, 'nothing the owner could confirm helps without the core');
+    assert.equal(job.recovery?.waitUntil, undefined);
+    assert.equal(job.recovery?.approvedSha256, PLAN.approval_sha256);
+    assert.equal(job.recovery?.attempts.length, 1, 'no new attempt');
+  });
+
+  test('a rule turn still running when the core goes is settled as failed, not left running', async () => {
+    const bad = needsApproval('/tmp/elsewhere/bundle.json');
+    h = setup([bad, bad]);
+    const run = h.runner.run.bind(h.runner);
+    // The rule's rebuild turn starts with the core there; the checkout is deleted while it runs.
+    h.runner.run = async (r) => {
+      if (h.runner.requests.length === 1) fs.rmSync(path.join(tmp, 'product'), { recursive: true, force: true });
+      return run(r);
+    };
+    const created = await firstJob();
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(h.runner.requests.length, 2, 'the batch and the rule turn; no agent');
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.deepEqual(job.recovery?.attempts.map((a) => [a.by, a.result]), [['rule', 'failed']]);
+    assert.match(job.recovery?.summary ?? '', /^Distill can't find its vault core at /);
+  });
+
   test('a root healed at load is announced when the engine starts', async () => {
     const other = path.join(tmp, 'other-checkout');
     fs.mkdirSync(path.join(other, 'scripts'), { recursive: true });
@@ -1895,7 +1968,7 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
     assert.equal((JSON.parse(fs.readFileSync(path.join(tmp, 'state', 'settings.json'), 'utf8')) as { productRoot: string }).productRoot, other);
     assert.equal(h.events.length, 0);
     await h.engine.start();
-    assert.ok(h.events.some((e) => e.type === 'productRoot.repaired' && e.to === other));
+    assert.ok(h.events.some((e) => e.type === 'settings.repaired' && e.key === 'productRoot' && e.to === other));
     await h.engine.stop();
   });
 });

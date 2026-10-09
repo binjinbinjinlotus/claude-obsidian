@@ -2363,8 +2363,9 @@ export type CoreEvent =
   | { type: 'repair.queued'; vaultPath: string; rereadId: string; sources: number; batches: number; files: string[]; missing?: string[] }
   // actions-routing.md: where a batch's new items went (one Activity entry per batch; older Mac builds decode it as `.unknown`).
   | { type: 'actions.routed'; jobID: string; lists: number; waiting: number; others: number; unclear: number }
-  // app-shell.md, Product root: the saved checkout had no core script, so the core put in the one it runs from.
-  | { type: 'productRoot.repaired'; from: string; to: string };
+  // app-shell.md, Product root: a saved setting pointed at something gone (the productRoot checkout had no core
+  // script), so the core put in what is really there (older Mac builds decode it as `.unknown`).
+  | { type: 'settings.repaired'; key: 'productRoot'; from: string; to: string };
 
 // ───────────────────────────── The core facade ─────────────────────────────
 

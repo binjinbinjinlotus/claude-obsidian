@@ -320,7 +320,9 @@ proves the hash first). Approving a picked subset or a rebuilt part answers
 with the sentence and changes nothing. In the queue, an inspect error that
 isn't a changed vault (no changed paths, not the core's exit 75) goes back to
 the owner at $0 ("the vault core couldn't check this plan, and your vault
-hasn't changed under it") instead of a paid rebuild.
+hasn't changed under it") instead of a paid rebuild. When the failed
+inspect heals the product root to another checkout, the queue inspects once
+more with that one before deciding (2026-10-09).
 
 Live log: a tool call that returned an error ends `failed`; an apply or check
 step then reads "Couldn't apply the approved changes" / "Couldn't check the

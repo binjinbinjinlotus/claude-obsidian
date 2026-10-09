@@ -66,7 +66,8 @@ would both process the queue.
    `scripts/claude-obsidian.py`, it switches to the checkout the core runs from
    (`detectProductRoot`), but only when that one has the script; never to an
    empty path. The change is saved to settings.json and logged in Activity as
-   `settings.product_root_repaired` (source `core`, details `from` and `to`). It
+   `settings.product_root_repaired` (source `core`, details `from` and `to`),
+   from the core event `settings.repaired` (`key: 'productRoot'`). It
    runs at load (announced when the engine starts) and before every setup check
    (`healProductRoot`, `engine.problems()`).
 6. Node, without the shell PATH (GUI apps do not get nvm):

@@ -15,6 +15,26 @@ Newest first. Each entry: what was decided, why, and where it lives. Add an
 entry in the same change that makes a decision; never rewrite an old one —
 supersede it with a new entry.
 
+## 2026-10-09
+
+**Round 3 of the missing-core work (2026-10-09).**
+(a) Apply and check steps read in the present while they run ("Applying the approved changes",
+"Checking the plan with the vault core") and in the past only when the tool's result says they
+worked; a failed one reads "Couldn’t …". The other tool steps keep one wording: they never claim a
+result. A step closed without a result keeps its running words, which claim nothing.
+(b) The core event is `settings.repaired` with `key: 'productRoot'`, in the `<noun>.<past verb>`
+form of `repair.queued` and `actions.routed`; the Activity type stays
+`settings.product_root_repaired`.
+(c) A failed inspect that heals the product root is inspected once more with the healed root: the
+old error was about the old root.
+(d) `stopForMissingCore` no longer falls back to the recovery's own approved hash: the same-signature
+recovery already carries it through the spread, and a new signature's recovery never has one.
+(e) Not done: counting a batch held for a missing core as Needs you. Both rules (core `needsOwner`,
+Swift `ReviewQueueText.needsOwner`) read only the job, and a held batch is a queued approval like
+any other. Counting it needs a new marker on the job, or a gave-up recovery on a queued batch (a
+combination nothing shows today, with Try recovery again meaning something new), or the setup
+problems passed into the Swift rule. Each is more than reusing the badge, so it waits for the owner.
+
 ## 2026-10-08
 
 **A missing core holds approved batches; only a changed vault is rebuilt (2026-10-08, round 2).**
