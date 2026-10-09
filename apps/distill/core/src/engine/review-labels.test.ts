@@ -258,8 +258,8 @@ const goneError = (e: unknown, expect: { labels?: string; pages?: string[] }) =>
   return true;
 };
 
-function start(s: Seed, runner: FakeRunner): Engine {
-  engine = createEngine({ paths: statePaths(s.state), runners: createRunnerRegistry([runner]), tickMs: 60_000 });
+function start(s: Seed, runner: FakeRunner, o: { detectProductRoot?: () => string } = {}): Engine {
+  engine = createEngine({ paths: statePaths(s.state), runners: createRunnerRegistry([runner]), tickMs: 60_000, ...o });
   return engine;
 }
 
@@ -516,6 +516,40 @@ describe('parts of a batch (pick, remove, rebuild in the same session)', () => {
     await e.approve(s.jobID, { pages: e.getJob(s.jobID)!.approval!.sources!.map((x) => x.page) });
     await e.whenIdle();
     assert.equal(e.getJob(s.jobID)!.state, 'completed');
+  });
+
+  test('the vault core is gone: a partial approve and a needs-rebuild approve refuse and change nothing (2026-10-08)', async () => {
+    const s = seed();
+    const runner = sessionRunner(s);
+    // Never heal the missing root back to this checkout: the test is about the core being gone.
+    const e = start(s, runner, { detectProductRoot: () => '' });
+    await e.start();
+    await e.whenIdle();
+    const sources = e.getJob(s.jobID)!.approval!.sources!;
+    const gone = async () => e.updateSettings({ productRoot: path.join(s.dir, 'deleted-worktree') });
+    const back = async () => e.updateSettings({ productRoot: PRODUCT_ROOT });
+    // A pick of 1 of 3.
+    await gone();
+    let before = strip(e.getJob(s.jobID));
+    let calls = runner.requests.length;
+    await assert.rejects(e.approve(s.jobID, { pages: [sources[0]!.page] }), { code: 'invalid_state', message: /can't find its vault core/ });
+    assert.deepEqual(strip(e.getJob(s.jobID)), before, 'nothing changed');
+    assert.equal(runner.requests.length, calls, 'no runner call');
+    // A batch whose rebuilt part was rejected needs a rebuild: Approve would resume the session.
+    await back();
+    await e.approve(s.jobID, { pages: [sources[0]!.page] });
+    await e.whenIdle();
+    await e.approve(s.jobID);
+    await e.whenIdle();
+    assert.equal(e.getJob(s.jobID)!.approval!.rebuilt?.reason, 'remaining');
+    await e.reject(s.jobID, { scope: 'part' });
+    assert.equal(e.getJob(s.jobID)!.approval!.needsRebuild, true);
+    await gone();
+    before = strip(e.getJob(s.jobID));
+    calls = runner.requests.length;
+    await assert.rejects(e.approve(s.jobID), { code: 'invalid_state', message: /can't find its vault core/ });
+    assert.deepEqual(strip(e.getJob(s.jobID)), before, 'nothing changed');
+    assert.equal(runner.requests.length, calls, 'no runner call');
   });
 
   test('the session is gone on a partial approve: Cancel leaves the batch exactly as it was', async () => {

@@ -1502,6 +1502,35 @@ describe('recovery after a spent rule (review-queue.md, 2026-10-06)', () => {
     assert.equal(job.recovery?.state === 'running' || job.recovery?.state === 'waiting', false, 'nothing is working on it');
   });
 
+  for (const automatic of [true, false]) test(`lock: the core goes during the last locked apply: recovery stops at $0 under the approved hash (recoverAfterRule, automatic ${automatic})`, async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.parse('2026-10-06T10:00:00Z') });
+    const runner = sandboxed();
+    let applies = 0;
+    const apply = () => {
+      // The third locked apply is the one that spends the rule; the checkout is deleted while it runs.
+      if (++applies === 3) fs.rmSync(path.join(tmp, 'product'), { recursive: true, force: true });
+      return lock;
+    };
+    // Automatic off: without its own guard, recoverAfterRule would give up with the lock's words, not the real cause.
+    h = setup([], { runner, apply, now: () => new Date(Date.now()), settings: { recovery: { automatic } } });
+    const created = await firstJob();
+    runner.steps.push(needsApproval(h.bundle(created)));
+    await settle();
+    await h.engine.approve(created.id);
+    await settle();
+    t.mock.timers.tick(30_000);
+    await settle();
+    t.mock.timers.tick(120_000);
+    await settle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(applies, 3);
+    assert.equal(runner.requests.length, 1, 'only the batch: no recovery call');
+    assert.equal(job.recovery?.signature, 'lock');
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.match(job.recovery?.summary ?? '', /^Distill can't find its vault core at /);
+    assert.equal(job.recovery?.approvedSha256, PLAN.approval_sha256);
+  });
+
   test('the lock waits count per batch: another batch meeting a lock starts at 30 s', async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.parse('2026-10-06T10:00:00Z') });
     const runner = sandboxed();
@@ -1679,6 +1708,30 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
     assert.equal(h.runner.requests.length, 2, 'the apply turn, once the core is back');
   });
 
+  test('a batch held for a missing core applies on its own at the next tick once the core is back', async () => {
+    h = setup([], { tickMs: 5 });
+    const created = await firstJob();
+    h.runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    const product = path.join(tmp, 'product');
+    fs.renameSync(product, `${product}-away`);
+    await h.engine.approve(created.id);
+    await h.engine.start();
+    await new Promise((r) => setTimeout(r, 30));
+    await h.engine.whenIdle();
+    assert.equal(h.runner.requests.length, 1, 'ticks while the core is away send nothing');
+    assert.equal(h.engine.getJob(created.id)!.turns.filter((x) => /vault core at/.test(x.text)).length, 1, 'said once, not every tick');
+    fs.renameSync(`${product}-away`, product);
+    h.runner.steps.push({ structured: { status: 'done', summary: 'Applied.', operation_id: PLAN.operation_id, changed_paths: PLAN.changed_paths } });
+    await new Promise((r) => setTimeout(r, 50));
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(h.runner.requests.length, 2, 'the apply turn, with no click');
+    assert.match(h.runner.requests[1]!.prompt, new RegExp(`APPROVED operation ${PLAN.operation_id} with approval_sha256 ${PLAN.approval_sha256}`));
+    assert.equal(job.operationID, PLAN.operation_id);
+    await h.engine.stop();
+  });
+
   test('a recovery waiting out its minute stops at $0 when the core is gone by then', async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     let clock = Date.parse('2026-10-05T10:00:00Z');
@@ -1762,7 +1815,7 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
   });
 
   /** A batch approved and queued before a restart (jobs.json), so the pump inspects it on start. */
-  async function queuedBeforeRestart(o: { runner?: FakeRunner; inspect?: (bundle: string) => ProcessOutput; removeCore?: boolean } = {}): Promise<Job> {
+  async function queuedBeforeRestart(o: { runner?: FakeRunner; inspect?: (bundle: string) => ProcessOutput; removeCore?: boolean; beforeStart?: (bundle: string) => void } = {}): Promise<Job> {
     h = setup([]);
     const created = await firstJob();
     h.runner.steps.push(needsApproval(h.bundle(created)));
@@ -1772,6 +1825,7 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
     saved.find((x) => x.id === created.id)!.queuedApply = { at: '2026-10-06T08:59:00Z', order: 1, planSha256: PLAN.approval_sha256, bundlePath: h.bundle(created), labels: 'confirm', carries: 'confirm' };
     h = setup([], { jobs: saved, ...(o.runner ? { runner: o.runner } : {}), ...(o.inspect ? { inspect: o.inspect } : {}) });
     if (o.removeCore) fs.rmSync(path.join(tmp, 'product'), { recursive: true, force: true });
+    o.beforeStart?.(h.bundle(created));
     await h.engine.start();
     await h.engine.whenIdle();
     await new Promise((r) => setTimeout(r, 20));
@@ -1785,6 +1839,32 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
     assert.equal(job.queuedApply?.planSha256, undefined, 'out of the queue: the owner approves again');
     assert.match(job.turns.at(-1)!.text, /couldn’t check this plan, and your vault hasn’t changed under it/);
     assert.ok(!job.turns.some((x) => /vault changed after this plan was built/.test(x.text)), 'no stale rebuild prompt');
+  });
+
+  test('a queued apply whose core goes during its inspect waits under its hash: not back to the owner, no rebuild', async () => {
+    const job = await queuedBeforeRestart({ inspect: deleteCoreOnInspect() });
+    assert.equal(h.runner.requests.length, 0);
+    assert.equal(job.queuedApply?.planSha256, PLAN.approval_sha256, 'still approved under its hash');
+    assert.match(job.turns.at(-1)!.text, /^Not applied yet: Distill can't find its vault core at /);
+  });
+
+  test('a queued apply whose inspect reports the core’s conflict (exit 75) is still rebuilt', async () => {
+    const job = await queuedBeforeRestart({ inspect: () => ({ status: 75, stdout: Buffer.alloc(0), stderr: Buffer.from('ERR EXPECTED_HASH_MISMATCH: wiki/a.md changed\n') }) });
+    assert.match(h.runner.requests.at(-1)?.prompt ?? '', /The vault changed after this plan was built/);
+    assert.equal(job.queuedApply?.planSha256, undefined);
+  });
+
+  test('a queued apply whose inspect fails while its pages changed is still rebuilt', async () => {
+    const job = await queuedBeforeRestart({
+      inspect: () => ({ status: 2, stdout: Buffer.alloc(0), stderr: Buffer.from('ERR INVALID_BUNDLE: bad\n') }),
+      beforeStart: (bundle) => {
+        fs.writeFileSync(bundle, JSON.stringify({ expected_hashes: { 'wiki/a.md': null }, writes: [] }));
+        fs.mkdirSync(path.join(tmp, 'vault', 'wiki'), { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'vault', 'wiki', 'a.md'), 'another batch wrote this\n');
+      },
+    });
+    assert.match(h.runner.requests.at(-1)?.prompt ?? '', /The vault changed after this plan was built/);
+    assert.equal(job.queuedApply?.planSha256, undefined);
   });
 
   test('a queued apply with the core gone: no rebuild, and the live log never says the vault changed', async () => {
