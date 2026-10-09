@@ -17,6 +17,24 @@ supersede it with a new entry.
 
 ## 2026-10-08
 
+**A deleted checkout heals itself and never reaches AI recovery (2026-10-08).** The owner deleted
+a merged worktree; the installed app's Info.plist `ClaudeObsidianProductRoot` and settings.json
+`productRoot` both still pointed there. The core reported `missingCore`, yet a batch's plan check
+failed with "No such file or directory", went to recovery (the rule turn, then Opus) and cost $0.08
+before saying "Distill couldn't fix this". Decided, under the rule that safeguards check and repair
+themselves:
+(a) The app's launcher takes the first product-root candidate that has both the built CLI and
+`scripts/claude-obsidian.py`, skipping a deleted one (`CoreLauncher.productRoot`).
+(b) The core heals a saved root without the core script to the checkout it runs from, only when that
+one has the script; saved and logged as `settings.product_root_repaired` (`healProductRoot`). It is
+not done inside `decodeSettings`, so a codec round-trip never rewrites a value silently and tests
+can't heal to the developer's checkout; the engine heals at load and before every setup check.
+(c) A missing core script stops recovery at $0 before any rule turn or agent call, checked by
+existence (not by matching the error text, which a missing python would also produce). The owner's
+sentence names the path, an exception to the plain-words rule that keeps paths out: the path is the
+fix. The card stays the existing Couldn't fix card with the core's sentence (no new card state);
+a distinct setup card would go to the design canvas first.
+
 **The To-do detail scrolls; its footer is pinned (2026-10-08).** The owner reported "missing
 scrolling": a to-do with a long original pushed Remove, Complete and Send to out of the window.
 The detail's content now scrolls above a footer that never moves (`PinnedFooterScroll`,

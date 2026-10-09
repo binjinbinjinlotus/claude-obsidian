@@ -139,6 +139,38 @@ final class CoreLauncherTests: XCTestCase {
         XCTAssertEqual(l.storedSettings()?.nodePath, "/my/node")
     }
 
+    /// A deleted worktree baked into Info.plist (the bundled root) or settings is skipped for the first
+    /// candidate that has both the built CLI and the vault core (app-shell.md, Product root, 2026-10-08).
+    func testProductRootSkipsCandidatesWithoutCLIOrCore() throws {
+        let paths = try makeTempStateDir()
+        // The fake file system holds settings.json too (storedSettings reads through it).
+        func usable(_ root: String) -> [String: Data] {
+            [CoreLauncher.cliEntry(productRoot: root): Data(), CoreLauncher.coreScript(productRoot: root): Data(),
+             paths.settings.path: Data(#"{"productRoot":"/from-settings"}"#.utf8)]
+        }
+        // The bundled root is gone; settings has a usable checkout.
+        XCTAssertEqual(launcher(paths, productRoot: "/deleted-worktree", fs: FakeFileSystem(files: usable("/from-settings"))).productRoot(), "/from-settings")
+        // A root with only the CLI (its scripts/ gone) or only the core (CLI not built) is skipped too.
+        var partial = usable("/from-settings")
+        partial["/cli-only/apps/distill/cli/dist/main.js"] = Data()
+        XCTAssertEqual(launcher(paths, productRoot: "/cli-only", fs: FakeFileSystem(files: partial)).productRoot(), "/from-settings")
+        partial["/core-only/scripts/claude-obsidian.py"] = Data()
+        XCTAssertEqual(launcher(paths, productRoot: "/core-only", fs: FakeFileSystem(files: partial)).productRoot(), "/from-settings")
+        // A usable bundled root still wins over settings, as before.
+        var both = usable("/from-settings")
+        both.merge(usable("/bundled")) { a, _ in a }
+        XCTAssertEqual(launcher(paths, productRoot: "/bundled", fs: FakeFileSystem(files: both)).productRoot(), "/bundled")
+        // The environment override comes first when it is usable, and is skipped when it is not.
+        let env = CoreLauncher(paths: paths, bundledProductRoot: "/bundled", environment: ["HOME": "/Users/test", "DISTILL_PRODUCT_ROOT": "/env"],
+                               fileSystem: FakeFileSystem(files: both))
+        XCTAssertEqual(env.productRoot(), "/bundled")
+        // None usable: the first one, so launchCommand still names the missing CLI.
+        let none = launcher(paths, productRoot: "/deleted-worktree", fs: FakeFileSystem())
+        XCTAssertEqual(none.productRoot(), "/deleted-worktree")
+        guard case .failure(.cliNotBuilt(let entry)) = none.launchCommand() else { return XCTFail() }
+        XCTAssertEqual(entry, "/deleted-worktree/apps/distill/cli/dist/main.js")
+    }
+
     /// Real temp files, fake spawner that "starts a server" by writing server.json.
     func testEnsureRunningSpawnsAndWaitsForServerJSON() async throws {
         let paths = try makeTempStateDir()

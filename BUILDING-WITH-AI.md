@@ -92,6 +92,19 @@ isn't.
 
 ## Friction log (newest first)
 
+### 2026-10-08
+- **A deleted worktree path got baked into the app.** `build-app.sh` wrote the
+  worktree it ran in into Info.plist (`ClaudeObsidianProductRoot`), and the
+  core saved the same path in settings.json. After the merge the owner deleted
+  the worktree; the app kept pointing at it. The setup check reported the
+  missing core, but a batch already in flight failed its plan check with "No
+  such file or directory" and went to AI recovery anyway, which spent $0.08 to
+  conclude it couldn't fix it.
+  - *Lesson:* a path recorded at build time is a cache, not a fact; check it
+    each time it is used and heal it from what is really there. And a setup
+    problem must be caught before anything that costs money, by checking the
+    file, not by reading the error.
+
 ### 2026-10-07
 - **"Can't type a space" was a read-side trim, not a save-side one.** The
   brief guessed the core or the store trimmed the People value; the core

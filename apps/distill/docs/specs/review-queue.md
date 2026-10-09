@@ -3,7 +3,7 @@ type: spec
 title: Review queue, automatic refresh, self-recovery and the batch list
 status: built
 created: 2026-10-05
-updated: 2026-10-06
+updated: 2026-10-08
 tags:
   - distill
   - review
@@ -297,6 +297,20 @@ verifiable.
 
 **The recovery agent** runs when no rule applies, or when a rule already failed
 once for the same signature.
+
+**A missing vault core is never recovery's (2026-10-08).** When the core script
+`<productRoot>/scripts/claude-obsidian.py` is gone (a deleted checkout or
+worktree), every check fails before it reaches the bundle, so no rule turn or
+agent can help. Before any rule turn or agent call (`recover`,
+`recoverAfterRule`, `recoverDenial`, and the agent call itself, which wakes and
+restarts reach directly) the core first heals the product root when it can
+(app-shell.md), then checks the script. Still missing: the batch stops at $0
+with no attempt, state `gaveUp`, and the sentence "Distill can't find its vault
+core at `<path>`. Rebuild or reinstall Distill from a claude-obsidian checkout
+that still exists." It names the path, unlike other recovery sentences: the fix
+is the owner's and the path says which checkout was lost. Try recovery again
+answers with the same sentence and sends nothing. Setup also lists it as
+`missingCore`, which blocks new batches.
 
 ### Blocked tool commands never reach the owner as raw shell
 

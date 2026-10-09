@@ -93,6 +93,8 @@ function setup(
     /** What `transaction inspect` returns (default PLAN). */
     inspect?: (bundle: string) => ProcessOutput;
     othersActionsPrompt?: (vaultPath: string) => string;
+    /** The checkout a missing product root heals to (default '': nothing, so tests never heal to this repo). */
+    detectProductRoot?: () => string;
   } = {},
 ): Harness {
   const root = tmp;
@@ -137,6 +139,7 @@ function setup(
     ...(o.now ? { now: o.now } : {}),
     ...(o.onJobApplied ? { onJobApplied: o.onJobApplied } : {}),
     ...(o.othersActionsPrompt ? { othersActionsPrompt: o.othersActionsPrompt } : {}),
+    detectProductRoot: o.detectProductRoot ?? (() => ''),
   });
   const events: CoreEvent[] = [];
   engine.subscribe((e) => events.push(e));
@@ -1577,5 +1580,84 @@ describe('recovery after a spent rule (review-queue.md, 2026-10-06)', () => {
     const job = h.engine.getJob(created.id)!;
     assert.equal(job.operationID, undefined);
     assert.match(job.turns.at(-1)!.text, /Nothing recorded as applied/);
+  });
+});
+
+describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
+  /** The product checkout disappears while the batch runs (a deleted worktree); every inspect then fails. */
+  function deleteCoreOnInspect(): (bundle: string) => ProcessOutput {
+    return () => {
+      fs.rmSync(path.join(tmp, 'product'), { recursive: true, force: true });
+      return { status: 2, stdout: Buffer.alloc(0), stderr: Buffer.from(`python3: can't open file '${tmp}/product/scripts/claude-obsidian.py': [Errno 2] No such file or directory`) };
+    };
+  }
+
+  test('a plan the core could not check because the core is gone: no rule turn, no agent, $0, the path named', async () => {
+    h = setup([], { inspect: deleteCoreOnInspect() });
+    const created = await firstJob();
+    h.runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(h.runner.requests.length, 1, 'only the batch itself ran');
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.equal(job.recovery?.signature, 'plan-error');
+    assert.deepEqual(job.recovery?.attempts, []);
+    assert.equal(job.recovery?.attempts.reduce((n, a) => n + a.costUSD, 0), 0);
+    const core = path.join(tmp, 'product', 'scripts', 'claude-obsidian.py');
+    assert.equal(job.recovery?.summary, `Distill can't find its vault core at ${core}. Rebuild or reinstall Distill from a claude-obsidian checkout that still exists.`);
+    assert.equal(job.recovery?.proposal, undefined);
+    // Let recovery try again says the same thing and sends nothing.
+    assert.throws(() => h.engine.tryRecoveryAgain(created.id), /can't find its vault core/);
+    assert.equal(h.runner.requests.length, 1);
+    assert.ok((await h.engine.status()).problems.some((p) => p.code === 'missingCore'));
+  });
+
+  test('a recovery waiting out its minute stops at $0 when the core is gone by then', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    let clock = Date.parse('2026-10-05T10:00:00Z');
+    h = setup([], { now: () => new Date(clock) });
+    const bad = needsApproval('/tmp/elsewhere/bundle.json');
+    h.runner.steps.push(bad, bad,
+      { structured: { diagnosis: 'Wrong folder.', fix: 'rebuild_in_session', reason: 'r', guidance: 'Write the bundle inside the job directory.' } },
+      bad);
+    const created = await firstJob();
+    await h.engine.whenIdle();
+    assert.equal(h.engine.getJob(created.id)!.recovery?.state, 'waiting');
+    const calls = h.runner.requests.length;
+    fs.rmSync(path.join(tmp, 'product'), { recursive: true, force: true });
+    clock += 61_000;
+    t.mock.timers.tick(61_000);
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(h.runner.requests.length, calls, 'the wake never called the agent');
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.match(job.recovery?.summary ?? '', /^Distill can't find its vault core at /);
+  });
+
+  test('a saved root that lost its core heals to the checkout the core runs from: saved and announced', async () => {
+    const other = path.join(tmp, 'other-checkout');
+    fs.mkdirSync(path.join(other, 'scripts'), { recursive: true });
+    fs.writeFileSync(path.join(other, 'scripts', 'claude-obsidian.py'), '# fake core\n');
+    h = setup([], { detectProductRoot: () => other });
+    await h.engine.updateSettings({ productRoot: path.join(tmp, 'deleted-worktree') });
+    const s = await h.engine.status();
+    assert.ok(!s.problems.some((p) => p.code === 'missingCore'));
+    assert.equal(h.engine.getSettings().productRoot, other);
+    const saved = JSON.parse(fs.readFileSync(path.join(tmp, 'state', 'settings.json'), 'utf8')) as { productRoot: string };
+    assert.equal(saved.productRoot, other);
+    assert.ok(h.events.some((e) => e.type === 'productRoot.repaired' && e.from === path.join(tmp, 'deleted-worktree') && e.to === other));
+  });
+
+  test('a root healed at load is announced when the engine starts', async () => {
+    const other = path.join(tmp, 'other-checkout');
+    fs.mkdirSync(path.join(other, 'scripts'), { recursive: true });
+    fs.writeFileSync(path.join(other, 'scripts', 'claude-obsidian.py'), '# fake core\n');
+    h = setup([], { detectProductRoot: () => other, settings: { productRoot: path.join(tmp, 'deleted-worktree') } });
+    assert.equal(h.engine.getSettings().productRoot, other, 'healed before anything reads it');
+    assert.equal((JSON.parse(fs.readFileSync(path.join(tmp, 'state', 'settings.json'), 'utf8')) as { productRoot: string }).productRoot, other);
+    assert.equal(h.events.length, 0);
+    await h.engine.start();
+    assert.ok(h.events.some((e) => e.type === 'productRoot.repaired' && e.to === other));
+    await h.engine.stop();
   });
 });

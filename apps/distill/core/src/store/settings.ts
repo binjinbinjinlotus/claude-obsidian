@@ -70,6 +70,25 @@ export function detectProductRoot(start = path.dirname(fileURLToPath(import.meta
   }
 }
 
+/** True when `root` is a claude-obsidian checkout (has scripts/claude-obsidian.py). */
+export function isProductRoot(root: string): boolean {
+  return root !== '' && fs.existsSync(path.join(root, 'scripts', 'claude-obsidian.py'));
+}
+
+/**
+ * app-shell.md, Product root: a saved root without the core script (a deleted worktree) is replaced by the
+ * checkout this core runs from, when that one has the script. Never by '' and never by another missing root:
+ * then the saved value stays and `missingCore` reports it. Returns the change, or undefined when none was made.
+ */
+export function healProductRoot(s: Settings, detect: () => string = () => detectProductRoot()): { from: string; to: string } | undefined {
+  if (isProductRoot(s.productRoot)) return undefined;
+  const detected = detect();
+  if (detected === s.productRoot || !isProductRoot(detected)) return undefined;
+  const from = s.productRoot;
+  s.productRoot = detected;
+  return { from, to: detected };
+}
+
 export function defaultSettings(): Settings {
   return {
     vaults: [],

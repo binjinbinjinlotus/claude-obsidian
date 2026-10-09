@@ -8,13 +8,21 @@ export function isVault(p: string): boolean {
   return fs.existsSync(path.join(p, '.claude-obsidian.json'));
 }
 
+/**
+ * The vault core script is gone (a deleted checkout or worktree). Names the path, unlike other owner sentences
+ * (decision 2026-10-08): the only fix is the owner's, and the path says which checkout was lost.
+ */
+export function missingCoreSentence(p: string): string {
+  return `Distill can't find its vault core at ${p}. Rebuild or reinstall Distill from a claude-obsidian checkout that still exists.`;
+}
+
 export const problem = {
   noVault: (): SetupProblem => ({ code: 'noVault', message: 'No vault selected.' }),
   notAVault: (p: string): SetupProblem => ({
     code: 'notAVault',
     message: `${p} has no .claude-obsidian.json (run \`claude-obsidian.py init\` or \`adopt\` first).`,
   }),
-  missingCore: (p: string): SetupProblem => ({ code: 'missingCore', message: `claude-obsidian core not found at ${p}.` }),
+  missingCore: (p: string): SetupProblem => ({ code: 'missingCore', message: missingCoreSentence(p) }),
   queueIsVaultInternal: (p: string): SetupProblem => ({
     code: 'queueIsVaultInternal',
     message: `Queue directory ${p} is inside the vault. Use the vault's inbox/ or a folder outside the vault.`,

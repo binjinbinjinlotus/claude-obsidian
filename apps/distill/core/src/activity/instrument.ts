@@ -1273,6 +1273,19 @@ export function createEventLogger(deps: EventLoggerDeps, seedJobs: Job[]): (even
           );
           return;
         }
+        case 'productRoot.repaired': {
+          // The saved checkout was gone (a deleted worktree); the core healed it itself (app-shell.md).
+          write(
+            {
+              type: 'settings.product_root_repaired',
+              object: { kind: 'settings', name: 'Product root' },
+              summary: 'Product root pointed at a folder without the vault core; switched to the checkout Distill runs from',
+              details: { from: event.from, to: event.to },
+            },
+            'core',
+          );
+          return;
+        }
         case 'queue.scanned': {
           const r = event.result;
           if (r.added === 0 && r.removed === 0) return; // changed sizes/times alone aren't worth a line

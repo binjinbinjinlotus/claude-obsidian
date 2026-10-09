@@ -2362,7 +2362,9 @@ export type CoreEvent =
   // v10: the automatic repair queued re-reads of sources never read in full (full-read.md, section 6).
   | { type: 'repair.queued'; vaultPath: string; rereadId: string; sources: number; batches: number; files: string[]; missing?: string[] }
   // actions-routing.md: where a batch's new items went (one Activity entry per batch; older Mac builds decode it as `.unknown`).
-  | { type: 'actions.routed'; jobID: string; lists: number; waiting: number; others: number; unclear: number };
+  | { type: 'actions.routed'; jobID: string; lists: number; waiting: number; others: number; unclear: number }
+  // app-shell.md, Product root: the saved checkout had no core script, so the core put in the one it runs from.
+  | { type: 'productRoot.repaired'; from: string; to: string };
 
 // ───────────────────────────── The core facade ─────────────────────────────
 

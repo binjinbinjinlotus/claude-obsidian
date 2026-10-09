@@ -555,6 +555,19 @@ describe('instrumentCore', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  test('a healed product root is one core line with the old and new checkout (app-shell.md)', () => {
+    const dir = tmp('distill-activity-root-');
+    const log = new ActivityLog({ dir });
+    const logEvent = createEventLogger({ log, getSettings: () => ({}) as never, collectorName: () => '' }, []);
+    logEvent({ type: 'productRoot.repaired', from: '/gone/worktree', to: '/Users/me/claude-obsidian' });
+    const [entry] = log.list().entries;
+    assert.equal(entry?.type, 'settings.product_root_repaired');
+    assert.equal(entry?.source, 'core');
+    assert.equal(entry?.summary, 'Product root pointed at a folder without the vault core; switched to the checkout Distill runs from');
+    assert.deepEqual(entry?.details, { from: '/gone/worktree', to: '/Users/me/claude-obsidian' });
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   test('Track as Pending from To confirm and To do names who and how it was found (actions-routing.md)', async () => {
     const dir = tmp('distill-activity-track-');
     const log = new ActivityLog({ dir });

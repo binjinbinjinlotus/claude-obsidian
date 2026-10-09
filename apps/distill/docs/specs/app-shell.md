@@ -1,7 +1,7 @@
 ---
 title: App shell and visual design
 status: built
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # App shell and visual design
@@ -56,7 +56,20 @@ would both process the queue.
    won the race), then reports the exit code and the tail of the log.
 4. Product root: `$DISTILL_PRODUCT_ROOT`, then Info.plist
    `ClaudeObsidianProductRoot`, then `productRoot` from settings.json (read-only).
-5. Node, without the shell PATH (GUI apps do not get nvm):
+   The first candidate that has both `apps/distill/cli/dist/main.js` and
+   `scripts/claude-obsidian.py` wins; one without them (a deleted worktree baked
+   into Info.plist or settings) is skipped. When none has both, the first
+   non-empty one is used, so the launch error names its missing CLI and says to
+   rebuild or reinstall Distill from a checkout that still exists
+   (`CoreLauncher.productRoot`, decision 2026-10-08).
+5. The core heals its own saved root: when `settings.productRoot` has no
+   `scripts/claude-obsidian.py`, it switches to the checkout the core runs from
+   (`detectProductRoot`), but only when that one has the script; never to an
+   empty path. The change is saved to settings.json and logged in Activity as
+   `settings.product_root_repaired` (source `core`, details `from` and `to`). It
+   runs at load (announced when the engine starts) and before every setup check
+   (`healProductRoot`, `engine.problems()`).
+6. Node, without the shell PATH (GUI apps do not get nvm):
    - `settings.nodePath`
    - the highest `~/.nvm/versions/node/*/bin/node`, compared by version number
    - `/opt/homebrew/bin/node`

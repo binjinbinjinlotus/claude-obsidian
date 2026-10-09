@@ -18,6 +18,7 @@ import {
   detectProductRoot,
   encodeSettings,
   fallbackModel,
+  healProductRoot,
   labelingPreferences,
   recoveryPreferences,
   selectionFor,
@@ -361,6 +362,24 @@ describe('detectProductRoot and SettingsStore', () => {
     dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'distill-settings-')));
   });
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  test('healProductRoot: a root without the core heals to a detected checkout that has it, never to "" or another gone one', () => {
+    fs.mkdirSync(path.join(dir, 'scripts'));
+    fs.writeFileSync(path.join(dir, 'scripts', 'claude-obsidian.py'), '');
+    const gone = path.join(dir, 'deleted-worktree');
+    // A deleted worktree heals to the checkout the core runs from.
+    const s = decodeSettings({ productRoot: gone });
+    assert.deepEqual(healProductRoot(s, () => dir), { from: gone, to: dir });
+    assert.equal(s.productRoot, dir);
+    // A root that has the core is left alone (the detector isn't even asked).
+    assert.equal(healProductRoot(s, () => assert.fail('not asked')), undefined);
+    // Nothing to heal to: the detector found no checkout, or one without the core. The saved value stays.
+    const t = decodeSettings({ productRoot: gone });
+    assert.equal(healProductRoot(t, () => ''), undefined);
+    assert.equal(healProductRoot(t, () => path.join(dir, 'also-gone')), undefined);
+    assert.equal(healProductRoot(t, () => gone), undefined);
+    assert.equal(t.productRoot, gone);
+  });
 
   test('detectProductRoot walks up to the checkout; none found is ""', () => {
     fs.mkdirSync(path.join(dir, 'scripts'));

@@ -277,7 +277,7 @@ public struct CoreLauncher: Sendable {
             case .productRootUnknown:
                 return "Distill does not know where the claude-obsidian checkout is. Rebuild the app with apps/distill/clients/macos/scripts/build-app.sh, or set Product root."
             case .cliNotBuilt(let path):
-                return "The Distill core is not built (\(path) is missing). Run `npm ci && npm run build --workspaces` in apps/distill, or rebuild the app."
+                return "The Distill core is missing at \(path). If that checkout was deleted, rebuild or reinstall Distill from a claude-obsidian checkout that still exists; otherwise run `npm ci && npm run build --workspaces` in apps/distill."
             case .spawnFailed(let m): return "Could not start the Distill core: \(m)"
             case .exited(let code, let log, let logPath):
                 return "The Distill core exited (code \(code)) before it was ready. Log: \(logPath)" + (log.isEmpty ? "" : "\n\(log)")
@@ -345,10 +345,22 @@ public struct CoreLauncher: Sendable {
         fileSystem.read(paths.settings.path).flatMap { try? JSONDecoder.core.decode(Settings.self, from: $0) }
     }
 
-    /// `$DISTILL_PRODUCT_ROOT`, else the bundled root, else settings.productRoot.
+    /// `$DISTILL_PRODUCT_ROOT`, else the bundled root, else settings.productRoot: the first that is a usable
+    /// checkout (built CLI and the vault core). A root that lost them (a deleted worktree) is skipped
+    /// (app-shell.md, Product root). When none is usable, the first non-empty one, so `launchCommand` names it.
     public func productRoot() -> String? {
         let options = [environment["DISTILL_PRODUCT_ROOT"], bundledProductRoot, storedSettings()?.productRoot]
-        return options.compactMap { $0 }.first { !$0.isEmpty }
+            .compactMap { $0 }.filter { !$0.isEmpty }
+        return options.first(where: isUsableProductRoot) ?? options.first
+    }
+
+    /// Has both the built CLI and `scripts/claude-obsidian.py`.
+    public func isUsableProductRoot(_ root: String) -> Bool {
+        fileSystem.fileExists(Self.cliEntry(productRoot: root)) && fileSystem.fileExists(Self.coreScript(productRoot: root))
+    }
+
+    public static func coreScript(productRoot: String) -> String {
+        URL(fileURLWithPath: productRoot).appendingPathComponent("scripts/claude-obsidian.py").path
     }
 
     public static func cliEntry(productRoot: String) -> String {

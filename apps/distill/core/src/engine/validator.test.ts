@@ -102,7 +102,8 @@ test('setupProblems: an unknown runner and a runner\'s own problems block; actio
 
 test('the problem messages name the path or the runner', () => {
   assert.match(problem.notAVault('/x').message, /^\/x has no \.claude-obsidian\.json/);
-  assert.match(problem.missingCore('/c').message, /\/c\.$/);
+  // Names the path and what to do: the owner rebuilds or reinstalls from a checkout that exists (2026-10-08).
+  assert.equal(problem.missingCore('/c').message, "Distill can't find its vault core at /c. Rebuild or reinstall Distill from a claude-obsidian checkout that still exists.");
   assert.match(problem.queueIsVaultInternal('/q').message, /^Queue directory \/q is inside the vault/);
   assert.match(problem.unknownRunner('r').message, /AI runner r is not available/);
   assert.deepEqual(problem.noVault(), { code: 'noVault', message: 'No vault selected.' });

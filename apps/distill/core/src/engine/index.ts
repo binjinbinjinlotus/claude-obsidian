@@ -71,7 +71,9 @@ import {
   coreScriptPath,
   decodeSettings,
   defaultQueueDirectory,
+  detectProductRoot,
   encodeSettings,
+  healProductRoot,
   labelingPreferences,
   recoveryPreferences,
   selectionFor,
@@ -177,7 +179,7 @@ import {
   type FolderWalk,
   type ScanEntry,
 } from './queue.js';
-import { isVault, problem, queuePlacementProblem, setupProblems } from './validator.js';
+import { isVault, missingCoreSentence, problem, queuePlacementProblem, setupProblems } from './validator.js';
 
 /**
  * Tools an ingest turn can see. Allow rules still gate them; tools outside the
@@ -302,6 +304,8 @@ export interface EngineOptions {
   othersActionsPrompt?: (vaultPath: string) => string;
   /** v7: the live log (steps/). Gets each agent step of a turn and each file of the label pre-step. */
   steps?: EngineStepSink;
+  /** app-shell.md, Product root: the checkout a missing saved root heals to (default: the one this core runs from). */
+  detectProductRoot?: () => string;
 }
 
 /** v11: what a batch's change holds when it reaches Review (onReviewReady). */
@@ -389,6 +393,10 @@ export function createEngine(opts: EngineOptions): Engine {
   const settingsStore = new SettingsStore(paths.settings);
   const jobStore = new JobStore(paths.jobs);
   let settings: Settings = settingsStore.load();
+  const detectRoot = opts.detectProductRoot ?? (() => detectProductRoot());
+  /** A repair made before anyone listened (at load): announced from start(). */
+  let unannouncedRootRepair = healProductRoot(settings, detectRoot);
+  if (unannouncedRootRepair) settingsStore.save(settings);
   let jobs: Job[] = jobStore.load(now());
   let queued: ScanEntry[] = [];
   /** mtime of each queued path when the core first saw it; a later mtime = "still changing". */
@@ -601,7 +609,46 @@ export function createEngine(opts: EngineOptions): Engine {
 
   // ───────────── derived state ─────────────
 
-  const problems = () => setupProblems(settings, runners);
+  /**
+   * app-shell.md, Product root: a saved root without the core script heals to the checkout this core runs from,
+   * saved and logged, before anything reports or acts on `missingCore`.
+   */
+  function healRoot(): void {
+    const repair = healProductRoot(settings, detectRoot);
+    if (!repair) return;
+    settingsStore.save(settings);
+    log('info', `Product root ${repair.from || '(none)'} had no vault core; using ${repair.to}.`);
+    emit({ type: 'settings', settings: clone(settings) });
+    emit({ type: 'productRoot.repaired', ...repair });
+  }
+
+  const problems = () => {
+    healRoot();
+    return setupProblems(settings, runners);
+  };
+
+  /**
+   * review-queue.md, A missing vault core: when the core script itself is gone (a deleted checkout), every check
+   * fails before it reaches the bundle, so no rule or agent can help. The batch stops at $0 with a setup sentence
+   * naming the path. Undefined when the script is there (after healing the root when it can).
+   */
+  function missingCoreSummary(): string | undefined {
+    healRoot();
+    const core = coreScriptPath(settings);
+    if (fs.existsSync(core)) return undefined;
+    return missingCoreSentence(core);
+  }
+
+  /** Stops a batch's recovery at $0 because the vault core is missing (nothing was sent to a runner). */
+  function stopForMissingCore(id: string, signature: RecoverySignature, summary: string): void {
+    mutate(id, (j) => {
+      const rec = recoveryFor(j.recovery, signature);
+      const attempts = rec.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed' as const } : a));
+      j.recovery = { ...rec, attempts, state: 'gaveUp', summary };
+      delete j.recovery.proposal;
+      delete j.recovery.waitUntil;
+    });
+  }
   const findJob = (id: string) => jobs.find((j) => j.id === id);
 
   function requireJob(id: string): Job {
@@ -1177,6 +1224,11 @@ export function createEngine(opts: EngineOptions): Engine {
     if (!job || job.state !== 'awaitingApproval' || job.approval?.plan?.valid) return false;
     const denials = job.approval?.denials ?? [];
     if (denials.length === 0 || jobKind(job.kind)?.appliesInCore) return false;
+    const missing = missingCoreSummary();
+    if (missing) {
+      stopForMissingCore(id, 'denial', missing);
+      return true;
+    }
     const rec = recoveryFor(job.recovery, 'denial');
     const answers = rec.denialAnswers ?? 0;
     const where = { vaultPath: job.vaultPath, jobDir: jobStateDirectory(job) };
@@ -1297,6 +1349,8 @@ export function createEngine(opts: EngineOptions): Engine {
     const job = findJob(id);
     // A labels confirmation has no session and no recovery (the core applies it and asks the owner itself).
     if (!job || job.state !== 'awaitingApproval' || jobKind(job.kind)?.appliesInCore) return;
+    const missing = missingCoreSummary();
+    if (missing) return stopForMissingCore(id, signature, missing);
     const rec = recoveryFor(job.recovery, signature);
     const attempts = rec.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed' as const } : a));
     const approved = approvedSha256 ?? rec.approvedSha256;
@@ -1321,6 +1375,12 @@ export function createEngine(opts: EngineOptions): Engine {
     if (signature === 'denial') return recoverDenial(id);
     const job = findJob(id);
     if (!job || jobKind(job.kind)?.appliesInCore || coreApplies(job)) return false;
+    // A missing vault core is a setup problem: no rule turn, no agent, no cost (review-queue.md).
+    const missing = missingCoreSummary();
+    if (missing) {
+      stopForMissingCore(id, signature, missing);
+      return true;
+    }
     const rec = recoveryFor(job.recovery, signature);
     const settled = rec.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed' as const } : a));
     const giveUp = (extra = '', proposal?: 'new_session') =>
@@ -1477,6 +1537,9 @@ export function createEngine(opts: EngineOptions): Engine {
   async function recoveryAgentCall(id: string, signature: RecoverySignature): Promise<void> {
     const job = findJob(id);
     if (!job?.recovery || (job.state !== 'awaitingApproval' && job.state !== 'failed')) return;
+    // Wakes and restarts reach here without recover(): the same $0 stop for a missing vault core.
+    const missing = missingCoreSummary();
+    if (missing) return stopForMissingCore(id, signature, missing);
     const prefs = recoveryPreferences(settings);
     const rec = job.recovery;
     const where = { vaultPath: job.vaultPath, jobDir: jobStateDirectory(job) };
@@ -1633,6 +1696,9 @@ export function createEngine(opts: EngineOptions): Engine {
       throw new CoreError('invalid_state', `Job ${id} has nothing for recovery to try again.`);
     }
     const signature = job.recovery.signature;
+    // A missing vault core is the owner's to fix (rebuild or reinstall); recovery can't help and never costs.
+    const missing = missingCoreSummary();
+    if (missing) throw new CoreError('invalid_state', missing);
     // session-gone's only way on is a new session, which the owner starts from its confirmation (never recovery).
     if (signature === 'session-gone') {
       throw new CoreError('invalid_state', 'This batch’s AI session is gone: continue it in a new session, open it in Terminal, or reject it.');
@@ -4114,6 +4180,12 @@ export function createEngine(opts: EngineOptions): Engine {
     paths,
 
     async start() {
+      // A root healed at load is logged now that the activity log listens.
+      if (unannouncedRootRepair) {
+        log('info', `Product root ${unannouncedRootRepair.from || '(none)'} had no vault core; using ${unannouncedRootRepair.to}.`);
+        emit({ type: 'productRoot.repaired', ...unannouncedRootRepair });
+        unannouncedRootRepair = undefined;
+      }
       refreshQueue();
       adoptOutsideApplies();
       for (const j of jobs) {
