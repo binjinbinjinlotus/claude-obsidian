@@ -2592,4 +2592,113 @@ describe('Done on a batch that added nothing (review-queue.md, 2026-10-09)', () 
     assert.equal(done.turns.at(-1)!.text, 'Not added, and nothing to read again. 1 source already in your vault stays as it is.');
     assert.equal(released().length, 0);
   });
+
+  // Round 4c verifier (2026-10-09): branches an independent mutation pass found unchecked.
+  test('the plan Done makes holds only what it released: never a file another re-read holds', async () => {
+    const job = await approvedBatch(['a.md', 'b.md'], FAILED);
+    const [a, b] = [...job.files].sort();
+    await restartWith({ plans: (ps) => ps.push(plan('reread-owner', [{ files: [a] }], { reason: 'manual' })) });
+    const done = await h.engine.finishReview!(job.id);
+    assert.deepEqual(done.released?.alreadyQueued, [a]);
+    assert.deepEqual(released().flatMap((p) => p.groups.flatMap((g) => g.files)), [b], 'a is read once, by the owner’s re-read');
+  });
+
+  test('a running batch holds its files too: Done leaves them for it', async () => {
+    const job = await approvedBatch(['a.md', 'b.md'], FAILED);
+    const [a, b] = [...job.files].sort();
+    h.runner.steps.push({ hang: true, structured: { status: 'nothing_to_do', summary: 'x' } });
+    await h.engine.rereadSources({ files: [a!] }); // starts at once and runs
+    const running = h.engine.listJobs().find((j) => j.reread && j.files.includes(a!))!;
+    assert.equal(running.state, 'running');
+    const done = await h.engine.finishReview!(job.id);
+    assert.deepEqual(done.released?.files, [b]);
+    assert.deepEqual(done.released?.alreadyQueued, [a]);
+    await h.engine.cancel(running.id);
+    await h.engine.whenIdle();
+  });
+
+  test('a file both released up the chain and held by another re-read counts as released before (notAgain)', async () => {
+    const job = await approvedBatch(['a.md', 'b.md'], FAILED);
+    const [a, b] = [...job.files].sort();
+    await restartWith({
+      plans: (ps) => ps.push(plan('reread-owner', [{ files: [a] }], { reason: 'manual' })),
+      jobs: (js) => {
+        const j = js.find((x) => x.id === job.id)!;
+        js.push({ ...j, id: 'job-ancestor', state: 'failed', released: { at: '2026-10-09T10:00:00Z', files: [a], inVault: [], missing: [] } });
+        j.reread = { id: 'r1', group: 1, groups: 1, fromJob: 'job-ancestor', reason: 'manual' };
+      },
+    });
+    const done = await h.engine.finishReview!(job.id);
+    assert.deepEqual(done.released?.notAgain, [a]);
+    assert.equal(done.released?.alreadyQueued, undefined);
+    assert.deepEqual(done.released?.files, [b]);
+  });
+
+  test('the cap records what another re-read holds as well', async () => {
+    const job = await approvedBatch(['a.md', 'b.md'], FAILED);
+    const [a, b] = [...job.files].sort();
+    await restartWith({
+      plans: (ps) => ps.push(plan('reread-owner', [{ files: [a] }], { reason: 'manual' })),
+      jobs: (js) => { js.find((x) => x.id === job.id)!.reread = { id: 'r1', group: 1, groups: 1, fromJob: 'job-gone', reason: 'released' }; },
+    });
+    const done = await h.engine.finishReview!(job.id);
+    assert.deepEqual(done.released?.notAgain, [b]);
+    assert.deepEqual(done.released?.alreadyQueued, [a]);
+  });
+
+  test('a cycle among the ancestors (a damaged jobs.json) ends the chain walk', { timeout: 10_000 }, async () => {
+    const job = await approvedBatch(['a.md'], FAILED);
+    await restartWith({
+      jobs: (js) => {
+        const j = js.find((x) => x.id === job.id)!;
+        js.push({ ...j, id: 'job-p', state: 'failed', reread: { id: 'rp', group: 1, groups: 1, fromJob: 'job-q', reason: 'manual' } });
+        js.push({ ...j, id: 'job-q', state: 'failed', reread: { id: 'rq', group: 1, groups: 1, fromJob: 'job-p', reason: 'manual' } });
+        j.reread = { id: 'r1', group: 1, groups: 1, fromJob: 'job-p', reason: 'manual' };
+      },
+    });
+    const done = await h.engine.finishReview!(job.id);
+    assert.deepEqual(done.released?.files, job.files);
+  });
+
+  test('a folder item whose every file another re-read holds is not packed as an empty folder group', async () => {
+    const job = await approvedBatch(['solo.md'], FAILED);
+    await reloaded(job, (j) => {
+      const dir = path.join(tmp, 'vault', 'inbox', 'notes');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'one.md'), '# one\n');
+      j.files = [...j.files, 'inbox/notes/one.md'];
+      j.folders = ['inbox/notes'];
+    });
+    await restartWith({ plans: (ps) => ps.push(plan('reread-owner', [{ files: ['inbox/notes/one.md'], folders: ['inbox/notes'] }], { reason: 'manual' })) });
+    await h.engine.finishReview!(job.id);
+    assert.deepEqual(released().flatMap((p) => p.groups), [{ files: [job.files[0]] }]);
+  });
+
+  test('when one folder item leaves a waiting released group, its other folder stays a folder', async () => {
+    const job = await approvedBatch(['a.md'], FAILED);
+    await restartWith({
+      plans: (ps) => ps.push(plan('reread-rel', [{ files: ['inbox/x/1.md', 'inbox/y/1.md'], folders: ['inbox/x', 'inbox/y'] }], { reason: 'released', fromJob: job.id })),
+    });
+    for (const f of ['inbox/x/1.md', 'inbox/y/1.md']) {
+      fs.mkdirSync(path.join(tmp, 'vault', path.dirname(f)), { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'vault', f), '# x\n');
+    }
+    h.runner.steps.push({ structured: { status: 'nothing_to_do', summary: 'ok' } });
+    await h.engine.rereadSources({ files: ['inbox/x/1.md'] });
+    await h.engine.whenIdle();
+    assert.deepEqual(reread().plans.find((p) => p.id === 'reread-rel')!.groups, [{ files: ['inbox/y/1.md'], folders: ['inbox/y'] }]);
+  });
+
+  test('Process now started the released re-read; the owner then re-reads the same batch: one read, not two', { todo: 'rereadSources doesn’t see a released group that already started (running or in Review)' }, async () => {
+    const job = await approvedBatch(['a.md'], FAILED);
+    await h.engine.finishReview!(job.id);
+    h.runner.steps.push({ hang: true, structured: { status: 'nothing_to_do', summary: 'x' } });
+    const rel = (await h.engine.processQueue({ force: true }))!;
+    assert.equal(h.engine.getJob(rel.id)!.state, 'running');
+    await h.engine.rereadSources({ jobId: job.id }).catch(() => undefined); // refusing is one acceptable answer
+    const waiting = reread().plans.flatMap((p) => p.groups.filter((g) => !g.jobId).flatMap((g) => g.files));
+    assert.ok(!waiting.includes(job.files[0]!), 'a second read of the source waits behind the one running');
+    await h.engine.cancel(rel.id);
+    await h.engine.whenIdle();
+  });
 });
