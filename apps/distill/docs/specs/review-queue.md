@@ -549,7 +549,8 @@ sources. In the same call, the core (`releaseUnapplied`):
   `released.alreadyRereading` and "Not added. Its sources are already being
   read again." with no second plan.
 - A fully applied batch (`completed` with an operation, no part left) is
-  untouched: no field, no turn, no plan.
+  untouched: no field, no turn, no plan. So are rejected and cancelled
+  batches: the owner stopped them, so sending their sources again is theirs.
 
 ## 4. The batch list (Review)
 

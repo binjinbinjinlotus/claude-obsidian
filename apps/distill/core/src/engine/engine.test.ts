@@ -2179,6 +2179,17 @@ describe('Done on a batch that added nothing (review-queue.md, 2026-10-09)', () 
     });
   }
 
+  for (const stopped of ['rejected', 'cancelled'] as const) {
+    test(`a batch the owner ${stopped} is never released: they stopped it`, async () => {
+      const job = await approvedBatch(['a.md'], FAILED);
+      await reloaded(job, (j) => { j.state = stopped; });
+      const done = await h.engine.finishReview!(job.id);
+      assert.ok(done.reviewDoneAt);
+      assert.equal(done.released, undefined);
+      assert.equal(released().length, 0);
+    });
+  }
+
   test('a batch that isn’t one of sources (labels) is never released', async () => {
     const job = await approvedBatch(['a.md'], FAILED);
     await reloaded(job, (j) => { j.kind = 'labels'; });

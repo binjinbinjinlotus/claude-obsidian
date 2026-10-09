@@ -34,6 +34,8 @@ are released too: they were never added, and the full-read repair skips files a 
 holds.
 (d) No UI change: the turn, Activity, and `released` on the job carry it; the error card and Done
 are as they were.
+(e) Only failed batches and completed ones whose change didn't fully apply release. A rejected or
+cancelled batch (Reject on a Couldn't fix card, Cancel during an apply turn) was stopped by the owner.
 
 **Round 3 of the missing-core work (2026-10-09).**
 (a) Apply and check steps read in the present while they run ("Applying the approved changes",

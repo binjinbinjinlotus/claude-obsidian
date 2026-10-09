@@ -3388,15 +3388,17 @@ export function createEngine(opts: EngineOptions): Engine {
   }
 
   /**
-   * review-queue.md, Done on a batch that added nothing (2026-10-09): its sources the vault doesn't hold yet go to
-   * a re-read (`reason: 'released'`) that starts only when a batch may start (processQueue: the timer's batch or
-   * Process now), never from Done itself. Left out: sources the owner removed in Review, those of a part that
+   * review-queue.md, Done on a batch that added nothing (2026-10-09): a failed batch, or a completed one whose change
+   * didn't fully apply, gives its sources the vault doesn't hold yet to a re-read (`reason: 'released'`) that starts
+   * only when a batch may start (processQueue: the timer's batch or Process now), never from Done itself. Left out: sources the owner removed in Review, those of a part that
    * applied, those whose page is in the vault already (existingSourcePages, as the re-read uses), and those whose
    * inbox file is gone. Once per batch (`released`).
    */
   function releaseUnapplied(id: string): void {
     const job = findJob(id);
     if (!job || job.released || fullyApplied(job) || job.kind !== queueConsumer().id) return;
+    // Rejected and cancelled batches were stopped by the owner: their sources are theirs to send again.
+    if (job.state !== 'failed' && job.state !== 'completed') return;
     const at = isoDate(now());
     if (rereads.plans.some((p) => p.fromJob === id && p.groups.some((g) => !g.jobId)) || jobs.some((j) => j.reread?.fromJob === id && (j.state === 'running' || j.state === 'awaitingApproval'))) {
       mutate(id, (j) => {
