@@ -2755,6 +2755,19 @@ export function createEngine(opts: EngineOptions): Engine {
       throw new CoreError('invalid_request', `Can't re-read ${plural(unreadable.length, 'file')}:\n${unreadable.map((p) => `- ${p}`).join('\n')}`);
     }
     if (items.length === 0) throw new CoreError('invalid_request', 'No sources to re-read.');
+    // review-queue.md, One read at a time (2026-10-09): a released group not started yet gives its files to this
+    // re-read; files another read holds (a group not started yet, a batch running or in Review) stay with it.
+    absorbReleased(new Set(items.flatMap((i) => i.files)), vault.path);
+    const held = filesBeingReread(vault.path);
+    const free = items.filter((i) => !i.files.some((f) => held.has(f)));
+    // A folder item is one source: one held file keeps the whole item back.
+    const busy = items.filter((i) => !free.includes(i)).flatMap((i) => i.files.map((f) => ({ path: f, reason: held.has(f) ? 'already being read again' : 'its folder is already being read again' })));
+    if (free.length === 0) {
+      saveRereads(); // what was absorbed stays absorbed: another read holds those files too
+      throw new CoreError('invalid_state', items.length === 1 ? 'This source is already being read again.' : 'These sources are already being read again.');
+    }
+    skipped = [...skipped, ...busy];
+    items = free;
     const plan: RereadPlan = {
       id: makeRereadID(now()),
       vaultPath: vault.path,
@@ -2766,7 +2779,6 @@ export function createEngine(opts: EngineOptions): Engine {
       ...(tokenBudget !== undefined ? { tokenBudget } : {}),
       ...(req.reason ? { reason: req.reason } : {}),
     };
-    absorbReleased(new Set(items.flatMap((i) => i.files)), vault.path);
     rereads.plans.push(plan);
     saveRereads();
     log('info', `Re-read ${plan.id}: ${plural(items.length, 'source')} in ${plan.groups.length} batch(es) ${perBatch !== undefined ? `of up to ${perBatch}` : `of up to about ${Math.round(tokenBudget! / 1000)}K tokens`}.`);

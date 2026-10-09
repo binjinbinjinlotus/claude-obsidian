@@ -564,11 +564,16 @@ sources. In the same call, the core (`releaseUnapplied`):
   released. The chain walk stops at a batch already seen (no loop) and at one
   no longer listed (the end of the chain).
 - **One read at a time (2026-10-09, round 4c).** Done leaves out files that
-  another re-read already holds (a group not started yet, or a re-read batch
+  another read already holds (a re-read group not started yet, or any batch
   running or in Review): `released.alreadyQueued`, "1 source already waits
   for another re-read." And any new re-read (`batch reread`, Try again)
   takes its files out of released groups not started yet; a folder item
-  leaves whole, and a plan left empty is dropped.
+  leaves whole, and a plan left empty is dropped. It also leaves out files
+  another read holds (reported in `skipped`; a folder item with one held file
+  waits whole) and, when every one is held, is refused: "This source is
+  already being read again." Try again on a held source answers the same.
+  A folder's prompt marks its files on disk that aren't in the batch "not in
+  this batch, not read".
 
 ## 4. The batch list (Review)
 

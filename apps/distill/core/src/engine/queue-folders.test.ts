@@ -13,7 +13,8 @@ import type { ProcessOutput, RunProcessOptions } from '../runners/process.js';
 import { statePaths } from '../store/paths.js';
 import { decodeSettings, encodeSettings } from '../store/settings.js';
 import { createEngine, type Engine } from './index.js';
-import { parseGoogleDoc, pendingFiles } from './queue.js';
+import { folderSourceBlock, parseGoogleDoc, pendingFiles, walkFolder } from './queue.js';
+import { folderPrompt, type JobContext } from './job-kinds.js';
 
 /** Stub runner: records every request and ends each turn with nothing to do. */
 class StubRunner implements AgentRunner {
@@ -476,4 +477,39 @@ describe('the periodic queue check', () => {
     assert.equal(decodeSettings({ queueScanMinutes: 99999 }).queueScanMinutes, 1440);
     assert.equal(encodeSettings(decodeSettings({ queueScanMinutes: 15 })).queueScanMinutes, 15);
   });
+});
+
+test('folderSourceBlock: with the files a batch reads, any other file on disk is not in this batch, not read', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'distill-folder-only-'));
+  try {
+    fs.mkdirSync(path.join(dir, 'notes'));
+    fs.writeFileSync(path.join(dir, 'notes', 'one.md'), '# one\n');
+    fs.writeFileSync(path.join(dir, 'two.md'), '# two\n');
+    const all = folderSourceBlock('Trip', walkFolder(dir));
+    assert.match(all, /- Trip\/two\.md \(\d+ B\)\n/);
+    assert.ok(!all.includes('not in this batch'), 'without a list every file is read');
+    const part = folderSourceBlock('Trip', walkFolder(dir), new Set(['notes/one.md']));
+    assert.match(part, /- Trip\/notes\/one\.md \(\d+ B\)\n/);
+    assert.match(part, /- Trip\/two\.md \(\d+ B, not in this batch, not read\)/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('folderPrompt: each folder lists as read only the batch’s own files inside it, even with same-length names', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'distill-folder-prompt-'));
+  try {
+    for (const d of ['notes', 'trips']) {
+      fs.mkdirSync(path.join(vault, 'inbox', d), { recursive: true });
+      for (const f of ['one.md', 'two.md']) fs.writeFileSync(path.join(vault, 'inbox', d, f), `# ${d} ${f}\n`);
+    }
+    const ctx = { vault: { path: vault }, job: { folders: ['inbox/notes', 'inbox/trips'], files: ['inbox/notes/two.md', 'inbox/trips/one.md'] } } as unknown as JobContext;
+    const prompt = folderPrompt(ctx);
+    assert.match(prompt, /- notes\/one\.md \(\d+ B, not in this batch, not read\)/);
+    assert.match(prompt, /- notes\/two\.md \(\d+ B\)\n/);
+    assert.match(prompt, /- trips\/one\.md \(\d+ B\)\n/);
+    assert.match(prompt, /- trips\/two\.md \(\d+ B, not in this batch, not read\)/);
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+  }
 });

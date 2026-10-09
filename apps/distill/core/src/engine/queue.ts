@@ -346,7 +346,11 @@ const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
  * The prompt block for one folder item: relative paths (from the batch folder), names and sizes,
  * never absolute paths. `.gdoc` and files collected before are listed but marked as not sources.
  */
-export function folderSourceBlock(name: string, w: FolderWalk): string {
+/**
+ * `only` (2026-10-09): the folder's files this batch reads, relative to the folder. Any other file on disk is
+ * listed as "not in this batch, not read" (a re-read group may hold part of a folder another read has).
+ */
+export function folderSourceBlock(name: string, w: FolderWalk, only?: ReadonlySet<string>): string {
   // .gdoc pointers left behind in the queue folder still count: the folder had them.
   const leftGdocs = w.absentSeenBefore.filter((t) => t.kind === 'gdoc' && !t.seenBefore);
   const files = w.fileCount + leftGdocs.length;
@@ -358,6 +362,7 @@ export function folderSourceBlock(name: string, w: FolderWalk): string {
     if (e.kind === 'dir') lines.push(`- ${p}/`);
     else if (e.kind === 'gdoc') lines.push(`- ${p} (Google Doc, not read)`);
     else if (e.seenBefore) lines.push(`- ${p} (${formatBytes(e.size)}, seen before, not a source)`);
+    else if (only && !only.has(e.path)) lines.push(`- ${p} (${formatBytes(e.size)}, not in this batch, not read)`);
     else lines.push(`- ${p} (${formatBytes(e.size)})`);
   }
   if (tree.length > QUEUE_FOLDER_LIMITS.maxTreeEntries) lines.push(`- … ${tree.length - QUEUE_FOLDER_LIMITS.maxTreeEntries} more not listed`);

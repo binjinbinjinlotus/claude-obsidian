@@ -264,7 +264,9 @@ export function folderPrompt(ctx: JobContext): string {
   const folders = ctx.job.folders ?? [];
   if (folders.length === 0) return '';
   const blocks = folders.map((rel) => {
-    const block = folderSourceBlock(path.posix.basename(rel), walkFolder(path.join(ctx.vault.path, rel)));
+    // Only the folder's files this batch holds are read; the rest of what is on disk is context.
+    const only = new Set(ctx.job.files.filter((f) => f.startsWith(rel + '/')).map((f) => f.slice(rel.length + 1)));
+    const block = folderSourceBlock(path.posix.basename(rel), walkFolder(path.join(ctx.vault.path, rel)), only);
     return `In ${path.posix.dirname(rel)}/:\n${block}`;
   });
   return `

@@ -2409,6 +2409,77 @@ describe('Done on a batch that added nothing (review-queue.md, 2026-10-09)', () 
     assert.equal(released().length, 0);
   });
 
+  test('a released folder keeps only its files not yet in the vault, and its prompt says not to read the others', async () => {
+    const job = await approvedBatch(['solo.md'], FAILED);
+    await reloaded(job, (j) => {
+      const dir = path.join(tmp, 'vault', 'inbox', 'notes');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'one.md'), '# one\n');
+      fs.writeFileSync(path.join(dir, 'two.md'), '# two\n');
+      j.files = ['inbox/notes/one.md', 'inbox/notes/two.md'];
+      j.folders = ['inbox/notes'];
+    });
+    pageFor('inbox/notes/one.md', 'One');
+    await h.engine.finishReview!(job.id);
+    h.runner.steps.push({ structured: { status: 'nothing_to_do', summary: 'ok' } });
+    const next = (await h.engine.processQueue({ force: true }))!;
+    await h.engine.whenIdle();
+    assert.deepEqual(next.files, ['inbox/notes/two.md']);
+    const prompt = h.runner.requests.at(-1)!.prompt;
+    assert.match(prompt, /- notes\/one\.md \(\d+ B, not in this batch, not read\)/);
+    assert.match(prompt, /- notes\/two\.md \(\d+ B\)\n/);
+  });
+
+  test('the owner’s re-read leaves out a file another read holds, says which, and reads the rest', async () => {
+    const job = await approvedBatch(['a.md', 'b.md'], FAILED);
+    const [a, b] = [...job.files].sort();
+    fs.writeFileSync(path.join(h.queue, 'busy.md'), '# busy\n');
+    h.runner.steps.push({ hang: true, structured: { status: 'done', summary: 'x' } });
+    const busy = (await h.engine.processQueue({ force: true }))!;
+    await h.engine.rereadSources({ files: [a!] }); // waits behind the busy batch
+    const res = await h.engine.rereadSources({ files: [a!, b!] });
+    assert.deepEqual(res.groups.flatMap((g) => g.files), [b]);
+    assert.deepEqual(res.skipped, [{ path: a, reason: 'already being read again' }]);
+    await h.engine.cancel(busy.id);
+    await h.engine.whenIdle();
+  });
+
+  test('Try again on a held source that a running batch already reads is refused in the same words', async () => {
+    const job = await approvedBatch(['a.md'], FAILED);
+    const [a] = job.files;
+    await reloaded(job, (j) => { j.stopped = [{ file: a, reason: 'it isn’t valid UTF-8 text', at: '2026-10-09T10:00:00Z' }]; });
+    h.runner.steps.push({ hang: true, structured: { status: 'done', summary: 'x' } });
+    const first = await h.engine.retryHeld(a!);
+    assert.equal(first.started.length, 1);
+    await assert.rejects(h.engine.retryHeld(a!), /^CoreError: This source is already being read again\.$|This source is already being read again\./);
+    await h.engine.cancel(first.started[0]!.id);
+    await h.engine.whenIdle();
+  });
+
+  test('a folder item with one held file waits whole', async () => {
+    const job = await approvedBatch(['solo.md'], FAILED);
+    await reloaded(job, (j) => {
+      const dir = path.join(tmp, 'vault', 'inbox', 'notes');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'one.md'), '# one\n');
+      fs.writeFileSync(path.join(dir, 'two.md'), '# two\n');
+      j.files = [...j.files, 'inbox/notes/one.md', 'inbox/notes/two.md'];
+      j.folders = ['inbox/notes'];
+    });
+    fs.writeFileSync(path.join(h.queue, 'busy.md'), '# busy\n');
+    h.runner.steps.push({ hang: true, structured: { status: 'done', summary: 'x' } });
+    const busy = (await h.engine.processQueue({ force: true }))!;
+    await h.engine.rereadSources({ files: ['inbox/notes/one.md'] });
+    const res = await h.engine.rereadSources({ jobId: job.id });
+    assert.deepEqual(res.groups.flatMap((g) => g.files), [job.files[0]]);
+    assert.deepEqual(res.skipped, [
+      { path: 'inbox/notes/one.md', reason: 'already being read again' },
+      { path: 'inbox/notes/two.md', reason: 'its folder is already being read again' },
+    ]);
+    await h.engine.cancel(busy.id);
+    await h.engine.whenIdle();
+  });
+
   test('a released folder item leaves whole when the owner re-reads one of its files', async () => {
     const job = await approvedBatch(['solo.md'], FAILED);
     await reloaded(job, (j) => {
@@ -2441,11 +2512,9 @@ describe('Done on a batch that added nothing (review-queue.md, 2026-10-09)', () 
     saved.plans.push({ ...saved.plans[0], id: 'reread-repair', reason: 'repair' });
     fs.writeFileSync(file, JSON.stringify(saved));
     h = setup([]);
-    h.runner.steps.push({ structured: { status: 'nothing_to_do', summary: 'ok' } });
-    await h.engine.rereadSources({ files: job.files });
-    await h.engine.whenIdle();
-    // The repair plan in this vault starts now that the vault is free, so it reads on its own; the release doesn't.
-    const ids = [...reread().plans.map((p) => p.id), ...h.engine.listJobs().filter((j) => j.reread?.reason === 'repair').map(() => 'reread-repair')].sort();
+    // The repair plan waiting in this vault holds the file, so the owner's re-read is refused; the release gives it up.
+    await assert.rejects(h.engine.rereadSources({ files: job.files }), /This source is already being read again\./);
+    const ids = reread().plans.map((p) => p.id).sort();
     assert.deepEqual(ids, ['reread-other-vault', 'reread-repair'], `${plan.id} absorbed, the others kept`);
   });
 
@@ -2689,7 +2758,7 @@ describe('Done on a batch that added nothing (review-queue.md, 2026-10-09)', () 
     assert.deepEqual(reread().plans.find((p) => p.id === 'reread-rel')!.groups, [{ files: ['inbox/y/1.md'], folders: ['inbox/y'] }]);
   });
 
-  test('Process now started the released re-read; the owner then re-reads the same batch: one read, not two', { todo: 'rereadSources doesn’t see a released group that already started (running or in Review)' }, async () => {
+  test('Process now started the released re-read; the owner then re-reads the same batch: one read, not two', async () => {
     const job = await approvedBatch(['a.md'], FAILED);
     await h.engine.finishReview!(job.id);
     h.runner.steps.push({ hang: true, structured: { status: 'nothing_to_do', summary: 'x' } });

@@ -38,13 +38,24 @@ are as they were.
 cancelled batch (Reject on a Couldn't fix card, Cancel during an apply turn) was stopped by the owner.
 (f) Supersedes (c) on stopped sources (round 4b): `Job.stopped` now persists (jobs.ts decoded and
 encoded neither, so Held in inbox/ emptied on every restart; fixed, with `reread.reason`). Sources
-that couldn't be read in full (the core stopped reading them; the owner did nothing) are no longer
-released, because that is the choice that never reads one twice. Each already has its own way
-back: Held in inbox/ lists it (`listHeld`, from `job.stopped`) with Try again, a one-source re-read
-(`reason: 'retry'`). Released too, it could sit in a released plan while its Try again waits or
-runs, and be read and paid for twice. The full-read repair is not a second path for them: it reads
-only ledger sources (already ingested) and skips stopped hashes and files a waiting re-read holds.
-Tested: a held source whose Try again waits is not released, and only one waiting read of it exists.
+that couldn't be read in full are no longer released. The core stopped them, not the owner, but
+they already have a way back that the owner controls: Held in inbox/ with Try again, one source per
+batch. A release would read them a second time in a packed batch, likely stop the same way, and pay
+twice for it.
+(i) Supersedes (f)'s reasoning (round 4d; the outcome stands: stopped sources are not released).
+"Stopped" means the core stopped reading them (they couldn't be read in full); the owner did
+nothing, so "the owner controls it" is no reason. The reason is that it is the choice that never
+reads one twice. Each already has its own way back: Held in inbox/ lists it (`listHeld`, from
+`job.stopped`) with Try again, a one-source re-read (`reason: 'retry'`). Released too, it could sit in
+a released plan while its Try again waits or runs, and be read and paid for twice. The full-read
+repair is not a second path for them: it reads only ledger sources (already ingested) and skips
+stopped hashes and files a waiting re-read holds. Tested: a held source whose Try again waits is not
+released, and only one waiting read of it exists. Round 4d also makes every new re-read (`batch
+reread`, Try again) leave out files another read holds (a group not started yet, any batch running
+or in Review) and refuse in plain words when all of them are held ("This source is already being
+read again."); a folder item with one held file waits whole. A folder's prompt lists the files on
+disk that aren't in this batch as "not in this batch, not read", so a re-read of part of a folder
+doesn't invite the agent to read the rest.
 (h) Round 4c: no double spend between a release and any other re-read. The verifier found three:
 the owner's `batch reread --job` after Done read the source twice; Done on a batch and on the
 owner's failed re-read of it made two plans with the same file; and a hand-made re-read of a capped

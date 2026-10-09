@@ -375,6 +375,11 @@ describe('re-read: batches in sequence', () => {
     assert.deepEqual(res.groups.map((g) => g.files), [files], 'four small notes fit in one batch');
     await h.engine.whenIdle();
     await assert.rejects(h.engine.rereadSources!({ files, tokenBudget: 10 }), /at least 1000/);
+    // One read at a time: the first re-read's batch holds them until it ends.
+    const first = h.engine.getJob(res.started[0]!.id)!;
+    assert.equal(first.state, 'awaitingApproval');
+    await assert.rejects(h.engine.rereadSources!({ files }), /These sources are already being read again\./);
+    await h.engine.reject(first.id);
     const sized = await h.engine.rereadSources!({ files, tokenBudget: 1000 });
     assert.equal(sized.tokenBudget, 1000);
     assert.equal(sized.groups.length, 1, 'small notes still fit');
