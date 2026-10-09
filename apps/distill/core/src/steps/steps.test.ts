@@ -13,7 +13,7 @@ import { startServer, type RunningServer } from '../server/http.js';
 import { JobStore, newJob } from '../store/jobs.js';
 import { statePaths } from '../store/paths.js';
 import { createStepLog, MAX_STEPS } from './index.js';
-import { noteWords, redact, toolWords, unwrapShell, type WordsContext } from './words.js';
+import { noteWords, redact, toolEndText, toolWords, unwrapShell, type WordsContext } from './words.js';
 
 type Turn = { steps?: RunnerStep[]; result: Partial<RunResult> };
 
@@ -298,6 +298,24 @@ describe('step log tool errors (2026-10-08)', () => {
     assert.deepEqual([by('command').state, by('command').text], ['failed', 'Ran a command: ls']);
     assert.equal(by('read').state, 'done');
   });
+
+  test('apply and check read in the present while they run and in the past only when they worked', () => {
+    const dir = path.join(root, 'steps-tense');
+    const job = { ...newJob({ id: 'job-t', kind: 'ingest', vaultPath: root, files: ['inbox/a.md'], model: 'm', now: new Date() }) };
+    const log = createStepLog({ dir, emit: () => undefined, getJob: () => job });
+    log.onEvent({ type: 'job', job });
+    log.runnerStep('job-t', { kind: 'tool', id: 'in', tool: 'Bash', input: { command: `python3 /p/scripts/claude-obsidian.py transaction inspect /b.json --vault ${root}` } });
+    log.runnerStep('job-t', { kind: 'tool', id: 'ap', tool: 'Bash', input: { command: `python3 /p/scripts/claude-obsidian.py transaction apply /b.json --vault ${root}` } });
+    const by = (verb: string) => log.list('job-t').steps.find((x) => x.verb === verb)!;
+    assert.deepEqual([by('check').state, by('check').text], ['running', 'Checking the plan with the vault core']);
+    assert.deepEqual([by('apply').state, by('apply').text], ['running', 'Applying the approved changes']);
+    log.runnerStep('job-t', { kind: 'toolDone', id: 'in' });
+    log.runnerStep('job-t', { kind: 'toolDone', id: 'ap' });
+    assert.deepEqual([by('check').state, by('check').text], ['done', 'Checked the plan with the vault core']);
+    assert.deepEqual([by('apply').state, by('apply').text], ['done', 'Applied the approved changes']);
+    assert.equal(toolEndText('read', 'done'), undefined, 'other steps keep their words');
+    assert.equal(toolEndText('command', 'failed'), undefined);
+  });
 });
 
 describe('step log limits', () => {
@@ -341,7 +359,7 @@ describe('plain words', () => {
     assert.equal(toolWords({ kind: 'tool', tool: 'Read', input: { file_path: '/Users/me/product/skills/wiki/references/provenance.md' } }, ctx)!.detail, 'Read · …/references/provenance.md');
     assert.equal(toolWords({ kind: 'tool', tool: 'Grep', input: { pattern: 'address_requests', path: '/v/wiki' } }, ctx)!.text, 'Searched for “address_requests”');
     assert.equal(toolWords({ kind: 'tool', tool: 'Bash', input: { command: "bash -lc 'sed -n 1,200p inbox/Tea.md'" } }, ctx)!.text, 'Read “Tea”');
-    assert.equal(toolWords({ kind: 'tool', tool: 'Bash', input: { command: 'python3 scripts/claude-obsidian.py transaction inspect b.json --vault /v' } }, ctx)!.text, 'Checked the plan with the vault core');
+    assert.equal(toolWords({ kind: 'tool', tool: 'Bash', input: { command: 'python3 scripts/claude-obsidian.py transaction inspect b.json --vault /v' } }, ctx)!.text, 'Checking the plan with the vault core', 'present tense until a result comes');
     assert.equal(toolWords({ kind: 'tool', tool: 'Bash', input: { command: 'cat inbox/Tea.md | wc -l' } }, ctx)!.text, 'Ran a command: cat');
     assert.equal(toolWords({ kind: 'tool', tool: 'Edit', input: { file_path: '/v/.vault-meta/worker/job-1/drafts/s02.md', old_string: 'x', new_string: 'y' } }, ctx)!.text, 'Edited a draft (s02.md)');
     assert.equal(toolWords({ kind: 'tool', tool: 'StructuredOutput', input: {} }, ctx), undefined);

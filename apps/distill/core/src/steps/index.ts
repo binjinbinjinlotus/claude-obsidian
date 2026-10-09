@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { CoreEvent, Job, JobStep, JobStepsPage, Progress, RunnerStep } from '../contracts.js';
 import type { FullReadStep } from '../engine/full-read.js';
 import { isoDate } from '../store/json.js';
-import { clip, noteWords, redact, titleOf, toolWords, type WordsContext } from './words.js';
+import { clip, noteWords, redact, titleOf, toolEndText, toolWords, type WordsContext } from './words.js';
 
 export { redact, toolWords, noteWords } from './words.js';
 
@@ -239,13 +239,6 @@ export function createStepLog(opts: StepLogOptions): StepLog {
     const id = s.id ?? nextId(l, s.phase);
     put(jobId, { ...s, id, at: s.at ?? isoDate(now()) } as JobStep);
     return id;
-  }
-
-  /** The words for a tool step that ended with an error ('' keeps its own: they don't claim it worked). */
-  function failedToolText(step: JobStep | undefined): string {
-    if (step?.verb === 'apply') return 'Couldn’t apply the approved changes';
-    if (step?.verb === 'check') return 'Couldn’t check the plan with the vault core';
-    return '';
   }
 
   /** Close what was still running when a turn ended (a tool whose result never came). */
@@ -542,9 +535,10 @@ export function createStepLog(opts: StepLogOptions): StepLog {
         if (s.kind === 'toolDone') {
           const id = l.tools.get(s.id);
           if (!id) return;
-          // A tool that returned an error ends failed, and a past tense that claims it worked is taken back.
-          const failed = s.isError === true ? failedToolText(l.steps.get(id)) : undefined;
-          change(jobId, id, failed !== undefined ? { state: 'failed', ...(failed ? { text: failed } : {}), endedAt: isoDate(now()) } : { state: 'done', endedAt: isoDate(now()) });
+          // A tool that returned an error ends failed; apply and check say how they ended (toolEndText).
+          const state = s.isError === true ? 'failed' : 'done';
+          const text = toolEndText(l.steps.get(id)?.verb ?? '', state);
+          change(jobId, id, { state, ...(text ? { text } : {}), endedAt: isoDate(now()) });
           return;
         }
         const w = s.kind === 'tool' ? toolWords(s, context(job)) : noteWords(s.text);

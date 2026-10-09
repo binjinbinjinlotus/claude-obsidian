@@ -95,6 +95,20 @@ function lines(input: Record<string, unknown>): string {
 }
 
 /** Words for one tool call; undefined for calls the log leaves out (the structured answer itself). */
+/** The vault core's own steps, worded by how they ended: running, done, or failed (2026-10-08). */
+const TOOL_TENSES = {
+  apply: { running: 'Applying the approved changes', done: 'Applied the approved changes', failed: 'Couldn’t apply the approved changes' },
+  check: { running: 'Checking the plan with the vault core', done: 'Checked the plan with the vault core', failed: 'Couldn’t check the plan with the vault core' },
+} as const;
+
+/**
+ * The text a tool step ends with, when its words depend on the result; undefined keeps its own (the other
+ * steps never claim a result). A step whose result never came keeps its running words.
+ */
+export function toolEndText(verb: string, state: 'done' | 'failed'): string | undefined {
+  return verb === 'apply' || verb === 'check' ? TOOL_TENSES[verb][state] : undefined;
+}
+
 export function toolWords(step: Extract<RunnerStep, { kind: 'tool' }>, ctx: WordsContext): Words | undefined {
   const input = step.input;
   const tool = step.tool;
@@ -121,8 +135,9 @@ export function toolWords(step: Extract<RunnerStep, { kind: 'tool' }>, ctx: Word
       const raw = unwrapShell(str(input.command).trim());
       const first = raw.split('\n')[0] ?? '';
       const detail = clip(redact(`Bash · ${first}`), COMMAND_LIMIT + 7);
-      if (/\btransaction\s+inspect\b/.test(raw)) return { verb: 'check', text: 'Checked the plan with the vault core', detail };
-      if (/\btransaction\s+apply\b/.test(raw)) return { verb: 'apply', text: 'Applied the approved changes', detail };
+      // Present tense while it runs: the past tense comes only with a result (toolEndText).
+      if (/\btransaction\s+inspect\b/.test(raw)) return { verb: 'check', text: TOOL_TENSES.check.running, detail };
+      if (/\btransaction\s+apply\b/.test(raw)) return { verb: 'apply', text: TOOL_TENSES.apply.running, detail };
       const read = first.match(READ_COMMANDS);
       if (read && !/[|;&<>]/.test(first)) {
         const file = read[1] ?? read[2] ?? read[3] ?? '';

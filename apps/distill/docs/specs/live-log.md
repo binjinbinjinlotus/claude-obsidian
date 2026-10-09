@@ -3,7 +3,7 @@ type: spec
 title: Live log
 status: built
 created: 2026-10-05
-updated: 2026-10-05
+updated: 2026-10-09
 tags:
   - distill
   - logs
@@ -101,12 +101,20 @@ kept.
 | Read a vault page (wiki/) | Read your page “index” |
 | Read anything else (skills, code) | Read provenance.md |
 | Grep / Glob | Searched for “…” / Looked for files (…) |
-| Bash | Ran a command: shasum. A recognizable `cat`/`sed -n`/`head` of one file reads as Read “…”, and `transaction inspect` as Checked the plan with the vault core |
+| Bash | Ran a command: shasum. A recognizable `cat`/`sed -n`/`head` of one file reads as Read “…”. `transaction inspect` reads Checking the plan with the vault core while it runs and Checked … when it worked; `transaction apply` reads Applying the approved changes, then Applied … |
 | Write / Edit in the job folder | Wrote a draft (s01.md) / Edited a draft (s02.md) |
 | Skill | Started the wiki-ingest instructions |
 | TodoWrite, Task, WebFetch, WebSearch | Updated its plan; Started a helper: …; Looked up host; Searched the web for “…” |
 | The structured answer (StructuredOutput) | Left out: it is the result, not a step |
 | Anything else | Used <tool> |
+
+**Failed tool steps (2026-10-08).** A tool call whose result is an error
+(Claude's `is_error`, Codex's failed command) ends **failed**, never done. A
+failed apply reads "Couldn’t apply the approved changes" and a failed check
+"Couldn’t check the plan with the vault core"; other steps keep their words
+with the failed mark. Only apply and check change tense with their result
+(`toolEndText`): a step whose result never comes keeps its running words
+when the turn closes it.
 
 Codex steps use the same words. It reads files with shell commands, so a
 recognizable read of one file shows as Read “…”. Batches never run on a
