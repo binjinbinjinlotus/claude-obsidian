@@ -164,6 +164,14 @@ final class CoreLauncherTests: XCTestCase {
         let env = CoreLauncher(paths: paths, bundledProductRoot: "/bundled", environment: ["HOME": "/Users/test", "DISTILL_PRODUCT_ROOT": "/env"],
                                fileSystem: FakeFileSystem(files: both))
         XCTAssertEqual(env.productRoot(), "/bundled")
+        both.merge(usable("/env")) { a, _ in a }
+        let usableEnv = CoreLauncher(paths: paths, bundledProductRoot: "/bundled", environment: ["HOME": "/Users/test", "DISTILL_PRODUCT_ROOT": "/env"],
+                                     fileSystem: FakeFileSystem(files: both))
+        XCTAssertEqual(usableEnv.productRoot(), "/env")
+        // An empty candidate is never one: with none usable, the first non-empty is named.
+        let emptyEnv = CoreLauncher(paths: paths, bundledProductRoot: "/deleted-worktree", environment: ["HOME": "/Users/test", "DISTILL_PRODUCT_ROOT": ""],
+                                    fileSystem: FakeFileSystem())
+        XCTAssertEqual(emptyEnv.productRoot(), "/deleted-worktree")
         // None usable: the first one, so launchCommand still names the missing CLI.
         let none = launcher(paths, productRoot: "/deleted-worktree", fs: FakeFileSystem())
         XCTAssertEqual(none.productRoot(), "/deleted-worktree")
