@@ -2084,7 +2084,7 @@ describe('Done on a batch that added nothing (review-queue.md, 2026-10-09)', () 
     assert.equal(released().length, 0);
   });
 
-  test('sources already in the vault, removed in Review, or gone are not read again', async () => {
+  test('sources already in the vault, removed in Review, held for a full read, or gone are not read again', async () => {
     const job = await approvedBatch(['a.md', 'b.md', 'c.md', 'd.md', 'e.md'], FAILED);
     const [a, b, c, d, e] = [...job.files].sort();
     pageFor(a!, 'A');
@@ -2096,13 +2096,16 @@ describe('Done on a batch that added nothing (review-queue.md, 2026-10-09)', () 
       { page: 'wiki/sources/B.md', title: 'B', source: b, labels: [], by: 'none', removed: true },
       { page: 'wiki/sources/D.md', title: 'D', source: d, labels: [], by: 'none' },
     ];
+    j.stopped = [{ file: c, reason: 'it isn’t valid UTF-8 text', at: '2026-10-09T10:00:00Z' }];
     h = setup([], { jobs: saved });
     const done = await h.engine.finishReview!(job.id);
-    assert.deepEqual(done.released!.files, [c, d]);
+    assert.deepEqual(done.released!.files, [d]);
     assert.deepEqual(done.released!.inVault, [a]);
     assert.deepEqual(done.released!.missing, [e]);
-    assert.equal(done.turns.at(-1)!.text, 'Not added. Its 2 sources not in your vault are read again with the next batch. 1 source already in your vault stays as it is. 1 source can\'t be read again: the inbox file is gone.');
-    assert.deepEqual(released()[0]!.groups.flatMap((g) => g.files), [c, d]);
+    assert.equal(done.turns.at(-1)!.text, 'Not added. Its 1 source not in your vault is read again with the next batch. 1 source already in your vault stays as it is. 1 source can\'t be read again: the inbox file is gone.');
+    assert.deepEqual(released()[0]!.groups.flatMap((g) => g.files), [d]);
+    // The held source is still listed for its own Try again.
+    assert.deepEqual((await h.engine.listHeld()).map((x) => x.file), [c]);
   });
 
   test('a batch where one part applied releases only the sources of the part that didn’t', async () => {
@@ -2236,6 +2239,61 @@ describe('Done on a batch that added nothing (review-queue.md, 2026-10-09)', () 
     assert.equal(await h.engine.processQueue({ force: true }), null);
     assert.equal(released().length, 1, 'still waiting');
     assert.equal(h.engine.listJobs().length, 1);
+  });
+
+  test('the cap: a released re-read that didn’t add its sources either is not released again, even after a restart', async () => {
+    const job = await approvedBatch(['a.md', 'b.md'], FAILED);
+    await h.engine.finishReview!(job.id);
+    h.runner.steps.push(needsApproval('PLACEHOLDER'));
+    const again = (await h.engine.processQueue({ force: true }))!;
+    assert.equal(again.reread?.reason, 'released');
+    h.runner.steps[0] = needsApproval(h.bundle(again));
+    await h.engine.whenIdle();
+    h.runner.steps.push(FAILED);
+    await h.engine.approve(again.id);
+    await h.engine.whenIdle();
+    assert.equal(h.engine.getJob(again.id)!.state, 'failed');
+    await reloaded(again, () => undefined); // the reason must come back from jobs.json
+    assert.equal(h.engine.getJob(again.id)!.reread?.reason, 'released');
+    const calls = h.runner.requests.length;
+    const done = await h.engine.finishReview!(again.id);
+    assert.deepEqual(done.released?.files, []);
+    assert.deepEqual([...done.released!.notAgain!].sort(), [...job.files].sort());
+    assert.equal(done.turns.at(-1)!.text, 'Not added. These 2 sources were already read again once; they stay in inbox/ for you to re-read.');
+    assert.equal(released().length, 0, 'no second plan');
+    assert.equal(await h.engine.processQueue({ force: true }), null);
+    assert.equal(h.runner.requests.length, calls);
+  });
+
+  test('the cap with one source, and with nothing left to read', async () => {
+    const job = await approvedBatch(['a.md'], FAILED);
+    await reloaded(job, (j) => { j.reread = { id: 'rr-x', group: 1, groups: 1, fromJob: 'job-0', reason: 'released' }; });
+    let done = await h.engine.finishReview!(job.id);
+    assert.equal(done.turns.at(-1)!.text, 'Not added. This source was already read again once; it stays in inbox/ for you to re-read.');
+    const other = await approvedBatch(['b.md'], FAILED);
+    pageFor(other.files[0]!, 'B');
+    await reloaded(other, (j) => { j.reread = { id: 'rr-y', group: 1, groups: 1, reason: 'released' }; });
+    done = await h.engine.finishReview!(other.id);
+    assert.deepEqual(done.released?.notAgain, []);
+    assert.equal(done.turns.at(-1)!.text, 'Not added, and nothing to read again.');
+  });
+
+  test('a re-read for another reason (the owner’s) is released as usual', async () => {
+    const job = await approvedBatch(['a.md'], FAILED);
+    await reloaded(job, (j) => { j.reread = { id: 'rr-z', group: 1, groups: 1, reason: 'retry' }; });
+    const done = await h.engine.finishReview!(job.id);
+    assert.deepEqual(done.released?.files, job.files);
+  });
+
+  test('stopped sources survive a restart: still Held in inbox/', async () => {
+    const job = await approvedBatch(['a.md'], FAILED);
+    await reloaded(job, (j) => { j.stopped = [{ file: j.files[0], reason: 'it isn’t valid UTF-8 text', at: '2026-10-09T10:00:00Z' }]; });
+    // Done writes jobs.json through this engine (encodeJob); the held source isn't released.
+    const done = await h.engine.finishReview!(job.id);
+    assert.deepEqual(done.released?.files, []);
+    await reloaded(job, () => undefined); // read back by the next engine
+    assert.deepEqual(h.engine.getJob(job.id)!.stopped?.map((s) => s.file), job.files);
+    assert.deepEqual((await h.engine.listHeld()).map((x) => x.file), job.files);
   });
 
   test('every source already in the vault: nothing to read again, and the turn says so', async () => {

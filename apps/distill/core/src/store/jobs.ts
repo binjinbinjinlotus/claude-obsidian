@@ -7,6 +7,7 @@ import type {
   JobPart,
   JobReread,
   ReleasedSources,
+  StoppedSource,
   PendingPart,
   JobActionsSummary,
   JobState,
@@ -294,6 +295,9 @@ export function decodeJob(v: unknown, now = new Date()): Job | undefined {
   // 2026-10-09: what Done released (lenient: a wrong shape is dropped).
   const released = decodeReleased(v.released);
   if (released) job.released = released;
+  // v10 (full reads): Held in inbox/ is listed from these, so they must survive a restart (2026-10-09).
+  const stopped = decodeStopped(v.stopped);
+  if (stopped) job.stopped = stopped;
   // review-queue.md (lenient: a wrong shape is dropped).
   const queued = decodeQueuedApply(v.queuedApply);
   if (queued) job.queuedApply = queued;
@@ -365,6 +369,7 @@ function decodeReleased(v: unknown): ReleasedSources | undefined {
   const id = str(v.rereadId);
   if (id !== undefined) out.rereadId = id;
   if (v.alreadyRereading === true) out.alreadyRereading = true;
+  if (Array.isArray(v.notAgain)) out.notAgain = list(v.notAgain);
   return out;
 }
 
@@ -379,6 +384,22 @@ function decodeReread(v: unknown): JobReread | undefined {
   if (from !== undefined) out.fromJob = from;
   const instruction = str(v.instruction);
   if (instruction !== undefined) out.instruction = instruction;
+  // 2026-10-09: why it ran (a released re-read is never released again); an unknown value is dropped.
+  if (v.reason === 'manual' || v.reason === 'repair' || v.reason === 'retry' || v.reason === 'released') out.reason = v.reason;
+  return out;
+}
+
+/** v10: sources that couldn't be read in full (Held in inbox/); entries without a file, reason or time are dropped. */
+function decodeStopped(v: unknown): StoppedSource[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: StoppedSource[] = [];
+  for (const x of v) {
+    if (!isObject(x) || typeof x.file !== 'string' || typeof x.reason !== 'string' || typeof x.at !== 'string') continue;
+    const s: StoppedSource = { file: x.file, reason: x.reason, at: x.at };
+    const sha = str(x.sha256);
+    if (sha !== undefined) s.sha256 = sha;
+    out.push(s);
+  }
   return out;
 }
 
@@ -511,7 +532,7 @@ function encodeApproval(a: ApprovalRequest): JSONObject {
 const JOB_KEYS = [
   'id', 'kind', 'vaultPath', 'files', 'sessionID', 'runnerID', 'model', 'effort', 'state',
   'createdAt', 'updatedAt', 'approval', 'turns', 'grantedTools', 'operationID', 'changedPaths', 'error', 'actionsFound', 'folders', 'sessionUnavailable',
-  'parts', 'pendingPart', 'approvedChange', 'reviewDoneAt', 'released', 'reread', 'queuedApply', 'refresh', 'recovery',
+  'parts', 'pendingPart', 'approvedChange', 'reviewDoneAt', 'released', 'stopped', 'reread', 'queuedApply', 'refresh', 'recovery',
 ];
 
 /** Every non-optional key is always written; nil optionals are omitted (never `null`). */
@@ -561,11 +582,13 @@ export function encodeJob(job: Job, raw: JSONObject = {}): JSONObject {
   if (job.approvedChange != null) out.approvedChange = JSON.parse(JSON.stringify(job.approvedChange)) as JSONObject;
   if (job.reviewDoneAt != null) out.reviewDoneAt = job.reviewDoneAt;
   if (job.released != null) out.released = JSON.parse(JSON.stringify(job.released)) as JSONObject;
+  if (job.stopped != null) out.stopped = job.stopped.map((s) => ({ ...s }));
   if (job.reread != null) {
     const r = job.reread;
     const m: JSONObject = { id: r.id, group: r.group, groups: r.groups };
     if (r.fromJob != null) m.fromJob = r.fromJob;
     if (r.instruction != null) m.instruction = r.instruction;
+    if (r.reason != null) m.reason = r.reason;
     out.reread = m;
   }
   for (const k of ['queuedApply', 'refresh', 'recovery'] as const) {

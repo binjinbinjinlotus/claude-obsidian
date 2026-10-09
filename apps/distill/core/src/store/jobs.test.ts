@@ -81,8 +81,9 @@ function fullJob(): Record<string, unknown> {
     },
     approvedChange: { at: '2026-10-01T12:00:00Z', operationID: 'op-1', changes: 5, sources: 1, concepts: 2, entities: 1, otherPages: 1, updated: 3, sourcesApproved: 2 },
     reviewDoneAt: '2026-10-01T13:00:00Z',
-    released: { at: '2026-10-01T13:00:00Z', files: ['inbox/a.md'], inVault: ['inbox/b.md'], missing: ['inbox/c.md'], rereadId: 'rr-2', alreadyRereading: true },
-    reread: { id: 'rr-1', group: 1, groups: 3, fromJob: 'job-0', instruction: 'read it all' },
+    released: { at: '2026-10-01T13:00:00Z', files: ['inbox/a.md'], inVault: ['inbox/b.md'], missing: ['inbox/c.md'], rereadId: 'rr-2', alreadyRereading: true, notAgain: ['inbox/d.md'] },
+    stopped: [{ file: 'inbox/e.md', sha256: 'e'.repeat(64), reason: 'it isn’t valid UTF-8 text from line 4', at: '2026-10-01T12:30:00Z' }, { file: 'inbox/f.md', reason: 'too long', at: '2026-10-01T12:31:00Z' }],
+    reread: { id: 'rr-1', group: 1, groups: 3, fromJob: 'job-0', instruction: 'read it all', reason: 'released' },
     queuedApply: { at: '2026-10-01T12:00:00Z', order: 4, bundlePath: '/v/b.json', labels: 'later', carries: 'later', planSha256: 'f'.repeat(64) },
     refresh: { since: '2026-10-01T12:00:00Z', reason: 'stale', stalePaths: ['wiki/a.md'], approved: true, attempt: 2 },
     recovery: {
@@ -122,7 +123,7 @@ describe('decodeJob / encodeJob', () => {
     assert.match(job.sessionID, /^[0-9a-f-]{36}$/);
     assert.equal(job.createdAt, '2026-10-05T12:00:00Z');
     assert.equal(job.updatedAt, job.createdAt, 'updatedAt falls back to createdAt');
-    for (const k of ['runnerID', 'effort', 'approval', 'operationID', 'error', 'actionsFound', 'folders', 'parts', 'pendingPart', 'sessionUnavailable', 'approvedChange', 'reviewDoneAt', 'released', 'reread', 'queuedApply', 'refresh', 'recovery']) {
+    for (const k of ['runnerID', 'effort', 'approval', 'operationID', 'error', 'actionsFound', 'folders', 'parts', 'pendingPart', 'sessionUnavailable', 'approvedChange', 'reviewDoneAt', 'released', 'stopped', 'reread', 'queuedApply', 'refresh', 'recovery']) {
       assert.equal(k in job, false, k);
     }
   });
@@ -341,6 +342,14 @@ describe('decodeJob / encodeJob', () => {
     assert.equal(decodeJob({ id: 'j', vaultPath: '/v', released: { files: [] } }, NOW)!.released, undefined);
     assert.equal(decodeJob({ id: 'j', vaultPath: '/v', released: 'yes' }, NOW)!.released, undefined);
     assert.deepEqual(decodeJob({ id: 'j', vaultPath: '/v', released: { at: 't', files: ['a', 3], inVault: 'x', alreadyRereading: 'yes' } }, NOW)!.released, { at: 't', files: ['a'], inVault: [], missing: [] });
+  });
+
+  test('reread.reason keeps only the known reasons; stopped keeps only whole entries', () => {
+    const reason = (r: unknown) => decodeJob({ id: 'j', vaultPath: '/v', reread: { id: 'r', group: 1, groups: 1, reason: r } }, NOW)!.reread!.reason;
+    for (const r of ['manual', 'repair', 'retry', 'released'] as const) assert.equal(reason(r), r);
+    assert.equal(reason('whenever'), undefined);
+    assert.equal(decodeJob({ id: 'j', vaultPath: '/v', stopped: 'x' }, NOW)!.stopped, undefined);
+    assert.deepEqual(decodeJob({ id: 'j', vaultPath: '/v', stopped: [{ file: 'inbox/a.md', reason: 'r', at: 't', sha256: 5 }, { file: 'inbox/b.md', at: 't' }, { reason: 'r', at: 't' }, { file: 'inbox/c.md', reason: 'r' }, 'x'] }, NOW)!.stopped, [{ file: 'inbox/a.md', reason: 'r', at: 't' }]);
   });
 
   test('reviewDoneAt must be a date', () => {

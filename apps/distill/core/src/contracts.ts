@@ -478,6 +478,8 @@ export interface ReleasedSources {
   rereadId?: string;
   /** Not released: a re-read of this batch was already running or waiting (the owner's own `batch reread`). */
   alreadyRereading?: boolean;
+  /** Not released: this batch was itself a released re-read; these stay in inbox/ for the owner (the cap). */
+  notAgain?: string[];
 }
 
 export interface JobReread {

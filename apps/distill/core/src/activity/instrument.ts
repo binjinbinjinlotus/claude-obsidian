@@ -1041,10 +1041,12 @@ export function createEventLogger(deps: EventLoggerDeps, seedJobs: Job[]): (even
                   object,
                   summary: r.alreadyRereading
                     ? `${jobName(job)} wasn't added; its sources were already being read again`
-                    : r.files.length > 0
+                    : r.notAgain?.length
+                      ? `${jobName(job)} wasn't added either: ${plural(r.notAgain.length, 'source')} already read again once ${r.notAgain.length === 1 ? 'stays' : 'stay'} in inbox/`
+                      : r.files.length > 0
                       ? `${jobName(job)} wasn't added: ${plural(r.files.length, 'source')} ${r.files.length === 1 ? 'goes' : 'go'} to a re-read with the next batch`
                       : `${jobName(job)} wasn't added; none of its sources needs reading again`,
-                  details: { files: r.files, inVault: r.inVault, missing: r.missing, rereadId: r.rereadId ?? null },
+                  details: { files: r.files, inVault: r.inVault, missing: r.missing, rereadId: r.rereadId ?? null, ...(r.notAgain ? { notAgain: r.notAgain } : {}) },
                 },
                 source,
               );

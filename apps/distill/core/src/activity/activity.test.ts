@@ -571,10 +571,13 @@ describe('instrumentCore', () => {
     for (const [r, words] of [
       [{ at: 't', files: [], inVault: [], missing: [], alreadyRereading: true }, /its sources were already being read again$/],
       [{ at: 't', files: [], inVault: ['inbox/a.md'], missing: [] }, /none of its sources needs reading again$/],
+      [{ at: 't', files: [], inVault: [], missing: [], notAgain: ['inbox/a.md', 'inbox/b.md'] }, /wasn't added either: 2 sources already read again once stay in inbox\/$/],
+      [{ at: 't', files: [], inVault: [], missing: [], notAgain: ['inbox/a.md'] }, /wasn't added either: 1 source already read again once stays in inbox\/$/],
     ] as const) {
       const fresh = createEventLogger({ log, getSettings: () => ({}) as never, collectorName: () => '' }, [job]);
       fresh({ type: 'job', job: { ...job, released: r } as Job });
       assert.match(log.list().entries[0]!.summary, words);
+      assert.deepEqual(log.list().entries[0]!.details?.notAgain, 'notAgain' in r ? r.notAgain : undefined);
     }
     fs.rmSync(dir, { recursive: true, force: true });
   });

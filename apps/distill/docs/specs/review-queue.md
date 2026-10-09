@@ -532,7 +532,9 @@ sources. In the same call, the core (`releaseUnapplied`):
 
 - leaves out sources the owner removed in Review, those of a part that applied,
   those whose source page is in the vault already (`existingSourcePages`, as
-  the re-read finds them), and those whose inbox file is gone;
+  the re-read finds them), those whose inbox file is gone, and those that
+  couldn't be read in full (`job.stopped`: they stay Held in inbox/ with their
+  own Try again);
 - puts the rest in a re-read plan with `reason: 'released'` and `fromJob`,
   packed by tokens like any re-read. Folder items stay whole.
 - The plan never starts from Done, a tick or a job ending (`pumpRereads`
@@ -551,6 +553,11 @@ sources. In the same call, the core (`releaseUnapplied`):
 - A fully applied batch (`completed` with an operation, no part left) is
   untouched: no field, no turn, no plan. So are rejected and cancelled
   batches: the owner stopped them, so sending their sources again is theirs.
+- **The cap.** A batch that was itself a released re-read (`reread.reason:
+  'released'`, kept in jobs.json) is never released again: Done records
+  `released.notAgain` and says "Not added. These 2 sources were already read
+  again once; they stay in inbox/ for you to re-read." Re-reads for other
+  reasons (the owner's, a repair, Try again) release as usual.
 
 ## 4. The batch list (Review)
 

@@ -3392,7 +3392,8 @@ export function createEngine(opts: EngineOptions): Engine {
    * didn't fully apply, gives its sources the vault doesn't hold yet to a re-read (`reason: 'released'`) that starts
    * only when a batch may start (processQueue: the timer's batch or Process now), never from Done itself. Left out: sources the owner removed in Review, those of a part that
    * applied, those whose page is in the vault already (existingSourcePages, as the re-read uses), and those whose
-   * inbox file is gone. Once per batch (`released`).
+   * inbox file is gone, and those that couldn't be read in full (Held in inbox/). Once per batch (`released`); never
+   * for a batch that was itself a released re-read.
    */
   function releaseUnapplied(id: string): void {
     const job = findJob(id);
@@ -3410,7 +3411,11 @@ export function createEngine(opts: EngineOptions): Engine {
     const vault = vaultProfileFor(job);
     const sources = job.approval?.sources ?? [];
     const partPages = new Set((job.parts ?? []).flatMap((p) => p.pages));
-    const leaveOut = new Set(sources.filter((x) => x.source && (x.removed || partPages.has(x.page))).map((x) => x.source!));
+    // Sources that couldn't be read in full stay Held in inbox/ with their own Try again (decision 2026-10-09).
+    const leaveOut = new Set([
+      ...sources.filter((x) => x.source && (x.removed || partPages.has(x.page))).map((x) => x.source!),
+      ...(job.stopped ?? []).map((x) => x.file),
+    ]);
     const { items } = jobSourceItems(job);
     const candidates = items.map((i) => ({ ...i, files: i.files.filter((f) => !leaveOut.has(f)) })).filter((i) => i.files.length > 0);
     const existing = existingSourcePages(vault.path, candidates.flatMap((i) => i.files));
@@ -3427,6 +3432,19 @@ export function createEngine(opts: EngineOptions): Engine {
       if (files.length > 0) open.push({ files, ...(item.folder ? { folder: item.folder } : {}) });
     }
     const files = open.flatMap((i) => i.files);
+    // The cap: a released re-read that didn't add its sources either is not released again (a paid loop). They
+    // stay in inbox/ for the owner (decision 2026-10-09).
+    if (job.reread?.reason === 'released') {
+      const n = files.length;
+      mutate(id, (j) => {
+        j.released = { at, files: [], inVault, missing, notAgain: files };
+        const words = n > 0
+          ? `Not added. ${n === 1 ? 'This source was' : `These ${n} sources were`} already read again once; ${n === 1 ? 'it stays' : 'they stay'} in inbox/ for you to re-read.`
+          : 'Not added, and nothing to read again.';
+        j.turns.push(newTurn('app', words, now()));
+      });
+      return;
+    }
     let rereadId: string | undefined;
     if (files.length > 0) {
       const tokenBudget = fullRead.budget(ingestSelection().model).tokens;
