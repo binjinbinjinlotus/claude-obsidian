@@ -81,6 +81,7 @@ function fullJob(): Record<string, unknown> {
     },
     approvedChange: { at: '2026-10-01T12:00:00Z', operationID: 'op-1', changes: 5, sources: 1, concepts: 2, entities: 1, otherPages: 1, updated: 3, sourcesApproved: 2 },
     reviewDoneAt: '2026-10-01T13:00:00Z',
+    released: { at: '2026-10-01T13:00:00Z', files: ['inbox/a.md'], inVault: ['inbox/b.md'], missing: ['inbox/c.md'], rereadId: 'rr-2', alreadyRereading: true },
     reread: { id: 'rr-1', group: 1, groups: 3, fromJob: 'job-0', instruction: 'read it all' },
     queuedApply: { at: '2026-10-01T12:00:00Z', order: 4, bundlePath: '/v/b.json', labels: 'later', carries: 'later', planSha256: 'f'.repeat(64) },
     refresh: { since: '2026-10-01T12:00:00Z', reason: 'stale', stalePaths: ['wiki/a.md'], approved: true, attempt: 2 },
@@ -121,7 +122,7 @@ describe('decodeJob / encodeJob', () => {
     assert.match(job.sessionID, /^[0-9a-f-]{36}$/);
     assert.equal(job.createdAt, '2026-10-05T12:00:00Z');
     assert.equal(job.updatedAt, job.createdAt, 'updatedAt falls back to createdAt');
-    for (const k of ['runnerID', 'effort', 'approval', 'operationID', 'error', 'actionsFound', 'folders', 'parts', 'pendingPart', 'sessionUnavailable', 'approvedChange', 'reviewDoneAt', 'reread', 'queuedApply', 'refresh', 'recovery']) {
+    for (const k of ['runnerID', 'effort', 'approval', 'operationID', 'error', 'actionsFound', 'folders', 'parts', 'pendingPart', 'sessionUnavailable', 'approvedChange', 'reviewDoneAt', 'released', 'reread', 'queuedApply', 'refresh', 'recovery']) {
       assert.equal(k in job, false, k);
     }
   });
@@ -334,6 +335,12 @@ describe('decodeJob / encodeJob', () => {
     assert.deepEqual(job.approvedChange, { at, operationID: 'op', changes: 2, sources: 0, concepts: 0, entities: 0, otherPages: 0, updated: 0 });
     assert.equal(decodeJob({ id: 'j', vaultPath: '/v', approvedChange: { at, operationID: 'op', sourcesApproved: 1.9 } }, NOW)!.approvedChange!.sourcesApproved, 1);
     assert.equal(decodeJob({ id: 'j', vaultPath: '/v', approvedChange: { at, operationID: 'op', changes: 0 } }, NOW)!.approvedChange!.changes, 0);
+  });
+
+  test('released needs its time; lists keep only text; a wrong shape is dropped', () => {
+    assert.equal(decodeJob({ id: 'j', vaultPath: '/v', released: { files: [] } }, NOW)!.released, undefined);
+    assert.equal(decodeJob({ id: 'j', vaultPath: '/v', released: 'yes' }, NOW)!.released, undefined);
+    assert.deepEqual(decodeJob({ id: 'j', vaultPath: '/v', released: { at: 't', files: ['a', 3], inVault: 'x', alreadyRereading: 'yes' } }, NOW)!.released, { at: 't', files: ['a'], inVault: [], missing: [] });
   });
 
   test('reviewDoneAt must be a date', () => {

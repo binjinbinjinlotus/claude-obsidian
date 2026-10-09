@@ -285,6 +285,11 @@ export interface Job {
   approvedChange?: ApprovedChange | null;
   /** v8: the user pressed Done on this batch in Review after it was approved; it is then only in History. */
   reviewDoneAt?: string | null;
+  /**
+   * review-queue.md (2026-10-09): Done on a batch whose change was never (fully) applied gave its sources not in the
+   * vault to a re-read that starts with the next batch. Set once; Done again changes nothing.
+   */
+  released?: ReleasedSources | null;
   /** v9 (2026-10-05): this batch re-reads sources already ingested (POST /v1/batches/reread); absent on other batches. */
   reread?: JobReread | null;
   /** v10 (full reads): what this batch's session read, counted by the core from the tool results. */
@@ -460,6 +465,21 @@ export interface HeldSource extends StoppedSource {
 }
 
 /** v9: which re-read a batch belongs to: group `group` of `groups` (1-based). */
+/** What Done released from a batch that added nothing (or only part): see `Job.released`. */
+export interface ReleasedSources {
+  at: string;
+  /** Sources given to the re-read (inbox paths). */
+  files: string[];
+  /** Sources left alone because the vault already has their page. */
+  inVault: string[];
+  /** Sources whose inbox file is gone or unreadable: nothing to read again. */
+  missing: string[];
+  /** The re-read plan they went to, when there was something to read. */
+  rereadId?: string;
+  /** Not released: a re-read of this batch was already running or waiting (the owner's own `batch reread`). */
+  alreadyRereading?: boolean;
+}
+
 export interface JobReread {
   id: string; // reread-yyyyMMdd-HHmmss-xxxx
   group: number;
@@ -469,7 +489,7 @@ export interface JobReread {
   /** Extra words from the user for every group's prompt. */
   instruction?: string | null;
   /** v10: why it runs: the owner or CLI asked, the automatic repair, or Try again on a held source. */
-  reason?: 'manual' | 'repair' | 'retry' | null;
+  reason?: 'manual' | 'repair' | 'retry' | 'released' | null;
 }
 
 /**

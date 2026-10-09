@@ -1000,7 +1000,7 @@ function runSummary(name: string, run: CollectorRun): string {
 
 /** Log what happens without a direct request: batches moving on, runs, retention, queue scans. */
 export function createEventLogger(deps: EventLoggerDeps, seedJobs: Job[]): (event: CoreEvent) => void {
-  type Seen = { state: Job['state']; actions?: string; stopped?: number; queued?: boolean; refresh?: boolean; attempts?: number; gaveUp?: boolean };
+  type Seen = { state: Job['state']; actions?: string; stopped?: number; queued?: boolean; refresh?: boolean; attempts?: number; gaveUp?: boolean; released?: boolean };
   const seenOf = (j: Job): Seen => ({
     state: j.state,
     ...(j.actionsFound?.status ? { actions: j.actionsFound.status } : {}),
@@ -1009,6 +1009,7 @@ export function createEventLogger(deps: EventLoggerDeps, seedJobs: Job[]): (even
     refresh: !!j.refresh,
     attempts: j.recovery?.attempts.length ?? 0,
     gaveUp: j.recovery?.state === 'gaveUp',
+    released: !!j.released,
   });
   const jobs = new Map<string, Seen>();
   for (const j of seedJobs) jobs.set(j.id, seenOf(j));
@@ -1031,6 +1032,23 @@ export function createEventLogger(deps: EventLoggerDeps, seedJobs: Job[]): (even
           const object = jobObject(job.id, job);
           // review-queue.md: the apply queue, refreshes and recovery attempts (the scheduler acts; the owner reads it here).
           if (seen) {
+            // review-queue.md (2026-10-09): Done on a batch that added nothing gave its sources to a re-read.
+            if (job.released && !seen.released) {
+              const r = job.released;
+              write(
+                {
+                  type: 'batch.sources_released',
+                  object,
+                  summary: r.alreadyRereading
+                    ? `${jobName(job)} wasn't added; its sources were already being read again`
+                    : r.files.length > 0
+                      ? `${jobName(job)} wasn't added: ${plural(r.files.length, 'source')} ${r.files.length === 1 ? 'goes' : 'go'} to a re-read with the next batch`
+                      : `${jobName(job)} wasn't added; none of its sources needs reading again`,
+                  details: { files: r.files, inVault: r.inVault, missing: r.missing, rereadId: r.rereadId ?? null },
+                },
+                source,
+              );
+            }
             if (job.queuedApply?.planSha256 && !seen.queued && job.state === 'awaitingApproval') {
               write({ type: 'batch.queued', object, summary: `${jobName(job)} is queued: it applies after the batch before it` }, source);
             }

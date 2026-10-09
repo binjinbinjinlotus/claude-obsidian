@@ -2611,6 +2611,8 @@ export function createEngine(opts: EngineOptions): Engine {
     for (const plan of [...rereads.plans]) {
       const group = plan.groups.find((g) => !g.jobId);
       if (!group) continue;
+      // Released sources start only where a batch may start (processQueue), never on a tick or a job's end.
+      if (plan.reason === 'released') continue;
       // v10: a repair's next batch starts when the previous one has APPLIED (or ended), never while it waits in
       // Review, so no repair bundle goes stale against another.
       if (plan.reason === 'repair') {
@@ -2814,6 +2816,15 @@ export function createEngine(opts: EngineOptions): Engine {
     }
     const vault = activeVault(settings);
     if (!vault) return null;
+    // review-queue.md (2026-10-09): sources Done released go first, in the batch the rules allow now.
+    if (!o.overflow) {
+      const plan = rereads.plans.find((p) => p.reason === 'released' && p.vaultPath === vault.path && p.groups.some((g) => !g.jobId));
+      if (plan) {
+        const started = startRereadGroup(plan, plan.groups.find((g) => !g.jobId)!, vault);
+        saveRereads();
+        return clone(started);
+      }
+    }
     const settle = o.force ? 0 : settings.settleSeconds;
     // Failed label suggestions with tries left are asked again (they stay held meanwhile).
     if (queueLabeler.autoRetry() > 0) refreshQueue();
@@ -3367,7 +3378,81 @@ export function createEngine(opts: EngineOptions): Engine {
     if (job.state === 'running') throw new CoreError('invalid_state', 'This batch is still being added to your vault.');
     if (job.state === 'awaitingApproval') throw new CoreError('invalid_state', 'This batch still waits for your review.');
     if (!job.reviewDoneAt) mutate(id, (j) => { j.reviewDoneAt = isoDate(now()); });
+    releaseUnapplied(id);
     return clone(findJob(id)!);
+  }
+
+  /** The batch's whole change is in the vault: completed under an operation, with no part left over. */
+  function fullyApplied(job: Job): boolean {
+    return job.state === 'completed' && !!job.operationID && !job.pendingPart && job.approval?.needsRebuild !== true;
+  }
+
+  /**
+   * review-queue.md, Done on a batch that added nothing (2026-10-09): its sources the vault doesn't hold yet go to
+   * a re-read (`reason: 'released'`) that starts only when a batch may start (processQueue: the timer's batch or
+   * Process now), never from Done itself. Left out: sources the owner removed in Review, those of a part that
+   * applied, those whose page is in the vault already (existingSourcePages, as the re-read uses), and those whose
+   * inbox file is gone. Once per batch (`released`).
+   */
+  function releaseUnapplied(id: string): void {
+    const job = findJob(id);
+    if (!job || job.released || fullyApplied(job) || job.kind !== queueConsumer().id) return;
+    const at = isoDate(now());
+    if (rereads.plans.some((p) => p.fromJob === id && p.groups.some((g) => !g.jobId)) || jobs.some((j) => j.reread?.fromJob === id && (j.state === 'running' || j.state === 'awaitingApproval'))) {
+      mutate(id, (j) => {
+        j.released = { at, files: [], inVault: [], missing: [], alreadyRereading: true };
+        j.turns.push(newTurn('app', 'Not added. Its sources are already being read again.', now()));
+      });
+      return;
+    }
+    const vault = vaultProfileFor(job);
+    const sources = job.approval?.sources ?? [];
+    const partPages = new Set((job.parts ?? []).flatMap((p) => p.pages));
+    const leaveOut = new Set(sources.filter((x) => x.source && (x.removed || partPages.has(x.page))).map((x) => x.source!));
+    const { items } = jobSourceItems(job);
+    const candidates = items.map((i) => ({ ...i, files: i.files.filter((f) => !leaveOut.has(f)) })).filter((i) => i.files.length > 0);
+    const existing = existingSourcePages(vault.path, candidates.flatMap((i) => i.files));
+    const inVault: string[] = [];
+    const missing: string[] = [];
+    const open: RereadItem[] = [];
+    for (const item of candidates) {
+      const files: string[] = [];
+      for (const f of item.files) {
+        if (existing.has(f)) inVault.push(f);
+        else if (sourceFileProblem(vault.path, f)) missing.push(f);
+        else files.push(f);
+      }
+      if (files.length > 0) open.push({ files, ...(item.folder ? { folder: item.folder } : {}) });
+    }
+    const files = open.flatMap((i) => i.files);
+    let rereadId: string | undefined;
+    if (files.length > 0) {
+      const tokenBudget = fullRead.budget(ingestSelection().model).tokens;
+      const plan: RereadPlan = {
+        id: makeRereadID(now()),
+        vaultPath: vault.path,
+        createdAt: at,
+        perBatch: 0,
+        tokenBudget,
+        groups: packItems(open, tokenBudget, (f: string) => estimateTokens(path.join(vault.path, f))),
+        fromJob: id,
+        reason: 'released',
+      };
+      rereads.plans.push(plan);
+      saveRereads();
+      rereadId = plan.id;
+    }
+    const n = files.length;
+    const words = [
+      n > 0 ? `Not added. Its ${plural(n, 'source')} not in your vault ${n === 1 ? 'is' : 'are'} read again with the next batch.` : 'Not added, and nothing to read again.',
+      inVault.length > 0 ? `${plural(inVault.length, 'source')} already in your vault ${inVault.length === 1 ? 'stays' : 'stay'} as ${inVault.length === 1 ? 'it is' : 'they are'}.` : '',
+      missing.length > 0 ? `${plural(missing.length, 'source')} can't be read again: the inbox file is gone.` : '',
+    ].filter(Boolean).join(' ');
+    mutate(id, (j) => {
+      j.released = { at, files, inVault, missing, ...(rereadId ? { rereadId } : {}) };
+      j.turns.push(newTurn('app', words, now()));
+    });
+    if (rereadId) log('info', `Done on ${id}: ${plural(n, 'source')} not added go to re-read ${rereadId} with the next batch.`);
   }
 
   /** v8: the scope of a clean-up: the vault, its jobs, and what the queue still holds when the queue is inbox/. */

@@ -6,6 +6,7 @@ import type {
   Job,
   JobPart,
   JobReread,
+  ReleasedSources,
   PendingPart,
   JobActionsSummary,
   JobState,
@@ -290,6 +291,9 @@ export function decodeJob(v: unknown, now = new Date()): Job | undefined {
   // v9: re-read marker (lenient: a wrong shape is dropped).
   const reread = decodeReread(v.reread);
   if (reread) job.reread = reread;
+  // 2026-10-09: what Done released (lenient: a wrong shape is dropped).
+  const released = decodeReleased(v.released);
+  if (released) job.released = released;
   // review-queue.md (lenient: a wrong shape is dropped).
   const queued = decodeQueuedApply(v.queuedApply);
   if (queued) job.queuedApply = queued;
@@ -351,6 +355,16 @@ function decodeRecovery(v: unknown): RecoveryState | undefined {
   const approved = str(v.approvedSha256);
   if (approved !== undefined) out.approvedSha256 = approved;
   if (v.wake === 'agent' || v.wake === 'retry') out.wake = v.wake;
+  return out;
+}
+
+function decodeReleased(v: unknown): ReleasedSources | undefined {
+  if (!isObject(v) || typeof v.at !== 'string') return undefined;
+  const list = (x: unknown) => (Array.isArray(x) ? x.filter((s): s is string => typeof s === 'string') : []);
+  const out: ReleasedSources = { at: v.at, files: list(v.files), inVault: list(v.inVault), missing: list(v.missing) };
+  const id = str(v.rereadId);
+  if (id !== undefined) out.rereadId = id;
+  if (v.alreadyRereading === true) out.alreadyRereading = true;
   return out;
 }
 
@@ -497,7 +511,7 @@ function encodeApproval(a: ApprovalRequest): JSONObject {
 const JOB_KEYS = [
   'id', 'kind', 'vaultPath', 'files', 'sessionID', 'runnerID', 'model', 'effort', 'state',
   'createdAt', 'updatedAt', 'approval', 'turns', 'grantedTools', 'operationID', 'changedPaths', 'error', 'actionsFound', 'folders', 'sessionUnavailable',
-  'parts', 'pendingPart', 'approvedChange', 'reviewDoneAt', 'reread', 'queuedApply', 'refresh', 'recovery',
+  'parts', 'pendingPart', 'approvedChange', 'reviewDoneAt', 'released', 'reread', 'queuedApply', 'refresh', 'recovery',
 ];
 
 /** Every non-optional key is always written; nil optionals are omitted (never `null`). */
@@ -546,6 +560,7 @@ export function encodeJob(job: Job, raw: JSONObject = {}): JSONObject {
   }
   if (job.approvedChange != null) out.approvedChange = JSON.parse(JSON.stringify(job.approvedChange)) as JSONObject;
   if (job.reviewDoneAt != null) out.reviewDoneAt = job.reviewDoneAt;
+  if (job.released != null) out.released = JSON.parse(JSON.stringify(job.released)) as JSONObject;
   if (job.reread != null) {
     const r = job.reread;
     const m: JSONObject = { id: r.id, group: r.group, groups: r.groups };

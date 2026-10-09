@@ -524,6 +524,33 @@ card with:
   again.
 - **Cost.** Shown on each attempt row and summed on the Couldn't fix card.
 
+### Done on a batch that added nothing (2026-10-09)
+
+Done (`finishReview`) on a batch whose change never applied (failed, completed
+with no operation, a part left over or needing a rebuild) does not lose its
+sources. In the same call, the core (`releaseUnapplied`):
+
+- leaves out sources the owner removed in Review, those of a part that applied,
+  those whose source page is in the vault already (`existingSourcePages`, as
+  the re-read finds them), and those whose inbox file is gone;
+- puts the rest in a re-read plan with `reason: 'released'` and `fromJob`,
+  packed by tokens like any re-read. Folder items stay whole.
+- The plan never starts from Done, a tick or a job ending (`pumpRereads`
+  skips it). It starts from `processQueue`, the timer's batch when automatic
+  processing is on, or Process now, before the queue folder, in the active
+  vault only; not from the overflow continuation of a split queue. It keeps
+  its reason across a restart (`reread.json`).
+- The batch keeps `released` (`files`, `inVault`, `missing`, `rereadId`) and
+  gets one turn, for example "Not added. Its 2 sources not in your vault are
+  read again with the next batch. 2 sources already in your vault stay as they
+  are." Activity: `batch.sources_released` (from the job change).
+- Once per batch: Done again changes nothing. A batch whose sources are
+  already being read again (the owner's `distill batch reread --job`) gets
+  `released.alreadyRereading` and "Not added. Its sources are already being
+  read again." with no second plan.
+- A fully applied batch (`completed` with an operation, no part left) is
+  untouched: no field, no turn, no plan.
+
 ## 4. The batch list (Review)
 
 The horizontal pills (`JobTabs`, `MainView.swift`) are replaced by a **left

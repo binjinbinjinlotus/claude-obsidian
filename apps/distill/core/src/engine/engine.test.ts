@@ -1996,3 +1996,244 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
     await h.engine.stop();
   });
 });
+
+describe('Done on a batch that added nothing (review-queue.md, 2026-10-09)', () => {
+  const APPLIED: Step = { structured: { status: 'done', summary: 'Applied.', operation_id: PLAN.operation_id, changed_paths: PLAN.changed_paths } };
+  const FAILED: Step = { structured: { status: 'failed', summary: 'The vault core was not found.' } };
+
+  /** A batch of `names` from the queue, approved; its apply turn answers `apply`. */
+  async function approvedBatch(names: string[], apply: Step, o: { tickMs?: number; autoProcessEnabled?: boolean } = {}): Promise<Job> {
+    h = setup([], { ...(o.tickMs ? { tickMs: o.tickMs } : {}), settings: { autoProcessEnabled: o.autoProcessEnabled === true } });
+    for (const n of names) fs.writeFileSync(path.join(h.queue, n), `# ${n}\n`);
+    const created = (await h.engine.processQueue({ force: true }))!;
+    h.runner.steps.push(needsApproval(h.bundle(created)));
+    await h.engine.whenIdle();
+    h.runner.steps.push(apply);
+    await h.engine.approve(created.id);
+    await h.engine.whenIdle();
+    return h.engine.getJob(created.id)!;
+  }
+
+  /** The vault already has a source page for this inbox file (as the re-read finds it). */
+  function pageFor(file: string, name: string): void {
+    fs.mkdirSync(path.join(h.vault, 'wiki', 'sources'), { recursive: true });
+    fs.writeFileSync(path.join(h.vault, 'wiki', 'sources', `${name}.md`), `---\nsource_path: ${file}\n---\n# ${name}\n`);
+  }
+
+  /** reread.json keeps only plans with a group not started yet (it is removed when none is left). */
+  const reread = () => {
+    const file = path.join(tmp, 'state', 'reread.json');
+    return (fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : { plans: [] }) as { plans: { id: string; reason?: string; fromJob?: string; groups: { files: string[]; jobId?: string }[] }[] };
+  };
+  const released = () => reread().plans.filter((p) => p.reason === 'released');
+
+  test('a failed batch: its sources go to a gated re-read; Done itself sends nothing; the next batch takes them', async () => {
+    const job = await approvedBatch(['a.md', 'b.md'], FAILED);
+    assert.equal(job.state, 'failed');
+    assert.ok(job.approvedChange, 'approved, so Done is offered');
+    const calls = h.runner.requests.length;
+    const done = await h.engine.finishReview!(job.id);
+    await h.engine.whenIdle();
+    assert.ok(done.reviewDoneAt);
+    assert.deepEqual([...done.released!.files].sort(), [...job.files].sort());
+    assert.deepEqual(done.released!.inVault, []);
+    assert.match(done.turns.at(-1)!.text, /^Not added\. Its 2 sources not in your vault are read again with the next batch\.$/);
+    assert.equal(released().length, 1);
+    assert.equal(released()[0]!.fromJob, job.id);
+    assert.equal(h.runner.requests.length, calls, 'nothing runs from Done (nor from the job change it makes)');
+    assert.equal(h.engine.listJobs().length, 1);
+    // The next batch the rules allow takes them first.
+    h.runner.steps.push({ structured: { status: 'nothing_to_do', summary: 'ok' } });
+    const next = (await h.engine.processQueue({ force: true }))!;
+    assert.equal(next.reread?.fromJob, job.id);
+    assert.equal(next.reread?.reason, 'released');
+    assert.deepEqual([...next.files].sort(), [...job.files].sort());
+    await h.engine.whenIdle();
+    assert.equal(h.runner.requests.length, calls + 1);
+    assert.equal(released().length, 0, 'every group started, so the plan is done');
+    assert.equal(await h.engine.processQueue({ force: true }), null, 'started once');
+  });
+
+  test('the timer never starts released sources early: not on ticks, not after a restart, only with a batch', async () => {
+    const job = await approvedBatch(['a.md'], FAILED, { tickMs: 5 });
+    await h.engine.finishReview!(job.id);
+    await h.engine.start();
+    await new Promise((r) => setTimeout(r, 40));
+    await h.engine.whenIdle();
+    assert.equal(h.engine.listJobs().length, 1, 'auto processing off: nothing on the ticks');
+    await h.engine.stop();
+    // A restart keeps the plan gated (its reason is saved).
+    const saved = JSON.parse(fs.readFileSync(path.join(tmp, 'state', 'jobs.json'), 'utf8')) as unknown[];
+    h = setup([], { tickMs: 5, jobs: saved });
+    await h.engine.start();
+    await new Promise((r) => setTimeout(r, 40));
+    await h.engine.whenIdle();
+    assert.equal(h.engine.listJobs().length, 1);
+    assert.equal(released().length, 1);
+    await h.engine.stop();
+  });
+
+  test('Done on an applied batch is unchanged: no release, no turn, no re-read', async () => {
+    const job = await approvedBatch(['a.md'], APPLIED);
+    assert.equal(job.state, 'completed');
+    const turns = job.turns.length;
+    const done = await h.engine.finishReview!(job.id);
+    assert.ok(done.reviewDoneAt);
+    assert.equal(done.released, undefined);
+    assert.equal(done.turns.length, turns);
+    assert.equal(released().length, 0);
+  });
+
+  test('sources already in the vault, removed in Review, or gone are not read again', async () => {
+    const job = await approvedBatch(['a.md', 'b.md', 'c.md', 'd.md', 'e.md'], FAILED);
+    const [a, b, c, d, e] = [...job.files].sort();
+    pageFor(a!, 'A');
+    fs.rmSync(path.join(h.vault, e!));
+    await h.engine.stop();
+    const saved = JSON.parse(fs.readFileSync(path.join(tmp, 'state', 'jobs.json'), 'utf8')) as Array<Record<string, any>>;
+    const j = saved.find((x) => x.id === job.id)!;
+    j.approval.sources = [
+      { page: 'wiki/sources/B.md', title: 'B', source: b, labels: [], by: 'none', removed: true },
+      { page: 'wiki/sources/D.md', title: 'D', source: d, labels: [], by: 'none' },
+    ];
+    h = setup([], { jobs: saved });
+    const done = await h.engine.finishReview!(job.id);
+    assert.deepEqual(done.released!.files, [c, d]);
+    assert.deepEqual(done.released!.inVault, [a]);
+    assert.deepEqual(done.released!.missing, [e]);
+    assert.equal(done.turns.at(-1)!.text, 'Not added. Its 2 sources not in your vault are read again with the next batch. 1 source already in your vault stays as it is. 1 source can\'t be read again: the inbox file is gone.');
+    assert.deepEqual(released()[0]!.groups.flatMap((g) => g.files), [c, d]);
+  });
+
+  test('a batch where one part applied releases only the sources of the part that didn’t', async () => {
+    const job = await approvedBatch(['a.md', 'b.md'], FAILED);
+    const [a, b] = [...job.files].sort();
+    await h.engine.stop();
+    const saved = JSON.parse(fs.readFileSync(path.join(tmp, 'state', 'jobs.json'), 'utf8')) as Array<Record<string, any>>;
+    const j = saved.find((x) => x.id === job.id)!;
+    // As the engine leaves it: part A applied (its page may not be found by a scan), part B failed after.
+    j.operationID = 'op-part-a';
+    j.parts = [{ operationID: 'op-part-a', pages: ['wiki/sources/A.md'], labels: 'confirm', at: '2026-10-09T10:00:00Z' }];
+    j.approval.sources = [
+      { page: 'wiki/sources/A.md', title: 'A', source: a, labels: [], by: 'none' },
+      { page: 'wiki/sources/B.md', title: 'B', source: b, labels: [], by: 'none' },
+    ];
+    h = setup([], { jobs: saved });
+    const done = await h.engine.finishReview!(job.id);
+    assert.deepEqual(done.released!.files, [b]);
+  });
+
+  test('a batch that completed without an operation added nothing: its sources are released', async () => {
+    const job = await approvedBatch(['a.md'], APPLIED);
+    await h.engine.stop();
+    const saved = JSON.parse(fs.readFileSync(path.join(tmp, 'state', 'jobs.json'), 'utf8')) as Array<Record<string, any>>;
+    delete saved.find((x) => x.id === job.id)!.operationID;
+    h = setup([], { jobs: saved });
+    const done = await h.engine.finishReview!(job.id);
+    assert.deepEqual(done.released!.files, job.files);
+  });
+
+  test('Done twice releases once; a batch already being read again releases nothing', async () => {
+    const job = await approvedBatch(['a.md'], FAILED);
+    await h.engine.finishReview!(job.id);
+    const turns = h.engine.getJob(job.id)!.turns.length;
+    await h.engine.finishReview!(job.id);
+    assert.equal(released().length, 1);
+    assert.equal(h.engine.getJob(job.id)!.turns.length, turns);
+
+    const other = await approvedBatch(['b.md'], FAILED);
+    // The owner already ran `distill batch reread --job` (it waits for the vault).
+    await h.engine.rereadSources({ jobId: other.id });
+    const before = reread().plans.length;
+    const done = await h.engine.finishReview!(other.id);
+    assert.equal(done.released?.alreadyRereading, true);
+    assert.deepEqual(done.released?.files, []);
+    assert.equal(reread().plans.length, before, 'no second re-read');
+    assert.equal(done.turns.at(-1)!.text, 'Not added. Its sources are already being read again.');
+  });
+
+  /** The batch as jobs.json holds it, changed by `edit`, then loaded by a fresh engine. */
+  async function reloaded(job: Job, edit: (j: Record<string, any>) => void): Promise<void> {
+    await h.engine.stop();
+    const saved = JSON.parse(fs.readFileSync(path.join(tmp, 'state', 'jobs.json'), 'utf8')) as Array<Record<string, any>>;
+    edit(saved.find((x) => x.id === job.id)!);
+    h = setup([], { jobs: saved });
+  }
+
+  for (const leftOver of ['pendingPart', 'needsRebuild'] as const) {
+    test(`completed after one part, with the rest left over (${leftOver}): only the rest is released`, async () => {
+      const job = await approvedBatch(['a.md', 'b.md'], APPLIED);
+      const [a, b] = [...job.files].sort();
+      await reloaded(job, (j) => {
+        j.parts = [{ operationID: PLAN.operation_id, pages: ['wiki/sources/A.md'], labels: 'confirm', at: '2026-10-09T10:00:00Z' }];
+        j.approval = {
+          summary: 's', questions: [], denials: [], skipped: [],
+          sources: [{ page: 'wiki/sources/A.md', title: 'A', source: a, labels: [], by: 'none' }, { page: 'wiki/sources/B.md', title: 'B', source: b, labels: [], by: 'none' }],
+          ...(leftOver === 'needsRebuild' ? { needsRebuild: true } : {}),
+        };
+        if (leftOver === 'pendingPart') j.pendingPart = { reason: 'remaining', expected: { 'wiki/sources/B.md': 'f'.repeat(64) }, excluded: ['wiki/sources/A.md'], labels: 'confirm' };
+      });
+      assert.equal(h.engine.getJob(job.id)!.state, 'completed');
+      const done = await h.engine.finishReview!(job.id);
+      assert.deepEqual(done.released?.files, [b]);
+    });
+  }
+
+  test('a batch that isn’t one of sources (labels) is never released', async () => {
+    const job = await approvedBatch(['a.md'], FAILED);
+    await reloaded(job, (j) => { j.kind = 'labels'; });
+    const done = await h.engine.finishReview!(job.id);
+    assert.equal(done.released, undefined);
+    assert.equal(released().length, 0);
+  });
+
+  test('a re-read of this batch still waiting for the vault counts as already reading; a finished one doesn’t', async () => {
+    const job = await approvedBatch(['a.md'], FAILED);
+    // Another batch holds the vault, so the owner's re-read waits.
+    fs.writeFileSync(path.join(h.queue, 'busy.md'), '# busy\n');
+    h.runner.steps.push({ hang: true, structured: { status: 'done', summary: 'x' } });
+    const busy = (await h.engine.processQueue({ force: true }))!;
+    const asked = await h.engine.rereadSources({ jobId: job.id });
+    assert.equal(asked.waiting, 1);
+    const done = await h.engine.finishReview!(job.id);
+    assert.equal(done.released?.alreadyRereading, true);
+    await h.engine.cancel(busy.id);
+    await h.engine.whenIdle();
+
+    // A re-read of the batch that already ended (it failed) doesn't stop the release.
+    const other = await approvedBatch(['b.md'], FAILED);
+    h.runner.steps.push(FAILED);
+    await h.engine.rereadSources({ jobId: other.id });
+    await h.engine.whenIdle();
+    assert.ok(h.engine.listJobs().some((j) => j.reread?.fromJob === other.id && j.state === 'failed'));
+    const released2 = await h.engine.finishReview!(other.id);
+    assert.deepEqual(released2.released?.files, other.files);
+  });
+
+  test('released sources wait for the vault they came from, and never ride on a split queue’s next batch', async () => {
+    const job = await approvedBatch(['a.md'], FAILED);
+    await h.engine.finishReview!(job.id);
+    // The overflow continuation of a split queue is not a new batch the rules allowed.
+    assert.equal(await (h.engine.processQueue as (o: { overflow?: boolean }) => Promise<Job | null>)({ overflow: true }), null);
+    // Another vault is active: its batch doesn't take them.
+    const other = path.join(tmp, 'other-vault');
+    fs.mkdirSync(path.join(other, 'inbox'), { recursive: true });
+    fs.writeFileSync(path.join(other, '.claude-obsidian.json'), '{}');
+    const otherQueue = path.join(tmp, 'other-queue');
+    fs.mkdirSync(otherQueue, { recursive: true });
+    await h.engine.updateSettings({ vaults: [...h.engine.getSettings().vaults, { path: other, queueDirectory: otherQueue }], activeVaultPath: other });
+    assert.equal(await h.engine.processQueue({ force: true }), null);
+    assert.equal(released().length, 1, 'still waiting');
+    assert.equal(h.engine.listJobs().length, 1);
+  });
+
+  test('every source already in the vault: nothing to read again, and the turn says so', async () => {
+    const job = await approvedBatch(['a.md'], FAILED);
+    pageFor(job.files[0]!, 'A');
+    const done = await h.engine.finishReview!(job.id);
+    assert.deepEqual(done.released!.files, []);
+    assert.equal(done.released!.rereadId, undefined);
+    assert.equal(done.turns.at(-1)!.text, 'Not added, and nothing to read again. 1 source already in your vault stays as it is.');
+    assert.equal(released().length, 0);
+  });
+});

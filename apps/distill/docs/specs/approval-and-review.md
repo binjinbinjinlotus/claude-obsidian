@@ -1,7 +1,7 @@
 ---
 title: Approval and review
 status: built
-updated: 2026-10-05
+updated: 2026-10-09
 ---
 
 # Approval and review
@@ -173,6 +173,11 @@ my knowledgebase". Canvas: ReviewProgress, ApplyProgress. Code: core
   never blocks the next one (`batchBlocker` looks at `running` only). A reply
   after an approval (or a job approved by an older core, with no
   `approvedChange`) is not shown this way.
+- **Done on a batch that added nothing gives its sources back (2026-10-09).**
+  When the batch's change never applied (failed, not added, or only a part
+  applied), Done also releases its sources that aren't in the vault yet to a
+  re-read that starts with the next batch: see review-queue.md, "Done on a
+  batch that added nothing". Done on an applied batch is unchanged.
 - **What was approved** is recorded when Approve starts the apply (all three
   paths: agent, core, new session): `job.approvedChange = {at, operationID,
   changes, sources, concepts, entities, otherPages, updated,

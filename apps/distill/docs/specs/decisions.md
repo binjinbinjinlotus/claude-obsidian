@@ -17,6 +17,24 @@ supersede it with a new entry.
 
 ## 2026-10-09
 
+**Done on a batch that added nothing releases its sources (2026-10-09).** The owner pressed Done on
+job-20261008-101155-3caf, a failed batch whose apply never ran; it left Review and nothing said its
+sources were never added (`claimedFiles` counts every listed job's files, in any state, so the queue
+never offered them again). They recovered it by hand with `distill batch reread --job`. Decided:
+(a) Done keeps doing what it did (`reviewDoneAt`) and, on a batch whose change never fully applied,
+also releases its sources the vault doesn't hold to a re-read. Not "back to the queue": with the
+default queue outside the vault the files were moved into `inbox/<date>/` and a scan never sees them
+again; a re-read of inbox paths works for both queue setups, and the old batch keeps its claim, so an
+inbox queue doesn't also offer them.
+(b) The re-read waits for a batch the normal rules allow (`processQueue`: the timer's batch or
+Process now). Re-reads otherwise start on the next tick, which would make Done a paid run.
+(c) Left out: sources removed in Review, an applied part's, those already in the vault (the re-read's
+`existingSourcePages`), and those whose inbox file is gone. Sources that couldn't be read in full
+are released too: they were never added, and the full-read repair skips files a waiting re-read
+holds.
+(d) No UI change: the turn, Activity, and `released` on the job carry it; the error card and Done
+are as they were.
+
 **Round 3 of the missing-core work (2026-10-09).**
 (a) Apply and check steps read in the present while they run ("Applying the approved changes",
 "Checking the plan with the vault core") and in the past only when the tool's result says they

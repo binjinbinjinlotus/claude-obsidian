@@ -36,7 +36,8 @@ export interface RereadPlan {
   /** v10: the token budget the groups were packed by. */
   tokenBudget?: number;
   /** v10: why it runs; a repair's next group starts only after the previous one applied or ended. */
-  reason?: 'manual' | 'repair' | 'retry';
+  /** released (2026-10-09): Done on a batch that added nothing; starts only when a batch may (processQueue). */
+  reason?: 'manual' | 'repair' | 'retry' | 'released';
   fromJob?: string;
   instruction?: string;
   groups: RereadGroup[];
@@ -335,7 +336,7 @@ function decodePlan(v: unknown): RereadPlan | undefined {
   if (typeof v.fromJob === 'string') plan.fromJob = v.fromJob;
   if (typeof v.instruction === 'string') plan.instruction = v.instruction;
   if (typeof v.tokenBudget === 'number') plan.tokenBudget = v.tokenBudget;
-  if (v.reason === 'manual' || v.reason === 'repair' || v.reason === 'retry') plan.reason = v.reason;
+  if (v.reason === 'manual' || v.reason === 'repair' || v.reason === 'retry' || v.reason === 'released') plan.reason = v.reason;
   return plan;
 }
 

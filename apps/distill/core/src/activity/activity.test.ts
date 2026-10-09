@@ -555,6 +555,30 @@ describe('instrumentCore', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  test('Done on a batch that added nothing: one batch.sources_released line, from the job change (review-queue.md)', () => {
+    const dir = tmp('distill-activity-released-');
+    const log = new ActivityLog({ dir });
+    const job = { id: 'job-r', kind: 'ingest', files: ['inbox/a.md'], state: 'failed', turns: [] } as never as Job;
+    const logEvent = createEventLogger({ log, getSettings: () => ({}) as never, collectorName: () => '' }, [job]);
+    const released = (r: Job['released']) => logEvent({ type: 'job', job: { ...job, released: r } as Job });
+    released({ at: 't', files: ['inbox/a.md'], inVault: ['inbox/b.md'], missing: [], rereadId: 'rr-1' });
+    released({ at: 't', files: ['inbox/a.md'], inVault: ['inbox/b.md'], missing: [], rereadId: 'rr-1' }); // the same job again: no second line
+    const [entry, ...rest] = log.list().entries;
+    assert.equal(rest.length, 0);
+    assert.equal(entry?.type, 'batch.sources_released');
+    assert.match(entry?.summary ?? '', /wasn't added: 1 source goes to a re-read with the next batch$/);
+    assert.deepEqual(entry?.details, { files: ['inbox/a.md'], inVault: ['inbox/b.md'], missing: [], rereadId: 'rr-1' });
+    for (const [r, words] of [
+      [{ at: 't', files: [], inVault: [], missing: [], alreadyRereading: true }, /its sources were already being read again$/],
+      [{ at: 't', files: [], inVault: ['inbox/a.md'], missing: [] }, /none of its sources needs reading again$/],
+    ] as const) {
+      const fresh = createEventLogger({ log, getSettings: () => ({}) as never, collectorName: () => '' }, [job]);
+      fresh({ type: 'job', job: { ...job, released: r } as Job });
+      assert.match(log.list().entries[0]!.summary, words);
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   test('a healed product root is one core line with the old and new checkout (app-shell.md)', () => {
     const dir = tmp('distill-activity-root-');
     const log = new ActivityLog({ dir });
