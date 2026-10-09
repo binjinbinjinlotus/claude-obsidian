@@ -513,3 +513,23 @@ test('folderPrompt: each folder lists as read only the batch’s own files insid
     fs.rmSync(vault, { recursive: true, force: true });
   }
 });
+
+test('folderSourceBlock: an empty list reads nothing; folderPrompt never counts a sibling folder with a longer name', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'distill-folder-prefix-'));
+  try {
+    // "Trip" has a subfolder "2"; "Trip 2" is another folder item whose path starts with "Trip".
+    fs.mkdirSync(path.join(vault, 'inbox', 'Trip', '2'), { recursive: true });
+    fs.writeFileSync(path.join(vault, 'inbox', 'Trip', '2', 'x.md'), '# trip/2/x\n');
+    fs.writeFileSync(path.join(vault, 'inbox', 'Trip', 'a.md'), '# trip/a\n');
+    fs.mkdirSync(path.join(vault, 'inbox', 'Trip 2'), { recursive: true });
+    fs.writeFileSync(path.join(vault, 'inbox', 'Trip 2', 'x.md'), '# trip 2/x\n');
+    const none = folderSourceBlock('Trip', walkFolder(path.join(vault, 'inbox', 'Trip')), new Set());
+    assert.match(none, /- Trip\/a\.md \(\d+ B, not in this batch, not read\)/);
+    const ctx = { vault: { path: vault }, job: { folders: ['inbox/Trip', 'inbox/Trip 2'], files: ['inbox/Trip/a.md', 'inbox/Trip 2/x.md'] } } as unknown as JobContext;
+    const prompt = folderPrompt(ctx);
+    assert.match(prompt, /- Trip\/2\/x\.md \(\d+ B, not in this batch, not read\)/, 'Trip 2/x.md is not Trip/2/x.md');
+    assert.match(prompt, /- Trip\/a\.md \(\d+ B\)\n/);
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+  }
+});

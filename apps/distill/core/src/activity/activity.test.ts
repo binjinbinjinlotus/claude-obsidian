@@ -939,7 +939,9 @@ describe('activity through the core and the API', () => {
     const zsha = (await request('GET', `/v1/collectors/${id}`)).body.status.currentSha256 as string;
     assert.equal((await request('POST', `/v1/collectors/${id}/consent`, { sha256: zsha })).status, 200);
     assert.equal((await request('POST', `/v1/collectors/${id}/run`)).status, 200);
-    for (let i = 0; i < 200 && !fs.existsSync(path.join(queue, 'r.md')); i += 1) await new Promise((r) => setTimeout(r, 25));
+    // The script creates r.md before it writes to it: wait for its words, not just the file (a race under load).
+    const written = () => fs.existsSync(path.join(queue, 'r.md')) && fs.readFileSync(path.join(queue, 'r.md'), 'utf8').trim() !== '';
+    for (let i = 0; i < 200 && !written(); i += 1) await new Promise((r) => setTimeout(r, 25));
     assert.equal(fs.readFileSync(path.join(queue, 'r.md'), 'utf8').trim(), 'restored');
     await request('GET', '/v1/collectors');
     assert.equal(last('collector.script_changed_outside'), undefined, 'delete, restore, reinstall, language change and run: all the core\'s own');

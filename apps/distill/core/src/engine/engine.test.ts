@@ -2451,7 +2451,7 @@ describe('Done on a batch that added nothing (review-queue.md, 2026-10-09)', () 
     h.runner.steps.push({ hang: true, structured: { status: 'done', summary: 'x' } });
     const first = await h.engine.retryHeld(a!);
     assert.equal(first.started.length, 1);
-    await assert.rejects(h.engine.retryHeld(a!), /^CoreError: This source is already being read again\.$|This source is already being read again\./);
+    await assert.rejects(h.engine.retryHeld(a!), { code: 'invalid_state', message: 'This source is already being read again.' });
     await h.engine.cancel(first.started[0]!.id);
     await h.engine.whenIdle();
   });
