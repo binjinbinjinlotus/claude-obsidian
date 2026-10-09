@@ -241,6 +241,13 @@ export function createStepLog(opts: StepLogOptions): StepLog {
     return id;
   }
 
+  /** The words for a tool step that ended with an error ('' keeps its own: they don't claim it worked). */
+  function failedToolText(step: JobStep | undefined): string {
+    if (step?.verb === 'apply') return 'Couldn’t apply the approved changes';
+    if (step?.verb === 'check') return 'Couldn’t check the plan with the vault core';
+    return '';
+  }
+
   /** Close what was still running when a turn ended (a tool whose result never came). */
   function closeRunning(jobId: string, phases: JobStep['phase'][]): void {
     const l = logFor(jobId);
@@ -534,7 +541,10 @@ export function createStepLog(opts: StepLogOptions): StepLog {
         const l = logFor(jobId);
         if (s.kind === 'toolDone') {
           const id = l.tools.get(s.id);
-          if (id) change(jobId, id, { state: 'done', endedAt: isoDate(now()) });
+          if (!id) return;
+          // A tool that returned an error ends failed, and a past tense that claims it worked is taken back.
+          const failed = s.isError === true ? failedToolText(l.steps.get(id)) : undefined;
+          change(jobId, id, failed !== undefined ? { state: 'failed', ...(failed ? { text: failed } : {}), endedAt: isoDate(now()) } : { state: 'done', endedAt: isoDate(now()) });
           return;
         }
         const w = s.kind === 'tool' ? toolWords(s, context(job)) : noteWords(s.text);

@@ -277,6 +277,29 @@ describe('step log review', () => {
   });
 });
 
+describe('step log tool errors (2026-10-08)', () => {
+  test('a tool that returned an error ends failed; an apply or check never reads as done', () => {
+    const dir = path.join(root, 'steps-errors');
+    const job = { ...newJob({ id: 'job-e', kind: 'ingest', vaultPath: root, files: ['inbox/a.md'], model: 'm', now: new Date() }) };
+    const log = createStepLog({ dir, emit: () => undefined, getJob: () => job });
+    log.onEvent({ type: 'job', job });
+    const core = '/gone/scripts/claude-obsidian.py';
+    log.runnerStep('job-e', { kind: 'tool', id: 'ap', tool: 'Bash', input: { command: `python3 ${core} transaction apply /b.json --vault ${root}` } });
+    log.runnerStep('job-e', { kind: 'tool', id: 'in', tool: 'Bash', input: { command: `python3 ${core} transaction inspect /b.json --vault ${root}` } });
+    log.runnerStep('job-e', { kind: 'tool', id: 'ls', tool: 'Bash', input: { command: 'ls wiki' } });
+    log.runnerStep('job-e', { kind: 'tool', id: 'ok', tool: 'Read', input: { file_path: 'inbox/a.md' } });
+    log.runnerStep('job-e', { kind: 'toolDone', id: 'ap', isError: true });
+    log.runnerStep('job-e', { kind: 'toolDone', id: 'in', isError: true });
+    log.runnerStep('job-e', { kind: 'toolDone', id: 'ls', isError: true });
+    log.runnerStep('job-e', { kind: 'toolDone', id: 'ok' });
+    const by = (verb: string) => log.list('job-e').steps.find((x) => x.verb === verb)!;
+    assert.deepEqual([by('apply').state, by('apply').text], ['failed', 'Couldn’t apply the approved changes']);
+    assert.deepEqual([by('check').state, by('check').text], ['failed', 'Couldn’t check the plan with the vault core']);
+    assert.deepEqual([by('command').state, by('command').text], ['failed', 'Ran a command: ls']);
+    assert.equal(by('read').state, 'done');
+  });
+});
+
 describe('step log limits', () => {
   test('stops at MAX_STEPS with one “not kept” line', () => {
     const dir = path.join(root, 'steps');
