@@ -97,7 +97,7 @@ isn't.
   worktree it ran in into Info.plist (`ClaudeObsidianProductRoot`), and the
   core saved the same path in settings.json. After the merge the owner deleted
   the worktree; the app kept pointing at it. The setup check reported the
-  missing core, but a batch already in flight failed its plan check with "No
+  missing core, but a batch (most likely one already in flight, since setup problems block new batches) failed its plan check with "No
   such file or directory" and went to AI recovery anyway, which spent $0.08 to
   conclude it couldn't fix it.
   - *Lesson:* a path recorded at build time is a cache, not a fact; check it

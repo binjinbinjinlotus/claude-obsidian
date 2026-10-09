@@ -1480,6 +1480,28 @@ describe('recovery after a spent rule (review-queue.md, 2026-10-06)', () => {
     assert.equal((await h.engine.status()).pendingApprovals, 1);
   });
 
+  test('lock: the core gone by the time the waits are spent stops at $0, the approved hash kept (2026-10-08)', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.parse('2026-10-06T10:00:00Z') });
+    const runner = sandboxed();
+    h = setup([], { runner, apply: () => lock, now: () => new Date(Date.now()) });
+    const created = await firstJob();
+    runner.steps.push(needsApproval(h.bundle(created)));
+    await settle();
+    await h.engine.approve(created.id);
+    await settle();
+    fs.rmSync(path.join(tmp, 'product'), { recursive: true, force: true });
+    t.mock.timers.tick(30_000);
+    await settle();
+    t.mock.timers.tick(120_000);
+    await settle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(runner.requests.length, 1, 'only the batch: no recovery call');
+    assert.equal(job.recovery?.signature, 'lock');
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.match(job.recovery?.summary ?? '', /^Distill can't find its vault core at /);
+    assert.equal(job.recovery?.approvedSha256, PLAN.approval_sha256);
+  });
+
   test('the lock waits count per batch: another batch meeting a lock starts at 30 s', async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.parse('2026-10-06T10:00:00Z') });
     const runner = sandboxed();
@@ -1610,6 +1632,23 @@ describe('a missing vault core (review-queue.md, 2026-10-08)', () => {
     assert.throws(() => h.engine.tryRecoveryAgain(created.id), /can't find its vault core/);
     assert.equal(h.runner.requests.length, 1);
     assert.ok((await h.engine.status()).problems.some((p) => p.code === 'missingCore'));
+  });
+
+  test('blocked commands with the core gone: Distill doesn’t answer the session; $0 and the path named', async () => {
+    h = setup([]);
+    const created = await firstJob();
+    fs.rmSync(path.join(tmp, 'product'), { recursive: true, force: true });
+    h.runner.steps.push({
+      structured: { status: 'needs_input', summary: 'I need to run the core.' },
+      denials: [{ toolName: 'Bash', input: { command: 'python3 scripts/claude-obsidian.py status' } }],
+    });
+    await h.engine.whenIdle();
+    const job = h.engine.getJob(created.id)!;
+    assert.equal(h.runner.requests.length, 1, 'no answer was sent');
+    assert.equal(job.recovery?.signature, 'denial');
+    assert.equal(job.recovery?.state, 'gaveUp');
+    assert.deepEqual(job.recovery?.attempts, []);
+    assert.match(job.recovery?.summary ?? '', /^Distill can't find its vault core at /);
   });
 
   test('a recovery waiting out its minute stops at $0 when the core is gone by then', async (t) => {

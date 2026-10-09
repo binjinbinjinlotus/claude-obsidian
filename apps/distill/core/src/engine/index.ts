@@ -640,11 +640,13 @@ export function createEngine(opts: EngineOptions): Engine {
   }
 
   /** Stops a batch's recovery at $0 because the vault core is missing (nothing was sent to a runner). */
-  function stopForMissingCore(id: string, signature: RecoverySignature, summary: string): void {
+  function stopForMissingCore(id: string, signature: RecoverySignature, summary: string, approvedSha256?: string): void {
     mutate(id, (j) => {
       const rec = recoveryFor(j.recovery, signature);
       const attempts = rec.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed' as const } : a));
-      j.recovery = { ...rec, attempts, state: 'gaveUp', summary };
+      // A lock's approved hash stays, so Try again retries under it once the checkout is back.
+      const approved = approvedSha256 ?? rec.approvedSha256;
+      j.recovery = { ...rec, attempts, state: 'gaveUp', summary, ...(approved ? { approvedSha256: approved } : {}) };
       delete j.recovery.proposal;
       delete j.recovery.waitUntil;
     });
@@ -1350,7 +1352,7 @@ export function createEngine(opts: EngineOptions): Engine {
     // A labels confirmation has no session and no recovery (the core applies it and asks the owner itself).
     if (!job || job.state !== 'awaitingApproval' || jobKind(job.kind)?.appliesInCore) return;
     const missing = missingCoreSummary();
-    if (missing) return stopForMissingCore(id, signature, missing);
+    if (missing) return stopForMissingCore(id, signature, missing, approvedSha256);
     const rec = recoveryFor(job.recovery, signature);
     const attempts = rec.attempts.map((a) => (a.result === 'running' ? { ...a, result: 'failed' as const } : a));
     const approved = approvedSha256 ?? rec.approvedSha256;
