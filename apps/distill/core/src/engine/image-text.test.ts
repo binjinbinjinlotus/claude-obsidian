@@ -136,7 +136,8 @@ describe('engine.extractImageText', () => {
     const state = path.join(tmp, 'state');
     fs.mkdirSync(state, { recursive: true });
     fs.writeFileSync(path.join(state, 'settings.json'), JSON.stringify({ productRoot: tmp, ...(taskDefaults ? { taskDefaults } : {}) }));
-    return createEngine({ paths: statePaths(state), runners: createRunnerRegistry([runner]), tickMs: 60_000 });
+    // productRoot is a temp dir without the core: never heal it to this checkout (the test must not depend on where it runs).
+    return createEngine({ paths: statePaths(state), runners: createRunnerRegistry([runner]), tickMs: 60_000, detectProductRoot: () => '' });
   }
 
   test('defaults to Claude Code · Haiku · low effort, scratch under the state dir', async () => {

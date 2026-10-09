@@ -239,13 +239,15 @@ describe('SettingsStore', () => {
   test('updateSettings persists v2 keys and null clears them', async () => {
     const paths = statePaths(tmp);
     fs.writeFileSync(paths.settings, SWIFT_SETTINGS);
-    const engine = createEngine({ paths, runners: createRunnerRegistry([]), tickMs: 60_000 });
+    // SWIFT_SETTINGS' productRoot has no core: never heal it to this checkout (the test must not depend on where it runs).
+    const engine = createEngine({ paths, runners: createRunnerRegistry([]), tickMs: 60_000, detectProductRoot: () => '' });
     const updated = await engine.updateSettings({ runnerOptions: { openrouter: { baseURL: 'https://x.test' } }, labeling: { autoLabelQueueFolder: false } });
     assert.deepEqual(updated.runnerOptions, { openrouter: { baseURL: 'https://x.test' } });
     let raw = JSON.parse(fs.readFileSync(paths.settings, 'utf8'));
     assert.deepEqual(raw.runnerOptions, { openrouter: { baseURL: 'https://x.test' } });
     assert.deepEqual(raw.labeling, { autoLabelQueueFolder: false });
     assert.deepEqual(raw.futureFeature, { labels: ['tea'] });
+    assert.equal(raw.productRoot, '/Users/me/claude-obsidian', 'a root left as saved when there is nothing to heal to');
     assert.deepEqual(new SettingsStore(paths.settings).load().runnerOptions, { openrouter: { baseURL: 'https://x.test' } });
     await engine.updateSettings({ labeling: null } as never);
     raw = JSON.parse(fs.readFileSync(paths.settings, 'utf8'));
